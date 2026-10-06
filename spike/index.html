@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Idea Generator — Sound Spike</title>
+<script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js"></script>
+<script>window.Tone || document.write('<script src="https://unpkg.com/tone@15.1.22/build/Tone.js"><\/script>')</script>
+<style>
+  :root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--text:#e8eaf0;--mute:#8b93a7;--accent:#ff7a45;--accent2:#5b8cff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  main{max-width:820px;margin:0 auto;padding:24px 16px 48px}
+  h1{margin:0;font-size:22px}
+  .sub{margin:4px 0 20px;color:var(--mute);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  .controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+  label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+  select,input[type=range]{width:100%}
+  select{background:#11141a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px}
+  input[type=range]{accent-color:var(--accent);height:28px}
+  .wv{color:var(--text);font-weight:600;text-transform:none;letter-spacing:0}
+  .buttons{display:flex;gap:10px;margin-top:14px}
+  button{flex:1;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:600;cursor:pointer;touch-action:manipulation}
+  #gen{background:var(--accent);color:#1a0d06}
+  #play{background:#232836;color:var(--text);border:1px solid var(--line)}
+  #play.on{background:var(--accent2);color:#fff;border-color:transparent}
+  button:disabled{opacity:.5;cursor:default}
+  #status{font-size:13px;color:var(--mute);margin-top:10px;min-height:1.4em}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .pill{background:#11141a;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px}
+  .pill b{color:var(--accent)}
+  .notes{margin:0 0 12px;padding-left:18px;font-size:13px;color:var(--mute)}
+  .notes:empty{display:none}
+  .bars{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .bar{background:#11141a;border:1px solid var(--line);border-radius:10px;padding:10px 8px;min-height:66px;transition:border-color .08s,background .08s}
+  .bar .n{font-size:11px;color:var(--mute);display:flex;justify-content:space-between;gap:4px}
+  .bar .n i{font-style:normal;color:var(--accent2)}
+  .bar .c{font-weight:600;font-size:15px;margin-top:4px;word-break:break-word}
+  .bar .c s{text-decoration:none;color:var(--mute);font-weight:400}
+  .bar .d{font-size:11px;color:var(--mute);margin-top:2px}
+  .bar.now{border-color:var(--accent);background:#221812}
+  .lanes{margin-top:14px;font:12px/1.6 ui-monospace,Consolas,monospace;color:var(--mute);overflow-x:auto;white-space:pre;padding-bottom:6px}
+  .hint{font-size:12px;color:var(--mute)}
+  @media (max-width:620px){.controls{grid-template-columns:1fr}.bars{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Music Idea Generator</h1>
+  <p class="sub">Sound spike (M1.1) · 8-bar idea · phrases, fills, odd meters, polyrhythms</p>
+
+  <section class="card">
+    <div class="controls">
+      <label>Genre
+        <select id="genre">
+          <option value="random">Random</option>
+          <option value="rock">Rock</option>
+          <option value="pop">Pop</option>
+          <option value="funk">Funk</option>
+        </select>
+      </label>
+      <label>Time signature
+        <select id="meter">
+          <option value="auto">Auto (by weirdness)</option>
+          <option>4/4</option><option>3/4</option><option>6/8</option>
+          <option>5/4</option><option>5/8</option><option>7/8</option>
+          <option>9/8</option><option>7/4</option><option>11/8</option>
+          <option value="mixed">Mixed meters</option>
+        </select>
+      </label>
+      <label>Weirdness <span class="wv" id="wv">20</span>
+        <input type="range" id="weird" min="0" max="100" value="20">
+      </label>
+    </div>
+    <div class="buttons">
+      <button id="gen">Generate</button>
+      <button id="play" disabled>Play</button>
+    </div>
+    <div id="status">Loading sounds…</div>
+  </section>
+
+  <section class="card">
+    <div class="meta" id="meta"></div>
+    <ul class="notes" id="notes"></ul>
+    <div class="bars" id="bars"></div>
+    <div class="lanes" id="lanes"></div>
+  </section>
+
+  <p class="hint">iPhone: turn off silent mode to hear audio. Generating while playing swaps the idea at once.</p>
+</main>
+
+<script>
+/* ---------- helpers ---------- */
+const NOTES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const rand=a=>a[Math.floor(Math.random()*a.length)];
+const chance=p=>Math.random()<p;
+const randInt=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const gcd=(a,b)=>b?gcd(b,a%b):a;
+const lcm=(a,b)=>a*b/gcd(a,b);
+const zeros=n=>new Array(n).fill(0);
+
+/* ---------- music theory ---------- */
+const Q={maj:[0,4,7],min:[0,3,7],dim:[0,3,6],aug:[0,4,8],'5':[0,7,12],maj7:[0,4,7,11],m7:[0,3,7,10],'7':[0,4,7,10],'9':[0,4,7,10,14],m9:[0,3,7,10,14],sus2:[0,2,7],sus4:[0,5,7],add9:[0,4,7,14],m7b5:[0,3,6,10],'7#9':[0,4,7,10,15]};
+const QL={maj:'',min:'m',dim:'dim',aug:'+','5':'5',maj7:'maj7',m7:'m7','7':'7','9':'9',m9:'m9',sus2:'sus2',sus4:'sus4',add9:'add9',m7b5:'m7b5','7#9':'7#9'};
+const SCALES={major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],mixolydian:[0,2,4,5,7,9,10],phrygian:[0,1,3,5,7,8,10],lydian:[0,2,4,6,7,9,11]};
+
+function deg(scale,d,seventh){
+  const n=i=>scale[(d+i)%7]+((d+i)>=7?12:0);
+  const r=n(0),t=n(2)-r,f=n(4)-r,s=n(6)-r;
+  let q=t===4&&f===7?'maj':t===3&&f===7?'min':t===3&&f===6?'dim':'aug';
+  if(seventh){q=q==='maj'?(s===11?'maj7':'7'):q==='min'?'m7':q==='dim'?'m7b5':q;}
+  return {root:r%12,q};
+}
+
+/* ---------- meters (grid = 16th notes; groups = beat groupings in 16ths) ---------- */
+const METERS={
+  '2/4':{len:8,groups:[[4,4]]},
+  '4/4':{len:16,groups:[[4,4,4,4]]},
+  '3/4':{len:12,groups:[[4,4,4]]},
+  '6/8':{len:12,groups:[[6,6]]},
+  '5/4':{len:20,groups:[[4,4,4,4,4],[6,4,6,4]]},
+  '5/8':{len:10,groups:[[6,4],[4,6]]},
+  '7/8':{len:14,groups:[[4,4,6],[6,4,4],[4,6,4]]},
+  '9/8':{len:18,groups:[[4,4,4,6],[6,6,6]]},
+  '7/4':{len:28,groups:[[4,4,4,4,4,4,4],[8,6,8,6]]},
+  '11/8':{len:22,groups:[[4,4,6,4,4],[6,6,4,6]]},
+};
+const MIXES=[['4/4','3/4'],['3/4','4/4','4/4'],['7/8','4/4'],['5/4','4/4'],['7/8','7/8','7/8','2/4'],['6/8','5/8'],['4/4','4/4','4/4','2/4']];
+function pickMeters(sel,w,G){
+  if(sel==='mixed')return rand(MIXES);
+  if(sel!=='auto')return [sel];
+  const r=Math.random();
+  if(w<.3)return r<.85?['4/4']:[rand(G.altMeters)];
+  if(w<.65)return r<.5?['4/4']:r<.82?[rand(['3/4','6/8','5/4',...G.altMeters])]:[rand(['7/8','5/8'])];
+  return r<.15?['4/4']:r<.7?[rand(['5/4','7/8','9/8','7/4','5/8','11/8'])]:rand(MIXES);
+}
+const starts=groups=>{let s=[],p=0;for(const g of groups){s.push(p);p+=g;}return s;};
+
+/* ---------- genres ---------- */
+const GENRES={
+  rock:{bpm:[100,150],swing:0,modes:['major','minor','mixolydian'],altMeters:['6/8','3/4'],
+    prog:[[0,3,4,3],[0,6,3,0],[0,4,3,3],[5,3,0,4],[0,2,3,4],[0,5,3,4]],
+    flavor:c=>(c.q==='maj'||c.q==='min')&&chance(.55)?{...c,q:'5'}:c,
+    drum:{fourFloor:.05,halfTime:.2,kick8:.22,kick16:.04,ghost:0,hats:['8','8','16']},
+    bass:{lock:.85,oct:.1,fifth:.15,six:0}},
+  pop:{bpm:[90,128],swing:0,modes:['major','major','minor'],altMeters:['6/8','3/4'],
+    prog:[[0,4,5,3],[5,3,0,4],[0,5,3,4],[3,0,4,5],[0,3,5,4],[0,2,3,4]],
+    flavor:c=>c.q==='maj'&&chance(.3)?{...c,q:rand(['add9','sus2','sus4','maj7'])}:c,
+    drum:{fourFloor:.4,halfTime:.25,kick8:.18,kick16:.06,ghost:.05,hats:['8','off','16']},
+    bass:{lock:.7,oct:.15,fifth:.2,six:.05}},
+  funk:{bpm:[95,115],swing:.18,modes:['dorian','mixolydian','minor'],altMeters:['3/4','5/4'],seventh:true,
+    prog:[[0,0,0,0],[0,3,0,3],[0,0,3,3],[0,6,3,0],[0,0,0,3]],
+    flavor:c=>{const s=c.q==='maj'?'7':c.q==='min'?'m7':c.q;const r={...c,q:s};
+      if(chance(.35))r.q=s==='7'?rand(['9','7#9']):s==='m7'?'m9':s;return r;},
+    drum:{fourFloor:0,halfTime:0,kick8:.25,kick16:.2,ghost:.32,hats:['16','16','8']},
+    bass:{lock:.85,oct:.35,fifth:.15,six:.22}},
+};
+
+/* ---------- drum bar building ---------- */
+function drumBar(len,groups,ds,w,o){
+  const K=zeros(len),S=zeros(len),H=zeros(len),T=zeros(len),st=starts(groups),n=st.length;
+  st.forEach((p,i)=>{
+    if(o.fourFloor)K[p]=.95;
+    if(o.halfTime){ if(i===0)K[p]=.95; if(i===Math.floor(n/2))S[p]=.9; }
+    else { if(i%2===0)K[p]=.95; else S[p]=.9; }
+  });
+  for(let i=1;i<len;i++){
+    if(K[i]||S[i])continue;
+    const even=i%2===0;
+    if(chance((even?ds.kick8:ds.kick16)*(.6+w)))K[i]=.8;
+    else if(!even&&chance(ds.ghost*(.7+w*.6)))S[i]=.2;
+  }
+  for(let i=0;i<len;i++){
+    const isStart=st.includes(i);
+    if(o.hat==='16')H[i]=isStart?.65:(i%2?.3:.45);
+    else if(o.hat==='8'){if(i%2===0)H[i]=isStart?.65:.45;}
+    else if(o.hat==='off'){if(i%2===0&&!isStart)H[i]=.55;}
+  }
+  return {K,S,H,T};
+}
+function copyBar(b){return {K:[...b.K],S:[...b.S],H:[...b.H],T:[...b.T]};}
+function varyBar(b,len,groups,w){
+  const v=copyBar(b),st=starts(groups);
+  const free=[...Array(len).keys()].filter(i=>i>0&&!st.includes(i));
+  for(let k=0;k<1+Math.round(w*3);k++){const i=rand(free);v.K[i]=v.K[i]?0:.8;}
+  if(w>.4&&chance(.6)){const i=rand(free.filter(i=>i%2));v.S[i]=v.S[i]?0:.6;}
+  return v;
+}
+function addFill(b,len,groups,w,genre){
+  const lastGroup=groups[groups.length-1];
+  const F=w>.75&&chance(.25)?len:chance(.35+w*.4)?Math.min(len,lastGroup+groups[groups.length-2]||lastGroup):lastGroup;
+  const s0=len-F;
+  for(let i=s0;i<len;i++){b.K[i]=0;b.S[i]=0;b.T[i]=0;if(F>4)b.H[i]=0;}
+  const type=genre==='funk'?rand(['ghostroll','sync','toms']):rand(['roll','toms','toms','sync']);
+  for(let j=0;j<F;j++){
+    const i=s0+j,pr=j/F;
+    if(type==='roll'){if(j%2===0||F<=4||chance(.5))b.S[i]=.35+.6*pr;}
+    if(type==='ghostroll'){b.S[i]=j%2?.2:.4+.5*pr;}
+    if(type==='toms'){if(chance(.85))b.T[i]=Math.min(3,1+Math.floor(pr*3));}
+    if(type==='sync'){if([0,3,6,7,10,12,14,15].includes(j%16)){if(j%2)b.S[i]=.85;else b.T[i]=1+(j%3);}}
+  }
+  b.K[s0]=.9;
+  return F;
+}
+
+/* ---------- strum bar building: D down, U up, x muted scratch ---------- */
+function strumBar(len,groups,genre,w){
+  const st=starts(groups),a=new Array(len).fill('.');
+  for(let i=0;i<len;i++){
+    const isStart=st.includes(i),even=i%2===0;
+    if(genre==='rock'){if(even)a[i]=!isStart&&chance(.12+w*.2)?'x':'D';else if(chance(.08+w*.2))a[i]='U';}
+    if(genre==='pop'){if(isStart)a[i]='D';else if(even&&chance(.4))a[i]='D';else if(!even&&chance(.22))a[i]='U';}
+    if(genre==='funk'){if(isStart&&chance(.6))a[i]='D';else if(chance(.55))a[i]=chance(.28)?(even?'D':'U'):'x';}
+  }
+  if(w<.5)a[0]='D';
+  return a.join('');
+}
+function varyStrum(p,w){
+  return p.split('').map((ch,i)=>i>0&&chance(.12+w*.2)?(ch==='.'?rand(['D','U','x']):'.'):ch).join('');
+}
+
+/* ---------- phrase structures (which bar variant plays where) ---------- */
+function phrasePlan(w){
+  const low=[['A','A','A','A2'],['A','A','A2','A']];
+  const mid=[['A','A2','A','B'],['A','B','A','B'],['A','A','B','B'],['A','A2','B','A2']];
+  const half=()=>w<.3?rand(low):w<.7?rand([...low,...mid]):[0,1,2,3].map(i=>i===0?'A':rand(['A','A2','B','C']));
+  const first=half();
+  const second=chance(.25+w*.6)?half():[...first];
+  if(second===first||second.join()===first.join())second[3]=second[3]==='A'?'A2':second[3];
+  return [...first,...second];
+}
+
+/* ---------- generator ---------- */
+function generate(genreSel,meterSel,w){
+  const genre=genreSel==='random'?rand(['rock','pop','funk']):genreSel;
+  const borrow=()=>genreSel==='random'&&chance(.35+w*.3)?rand(['rock','pop','funk']):genre;
+  const G=GENRES[genre], notes=[];
+  const key=randInt(0,11);
+  const mode=w>.6&&chance(.5)?rand(['phrygian','lydian']):rand(G.modes);
+  const scale=SCALES[mode];
+  let bpm=randInt(...G.bpm);
+  if(w>.8&&chance(.4))bpm+=rand([-25,25]);
+
+  // bars & meters
+  const meterSeq=pickMeters(meterSel,w,G);
+  const groupsFor={}; for(const m of new Set(meterSeq))groupsFor[m]=rand(METERS[m].groups);
+  const bars=[]; let pos=0;
+  for(let b=0;b<8;b++){const m=meterSeq[b%meterSeq.length];const len=METERS[m].len;bars.push({m,len,start:pos,groups:groupsFor[m]});pos+=len;}
+  const total=pos;
+  const meterLabel=meterSeq.length>1?meterSeq.join(' + '):meterSeq[0];
+
+  // ----- chords: timeline across the whole 8 bars -----
+  let base=rand(G.prog).map(d=>{
+    let c=G.flavor(deg(scale,d,G.seventh));
+    if(c.q==='dim'&&w<.6)c=c.root===11?{root:10,q:'maj'}:{...c,q:'m7b5'};
+    return c;
+  });
+  if(w>.45&&chance(w*.7)){
+    const n=rand([3,5,6]);
+    if(n===3)base=base.slice(0,3);
+    else while(base.length<n)base.push(G.flavor(deg(scale,randInt(0,6),G.seventh)));
+    notes.push(`${base.length}-chord loop over 8 bars — chords land in different spots each time round`);
+  }
+  const weirdChord=(c,next)=>{
+    const r=Math.random();
+    if(r<.3){const other=SCALES[mode==='major'?'minor':'major'];const i=scale.indexOf(c.root);return deg(other,i>=0?i:0,false);}
+    if(r<.55&&next)return {root:(next.root+7)%12,q:'7'};
+    if(r<.7&&next)return {root:(next.root+1)%12,q:'7'};
+    return {root:randInt(0,11),q:rand(['maj','min','7','sus4','maj7','m7','aug'])};
+  };
+  const durChoices=w>.4&&chance(w*.7)?[.5,1,1,1.5,2]:[1];
+  if(durChoices.length>1)notes.push('Uneven harmonic rhythm — some chords last half a bar, some two');
+  const barPosToStep=p=>{const bi=Math.floor(p);if(bi>=8)return total;const b=bars[bi];let s=b.start+Math.round((p-bi)*b.len);return s-(s%2);};
+  const timeline=[]; let cur=0,ci=0;
+  while(cur<8){
+    let c=base[ci%base.length];const next=base[(ci+1)%base.length];
+    if(chance(w*(cur>=4?.45:.25)))c=weirdChord(c,next);
+    let step=barPosToStep(cur);
+    if(step>0&&genre!=='rock'&&chance(.15+w*.25))step=Math.max(timeline[timeline.length-1].step+2,step-2); // anticipation
+    timeline.push({step,chord:c});
+    cur+=rand(durChoices);ci++;
+  }
+  const chordIdx=zeros(total);
+  for(let t=0,g=0;g<total;g++){while(t+1<timeline.length&&timeline[t+1].step<=g)t++;chordIdx[g]=t;}
+
+  // ----- drums: per-meter variants arranged as a phrase -----
+  const dg=borrow(), ds=GENRES[dg].drum;
+  const baseOpts={fourFloor:chance(ds.fourFloor),halfTime:chance(ds.halfTime),hat:rand(ds.hats)};
+  const variants={};
+  for(const m of Object.keys(groupsFor)){
+    const len=METERS[m].len,gr=groupsFor[m];
+    const A=drumBar(len,gr,ds,w,baseOpts);
+    variants[m]={A,A2:varyBar(A,len,gr,w),B:drumBar(len,gr,ds,w,{...baseOpts,hat:chance(.5)?baseOpts.hat:rand(ds.hats)}),
+      C:drumBar(len,gr,ds,w,{...baseOpts,halfTime:!baseOpts.halfTime})};
+  }
+  const plan=phrasePlan(w);
+  const K=zeros(total),S=zeros(total),H=zeros(total),T=zeros(total);
+  const fills=[];
+  bars.forEach((b,i)=>{
+    const v=copyBar(variants[b.m][plan[i]]);
+    if(i===7||(i===3&&chance(.6+w*.4)))fills.push({bar:i,len:addFill(v,b.len,b.groups,w,dg)});
+    else if(w>.6&&chance(.25)){v.T[b.len-2]=2;v.T[b.len-1]=3;}
+    for(let j=0;j<b.len;j++){K[b.start+j]=v.K[j];S[b.start+j]=v.S[j];H[b.start+j]=v.H[j];T[b.start+j]=v.T[j];}
+  });
+
+  // ----- strum phrase -----
+  const sg=borrow();
+  const sVar={};
+  for(const m of Object.keys(groupsFor)){const len=METERS[m].len,gr=groupsFor[m];const A=strumBar(len,gr,sg,w);sVar[m]={A,A2:varyStrum(A,w),B:strumBar(len,gr,sg,w),C:varyStrum(strumBar(len,gr,sg,w),w)};}
+  const splan=chance(.5)?plan:phrasePlan(w);
+  let strum=bars.map((b,i)=>sVar[b.m][splan[i]]).join('').split('');
+
+  // ----- polyrhythmic cycles that cross the barline -----
+  if(w>.5&&chance((w-.35)*1.3)){
+    const parts=['hat','kick','strum'];
+    const count=w>.85?2:1;
+    for(const part of parts.sort(()=>Math.random()-.5).slice(0,count)){
+      const L=rand([3,5,6,7,10,12,20].filter(x=>x!==bars[0].len));
+      if(part==='hat'){for(let g=0;g<total;g++)H[g]=g%L===0?.65:(L>=6&&g%L===Math.floor(L/2)?.35:0);}
+      if(part==='kick'){for(let g=0;g<total;g++)if(g%L===0&&!S[g])K[g]=Math.max(K[g],.8);}
+      if(part==='strum'){const cyc=['D',...Array.from({length:L-1},()=>rand(['.','.','x','U','D']))];for(let g=0;g<total;g++)strum[g]=cyc[g%L];}
+      const nb=lcm(L,bars[0].len)/bars[0].len;
+      notes.push(`${part==='hat'?'Hi-hat':part==='kick'?'Extra kicks':'Strum'} repeats every ${L} sixteenths — ${nb>8?'never lines up with the bar within these 8 bars':`lines up with the bar again every ${nb} bars`}`);
+    }
+  }
+  // make sure every chord change is heard
+  for(const e of timeline)if(strum[e.step]==='.')strum[e.step]='D';
+
+  // ----- bass: follows chords, locks to kick, approaches the next chord -----
+  const bs=GENRES[borrow()].bass, B=zeros(total);
+  const bassRoot=c=>{let m=36+(key+c.root)%12;if(m>43)m-=12;return m;};
+  for(let g=0;g<total;g++){
+    const c=timeline[chordIdx[g]].chord,r=bassRoot(c);
+    const change=g===0||chordIdx[g]!==chordIdx[g-1];
+    const nxtI=chordIdx[(g+1)%total], nextChange=nxtI!==chordIdx[g];
+    if(change)B[g]=r;
+    else if(nextChange&&chance(.25+w*.4))B[g]=bassRoot(timeline[nxtI].chord)+rand([-1,-1,1,2]);
+    else if(K[g]&&chance(bs.lock))B[g]=chance(bs.oct)?r+12:chance(bs.fifth)?r+7:r;
+    else if(g%2===1&&chance(bs.six*(.6+w)))B[g]=chance(.5)?r+12:r;
+    if(B[g]&&!change&&chance(w*.12))B[g]=r+rand([2,3,5,10]);
+  }
+
+  // describe
+  const tag=x=>x==='A2'?"A'":x;
+  notes.unshift(`Drum phrase: ${plan.map(tag).join(' ')}${fills.length?` · fills on bar ${fills.map(f=>f.bar+1).join(' & ')}`:''}${baseOpts.halfTime?' · half-time':''}${baseOpts.fourFloor?' · four-on-the-floor':''}`);
+  if(genreSel==='random'&&(dg!==genre||sg!==genre))notes.push(`Mixed genres: chords ${genre}, drums ${dg}, strum ${sg}`);
+
+  return {genre,genreSel,key,mode,bpm,swing:G.swing,w,bars,total,meterLabel,timeline,chordIdx,K,S,H,T,strum,B,notes};
+}
+
+/* ---------- sound ---------- */
+const S={};
+const fb={piano:false,drums:false,toms:false};
+function buildSounds(){
+  const limiter=new Tone.Limiter(-1).toDestination();
+  const reverb=new Tone.Reverb({decay:1.8,wet:.18}).connect(limiter);
+  S.piano=new Tone.Sampler({
+    urls:{A1:'A1.mp3',C2:'C2.mp3','D#2':'Ds2.mp3','F#2':'Fs2.mp3',A2:'A2.mp3',C3:'C3.mp3','D#3':'Ds3.mp3','F#3':'Fs3.mp3',A3:'A3.mp3',C4:'C4.mp3','D#4':'Ds4.mp3','F#4':'Fs4.mp3',A4:'A4.mp3',C5:'C5.mp3','D#5':'Ds5.mp3','F#5':'Fs5.mp3',A5:'A5.mp3'},
+    baseUrl:'https://tonejs.github.io/audio/salamander/',release:1,volume:-6,
+    onerror:()=>{fb.piano=true;}
+  }).connect(reverb);
+  const kit='https://tonejs.github.io/audio/drum-samples/acoustic-kit/';
+  const de=()=>{fb.drums=true;};
+  S.kick=new Tone.Sampler({urls:{C1:'kick.mp3'},baseUrl:kit,volume:0,onerror:de}).connect(limiter);
+  S.snare=new Tone.Sampler({urls:{C1:'snare.mp3'},baseUrl:kit,volume:-3,onerror:de}).connect(limiter);
+  S.hat=new Tone.Sampler({urls:{C1:'hihat.mp3'},baseUrl:kit,volume:-12,onerror:de}).connect(limiter);
+  const te=()=>{fb.toms=true;};
+  S.toms=[1,2,3].map(n=>new Tone.Sampler({urls:{C1:`tom${n}.mp3`},baseUrl:kit,volume:-4,onerror:te}).connect(reverb));
+  S.bass=new Tone.MonoSynth({oscillator:{type:'sawtooth'},filter:{Q:1,type:'lowpass'},
+    filterEnvelope:{attack:.005,decay:.18,sustain:.25,release:.2,baseFrequency:70,octaves:2.6},
+    envelope:{attack:.005,decay:.2,sustain:.6,release:.12},volume:-9}).connect(limiter);
+  // synth fallbacks if samples fail to load
+  S.fbPiano=new Tone.PolySynth(Tone.Synth,{oscillator:{type:'triangle'},envelope:{attack:.005,decay:.4,sustain:.3,release:.8},volume:-12}).connect(reverb);
+  S.fbKick=new Tone.MembraneSynth({volume:-2}).connect(limiter);
+  S.fbSnare=new Tone.NoiseSynth({noise:{type:'white'},envelope:{attack:.001,decay:.15,sustain:0},volume:-12}).connect(limiter);
+  S.fbHat=new Tone.MetalSynth({envelope:{attack:.001,decay:.05,release:.01},harmonicity:5.1,modulationIndex:32,resonance:4000,octaves:1.5,volume:-28}).connect(limiter);
+  S.fbTom=new Tone.MembraneSynth({pitchDecay:.08,octaves:3,volume:-8}).connect(reverb);
+}
+function playNotes(midis,time,dur,vel,dir){
+  const order=dir==='U'?[...midis].reverse():midis;
+  const spread=dir==='x'?.004:.014;
+  const inst=fb.piano?S.fbPiano:S.piano;
+  order.forEach((m,i)=>inst.triggerAttackRelease(Tone.Frequency(m,'midi').toNote(),dur,time+i*spread,vel*(1-i*.04)));
+}
+function hit(name,time,vel,tom){
+  try{
+    if(name==='tom'){ if(fb.toms)S.fbTom.triggerAttackRelease(['G2','D2','A1'][tom-1],'8n',time,vel); else S.toms[tom-1].triggerAttack('C1',time,vel); return; }
+    if(fb.drums){
+      if(name==='kick')S.fbKick.triggerAttackRelease('C1','8n',time,vel);
+      if(name==='snare')S.fbSnare.triggerAttackRelease('16n',time,vel);
+      if(name==='hat')S.fbHat.triggerAttackRelease('C6','32n',time,vel);
+    } else S[name].triggerAttack('C1',time,vel);
+  }catch(e){}
+}
+
+/* ---------- playback ---------- */
+let state=null, step=0, playing=false;
+function voicing(c){
+  const pc=(state.key+c.root)%12;
+  let base=48+pc; if(base<52)base+=12;
+  return Q[c.q].map(i=>base+i);
+}
+function nextIn(lane,g,empty,cap){let n=1;while(n<cap&&lane[(g+n)%state.total]===empty)n++;return n;}
+
+function tick(time){
+  const g=step%state.total; step++;
+  const six=Tone.Time('16n').toSeconds();
+  const c=state.timeline[state.chordIdx[g]].chord;
+
+  const st=state.strum[g];
+  if(st!=='.'){
+    const n=nextIn(state.strum,g,'.',16);
+    const bar=state.bars.find(b=>g>=b.start&&g<b.start+b.len);
+    const accent=starts(bar.groups).includes(g-bar.start)?.15:0;
+    if(st==='x')playNotes(voicing(c).slice(-3),time,.04,.28,'x');
+    else playNotes(voicing(c),time,Math.min(n*six*.95,1.6),(st==='U'?.5:.66)+accent,st);
+  }
+  if(state.K[g])hit('kick',time,state.K[g]);
+  if(state.S[g])hit('snare',time,state.S[g]);
+  if(state.H[g])hit('hat',time,state.H[g]);
+  if(state.T[g])hit('tom',time,.8,state.T[g]);
+  if(state.B[g]){
+    const n=nextIn(state.B,g,0,16);
+    S.bass.triggerAttackRelease(Tone.Frequency(state.B[g],'midi').toNote(),Math.min(n*six*.9,.8),time,.85);
+  }
+  const bi=state.bars.findIndex(b=>b.start===g);
+  if(bi>=0)Tone.Draw.schedule(()=>highlight(bi),time);
+}
+
+/* ---------- UI ---------- */
+const $=id=>document.getElementById(id);
+const chordName=c=>NOTES[(state.key+c.root)%12]+QL[c.q];
+function render(){
+  const gLabel=state.genreSel==='random'?`Random → ${state.genre}`:state.genre;
+  $('meta').innerHTML=[`Genre <b>${gLabel}</b>`,`Key <b>${NOTES[state.key]} ${state.mode}</b>`,`Time <b>${state.meterLabel}</b>`,`Tempo <b>${state.bpm}</b>`,`Weirdness <b>${Math.round(state.w*100)}</b>`]
+    .map(t=>`<span class="pill">${t}</span>`).join('');
+  $('notes').innerHTML=state.notes.map(n=>`<li>${n}</li>`).join('');
+  $('bars').innerHTML=state.bars.map((b,i)=>{
+    const here=state.timeline.filter(e=>e.step>=b.start&&e.step<b.start+b.len);
+    const held=here.length&&here[0].step===b.start?'':`<s>(${chordName(state.timeline[state.chordIdx[b.start]].chord)})</s> `;
+    const names=here.map(e=>chordName(e.chord)+(e.step!==b.start&&(e.step-b.start)%4?'<s>↶</s>':'')).join(' · ');
+    return `<div class="bar" id="bar${i}"><div class="n"><span>Bar ${i+1}</span><i>${b.m}</i></div><div class="c">${held}${names}</div></div>`;
+  }).join('');
+  const lane=(arr,f)=>state.bars.map(b=>Array.from({length:b.len},(_,j)=>f(arr[b.start+j]))).map(a=>a.join('')).join('|');
+  $('lanes').textContent=
+`Strum ${lane(state.strum,v=>v)}
+Kick  ${lane(state.K,v=>v?'x':'.')}
+Snare ${lane(state.S,v=>!v?'.':v<.3?'g':'x')}
+Toms  ${lane(state.T,v=>v?String(v):'.')}
+Hat   ${lane(state.H,v=>v?'x':'.')}
+Bass  ${lane(state.B,v=>v?'o':'.')}`;
+}
+function highlight(bar){
+  document.querySelectorAll('.bar').forEach(el=>el.classList.remove('now'));
+  const el=$('bar'+bar); if(el)el.classList.add('now');
+}
+function newIdea(){
+  state=generate($('genre').value,$('meter').value,$('weird').value/100);
+  Tone.Transport.bpm.value=state.bpm;
+  Tone.Transport.swing=state.swing;
+  Tone.Transport.swingSubdivision='16n';
+  render();
+}
+
+$('weird').oninput=e=>$('wv').textContent=e.target.value;
+$('gen').onclick=async()=>{await Tone.start();newIdea();if(playing)step=0;};
+$('play').onclick=async()=>{
+  await Tone.start();
+  if(!state)newIdea();
+  if(!playing){step=0;Tone.Transport.start('+0.1');playing=true;$('play').textContent='Stop';$('play').classList.add('on');}
+  else{Tone.Transport.stop();playing=false;$('play').textContent='Play';$('play').classList.remove('on');highlight(-1);S.piano.releaseAll?.();}
+};
+
+/* ---------- boot ---------- */
+if(!window.Tone){$('status').textContent='Could not load Tone.js (check internet connection).';}
+else{
+  buildSounds();
+  Tone.Transport.scheduleRepeat(tick,'16n');
+  newIdea();
+  const timeout=new Promise(r=>setTimeout(()=>r('timeout'),12000));
+  Promise.race([Tone.loaded().then(()=>'ok').catch(()=>'err'),timeout]).then(res=>{
+    if(res!=='ok'){if(!S.piano.loaded)fb.piano=true;if(!S.kick.loaded)fb.drums=true;if(!S.toms[0].loaded)fb.toms=true;}
+    const f=[fb.piano&&'piano',fb.drums&&'drums',fb.toms&&'toms'].filter(Boolean);
+    $('status').textContent=f.length?`Ready — synth fallback for ${f.join(', ')} (samples didn't load).`:'Ready — sampled piano + acoustic kit loaded.';
+    $('play').disabled=false;
+  });
+}
+</script>
+</body>
+</html>

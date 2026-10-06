@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1115">
+  <title>Music Idea Generator</title>
+</head>
+<body>
+<main>
+  <h1>Music Idea Generator</h1>
+  <p class="sub">8-bar ideas · chords, strumming, drums, bass</p>
+
+  <section class="card">
+    <div class="controls">
+      <label>Genre
+        <select id="genre">
+          <option value="random">Random</option>
+          <option value="rock">Rock</option>
+          <option value="pop">Pop</option>
+          <option value="funk">Funk</option>
+        </select>
+      </label>
+      <label>Time signature
+        <select id="meter"></select>
+      </label>
+      <label>Weirdness <span class="wv" id="wv">20</span>
+        <input type="range" id="weird" min="0" max="100" value="20">
+      </label>
+    </div>
+    <div class="buttons">
+      <button id="gen" class="primary">Generate</button>
+      <button id="play" class="secondary" disabled>Play</button>
+    </div>
+    <div id="status" role="status">Loading sounds…</div>
+  </section>
+
+  <section class="card">
+    <h2>Parts</h2>
+    <div id="parts" class="parts"></div>
+  </section>
+
+  <section class="card">
+    <div class="meta" id="meta"></div>
+    <ul class="notes" id="notes"></ul>
+    <div class="bars" id="bars"></div>
+    <div class="lanes" id="lanes"></div>
+  </section>
+
+  <p class="hint">iPhone: turn off silent mode to hear audio. Generating while playing swaps the idea at once.</p>
+  <footer class="credits">
+    Samples: piano, guitars and bass from
+    <a href="https://github.com/nbrosowsky/tonejs-instruments" target="_blank" rel="noopener">tonejs-instruments</a>
+    by Nicholaus P. Brosowsky (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC-BY 3.0</a>) ·
+    drums from <a href="https://github.com/sfzinstruments/karoryfer.big-rusty-drums" target="_blank" rel="noopener">Big Rusty Drums</a>
+    by Karoryfer Samples (CC0).
+  </footer>
+</main>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
