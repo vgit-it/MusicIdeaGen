@@ -25,8 +25,8 @@ export interface Rendered {
   sampleRate: number;
   /** The full mix, left and right. */
   mix: Float32Array[];
-  /** Each part on its own (after its fader, before the shared reverb and master bus). */
-  stems?: Record<MixPart, Float32Array[]>;
+  /** Each part on its own (after its fader, before the shared reverb and master bus); layers only when added. */
+  stems?: Partial<Record<MixPart, Float32Array[]>>;
 }
 
 interface Piece {
@@ -63,7 +63,7 @@ function plan(list: Idea[], n: number, sec: (steps: number) => number): Piece[] 
 }
 
 /** Build one piece's offline context (rendered later, alongside the others). */
-async function buildPiece(p: Piece, seconds: number, channels: number, rate: number, settings: EngineSettings, withStems: boolean) {
+async function buildPiece(p: Piece, seconds: number, channels: number, rate: number, settings: EngineSettings, withStems: boolean, parts: MixPart[]) {
   const live = Tone.getContext();
   const ctx = new Tone.OfflineContext(channels, seconds, rate);
   Tone.setContext(ctx);
@@ -91,7 +91,7 @@ async function buildPiece(p: Piece, seconds: number, channels: number, rate: num
       };
       engine.mixer.out.disconnect();
       route(engine.mixer.out, 0);
-      MIX_PARTS.forEach((part, i) => route(engine.mixer.stem(part), 2 + i * 2));
+      parts.forEach((part, i) => route(engine.mixer.stem(part), 2 + i * 2));
     }
     engine.startOffline(p.fromStep);
   } finally {
@@ -107,8 +107,9 @@ export async function renderAudio(
   const bpm = list[0].song.bpm;
   const sec = (steps: number) => (steps * 15) / bpm;
   const totalMusic = sec(list.reduce((a, i) => a + i.song.total, 0));
-  // stems: 10 channels in one pass (mix + four stereo stems), so the instruments only play once
-  const channels = withStems ? 2 + MIX_PARTS.length * 2 : 2;
+  // stems: one pass (the mix + a stereo pair per part), so the instruments only play once; added layers only
+  const parts = MIX_PARTS.filter((p) => (p !== 'keys' && p !== 'pad') || settings.layers[p]);
+  const channels = withStems ? 2 + parts.length * 2 : 2;
   // the live context's sample rate: the samples and cabinet impulse responses were decoded at it,
   // and a convolver only accepts an impulse response at its own rate
   const rate = Tone.getContext().sampleRate;
@@ -120,7 +121,7 @@ export async function renderAudio(
   const ctxs: Tone.OfflineContext[] = [];
   for (const [i, p] of pieces.entries()) {
     const last = i === pieces.length - 1;
-    ctxs.push(await buildPiece(p, LEAD + p.pre + p.music + (last ? TAIL : 0.1), channels, rate, settings, withStems));
+    ctxs.push(await buildPiece(p, LEAD + p.pre + p.music + (last ? TAIL : 0.1), channels, rate, settings, withStems, parts));
   }
   let done = 0;
   // render(false): step the offline clock without timer pauses. With pauses, a hidden or covered
@@ -158,7 +159,7 @@ export async function renderAudio(
   });
 
   const out: Rendered = { sampleRate: rate, mix: [outCh[0], outCh[1]] };
-  if (withStems) out.stems = Object.fromEntries(MIX_PARTS.map((part, i) => [part, [outCh[2 + i * 2], outCh[3 + i * 2]]])) as Rendered['stems'];
+  if (withStems) out.stems = Object.fromEntries(parts.map((part, i) => [part, [outCh[2 + i * 2], outCh[3 + i * 2]]])) as Rendered['stems'];
 
   // fade the last second of the tail, and keep everything below clipping (stems share one gain, so they still add up)
   const fade = (chs: Float32Array[]) => {

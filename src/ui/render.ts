@@ -2,6 +2,7 @@
 
 import { GENRE_LABEL } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
+import type { Layer } from '../parts/layers';
 import { NOTE_NAMES, chordName } from '../theory';
 import type { GuitarVoicing } from '../theory/guitar';
 import { type Track, trackSeconds } from '../track';
@@ -11,7 +12,11 @@ const $ = (id: string) => document.getElementById(id)!;
 const shapeText = (v: GuitarVoicing) =>
   v.frets.map((f) => (f === null ? 'x' : f > 9 ? `(${f})` : String(f))).join('');
 
-export function renderIdea(idea: Idea, shapes: GuitarVoicing[] | null, instrumentLabel: string, guitar2Label: string) {
+/** `layers`: the piano and pad parts, when added. */
+export function renderIdea(
+  idea: Idea, shapes: GuitarVoicing[] | null, instrumentLabel: string, guitar2Label: string,
+  layers: { keys: Layer | null; pad: Layer | null } = { keys: null, pad: null },
+) {
   const { song, chords, drums } = idea;
   const name = (i: number) => chordName(song.key, chords.timeline[i].chord);
   const gLabel = song.genreSel === 'random' ? `Random → ${GENRE_LABEL[song.genre]}` : GENRE_LABEL[song.genre];
@@ -29,7 +34,8 @@ export function renderIdea(idea: Idea, shapes: GuitarVoicing[] | null, instrumen
   ].map((t) => `<span class="pill">${t}</span>`).join('') +
     `<span class="pill seed" title="Seed (for sharing later)">#${idea.seeds.song}</span>`;
 
-  $('notes').innerHTML = idea.notes.map((n) => `<li>${n}</li>`).join('');
+  const extra = [layers.keys?.desc, layers.pad?.desc].filter(Boolean);
+  $('notes').innerHTML = [...idea.notes, ...extra].map((n) => `<li>${n}</li>`).join('');
 
   $('bars').innerHTML = song.bars.map((b, i) => {
     const here = chords.timeline
@@ -55,6 +61,15 @@ export function renderIdea(idea: Idea, shapes: GuitarVoicing[] | null, instrumen
   for (const h of idea.guitar ?? []) guitar[h.step] = sym(h);
   const guitar2 = new Array<string>(song.total).fill('.');
   for (const h of idea.guitar2) guitar2[h.step] = h.swell ? '~' : sym(h);
+  // layers: c = chord, n = single note, - = held
+  const layerLane = (l: Layer) => {
+    const out = new Array<string>(song.total).fill('.');
+    for (const n of l.notes) {
+      for (let g = n.step + 1; g < Math.min(song.total, n.step + n.len); g++) if (out[g] === '.') out[g] = '-';
+    }
+    for (const n of l.notes) if (n.step < song.total && out[n.step] !== 'c') out[n.step] = n.notes.length > 1 ? 'c' : 'n';
+    return out;
+  };
   $('lanes').textContent = [
     idea.guitar ? `Gtr   ${lane(guitar, (v) => v)}` : `Strum ${lane(idea.strum, (v) => v)}`,
     `Gtr 2 ${lane(guitar2, (v) => v)}`,
@@ -65,6 +80,8 @@ export function renderIdea(idea: Idea, shapes: GuitarVoicing[] | null, instrumen
     drums.ride.some(Boolean) ? `Ride  ${lane(drums.ride, (v) => (v ? 'x' : '.'))}` : '',
     `Crash ${lane(drums.crash, (v) => (v ? '*' : '.'))}`,
     `Bass  ${lane(idea.bass, (v) => (v ? 'o' : '.'))}`,
+    layers.keys ? `Piano ${lane(layerLane(layers.keys), (v) => v)}` : '',
+    layers.pad ? `Pad   ${lane(layerLane(layers.pad), (v) => v)}` : '',
   ].filter(Boolean).join('\n');
 }
 

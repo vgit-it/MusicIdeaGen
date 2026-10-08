@@ -133,10 +133,10 @@ function join(segs: Seg[], info: SectionInfo): Idea {
     opts: first.opts,
     song,
     chords: { timeline, chordIdx: chordIdxFor(timeline, pos), notes: [] },
-    drums: { ...lanes, fills, halfTime: first.drums.halfTime, fourFloor: first.drums.fourFloor },
+    drums: { ...lanes, fills, halfTime: first.drums.halfTime, fourFloor: first.drums.fourFloor, groove: first.drums.groove },
     strum,
     bass,
-    bassLen: riff ? bassLen : undefined,
+    bassLen: riff || segs.some((s) => s.idea.bassLen) ? bassLen : undefined,
     guitar: riff ? guitar : undefined,
     guitar2,
     notes: [],
@@ -272,7 +272,7 @@ const bassRoot = (key: number, c: Chord) => {
   return m;
 };
 
-/** Strummed parts: held chords (1), palm mutes (2), as written (3–4), driving 8ths (5). */
+/** Strummed parts: held chords (1), palm mutes (2), as written (3–4), every beat struck (5). */
 function shapeStrum(idea: Idea, e: number) {
   if (e === 3 || e === 4) return;
   const { strum, song, chords } = idea;
@@ -286,7 +286,8 @@ function shapeStrum(idea: Idea, e: number) {
     else if (e === 2 && genre !== 'funk') {
       if (s === 'U' || (genre === 'pop' && s === 'x')) strum[g] = '.';
       else if (genre !== 'pop' && s === 'D' && !beat.has(g) && !changes.has(g)) strum[g] = 'p';
-    } else if (e >= 5 && genre !== 'funk' && g % 2 === 0 && (s === '.' || s === 'p')) strum[g] = 'D';
+    // the biggest sections: palm mutes open up and every beat is struck, but the pattern's gaps stay
+    } else if (e >= 5 && genre !== 'funk' && (s === 'p' || (s === '.' && beat.has(g)))) strum[g] = 'D';
   }
   // every chord change is heard
   for (const c of changes) if (c < song.total && strum[c] !== 'D') strum[c] = 'D';
@@ -297,6 +298,8 @@ function shapeBass(idea: Idea, e: number) {
   if (e === 3 || e === 4) return;
   const { bass, song, chords } = idea;
   if (e >= 5 && song.partGenres.bass === 'funk') return;
+  // long roots and driving 8ths are played legato
+  idea.bassLen?.fill(0);
   const beat = beatSet(song);
   const changes = new Set(chords.timeline.map((t) => t.step));
   const barStarts = new Set(song.bars.map((b) => b.start));
@@ -323,6 +326,7 @@ function bandStop(idea: Idea, beats: number) {
   if (!idea.guitar) idea.strum[s0] = 'x';
   if (idea.guitar) idea.guitar = idea.guitar.filter((h) => h.step < s0).map(capAt(s0));
   idea.guitar2 = idea.guitar2.filter((h) => h.step < s0).map(capAt(s0));
+  idea.section!.tail = { stop: s0 };
   // the last bass note stops too
   const lens = idea.bassLen ?? zeros(idea.song.total);
   for (let g = s0 - 1; g >= bar.start; g--) {
@@ -492,6 +496,7 @@ function layerIntro(idea: Idea, rng: Rng): string {
   fillBar(idea, 3, rng);
   for (let g = 0; g < bassFrom; g++) { idea.bass[g] = 0; if (idea.bassLen) idea.bassLen[g] = 0; }
   idea.guitar2 = idea.guitar2.filter((h) => h.step >= half);
+  idea.section!.bandFrom = half;
   return bassFrom > half
     ? 'Layered: guitar alone, the drums come in with a fill at bar 5, the bass two bars later'
     : 'Layered: guitar alone, then drums (with a fill) and bass come in at bar 5';
@@ -515,6 +520,7 @@ function snareBuild(idea: Idea) {
     } else if (!idea.guitar) { idea.strum[g] = '.'; idea.bass[g] = 0; }
   }
   d.fills = [...d.fills.filter((f) => f.bar !== L), { bar: L, len: bar.len }];
+  idea.section!.tail = { build: bar.start };
 }
 
 const HIT_PATTERNS = [[0, 3, 6], [0, 6, 10], [0, 4, 8, 10], [0, 3, 6, 8, 11], [0, 6, 8, 14]];
@@ -526,6 +532,7 @@ function bandHits(idea: Idea, rng: Rng) {
   const a = bar.start, b = a + bar.len;
   const fits = HIT_PATTERNS.filter((p) => p[p.length - 1] < bar.len - 1);
   const hits = (fits.length ? rng.pick(fits) : [0, Math.floor(bar.len / 2)]).map((p) => a + p);
+  idea.section!.tail = { hits };
   const chordAt = (g: number) => idea.chords.timeline[idea.chords.chordIdx[g]].chord;
   for (const l of DRUM_LANES) for (let g = a; g < b; g++) idea.drums[l][g] = 0;
   idea.drums.fills = idea.drums.fills.filter((f) => f.bar !== L);
@@ -599,7 +606,7 @@ export const KIND_LABEL: Record<SectionKind, string> = {
 const STRUM_DESC = (e: number, genre: Genre) =>
   e <= 1 ? 'held chords'
     : e === 2 ? (genre === 'funk' ? 'the same groove, softer' : genre === 'pop' ? 'lighter strumming' : 'palm mutes, lighter strumming')
-      : e >= 5 ? (genre === 'funk' ? 'full groove' : 'driving 8ths') : 'full strumming';
+      : e >= 5 ? (genre === 'funk' ? 'full groove' : 'fuller strumming, every beat struck') : 'full strumming';
 
 /** How often a track gets pre-choruses. */
 const PRE_CHANCE: Record<Genre, number> = { rock: 0.5, pop: 0.55, funk: 0.15, hardrock: 0.5, metal: 0.35, grunge: 0.35, altmetal: 0.4 };
@@ -687,7 +694,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const vPlans = genre === 'funk' ? FUNK_VERSE : P.verse;
     let vb: Idea | null = null;
     for (let i = 0; i < 5 && (!vb || chordSig(vb) === chordSig(src)); i++) {
-      vb = block(src, `${vTag}${i || ''}`, ['strum'], {}, planned(src.song, vr.pick(vPlans), vr, false));
+      // the verse gets its own groove (a drummer plays the verse differently from the chorus)
+      vb = block(src, `${vTag}${i || ''}`, ['strum', 'drums'], { avoidGroove: src.drums.groove }, planned(src.song, vr.pick(vPlans), vr, false));
     }
     verse = [seg(vb!)];
     // usually a soft first verse, so the chorus lands
@@ -704,19 +712,19 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   }
 
   // strummed genres: a lead hook over the chorus chords, which comes back through the track.
-  // If the idea's Guitar 2 already plays a lead melody throughout, that melody is the hook.
+  // If the idea's Guitar 2 already plays a melody throughout, that melody is the hook.
   let hook: GuitarHit[] = [];
   let hookNote = '';
   const hookBase = join(chorus, { kind: 'chorus', label: '', energy: 4 });
   if (!riff) {
     const g2Line = src.notes.find((n) => n.startsWith('Guitar 2')) ?? '';
     const defaultHook = S.hook === defaultTrackOptions(src).seeds.hook;
-    if (defaultHook && /(lead|octave) melody throughout/.test(g2Line) && hookBase.guitar2.length) {
+    if (defaultHook && /^Guitar 2: (octave )?melody( \([^)]*\))? throughout/.test(g2Line) && hookBase.guitar2.length) {
       hook = hookBase.guitar2;
-      hookNote = 'Guitar 2: the idea\'s lead melody, as the hook';
+      hookNote = 'Guitar 2: the idea\'s melody, as the hook';
     } else {
       hook = generateHook(new Rng(S.hook), hookBase.song, hookBase.chords, null);
-      hookNote = 'Guitar 2: the hook, a lead melody that comes back through the track';
+      hookNote = 'Guitar 2: the hook, a melody that comes back through the track';
     }
   }
   /** The hook's first `n` bars, placed from bar `at` of a section. */
@@ -814,6 +822,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       pickup(idea, r);
       idea.bass.fill(0);
       if (idea.bassLen) idea.bassLen.fill(0);
+      idea.section!.bandFrom = idea.song.total;
       notes.push(`${riff ? 'Riff' : 'Guitar'} alone, the drums come in with a fill`);
     } else {
       shapeDrums(idea, s.energy, r);
@@ -855,6 +864,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       : STRUM_DESC(s.energy, idea.song.partGenres.strum);
     notes.unshift(`${label} · energy ${s.energy} of 5 · ${idea.song.bars.length} bars · ${rhythm}`, `Chords: ${describeChords(idea)}`);
     notes.push(g2);
+    if (idea.drums.groove && s.intro !== 'alone' && s.energy >= 2) notes.push(`Drums: ${idea.drums.groove}`);
     if (s.energy >= 5) notes.push('Drums: crashes every 2 bars');
     if (s.energy === 2 && s.intro !== 'alone') notes.push('Drums: lighter, closed hi-hat');
     if (s.energy === 3 && s.intro !== 'alone') notes.push('Drums: closed hi-hat');

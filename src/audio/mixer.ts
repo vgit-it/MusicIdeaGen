@@ -2,14 +2,16 @@
 
 import * as Tone from 'tone';
 
-export type MixPart = 'chords' | 'guitar2' | 'drums' | 'bass';
-export const MIX_PARTS: MixPart[] = ['chords', 'guitar2', 'drums', 'bass'];
+export type MixPart = 'chords' | 'guitar2' | 'drums' | 'bass' | 'keys' | 'pad';
+export const MIX_PARTS: MixPart[] = ['chords', 'guitar2', 'drums', 'bass', 'keys', 'pad'];
+/** Parts you add and remove (the rest always play). */
+export type LayerPart = 'keys' | 'pad';
 
-const REVERB_SEND: Record<MixPart, number> = { chords: -12, guitar2: -9, drums: -16, bass: -40 };
-/** Fixed level per part, before the fader: Guitar 2 carries the melody, so it sits up front like a singer. */
-const TRIM: Record<MixPart, number> = { chords: 0, guitar2: 3, drums: 0, bass: 0 };
+const REVERB_SEND: Record<MixPart, number> = { chords: -12, guitar2: -9, drums: -16, bass: -40, keys: -11, pad: -7 };
+/** Fixed level per part, before the fader: Guitar 2's melodies sit just forward of the rhythm part (a band member, not a lead vocal). */
+const TRIM: Record<MixPart, number> = { chords: 0, guitar2: 1.5, drums: 0, bass: 0, keys: 5, pad: 5 };
 /** Tempo-synced echo (dotted 8th), only on the second guitar. */
-const DELAY_SEND: Record<MixPart, number> = { chords: -Infinity, guitar2: -9, drums: -Infinity, bass: -Infinity };
+const DELAY_SEND: Record<MixPart, number> = { chords: -Infinity, guitar2: -9, drums: -Infinity, bass: -Infinity, keys: -Infinity, pad: -Infinity };
 
 const irCache = new Map<number, AudioBuffer>();
 

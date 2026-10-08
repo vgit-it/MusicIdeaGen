@@ -11,8 +11,10 @@ import {
 } from './instruments';
 import { DYNAMICS, SECTION_DB } from './dynamics';
 import { inContext } from './context';
-import { type MixPart, type MixState, Mixer } from './mixer';
+import { type LayerPart, type MixPart, type MixState, Mixer } from './mixer';
+import { AUTO_PAD, Pad, type PadChoice } from './pad';
 import { AUTO_CHORDS, AUTO_GUITAR2 } from '../sounds';
+import { type KeysChoice, type Layer, type LayerNote, byStep, writeKeys, writePad } from '../parts/layers';
 
 export interface EngineSettings {
   chord: ChordChoice;
@@ -20,7 +22,11 @@ export interface EngineSettings {
   bassSynth: boolean;
   drumSynth: boolean;
   mix: MixState;
+  layers: LayerSettings;
 }
+
+/** The layers you've added (left out = removed) and their style or tone. */
+export interface LayerSettings { keys?: KeysChoice; pad?: PadChoice }
 
 export type ChordChoice = ChordInstrumentId | 'auto';
 
@@ -40,7 +46,7 @@ const BASS_TONES: Record<Genre, BassTone> = {
 const TAIL_STEPS = 32;
 
 export const INSTRUMENT_NAMES: Record<string, string> = {
-  piano: 'piano', acoustic: 'acoustic guitar', electric: 'electric guitar', bass: 'bass', drums: 'drums',
+  piano: 'piano', pad: 'synth pad', acoustic: 'acoustic guitar', electric: 'electric guitar', bass: 'bass', drums: 'drums',
 };
 
 type Voicing = { notes: number[]; strings?: number[] };
@@ -72,6 +78,12 @@ export class Engine {
   private g2Choice: ChordChoice = 'auto';
   private g2Inst: ChordInstrument | null = null;
   private g2Id: ChordInstrumentId = 'electric-clean';
+  // added layers: built when first added
+  private layers: LayerSettings = {};
+  private keysInst: Piano | null = null;
+  private padInst: Pad | null = null;
+  /** Layer parts per item, written when first needed (and again if the style changes). */
+  private layerCache = new WeakMap<Idea, Map<string, { layer: Layer; at: LayerNote[][] }>>();
   private step = 0;
   /** Steps since a track ended (-1 while playing). */
   private tail = -1;
@@ -94,7 +106,10 @@ export class Engine {
 
   /** Instrument choices and the mix, to copy into an offline render. */
   settings(): EngineSettings {
-    return { chord: this.chordChoice, guitar2: this.g2Choice, bassSynth: this.bass.useSynth, drumSynth: this.drums.useSynth, mix: this.mixer.state() };
+    return {
+      chord: this.chordChoice, guitar2: this.g2Choice, bassSynth: this.bass.useSynth, drumSynth: this.drums.useSynth,
+      mix: this.mixer.state(), layers: { ...this.layers },
+    };
   }
 
   /** Copy settings (`openAll`: ignore mutes and solos, for stems). */
@@ -107,6 +122,55 @@ export class Engine {
       ? (Object.fromEntries(Object.entries(s.mix).map(([p, v]) => [p, { ...v, mute: false, solo: false }])) as MixState)
       : s.mix;
     this.mixer.restore(mix);
+    for (const p of ['keys', 'pad'] as const) this.setLayer(p, s.layers[p] ?? null);
+  }
+
+  /* ---- layers you can add and remove */
+
+  get layerSettings(): LayerSettings {
+    return { ...this.layers };
+  }
+
+  /** Add a layer (or change its style/tone), or remove it with null. */
+  setLayer(part: LayerPart, choice: KeysChoice | PadChoice | null) {
+    if (part === 'keys') {
+      if (choice === null) { delete this.layers.keys; this.keysInst?.releaseAll(); return; }
+      this.layers.keys = choice as KeysChoice;
+      this.keysInst ??= inContext(this.ctx, () => new Piano(this.mixer.input('keys')));
+      if (!this.offline) void this.ensureLoaded(this.keysInst, 'piano');
+    } else {
+      if (choice === null) { delete this.layers.pad; this.padInst?.releaseAll(); return; }
+      this.layers.pad = choice as PadChoice;
+      this.padInst ??= inContext(this.ctx, () => new Pad(this.mixer.input('pad')));
+      this.applyPadTone();
+    }
+  }
+
+  private applyPadTone() {
+    const p = this.layers.pad;
+    if (!p || !this.padInst) return;
+    this.padInst.setTone(p === 'auto' ? AUTO_PAD[this.idea?.song.genre ?? 'pop'] : p);
+    this.padInst.setEnergy(this.idea?.section?.energy ?? 4, this.ctx.now());
+  }
+
+  /** A layer's part for an item (null when the layer is off). */
+  layerFor(idea: Idea, part: LayerPart): Layer | null {
+    return this.layerAt(idea, part)?.layer ?? null;
+  }
+
+  private layerAt(idea: Idea, part: LayerPart) {
+    const choice = this.layers[part];
+    if (!choice) return null;
+    let m = this.layerCache.get(idea);
+    if (!m) this.layerCache.set(idea, (m = new Map()));
+    const k = `${part}:${part === 'keys' ? choice : ''}`;
+    let v = m.get(k);
+    if (!v) {
+      const seed = idea.seeds[part] ?? `${idea.seeds.chords}-${part}`;
+      const layer = part === 'keys' ? writeKeys(idea, choice as KeysChoice, seed) : writePad(idea, seed);
+      m.set(k, (v = { layer, at: byStep(layer.notes, idea.song.total) }));
+    }
+    return v;
   }
 
   /** Every instrument the list plays on (sections can use different ones). */
@@ -118,7 +182,7 @@ export class Engine {
 
   /** Offline: wait until every instrument the list needs has its samples. */
   async loadAll() {
-    const insts = [this.drums, this.bass, this.g2Inst, ...this.instsNeeded().map(([inst]) => inst)].filter((x): x is NonNullable<typeof x> => !!x);
+    const insts = [this.drums, this.bass, this.g2Inst, this.keysInst, ...this.instsNeeded().map(([inst]) => inst)].filter((x): x is NonNullable<typeof x> => !!x);
     // load() hands back the same promise while loading, so this waits for loads already under way
     await Promise.all(insts.map((inst) => inst.load()));
   }
@@ -139,13 +203,16 @@ export class Engine {
   /** Resolve 'auto' to a concrete instrument for an item (default: the current one): a track section's own sound, or the genre's. */
   chordIdFor(idea = this.idea): ChordInstrumentId {
     if (this.chordChoice !== 'auto') return this.chordChoice;
-    return idea?.section?.sound?.chords ?? AUTO_CHORDS[idea?.song.partGenres.strum ?? 'pop'];
+    const id = idea?.section?.sound?.chords ?? AUTO_CHORDS[idea?.song.partGenres.strum ?? 'pop'];
+    // with the piano layer on, the guitarist plays guitar (two pianos would play over each other)
+    return id === 'piano' && this.layers.keys ? (idea?.song.partGenres.strum === 'funk' ? 'electric-clean' : 'acoustic') : id;
   }
 
   /** The same for Guitar 2. */
   guitar2IdFor(idea = this.idea): ChordInstrumentId {
     if (this.g2Choice !== 'auto') return this.g2Choice;
-    return idea?.section?.sound?.guitar2 ?? AUTO_GUITAR2[idea?.song.partGenres.strum ?? 'pop'];
+    const id = idea?.section?.sound?.guitar2 ?? AUTO_GUITAR2[idea?.song.partGenres.strum ?? 'pop'];
+    return id === 'piano' && this.layers.keys ? 'electric-clean' : id;
   }
 
   /** True when the rhythm part is on Auto (so track sections pick their own sound). */
@@ -199,6 +266,7 @@ export class Engine {
     this.hitsAt2 = list.map((i) => index(i.guitar2, i.song.total));
     this.applyChordInstrument();
     this.applyGuitar2();
+    this.applyPadTone();
     // start loading the instruments later sections play on
     if (!this.offline) for (const [inst, id] of this.instsNeeded()) void this.ensureLoaded(inst, kindOf(id));
     this.applyLevel(this.ctx.now());
@@ -211,7 +279,9 @@ export class Engine {
   }
 
   private applyLevel(time: number) {
-    this.mixer.setSectionLevel(SECTION_DB[this.idea?.section?.energy ?? 4], time);
+    const e = this.idea?.section?.energy ?? 4;
+    this.mixer.setSectionLevel(SECTION_DB[e], time);
+    this.padInst?.setEnergy(e, time);
   }
 
   get guitar2InstrumentId(): ChordInstrumentId {
@@ -225,7 +295,7 @@ export class Engine {
 
   /** Guitar 2's instrument for a sound: its own (a single take, slightly right), so it never shares an amp with the rhythm part. */
   private g2InstFor(id: ChordInstrumentId): ChordInstrument {
-    // near the centre, where a singer would be
+    // a little right of centre, apart from the double-tracked rhythm part
     return getOrMake(this.g2Insts, id, () => inContext(this.ctx, () => makeInst(id, this.mixer.input('guitar2'), false, 0.15, true)));
   }
 
@@ -329,6 +399,8 @@ export class Engine {
     // every instrument: the last notes of an earlier section can still be ringing
     for (const inst of [...this.rhythmInsts.values(), ...this.g2Insts.values()]) inst.releaseAll();
     this.bass.releaseAll();
+    this.keysInst?.releaseAll();
+    this.padInst?.releaseAll();
     this.onBar(-1);
   }
 
@@ -396,6 +468,12 @@ export class Engine {
     const ci = this.chordInst;
     if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined);
     if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time, six);
+    const keys = this.keysInst && this.layerAt(idea, 'keys');
+    if (keys) for (const n of keys.at[g]) {
+      this.keysInst!.strum({ stroke: 'D', notes: n.notes, time, dur: n.len * six * 0.97, vel: n.vel, sixteenth: six });
+    }
+    const pad = this.padInst && this.layerAt(idea, 'pad');
+    if (pad) for (const n of pad.at[g]) this.padInst!.play(n.notes, time, n.len * six * 0.98, n.vel);
 
     const st = strum[g];
     if (st !== '.' && !idea.guitar && ci) {

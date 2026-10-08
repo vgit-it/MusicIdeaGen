@@ -17,6 +17,9 @@ export interface Seeds {
   bass: string;
   /** Optional so older seed sets still work. */
   guitar2?: string;
+  /** Piano and pad layers (optional, like guitar2). */
+  keys?: string;
+  pad?: string;
 }
 
 export interface GenOptions {
@@ -57,6 +60,8 @@ export interface Song {
   forceHalf?: boolean;
   /** Tracks: drums never wait out the first bars of a quiet intro. */
   noTacet?: boolean;
+  /** Tracks: a groove the drums shouldn't pick (the verse plays a different groove from the chorus). */
+  avoidGroove?: string;
 }
 
 export interface ChordEvent {
@@ -83,6 +88,8 @@ export interface DrumPart {
   fills: { bar: number; len: number }[];
   halfTime: boolean;
   fourFloor: boolean;
+  /** The groove's name (strummed genres), for the notes. */
+  groove?: string;
 }
 
 /**
@@ -146,4 +153,8 @@ export interface SectionInfo {
   ending?: boolean;
   /** The instruments it plays on (when the parts are on Auto). */
   sound?: SectionSound;
+  /** Step where the band comes in (intros that start with the guitar alone); layers like the piano wait for it. */
+  bandFrom?: number;
+  /** How the section ends into the next one, so added layers stop or hit with the band. */
+  tail?: { stop: number } | { hits: number[] } | { build: number };
 }

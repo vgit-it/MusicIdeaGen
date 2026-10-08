@@ -1,5 +1,5 @@
 // MIDI export: an idea or a whole track as a standard MIDI file, one track per instrument
-// (Rhythm guitar, Guitar 2, Bass, Drums on the GM drum channel), with tempo, time signatures,
+// (Rhythm guitar, Guitar 2, Bass, Drums on the GM drum channel, plus Piano and Pad when added), with tempo, time signatures,
 // the key (as text), section markers, and the same dynamics, swing, strums and note lengths as playback.
 
 import { Midi } from '@tonejs/midi';
@@ -8,6 +8,7 @@ import type { ChordInstrumentId } from '../audio/instruments';
 import { DYNAMICS, SECTION_DB } from '../audio/dynamics';
 import { GENRE_LABEL } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
+import type { Layer } from '../parts/layers';
 import { cymbalAccent, groupStarts } from '../rhythm';
 import { NOTE_NAMES, pianoVoicing } from '../theory';
 import { guitarVoicings } from '../theory/guitar';
@@ -29,6 +30,9 @@ export interface MidiOptions {
   chordIdFor: (idea: Idea) => ChordInstrumentId;
   /** The same for Guitar 2. */
   guitar2IdFor: (idea: Idea) => ChordInstrumentId;
+  /** Added layers: each one's part for an idea (null when it's off). */
+  keysFor?: (idea: Idea) => Layer | null;
+  padFor?: (idea: Idea) => Layer | null;
 }
 
 const vel = (v: number) => Math.max(0.05, Math.min(1, v));
@@ -56,6 +60,8 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
   const g2 = mk('Guitar 2', 1, PROGRAM[most((withG2.length ? withG2 : list).map(o.guitar2IdFor))]);
   const bass = mk('Bass', 2, 33);
   const drums = mk('Drums', 9, 0); // channel 10 (index 9): the GM drum kit
+  const piano = mk('Piano', 3, 0);
+  const pad = mk('Pad', 4, 89); // GM "Pad 2 (warm)"
 
   const note = (t: MidiTrack, midiNote: number, ticks: number, dur: number, v: number) => {
     if (midiNote < 0 || midiNote > 127) return;
@@ -95,7 +101,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       lastKey = keyName;
     }
     const expression = Math.round(127 * 10 ** (SECTION_DB[energy] / 20));
-    for (const t of [rhythm, g2, bass, drums]) t.addCC({ number: 11, value: expression / 127, ticks: offset });
+    for (const t of [rhythm, g2, bass, drums, piano, pad]) t.addCC({ number: 11, value: expression / 127, ticks: offset });
 
     const isGuitar = (id: ChordInstrumentId) => id !== 'piano';
     const id = o.chordIdFor(idea);
@@ -150,6 +156,10 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       if (d.ride[g]) dn(DRUM_NOTE.ride, Math.min(1, d.ride[g] * acc));
       if (d.crash[g]) dn(DRUM_NOTE.crash, d.crash[g]);
       if (d.tom[g]) dn(DRUM_NOTE.tom[Math.min(2, d.tom[g] - 1)], 0.8);
+    }
+    // added layers: already written with their lengths and velocities (ending chords ring 2 bars)
+    for (const [t, layer] of [[piano, o.keysFor?.(idea)], [pad, o.padFor?.(idea)]] as const) {
+      for (const n of layer?.notes ?? []) for (const m of n.notes) note(t, m, at(n.step), n.len * SIX * 0.97, n.vel);
     }
     offset += total * SIX;
   });

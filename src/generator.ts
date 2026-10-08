@@ -2,9 +2,9 @@
 
 import { GENRES, GENRE_LIST, type Genre, type RiffStyle } from './genres';
 import type { ChordPart, Cycle, GenOptions, Idea, Seeds, Song, Stroke } from './idea';
-import { generateBass, generateRiffBass } from './parts/bass';
+import { bassLengths, generateBass, generateRiffBass } from './parts/bass';
 import { generateChords } from './parts/chords';
-import { clearFills, lockBand } from './parts/cohesion';
+import { clearFills, lockBand, phraseEnd } from './parts/cohesion';
 import { generateDrums } from './parts/drums';
 import { generateGuitar2 } from './parts/guitar2';
 import { generateHeavyDrums } from './parts/heavyDrums';
@@ -16,7 +16,7 @@ import { TUNINGS, type Tuning } from './theory/fretboard';
 
 
 export function randomSeeds(): Seeds {
-  return { song: newSeed(), chords: newSeed(), drums: newSeed(), strum: newSeed(), bass: newSeed(), guitar2: newSeed() };
+  return { song: newSeed(), chords: newSeed(), drums: newSeed(), strum: newSeed(), bass: newSeed(), guitar2: newSeed(), keys: newSeed(), pad: newSeed() };
 }
 
 /** Genres whose parts mix well with a strummed genre (Random only). */
@@ -98,18 +98,22 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
   if (b.chords) chords = b.chords(chords);
   if (song.sections) return generateRiffIdea(opts, seeds, song, chords);
   const drums = generateDrums(new Rng(seeds.drums), song);
-  const strum = generateStrum(new Rng(seeds.strum), song, chords);
+  const { strum, name: pattern } = generateStrum(new Rng(seeds.strum), song, chords);
   const bass = generateBass(new Rng(seeds.bass), song, chords, drums);
-  // last: the parts react to each other (pushes, kicks, fills)
+  // last: the parts react to each other (pushes, kicks, fills, the end of the first phrase)
   const together = lockBand(new Rng(`${seeds.drums}-band`), song, chords, drums, strum, bass);
+  const bassLen = bassLengths(new Rng(`${seeds.bass}-len`), song, bass);
+  const ending = phraseEnd(new Rng(`${seeds.strum}-end`), song, chords, drums, strum, bass, bassLen);
+  if (ending) together.push(ending);
   naturalStrokes(song, strum);
 
   const tag = (x: string) => (x === 'A2' ? "A'" : x);
   const notes = [
-    `Drum phrase: ${song.plan.map(tag).join(' ')}` +
+    `Drums: ${drums.groove ?? 'groove'} · phrase ${song.plan.map(tag).join(' ')}` +
       (drums.fills.length ? ` · fills on bar ${drums.fills.map((f) => f.bar + 1).join(' & ')}` : '') +
       (drums.halfTime ? ' · half-time' : '') +
       (drums.fourFloor ? ' · four-on-the-floor' : ''),
+    ...(pattern ? [`Strumming: ${pattern}`] : []),
     ...chords.notes,
     ...together,
     ...song.cycles.map((c) => {
@@ -126,7 +130,7 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
   const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, null);
   notes.splice(1, 0, ...g2.notes);
 
-  return { seeds, opts, song, chords, drums, strum, bass, guitar2: clearFills(song, drums, g2.hits), notes };
+  return { seeds, opts, song, chords, drums, strum, bass, bassLen, guitar2: clearFills(song, drums, g2.hits), notes };
 }
 
 /** Riff genres: guitar riff first, then drums locked to it and bass doubling it. */

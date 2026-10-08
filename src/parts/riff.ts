@@ -121,12 +121,22 @@ function bigCell(rng: Rng, bar: Bar): Ev[] {
   return pos.map((p, i) => ({ pos: p, len: (pos[i + 1] ?? len) - p, kind: 'chord' as const, deg: 0, vel: 0.95 }));
 }
 
-/** End of a section: stop dead (for a drum fill), walk into the next chord, or build with 16ths. */
+/**
+ * End of a section: a power chord left to ring over the second half of the bar (the riff breathes),
+ * stop dead (for a drum fill), walk into the next chord, or build with 16ths.
+ */
 function turnaround(rng: Rng, cell: Ev[], bar: Bar, style: RiffStyle): Ev[] {
   const lastG = bar.groups[bar.groups.length - 1];
   const from = bar.len - lastG;
   const keep = cell.filter((e) => e.pos < from).map((e) => ({ ...e, len: Math.min(e.len, from - e.pos) }));
-  const kind = rng.pick(style === 'single' ? ['stop', 'walk', 'notes'] : ['stop', 'walk', 'build']);
+  const kind = rng.weighted<'ring' | 'stop' | 'walk' | 'notes' | 'build'>(style === 'single'
+    ? [['ring', 3], ['stop', 2], ['walk', 2], ['notes', 1]]
+    : [['ring', 3], ['stop', 2], ['walk', 2], ['build', 1]]);
+  if (kind === 'ring') {
+    const half = groupStarts(bar.groups)[Math.ceil(bar.groups.length / 2)] ?? from;
+    const before = cell.filter((e) => e.pos < half).map((e) => ({ ...e, len: Math.min(e.len, half - e.pos) }));
+    return [...before, { pos: half, len: bar.len - half, kind: 'chord' as const, deg: 0, vel: 0.95 }];
+  }
   if (kind === 'stop') return keep;
   if (kind === 'walk') {
     const degs = rng.pick([[3, 1], [5, 3], [10, 11], [6, 5], [1, 0]]);

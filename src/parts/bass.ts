@@ -3,7 +3,7 @@
 import { GENRES } from '../genres';
 import type { ChordPart, DrumPart, Song } from '../idea';
 import type { Rng } from '../rng';
-import { type Bar, zeros } from '../rhythm';
+import { type Bar, groupStarts, zeros } from '../rhythm';
 import { type Chord, chordPc } from '../theory';
 import { lowestOf } from '../theory/fretboard';
 import type { RiffPart } from './riff';
@@ -105,4 +105,35 @@ export function generateRiffBass(song: Song, chords: ChordPart, drums: DrumPart,
     }
   });
   return { bass: B, lens };
+}
+
+/**
+ * How long each bass note lasts (strummed genres), so the line has space in it: funk plays short
+ * notes off the beat and stops between them, pop shortens its off-beat notes, rock mostly stays legato.
+ * Decided once per spot in the bar, so the articulation repeats with the groove. 0 = until the next note.
+ */
+export function bassLengths(rng: Rng, song: Song, bass: number[]): number[] {
+  const genre = song.partGenres.bass;
+  const lens = zeros(song.total);
+  const memo = new Map<string, number>();
+  for (const bar of song.bars) {
+    const beats = groupStarts(bar.groups);
+    for (let j = 0; j < bar.len; j++) {
+      const g = bar.start + j;
+      if (!bass[g]) continue;
+      let gap = 1;
+      while (g + gap < song.total && !bass[g + gap] && gap < 16) gap++;
+      const onBeat = beats.includes(j);
+      const k = `${bar.meter}|${j}|${gap}`;
+      if (!memo.has(k)) {
+        let len = 0;
+        if (genre === 'funk') len = onBeat ? Math.min(gap, rng.pick([2, 3, 3])) : 1;
+        else if (genre === 'pop') len = onBeat ? 0 : gap > 2 && rng.chance(0.6) ? 2 : 0;
+        else len = !onBeat && gap >= 4 && rng.chance(0.4) ? 2 : 0;
+        memo.set(k, len);
+      }
+      lens[g] = memo.get(k)!;
+    }
+  }
+  return lens;
 }

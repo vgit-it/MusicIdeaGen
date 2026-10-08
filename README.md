@@ -1,6 +1,6 @@
 # Music Idea Generator
 
-Browser app that generates 8-bar musical ideas (chords, strumming, drums, bass) and plays them with sampled instruments. Any idea can grow into a full track (intro, verses, choruses, bridge, outro), with instruments that suit each section. Lock the parts you like and reroll the rest, share an idea by link, and export it as a mastered MP3 or WAV, stems, or MIDI for your DAW. Static site, no server.
+Browser app that generates 8-bar musical ideas (chords, strumming, drums, bass) and plays them with sampled instruments. Any idea can grow into a full track (intro, verses, choruses, bridge, outro), with instruments that suit each section. Add a piano or a synth pad layer on top of the band whenever you like. Lock the parts you like and reroll the rest, share an idea by link, and export it as a mastered MP3 or WAV, stems, or MIDI for your DAW. Static site, no server.
 
 ## Run it
 
@@ -16,10 +16,10 @@ Then open the URL it prints. `npm run build` makes a static build in `dist/`.
 - `src/generator.ts`: builds an idea from options + seeds (pure and deterministic)
 - `src/track.ts`: grows an idea into a track of sections (see `docs/TRACKS.md`)
 - `src/sounds.ts`: which instrument plays each part (by genre, and per track section)
-- `src/parts/`: chords, strum, riff, drums, bass and guitar 2 generators
+- `src/parts/`: chords, strum, riff, drums, bass and guitar 2 generators, plus the piano and pad layers
 - `src/rhythm/`: meters, beat groupings, phrase plans
 - `src/theory/`: chords, scales, piano and guitar voicings
-- `src/audio/`: instruments, mixer, playback engine
+- `src/audio/`: instruments (incl. the synth pad), mixer, playback engine
 - `src/export/midi.ts`: MIDI export
 - `src/ui/`: page rendering and the per-part controls
 - `spike/`: the original single-file prototype (reference only)

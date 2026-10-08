@@ -84,10 +84,18 @@ button.small:disabled { opacity: .45; }
 .part { display: grid; grid-template-columns: 76px 1fr 1fr auto; gap: 12px; align-items: center; }
 .part .name { font-weight: 600; }
 .part select { padding: 8px; font-size: 14px; }
-.part .toggles { display: flex; gap: 6px; }
+.part .toggles { display: flex; gap: 6px; width: 132px; } /* room for a layer's remove button, so every row lines up */
 .toggle { width: 40px; height: 36px; padding: 0; font-size: 13px; background: var(--field); border: 1px solid var(--line); color: var(--mute); }
 .toggle.mute.on { background: #3a2222; color: #ff8f8f; border-color: #6a3434; }
 .toggle.solo.on { background: #3a3522; color: var(--warn); border-color: #6a5f34; }
+/* layers (piano, pad): an Add button until added, then a normal strip with a remove button */
+.part.layer { border-top: 1px dashed var(--line); padding-top: 10px; }
+.part.layer + .part.layer { border-top: 0; padding-top: 0; }
+.part.layer .add { display: none; justify-self: start; }
+.part.layer.off .add { display: block; grid-column: 2 / -1; }
+.part.layer.off select, .part.layer.off input, .part.layer.off .toggles { display: none; }
+.part.layer.off .name { color: var(--mute); }
+.toggle.remove:hover { color: var(--text); }
 
 .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .pill { background: var(--field); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
@@ -119,6 +127,7 @@ button.small:disabled { opacity: .45; }
   .locks { grid-template-columns: 1fr 1fr; }
   .part { grid-template-columns: 1fr auto; row-gap: 8px; }
   .part .name { grid-column: 1; }
-  .part .toggles { grid-column: 2; grid-row: 1; }
+  .part .toggles { grid-column: 2; grid-row: 1; width: auto; }
   .part select, .part input { grid-column: 1 / -1; }
+  .part.layer.off .add { grid-column: 2; grid-row: 1; }
 }

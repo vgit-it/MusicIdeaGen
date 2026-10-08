@@ -1,6 +1,6 @@
 import './style.css';
 import * as Tone from 'tone';
-import { Engine } from './audio/engine';
+import { Engine, type LayerSettings } from './audio/engine';
 import { CHORD_INSTRUMENTS } from './audio/instruments';
 import type { GenreSel } from './genres';
 import type { MixPart } from './audio/mixer';
@@ -10,7 +10,7 @@ import { generate, randomSeeds } from './generator';
 import type { GenOptions, Idea, Seeds, SectionKind } from './idea';
 import { METER_CHOICES } from './rhythm';
 import { newSeed } from './rng';
-import { SOUND_SHORT, type SoundId, soundSlot } from './sounds';
+import { SOUND_NAME, SOUND_SHORT, type SoundId, soundSlot } from './sounds';
 import {
   type Choice, type IntroChoice, type Track, type TrackOptions, KIND_LABEL, buildTrack, defaultTrackOptions, rerollSeedFor,
 } from './track';
@@ -54,7 +54,11 @@ function render() {
   const cur = track ? track.sections[shown] : idea;
   if (!cur) return;
   const label = (id: string) => CHORD_INSTRUMENTS.find((i) => i.id === id)!.label;
-  renderIdea(cur, engine.shapesFor(cur), label(engine.chordIdFor(cur)), label(engine.guitar2IdFor(cur)));
+  // the section's "Sound:" note names what actually plays (a part set by hand, or no piano rhythm under the piano layer)
+  const sound = `Sound: ${SOUND_NAME[engine.chordIdFor(cur)]}${cur.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[engine.guitar2IdFor(cur)]}` : ''}`;
+  const shownIdea = { ...cur, notes: cur.notes.map((n) => (n.startsWith('Sound: ') ? sound : n)) };
+  renderIdea(shownIdea, engine.shapesFor(cur), label(engine.chordIdFor(cur)), label(engine.guitar2IdFor(cur)),
+    { keys: engine.layerFor(cur, 'keys'), pad: engine.layerFor(cur, 'pad') });
   if (track) {
     drawTrack(track);
     markSection(shown, looping);
@@ -69,11 +73,12 @@ function setPlaying(on: boolean) {
 
 /* ---- shareable link: the address always holds the current idea (and track) */
 
-interface Shared { o: GenOptions; s: Seeds; t?: TrackOptions }
+interface Shared { o: GenOptions; s: Seeds; t?: TrackOptions; l?: LayerSettings }
 
 function updateLink() {
   if (!idea) return;
-  const data: Shared = { o: idea.opts, s: idea.seeds, ...(track ? { t: track.opts } : {}) };
+  const layers = engine.layerSettings;
+  const data: Shared = { o: idea.opts, s: idea.seeds, ...(track ? { t: track.opts } : {}), ...(Object.keys(layers).length ? { l: layers } : {}) };
   try {
     history.replaceState(null, '', `#${btoa(encodeURIComponent(JSON.stringify(data)))}`);
   } catch { /* history blocked: no link */ }
@@ -106,7 +111,7 @@ $('copylink').onclick = async () => {
 type ExportKind = 'midi' | 'mp3' | 'wav' | 'stems';
 interface ExportFile { bytes: Uint8Array; name: string; type: string }
 
-const STEM_NAMES: Record<MixPart, string> = { chords: 'rhythm-guitar', guitar2: 'guitar-2', bass: 'bass', drums: 'drums' };
+const STEM_NAMES: Record<MixPart, string> = { chords: 'rhythm-guitar', guitar2: 'guitar-2', bass: 'bass', drums: 'drums', keys: 'piano', pad: 'pad' };
 const exportButtons = ['ex-mp3', 'ex-wav', 'ex-stems', 'ex-midi'].map((id) => $<HTMLButtonElement>(id));
 let exporting = false;
 
@@ -116,7 +121,10 @@ async function buildExport(kind: ExportKind, progress: (msg: string) => void = (
   const list = track ? track.sections : [idea];
   const base = exportBaseName(idea, !!track);
   if (kind === 'midi') {
-    const bytes = toMidi(list, { chordIdFor: (i) => engine.chordIdFor(i), guitar2IdFor: (i) => engine.guitar2IdFor(i) });
+    const bytes = toMidi(list, {
+      chordIdFor: (i) => engine.chordIdFor(i), guitar2IdFor: (i) => engine.guitar2IdFor(i),
+      keysFor: (i) => engine.layerFor(i, 'keys'), padFor: (i) => engine.layerFor(i, 'pad'),
+    });
     return { bytes, name: `${base}.mid`, type: 'audio/midi' };
   }
   const t0 = performance.now();
@@ -245,7 +253,8 @@ function readTempo(): number | undefined {
 
 /* ---- ideas, locks and rerolls */
 
-const lockPanel = buildLockPanel($('locks'), locks, (k) => reroll(k), () => updateLink());
+const lockPanel = buildLockPanel($('locks'), locks, (k) => reroll(k), () => updateLink(),
+  (k) => (k !== 'keys' && k !== 'pad') || !!engine.layerSettings[k]);
 
 function showIdea(next: Idea, keepPlace = false) {
   idea = next;
@@ -447,7 +456,13 @@ addSel.onchange = () => {
   if (k) editOrder((o) => { o.splice(shown + 1, 0, k); return shown + 1; });
 };
 
-buildPartsPanel($('parts'), engine, render);
+const partsPanel = buildPartsPanel($('parts'), engine, () => {
+  // a layer added or removed: the strip labels, lanes, Keep / reroll and the link all follow
+  if (track) drawTrack(track);
+  render();
+  lockPanel.update(idea);
+  updateLink();
+});
 
 // dev-only handle for debugging in the browser console
 if (import.meta.env.DEV) Object.assign(window, { engine, Tone, currentIdea: () => idea, currentTrack: () => track, buildExport });
@@ -486,6 +501,8 @@ if (shared) {
   weird.value = String(Math.round(shared.o.weirdness * 100));
   $('wv').textContent = weird.value;
   if (shared.o.bpm) tempo.value = String(shared.o.bpm);
+  for (const p of ['keys', 'pad'] as const) if (shared.l?.[p]) engine.setLayer(p, shared.l[p]!);
+  partsPanel.sync();
   showIdea(generate(shared.o, shared.s));
   if (shared.t) enterTrack(shared.t);
 } else newIdea();

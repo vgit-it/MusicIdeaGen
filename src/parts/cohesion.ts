@@ -88,3 +88,47 @@ export function clearFills(song: Song, drums: DrumPart, hits: GuitarHit[]): Guit
   });
   return hits.filter((h) => !regions.some(([a, b]) => h.step >= a && h.step < b));
 }
+
+type Habit = 'hold' | 'stop' | 'none';
+
+/**
+ * The end of the first phrase (bar 4), played together: the guitar and bass either hold one chord
+ * through the bar (space for the drums' answer), or stop on the last beat with a choke. Chosen once
+ * per idea; skipped where the drums fill or the band pushes into bar 5. Returns a note, if any.
+ */
+export function phraseEnd(
+  rng: Rng, song: Song, chords: ChordPart, drums: DrumPart, strum: Stroke[], bass: number[], lens: number[],
+): string | null {
+  const genre = song.partGenres.strum;
+  const habit = rng.weighted<Habit>(genre === 'funk' ? [['stop', 2], ['none', 2], ['hold', 1]] : genre === 'pop' ? [['hold', 3], ['stop', 1], ['none', 1]] : [['hold', 3], ['stop', 2], ['none', 1]]);
+  const bar = song.bars[3];
+  if (!bar || habit === 'none' || drums.fills.some((f) => f.bar === 3)) return null;
+  const a = bar.start, b = a + bar.len;
+  const st = groupStarts(bar.groups);
+  const s0 = a + st[st.length - 1];
+  const changes = chords.timeline.map((e) => e.step).filter((s) => s > a && s < b);
+  const root = (g: number) => bassRoot(song.key, chords.timeline[chords.chordIdx[g]].chord);
+  if (habit === 'hold') {
+    // a chord pushed into the bar from the one before stays tied (not struck again on the downbeat)
+    const tied = chords.timeline.some((e) => e.step === a - 1 || e.step === a - 2);
+    const hits = [...(tied ? [] : [a]), ...changes];
+    for (let g = a; g < b; g++) { strum[g] = '.'; bass[g] = 0; lens[g] = 0; }
+    hits.forEach((g, i) => {
+      strum[g] = 'D';
+      bass[g] = root(g);
+      lens[g] = (hits[i + 1] ?? b) - g;
+    });
+    return 'End of the first phrase: guitar and bass hold one chord while the drums answer';
+  }
+  // stop: not if the band pushes a chord change in the last beat
+  if (changes.some((c) => c >= s0)) return null;
+  strum[s0] = 'x';
+  for (let g = s0 + 1; g < b; g++) strum[g] = '.';
+  for (let g = s0; g < b; g++) { bass[g] = 0; lens[g] = 0; }
+  for (let g = s0 - 1; g >= a; g--) {
+    if (!bass[g]) continue;
+    lens[g] = Math.min(lens[g] || s0 - g, s0 - g);
+    break;
+  }
+  return 'End of the first phrase: guitar and bass stop on the last beat, the drums answer';
+}
