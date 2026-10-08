@@ -29,7 +29,21 @@ function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
   ]);
 }
 
-const load = (path: string) => Tone.ToneAudioBuffer.load(`${BASE}${path}`);
+/**
+ * One sample file, retried a few times: web hosts (GitHub Pages) sometimes answer a burst of
+ * requests with a passing error, and one missing file would otherwise drop a whole instrument
+ * to its synth stand-in for the session.
+ */
+async function load(path: string): Promise<AudioBuffer> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await Tone.ToneAudioBuffer.load(`${BASE}${path}`);
+    } catch (e) {
+      if (attempt >= 3) throw e;
+      await new Promise((r) => setTimeout(r, 300 * 2 ** attempt));
+    }
+  }
+}
 const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
 
 /** Decoded sets are shared, so two parts on the same instrument don't load (or use memory) twice. */
