@@ -1,8 +1,10 @@
 // Shared types for a generated idea.
 
-import type { Genre, GenreSel } from './genres';
+import type { Genre, GenreSel, RiffStyle } from './genres';
+import type { SectionSound } from './sounds';
 import type { Bar, Variant } from './rhythm';
 import type { Chord, Mode } from './theory';
+import type { Tuning } from './theory/fretboard';
 
 export type PartName = 'chords' | 'drums' | 'strum' | 'bass';
 
@@ -13,12 +15,16 @@ export interface Seeds {
   drums: string;
   strum: string;
   bass: string;
+  /** Optional so older seed sets still work. */
+  guitar2?: string;
 }
 
 export interface GenOptions {
   genre: GenreSel;
   meter: string; // 'auto' | 'mixed' | '4/4' ...
   weirdness: number; // 0..1
+  /** Fixed tempo; leave out for the genre's own range. */
+  bpm?: number;
 }
 
 /** A rhythm that repeats every `len` 16ths regardless of the bar line. */
@@ -44,6 +50,13 @@ export interface Song {
   total: number;
   plan: Variant[];
   cycles: Cycle[];
+  /** Riff genres only: guitar tuning and the riff style of each bar. */
+  tuning?: Tuning;
+  sections?: RiffStyle[];
+  /** Tracks: force the drums into (or out of) half-time. */
+  forceHalf?: boolean;
+  /** Tracks: drums never wait out the first bars of a quiet intro. */
+  noTacet?: boolean;
 }
 
 export interface ChordEvent {
@@ -78,6 +91,29 @@ export interface DrumPart {
  */
 export type Stroke = 'D' | 'U' | 'x' | 'p' | '.';
 
+/** One thing the guitar plays in a riff: a note, power chord or chord. */
+export interface GuitarHit {
+  step: number;
+  /** MIDI notes, low to high, and the string each is on. */
+  notes: number[];
+  strings: number[];
+  /** Length in 16ths. */
+  len: number;
+  vel: number;
+  /** palm = palm-muted chug, dead = muted scratch. */
+  mute?: 'palm' | 'dead';
+  /** Quiet section: play on the clean channel even when the amp is driven. */
+  clean?: boolean;
+  /** Let other strings keep ringing (arpeggios). */
+  letRing?: boolean;
+  /** Slide into the note from this many semitones away. */
+  slide?: number;
+  /** Fade the note in (volume swell). */
+  swell?: boolean;
+  /** The low pedal note of a pedal riff (a harmony part skips it). */
+  pedal?: boolean;
+}
+
 export interface Idea {
   seeds: Seeds;
   opts: GenOptions;
@@ -87,5 +123,27 @@ export interface Idea {
   strum: Stroke[];
   /** MIDI note per step, 0 = rest. */
   bass: number[];
+  /** Optional note length in 16ths per step (otherwise a note lasts until the next one). */
+  bassLen?: number[];
+  /** Riff genres: the guitar part as explicit hits (replaces the strum lane for playback). */
+  guitar?: GuitarHit[];
+  /** Second guitar: lead, harmony, octaves, arpeggios or swells. */
+  guitar2: GuitarHit[];
   notes: string[];
+  /** Set when this is one section of a track. */
+  section?: SectionInfo;
+}
+
+export type SectionKind = 'intro' | 'verse' | 'prechorus' | 'chorus' | 'interlude' | 'bridge' | 'breakdown' | 'outro';
+
+export interface SectionInfo {
+  kind: SectionKind;
+  /** e.g. "Verse 2" */
+  label: string;
+  /** 1 (quiet) to 5 (everything). */
+  energy: number;
+  /** The last bar is one held chord: the end of the track. */
+  ending?: boolean;
+  /** The instruments it plays on (when the parts are on Auto). */
+  sound?: SectionSound;
 }

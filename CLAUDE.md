@@ -26,4 +26,7 @@ Paul is a senior designer, not a full-time dev. Keep explanations short and non-
 8. `git init`, `.gitignore`, first commit; then help Paul create a private GitHub repo.
 
 ## Later milestones
-- M3 lock/reroll per part · M4 MIDI export · M5 UI design (Figma) · M6 GitHub Pages deploy
+- M3 tracks MVP: sections built from an idea (scope: `docs/TRACKS.md`) — done
+- M4 lock/reroll per part + track editing + shareable links — done
+- M5 MIDI export (idea + track) — done
+- M6 UI design (Figma) · M7 GitHub Pages deploy

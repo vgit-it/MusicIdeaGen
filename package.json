@@ -11,6 +11,9 @@
     "samples": "node scripts/prepare-samples.mjs"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
+    "@tonejs/midi": "^2.0.28",
+    "fflate": "^0.8.3",
     "tone": "^15.1.22"
   },
   "devDependencies": {

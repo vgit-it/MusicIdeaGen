@@ -42,6 +42,15 @@ export function pickMeters(rng: Rng, sel: string, w: number, altMeters: string[]
 }
 
 /** Start positions of each beat group within a bar. */
+/**
+ * How hard a drummer plays a hi-hat or ride at a spot in the bar (multiplies the pattern's velocity):
+ * beats strongest, 8th off-beats medium, 16ths in between soft. Without it, steady 16ths sound machine-like.
+ */
+export function cymbalAccent(groups: number[], pos: number): number {
+  if (groupStarts(groups).includes(pos)) return 1.35;
+  return pos % 2 === 0 ? 0.75 : 0.45;
+}
+
 export function groupStarts(groups: number[]): number[] {
   const s: number[] = [];
   let p = 0;

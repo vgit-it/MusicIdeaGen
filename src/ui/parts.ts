@@ -15,9 +15,14 @@ interface PartDef {
 export function buildPartsPanel(root: HTMLElement, engine: Engine, onChordChange: () => void) {
   const defs: PartDef[] = [
     {
-      part: 'chords', label: 'Chords', volume: 80,
-      options: [{ id: 'auto', label: 'Auto (by genre)' }, ...CHORD_INSTRUMENTS],
+      part: 'chords', label: 'Rhythm', volume: 80,
+      options: [{ id: 'auto', label: 'Auto (by genre and section)' }, ...CHORD_INSTRUMENTS],
       onInstrument: (id) => { engine.setChordInstrument(id as ChordChoice); onChordChange(); },
+    },
+    {
+      part: 'guitar2', label: 'Guitar 2', volume: 80,
+      options: [{ id: 'auto', label: 'Auto (by genre and section)' }, ...CHORD_INSTRUMENTS],
+      onInstrument: (id) => { engine.setGuitar2Instrument(id as ChordChoice); onChordChange(); },
     },
     {
       part: 'drums', label: 'Drums', volume: 80, options: DRUM_KITS,

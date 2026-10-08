@@ -1,67 +1,242 @@
-// Plays an Idea in a loop with the chosen instruments.
+// Plays a list of ideas back to back: one idea on a loop, a whole track once, or one section on a loop.
 
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
-import type { Idea } from '../idea';
-import { groupStarts } from '../rhythm';
+import type { GuitarHit, Idea } from '../idea';
+import { cymbalAccent, groupStarts } from '../rhythm';
 import { pianoVoicing } from '../theory';
 import { type GuitarVoicing, guitarVoicings } from '../theory/guitar';
 import {
-  Bass, type BassId, type ChordInstrument, type ChordInstrumentId, DrumKit, type DrumKitId, Guitar, Piano,
+  Bass, type BassId, type BassTone, type ChordInstrument, type ChordInstrumentId, DrumKit, type DrumKitId, Guitar, Piano,
 } from './instruments';
-import { type MixPart, Mixer } from './mixer';
+import { DYNAMICS, SECTION_DB } from './dynamics';
+import { inContext } from './context';
+import { type MixPart, type MixState, Mixer } from './mixer';
+import { AUTO_CHORDS, AUTO_GUITAR2 } from '../sounds';
+
+export interface EngineSettings {
+  chord: ChordChoice;
+  guitar2: ChordChoice;
+  bassSynth: boolean;
+  drumSynth: boolean;
+  mix: MixState;
+}
 
 export type ChordChoice = ChordInstrumentId | 'auto';
 
-const AUTO_CHORDS: Record<Genre, ChordInstrumentId> = {
-  rock: 'electric-crunch',
-  pop: 'acoustic',
-  funk: 'electric-clean',
+/** Bass sound per genre: more growl for heavier styles. */
+const BASS_TONES: Record<Genre, BassTone> = {
+  rock: 'grit',
+  pop: 'warm',
+  funk: 'clean',
+  hardrock: 'grit',
+  metal: 'grit',
+  grunge: 'heavy',
+  altmetal: 'heavy',
 };
+
+
+/** Silent steps after a track ends, so the last chord can ring out. */
+const TAIL_STEPS = 32;
 
 export const INSTRUMENT_NAMES: Record<string, string> = {
   piano: 'piano', acoustic: 'acoustic guitar', electric: 'electric guitar', bass: 'bass', drums: 'drums',
 };
 
+type Voicing = { notes: number[]; strings?: number[] };
+
 export class Engine {
   readonly mixer = new Mixer();
-  private piano = new Piano(this.mixer.input('chords'));
-  private acoustic = new Guitar('acoustic', this.mixer.input('chords'));
-  private electric = new Guitar('electric', this.mixer.input('chords'));
+  // rhythm instruments are built when first used (unused ones would still cost CPU, live and offline)
+  // electric guitars: one per amp setting, never re-voiced while playing (see instFor)
+  private rhythmInsts = new Map<ChordInstrumentId, ChordInstrument>();
   readonly bass = new Bass(this.mixer.input('bass'));
   readonly drums = new DrumKit(this.mixer.input('drums'));
 
-  private idea: Idea | null = null;
-  private chordChoice: ChordChoice = 'auto';
-  private chordInst: ChordInstrument = this.piano;
-  /** Notes per timeline entry for the current chord instrument. */
-  private voicings: number[][] = [];
-  /** Guitar shapes per timeline entry (null when piano). */
-  guitarShapes: GuitarVoicing[] | null = null;
+  /** What's playing: one idea (looped), a track, or one section (looped). */
+  private list: Idea[] = [];
+  private idx = 0;
+  private loop = true;
+  /** Per item: guitar hits indexed by step. */
+  private hitsAt: (GuitarHit[][] | null)[] = [];
+  private hitsAt2: GuitarHit[][][] = [];
+  /** Chord voicings per item and instrument, computed when first needed. */
+  private voicingCache = new WeakMap<Idea, Map<ChordInstrumentId, { voicings: Voicing[]; shapes: GuitarVoicing[] | null }>>();
 
+  private chordChoice: ChordChoice = 'auto';
+  private chordInst: ChordInstrument | null = null;
+  private chordId: ChordInstrumentId = 'piano';
+
+  // guitar 2: its own instruments (single take, slightly right), created when first needed
+  private g2Insts = new Map<ChordInstrumentId, ChordInstrument>();
+  private g2Choice: ChordChoice = 'auto';
+  private g2Inst: ChordInstrument | null = null;
+  private g2Id: ChordInstrumentId = 'electric-clean';
   private step = 0;
+  /** Steps since a track ended (-1 while playing). */
+  private tail = -1;
   playing = false;
   onBar: (bar: number) => void = () => {};
+  /** A new item in the list started (index into the list). */
+  onSection: (i: number) => void = () => {};
+  /** A track finished playing. */
+  onEnd: () => void = () => {};
   onStatus: (msg: string) => void = () => {};
 
-  constructor() {
-    Tone.getTransport().scheduleRepeat((t) => this.tick(t), '16n');
+  /** This engine's own clock and context (an offline render has its own, separate from the live ones). */
+  private ctx = Tone.getContext();
+  private transport = Tone.getTransport();
+
+  /** `offline`: built inside Tone.Offline to render audio files. */
+  constructor(private readonly offline = false) {
+    this.transport.scheduleRepeat((t) => this.tick(t), '16n');
   }
 
-  /** Resolve 'auto' to a concrete instrument for the current idea. */
-  get chordInstrumentId(): ChordInstrumentId {
+  /** Instrument choices and the mix, to copy into an offline render. */
+  settings(): EngineSettings {
+    return { chord: this.chordChoice, guitar2: this.g2Choice, bassSynth: this.bass.useSynth, drumSynth: this.drums.useSynth, mix: this.mixer.state() };
+  }
+
+  /** Copy settings (`openAll`: ignore mutes and solos, for stems). */
+  applySettings(s: EngineSettings, openAll = false) {
+    this.chordChoice = s.chord;
+    this.g2Choice = s.guitar2;
+    this.bass.useSynth = s.bassSynth;
+    this.drums.useSynth = s.drumSynth;
+    const mix = openAll
+      ? (Object.fromEntries(Object.entries(s.mix).map(([p, v]) => [p, { ...v, mute: false, solo: false }])) as MixState)
+      : s.mix;
+    this.mixer.restore(mix);
+  }
+
+  /** Every instrument the list plays on (sections can use different ones). */
+  private instsNeeded() {
+    const chords = new Map(this.list.map((i) => [this.instFor(this.chordIdFor(i)), this.chordIdFor(i)]));
+    const g2 = new Map(this.list.filter((i) => i.guitar2.length).map((i) => [this.g2InstFor(this.guitar2IdFor(i)), this.guitar2IdFor(i)]));
+    return [...chords, ...g2];
+  }
+
+  /** Offline: wait until every instrument the list needs has its samples. */
+  async loadAll() {
+    const insts = [this.drums, this.bass, this.g2Inst, ...this.instsNeeded().map(([inst]) => inst)].filter((x): x is NonNullable<typeof x> => !!x);
+    // load() hands back the same promise while loading, so this waits for loads already under way
+    await Promise.all(insts.map((inst) => inst.load()));
+  }
+
+  /** Offline: play the list from the top, or from a step into the first item (the offline clock drives it). */
+  startOffline(fromStep = 0) {
+    this.step = fromStep;
+    this.tail = -1;
+    this.playing = true;
+    // a moment in, so notes played slightly early (human timing) never land before zero
+    this.transport.start(0.05);
+  }
+
+  private get idea(): Idea | null {
+    return this.list[this.idx] ?? null;
+  }
+
+  /** Resolve 'auto' to a concrete instrument for an item (default: the current one): a track section's own sound, or the genre's. */
+  chordIdFor(idea = this.idea): ChordInstrumentId {
     if (this.chordChoice !== 'auto') return this.chordChoice;
-    return AUTO_CHORDS[this.idea?.song.partGenres.strum ?? 'pop'];
+    return idea?.section?.sound?.chords ?? AUTO_CHORDS[idea?.song.partGenres.strum ?? 'pop'];
   }
 
-  setIdea(idea: Idea) {
-    this.idea = idea;
-    const tr = Tone.getTransport();
-    tr.bpm.value = idea.song.bpm;
-    tr.swing = idea.song.swing;
+  /** The same for Guitar 2. */
+  guitar2IdFor(idea = this.idea): ChordInstrumentId {
+    if (this.g2Choice !== 'auto') return this.g2Choice;
+    return idea?.section?.sound?.guitar2 ?? AUTO_GUITAR2[idea?.song.partGenres.strum ?? 'pop'];
+  }
+
+  /** True when the rhythm part is on Auto (so track sections pick their own sound). */
+  get rhythmAuto(): boolean {
+    return this.chordChoice === 'auto';
+  }
+
+  get chordInstrumentId(): ChordInstrumentId {
+    return this.chordIdFor();
+  }
+
+  /** Guitar shapes for the current item (null for piano and riff ideas). */
+  shapesFor(idea: Idea): GuitarVoicing[] | null {
+    return this.voicingsFor(idea).shapes;
+  }
+
+  /** Change tempo without restarting. */
+  setTempo(bpm: number) {
+    this.transport.bpm.value = bpm;
+    this.mixer.setTempo(bpm);
+  }
+
+  /** Play one idea on a loop (`keepPlace`: carry on from the same bar, for rerolls). */
+  setIdea(idea: Idea, keepPlace = false) {
+    this.setList([idea], true, 0, keepPlace);
+  }
+
+  /**
+   * Play a list of ideas back to back from `start`, looping or once. Jumps straight there if playing,
+   * unless `keepPlace`: then playback carries on from the same spot in the new music (rerolls).
+   */
+  setList(list: Idea[], loop: boolean, start = 0, keepPlace = false) {
+    const place = keepPlace && this.playing && this.tail < 0 && start === this.idx && list[start] ? this.step : 0;
+    this.list = list;
+    this.loop = loop;
+    this.idx = start;
+    this.step = place < list[start].song.total ? place : 0;
+    this.tail = -1;
+    const { song } = list[0];
+    const tr = this.transport;
+    tr.swing = song.swing;
     tr.swingSubdivision = '16n';
-    this.step = 0;
+    this.setTempo(song.bpm);
+    this.bass.setTone(BASS_TONES[song.partGenres.bass]);
+    const index = (hits: GuitarHit[], total: number) => {
+      const at = Array.from({ length: total }, () => [] as GuitarHit[]);
+      for (const h of hits) at[h.step]?.push(h);
+      return at;
+    };
+    this.hitsAt = list.map((i) => (i.guitar ? index(i.guitar, i.song.total) : null));
+    this.hitsAt2 = list.map((i) => index(i.guitar2, i.song.total));
     this.applyChordInstrument();
+    this.applyGuitar2();
+    // start loading the instruments later sections play on
+    if (!this.offline) for (const [inst, id] of this.instsNeeded()) void this.ensureLoaded(inst, kindOf(id));
+    this.applyLevel(this.ctx.now());
+    if (this.playing) this.onSection(start);
+  }
+
+  /** Index of the item playing now (in the current list). */
+  get position(): number {
+    return this.idx;
+  }
+
+  private applyLevel(time: number) {
+    this.mixer.setSectionLevel(SECTION_DB[this.idea?.section?.energy ?? 4], time);
+  }
+
+  get guitar2InstrumentId(): ChordInstrumentId {
+    return this.guitar2IdFor();
+  }
+
+  setGuitar2Instrument(choice: ChordChoice) {
+    this.g2Choice = choice;
+    this.applyGuitar2();
+  }
+
+  /** Guitar 2's instrument for a sound: its own (a single take, slightly right), so it never shares an amp with the rhythm part. */
+  private g2InstFor(id: ChordInstrumentId): ChordInstrument {
+    // near the centre, where a singer would be
+    return getOrMake(this.g2Insts, id, () => inContext(this.ctx, () => makeInst(id, this.mixer.input('guitar2'), false, 0.15, true)));
+  }
+
+  /** `release`: stop what the old instrument is playing (not at a section change, where it rings on). */
+  private applyGuitar2(release = true) {
+    const id = this.guitar2InstrumentId;
+    const inst = this.g2InstFor(id);
+    if (release && this.g2Inst && this.g2Inst !== inst) this.g2Inst.releaseAll();
+    this.g2Inst = inst;
+    this.g2Id = id;
+    void this.ensureLoaded(inst, kindOf(id));
   }
 
   setChordInstrument(choice: ChordChoice) {
@@ -81,18 +256,22 @@ export class Engine {
   setMute(part: MixPart, on: boolean) { this.mixer.setMute(part, on); }
   setSolo(part: MixPart, on: boolean) { this.mixer.setSolo(part, on); }
 
-  private applyChordInstrument() {
+  /**
+   * The rhythm instrument for a sound. Each amp setting is its own guitar: switching an amp while
+   * notes ring (or are already scheduled) made a loud burst and a lopsided first chord at section changes.
+   */
+  private instFor(id: ChordInstrumentId): ChordInstrument {
+    return getOrMake(this.rhythmInsts, id, () => inContext(this.ctx, () => makeInst(id, this.mixer.input('chords'), true, 0)));
+  }
+
+  /** `release`: stop what the old instrument is playing (not at a section change, where it rings on). */
+  private applyChordInstrument(release = true) {
     const id = this.chordInstrumentId;
     const prev = this.chordInst;
-    if (id === 'piano') this.chordInst = this.piano;
-    else if (id === 'acoustic') this.chordInst = this.acoustic;
-    else {
-      this.chordInst = this.electric;
-      this.electric.setTone(id === 'electric-clean' ? 'clean' : id === 'electric-crunch' ? 'crunch' : 'dist');
-    }
-    if (prev !== this.chordInst) prev.releaseAll();
-    this.computeVoicings();
-    void this.ensureLoaded(this.chordInst, id === 'piano' ? 'piano' : id === 'acoustic' ? 'acoustic' : 'electric');
+    this.chordInst = this.instFor(id);
+    this.chordId = id;
+    if (release && prev && prev !== this.chordInst && !this.offline) prev.releaseAll();
+    void this.ensureLoaded(this.chordInst, kindOf(id));
   }
 
   private async ensureLoaded(inst: { state: string; load(): Promise<void> }, name: string) {
@@ -113,44 +292,99 @@ export class Engine {
     return failed as string[];
   }
 
-  private computeVoicings() {
-    if (!this.idea) return;
-    const { key } = this.idea.song;
-    const chords = this.idea.chords.timeline.map((e) => e.chord);
-    const id = this.chordInstrumentId;
-    if (id === 'piano') {
-      this.guitarShapes = null;
-      this.voicings = chords.map((c) => pianoVoicing(key, c));
-    } else {
-      this.guitarShapes = guitarVoicings(key, chords, { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist' });
-      this.voicings = this.guitarShapes.map((v) => v.notes);
+  private voicingsFor(idea: Idea) {
+    const id = this.chordIdFor(idea);
+    let byId = this.voicingCache.get(idea);
+    if (!byId) this.voicingCache.set(idea, (byId = new Map()));
+    let v = byId.get(id);
+    if (!v) {
+      const chords = idea.chords.timeline.map((e) => e.chord);
+      if (id === 'piano' || idea.guitar) {
+        // riff ideas carry their own fingering, so there are no chord shapes to show
+        v = { shapes: null, voicings: chords.map((c) => ({ notes: pianoVoicing(idea.song.key, c) })) };
+      } else {
+        const shapes = guitarVoicings(idea.song.key, chords, { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist' });
+        v = { shapes, voicings: shapes.map((s) => ({ notes: s.notes, strings: s.frets.flatMap((f, n) => (f === null ? [] : [n])) })) };
+      }
+      byId.set(id, v);
     }
+    return v;
   }
 
   async start() {
     await Tone.start();
     if (this.playing) return;
     this.step = 0;
-    Tone.getTransport().start('+0.1');
+    this.tail = -1;
+    if (this.chordIdFor() !== this.chordId) this.applyChordInstrument();
+    if (this.guitar2IdFor() !== this.g2Id) this.applyGuitar2();
+    this.transport.start('+0.1');
     this.playing = true;
+    this.onSection(this.idx);
   }
 
   stop() {
-    Tone.getTransport().stop();
+    this.transport.stop();
     this.playing = false;
-    this.chordInst.releaseAll();
+    // every instrument: the last notes of an earlier section can still be ringing
+    for (const inst of [...this.rhythmInsts.values(), ...this.g2Insts.values()]) inst.releaseAll();
     this.bass.releaseAll();
     this.onBar(-1);
   }
 
+  /** `ring` overrides how long the hit rings (the final chord of a track). */
+  private playHit(inst: ChordInstrument, h: GuitarHit, time: number, six: number, dyn = 1, ring?: number) {
+    inst.strum({
+      stroke: h.mute === 'palm' ? 'p' : h.mute === 'dead' ? 'x' : 'D',
+      notes: h.notes,
+      strings: h.strings,
+      time,
+      dur: ring ?? Math.min(h.len * six * 0.97, 4),
+      vel: h.vel * dyn,
+      sixteenth: six,
+      clean: h.clean,
+      letRing: h.letRing,
+      slide: h.slide,
+      swell: h.swell,
+    });
+  }
+
+  /** A new item starts: on Auto, instruments follow the section's sound. */
+  private enterItem(time: number) {
+    // a different instrument (or amp setting) from here on; what's still ringing carries on
+    if (this.chordIdFor() !== this.chordId) this.applyChordInstrument(false);
+    if (this.guitar2IdFor() !== this.g2Id) this.applyGuitar2(false);
+    this.applyLevel(time);
+    if (this.offline) return;
+    // a timer, not Tone's Draw: Draw skips callbacks while the tab is in the background
+    const i = this.idx;
+    setTimeout(() => { if (this.playing && this.idx === i) this.onSection(i); }, Math.max(0, (time - this.ctx.now()) * 1000));
+  }
+
   private tick(time: number) {
-    const idea = this.idea;
-    if (!idea) return;
+    if (!this.list.length) return;
+    if (this.tail >= 0) {
+      // the track has ended: let the last chord ring, then report
+      if (++this.tail === TAIL_STEPS && !this.offline) setTimeout(() => this.onEnd(), Math.max(0, (time - this.ctx.now()) * 1000));
+      return;
+    }
+    if (this.step >= this.list[this.idx].song.total) {
+      this.step = 0;
+      const prev = this.idx;
+      if (this.idx + 1 < this.list.length) this.idx++;
+      else if (this.loop) this.idx = 0;
+      else { this.tail = 0; return; }
+      if (this.idx !== prev) this.enterItem(time);
+    }
+    const idea = this.list[this.idx];
     const { song, chords, drums, strum, bass } = idea;
     const total = song.total;
-    const g = this.step % total;
-    this.step++;
-    const six = Tone.Time('16n').toSeconds();
+    const g = this.step++;
+    const six = 15 / this.transport.bpm.value;
+    const dyn = DYNAMICS[idea.section?.energy ?? 4];
+    // the final held chord of a track rings out
+    const lastBar = song.bars[song.bars.length - 1];
+    const ending = !!idea.section?.ending && g >= lastBar.start;
 
     // how many steps until the next non-empty step in a lane
     const gapUntil = (lane: ArrayLike<unknown>, empty: unknown, cap: number) => {
@@ -159,19 +393,25 @@ export class Engine {
       return n;
     };
 
+    const ci = this.chordInst;
+    if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined);
+    if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time, six);
+
     const st = strum[g];
-    if (st !== '.') {
-      const notes = this.voicings[chords.chordIdx[g]];
+    if (st !== '.' && !idea.guitar && ci) {
+      const { notes, strings } = this.voicingsFor(idea).voicings[chords.chordIdx[g]];
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
-      const accent = groupStarts(bar.groups).includes(g - bar.start) ? 0.12 : 0;
+      // accents on the beat, and a little extra where the kick or snare lands (the band hits together)
+      const accent = (groupStarts(bar.groups).includes(g - bar.start) ? 0.12 : 0) + (drums.kick[g] || drums.snare[g] >= 0.5 ? 0.06 : 0);
       const n = gapUntil(strum, '.', 16);
-      const maxRing = this.chordInst.kind === 'guitar' ? 2.4 : 1.6;
-      this.chordInst.strum({
+      const maxRing = ci.kind === 'guitar' ? 2.4 : 1.6;
+      ci.strum({
         stroke: st,
         notes,
+        strings,
         time,
-        dur: Math.min(n * six * 0.97, maxRing),
-        vel: (st === 'U' ? 0.55 : 0.68) + accent,
+        dur: ending ? 6 : Math.min(n * six * 0.97, maxRing),
+        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn,
         sixteenth: six,
       });
     }
@@ -179,18 +419,40 @@ export class Engine {
     const d = this.drums;
     if (drums.kick[g]) d.hit('kick', time, drums.kick[g]);
     if (drums.snare[g]) d.hit('snare', time, drums.snare[g]);
-    if (drums.hat[g]) d.hit('hat', time, drums.hat[g]);
+    const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
+    const acc = cymbalAccent(bar.groups, g - bar.start);
+    if (drums.hat[g]) d.hit('hat', time, Math.min(1, drums.hat[g] * acc));
     if (drums.hatOpen[g]) d.hit('hatOpen', time, drums.hatOpen[g]);
-    if (drums.ride[g]) d.hit('ride', time, drums.ride[g]);
+    if (drums.ride[g]) d.hit('ride', time, Math.min(1, drums.ride[g] * acc));
     if (drums.crash[g]) d.hit('crash', time, drums.crash[g]);
     if (drums.tom[g]) d.hit('tom', time, 0.8, drums.tom[g]);
 
     if (bass[g]) {
-      const n = gapUntil(bass, 0, 16);
-      this.bass.play(bass[g], time, Math.min(n * six * 0.92, 1.2), 0.85);
+      const n = idea.bassLen?.[g] || gapUntil(bass, 0, 16);
+      // pluck harder on the beat
+      const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
+      const onBeat = groupStarts(bar.groups).includes(g - bar.start);
+      const dur = ending ? 5 : Math.min(n * six * 0.92, idea.guitar ? 2.5 : 1.2);
+      this.bass.play(bass[g], time, dur, (onBeat ? 0.9 : 0.74) * dyn);
     }
 
     const bi = song.bars.findIndex((b) => b.start === g);
-    if (bi >= 0) Tone.getDraw().schedule(() => this.onBar(bi), time);
+    if (bi >= 0 && !this.offline) Tone.getDraw().schedule(() => this.onBar(bi), time);
   }
 }
+
+function getOrMake<K, V>(m: Map<K, V>, k: K, make: () => V): V {
+  let v = m.get(k);
+  if (v === undefined) m.set(k, (v = make()));
+  return v;
+}
+
+/** `double`: double-track driven electric tones (a rhythm part). `lead`: Guitar 2's lead voicing. */
+function makeInst(id: ChordInstrumentId, out: Tone.InputNode, double: boolean, pan: number, lead = false): ChordInstrument {
+  if (id === 'piano') return new Piano(out, lead ? 4 : 0);
+  if (id === 'acoustic') return new Guitar('acoustic', out, double, pan);
+  return new Guitar('electric', out, double, pan, ampOf(id), lead);
+}
+
+const kindOf = (id: ChordInstrumentId) => (id === 'piano' ? 'piano' : id === 'acoustic' ? 'acoustic' : 'electric');
+const ampOf = (id: ChordInstrumentId) => (id === 'electric-clean' ? 'clean' : id === 'electric-crunch' ? 'crunch' : 'dist');

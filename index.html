@@ -9,7 +9,7 @@
 <body>
 <main>
   <h1>Music Idea Generator</h1>
-  <p class="sub">8-bar ideas · chords, strumming, drums, bass</p>
+  <p class="sub">8-bar ideas · chords, strumming, drums, bass · grow one into a full track</p>
 
   <section class="card">
     <div class="controls">
@@ -19,10 +19,17 @@
           <option value="rock">Rock</option>
           <option value="pop">Pop</option>
           <option value="funk">Funk</option>
+          <option value="hardrock">Hard rock</option>
+          <option value="metal">Heavy metal</option>
+          <option value="grunge">Grunge</option>
+          <option value="altmetal">Alt metal</option>
         </select>
       </label>
       <label>Time signature
         <select id="meter"></select>
+      </label>
+      <label>Tempo (BPM)
+        <input type="number" id="tempo" min="40" max="240" step="1" inputmode="numeric" placeholder="Auto">
       </label>
       <label>Weirdness <span class="wv" id="wv">20</span>
         <input type="range" id="weird" min="0" max="100" value="20">
@@ -31,8 +38,65 @@
     <div class="buttons">
       <button id="gen" class="primary">Generate</button>
       <button id="play" class="secondary" disabled>Play</button>
+      <button id="maketrack" class="secondary" title="Grow this idea into a full song">Make track</button>
     </div>
+    <div class="lockhead">
+      <span class="lt">Keep / reroll</span>
+      <span class="hint">Lock what you like, then Generate. ⟳ rerolls one part while it plays.</span>
+      <button id="copylink" class="small">Copy link</button>
+    </div>
+    <div id="locks" class="locks"></div>
+    <div class="exportrow">
+      <span class="lt">Export</span>
+      <button id="ex-mp3" class="small" title="The finished mix as an MP3 (320 kbps)">MP3</button>
+      <button id="ex-wav" class="small" title="The finished mix as a full-quality WAV">WAV</button>
+      <button id="ex-stems" class="small" title="One WAV per instrument plus the mix, in a zip">Stems</button>
+      <button id="ex-midi" class="small" title="A MIDI file for your DAW">MIDI</button>
+      <span class="hint">The idea, or the whole track in track mode.</span>
+    </div>
+    <label class="master">Volume
+      <input type="range" id="master" min="0" max="100" value="80" aria-label="Master volume">
+    </label>
     <div id="status" role="status">Loading sounds…</div>
+  </section>
+
+  <section class="card" id="trackcard" hidden>
+    <div class="trackhead">
+      <h2>Track</h2>
+      <span id="trackinfo" class="trackinfo"></span>
+      <button id="playall" class="small">Play all</button>
+      <button id="backidea" class="small">Back to idea</button>
+    </div>
+    <div class="trackopts">
+      <label>Intro
+        <select id="t-intro"><option value="auto">Auto</option><option value="alone">Short</option><option value="layered">Layered</option><option value="band">Full band</option></select>
+      </label>
+      <label>Pre-chorus
+        <select id="t-pre"><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></select>
+      </label>
+      <label>Interlude
+        <select id="t-interlude"><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></select>
+      </label>
+      <label>Key change
+        <select id="t-key"><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></select>
+      </label>
+    </div>
+    <div id="sections" class="sections"></div>
+    <div class="sectool" id="sectool">
+      <span id="sectname" class="sectname"></span>
+      <button id="s-reroll" class="small"></button>
+      <select id="s-sound" aria-label="Rhythm instrument for this kind of section"></select>
+      <button id="s-left" class="small" title="Move earlier" aria-label="Move earlier">◀</button>
+      <button id="s-right" class="small" title="Move later" aria-label="Move later">▶</button>
+      <button id="s-dup" class="small" title="Play this section twice">Repeat</button>
+      <button id="s-del" class="small">Remove</button>
+      <select id="s-add" aria-label="Add a section after this one">
+        <option value="">Add after…</option>
+        <option value="verse">Verse</option><option value="prechorus">Pre-chorus</option><option value="chorus">Chorus</option>
+        <option value="interlude">Interlude</option><option value="bridge">Bridge</option><option value="outro">Outro</option>
+      </select>
+    </div>
+    <p class="hint">Tap a section to loop it. Tap it again to play on from there. The buttons above change the selected section.</p>
   </section>
 
   <section class="card">
@@ -49,11 +113,11 @@
 
   <p class="hint">iPhone: turn off silent mode to hear audio. Generating while playing swaps the idea at once.</p>
   <footer class="credits">
-    Samples: piano, guitars and bass from
-    <a href="https://github.com/nbrosowsky/tonejs-instruments" target="_blank" rel="noopener">tonejs-instruments</a>
-    by Nicholaus P. Brosowsky (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC-BY 3.0</a>) ·
-    drums from <a href="https://github.com/sfzinstruments/karoryfer.big-rusty-drums" target="_blank" rel="noopener">Big Rusty Drums</a>
-    by Karoryfer Samples (CC0).
+    Samples: piano from <a href="https://github.com/sfzinstruments/SalamanderGrandPiano" target="_blank" rel="noopener">Salamander Grand Piano</a>
+    by Alexander Holm (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC-BY 3.0</a>) ·
+    guitars, bass and drums by <a href="https://github.com/sfzinstruments" target="_blank" rel="noopener">Karoryfer Samples</a> (CC0) ·
+    guitar cabinet impulse responses from the Dauntless IR pack by resington ·
+    MP3 export uses <a href="https://github.com/breezystack/lamejs" target="_blank" rel="noopener">lamejs</a> (LAME, LGPL-3.0).
   </footer>
 </main>
 <script type="module" src="/src/main.ts"></script>

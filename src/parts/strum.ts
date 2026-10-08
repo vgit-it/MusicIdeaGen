@@ -1,11 +1,13 @@
 // Strumming / comping pattern on the 16th grid.
 
-import type { Genre } from '../genres';
+import { GENRES, type Genre } from '../genres';
 import type { ChordPart, Song, Stroke } from '../idea';
 import type { Rng } from '../rng';
 import { type Variant, groupStarts, phrasePlan } from '../rhythm';
 
-function strumBar(rng: Rng, len: number, groups: number[], genre: Genre, w: number): Stroke[] {
+function strumBar(rng: Rng, len: number, groups: number[], g: Genre, w: number): Stroke[] {
+  // riff genres only strum when borrowed into another genre: treat them as rock
+  const genre = GENRES[g].riff ? 'rock' : g;
   const st = groupStarts(groups);
   const a: Stroke[] = new Array(len).fill('.');
   // rock: some bars chug palm-muted 8ths with open accents on the beat groups
@@ -65,4 +67,20 @@ export function generateStrum(rng: Rng, song: Song, chords: ChordPart): Stroke[]
   // every chord change should be heard
   for (const e of chords.timeline) if (strum[e.step] === '.' || strum[e.step] === 'x') strum[e.step] = 'D';
   return strum;
+}
+
+/**
+ * Strokes as a strumming hand plays them: the hand moves down on the beat and 8ths and up in between,
+ * so a chord between two 8ths is an up-strum (lighter, top strings), and one on a beat is a down-strum.
+ * Patterns and the band pass (which strums with the kick) can leave full downstrokes on 16ths, which
+ * sounds mechanical. Palm mutes and scratches stay as they are. Changes the lane in place.
+ */
+export function naturalStrokes(song: Song, strum: Stroke[]) {
+  for (const b of song.bars) {
+    for (let i = 0; i < b.len; i++) {
+      const g = b.start + i;
+      if (i % 2 === 1 && strum[g] === 'D') strum[g] = 'U';
+      else if (i % 4 === 0 && strum[g] === 'U') strum[g] = 'D';
+    }
+  }
 }

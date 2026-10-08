@@ -5,7 +5,7 @@ import type { DrumPart, Song } from '../idea';
 import type { Rng } from '../rng';
 import { type Variant, groupStarts, zeros } from '../rhythm';
 
-interface DrumBar {
+export interface DrumBar {
   K: number[]; S: number[]; H: number[]; O: number[]; R: number[]; T: number[];
 }
 
@@ -49,7 +49,7 @@ function drumBar(rng: Rng, len: number, groups: number[], ds: DrumStyle, w: numb
   return { K, S, H, O, R, T };
 }
 
-const copyBar = (b: DrumBar): DrumBar => ({
+export const copyBar = (b: DrumBar): DrumBar => ({
   K: [...b.K], S: [...b.S], H: [...b.H], O: [...b.O], R: [...b.R], T: [...b.T],
 });
 
@@ -68,7 +68,7 @@ function varyBar(rng: Rng, b: DrumBar, len: number, groups: number[], w: number)
 }
 
 /** Writes a fill over the end of the bar. Returns its length in 16ths. */
-function addFill(rng: Rng, b: DrumBar, len: number, groups: number[], w: number, genre: Genre): number {
+export function addFill(rng: Rng, b: DrumBar, len: number, groups: number[], w: number, genre: Genre): number {
   const lastGroup = groups[groups.length - 1];
   const F = w > 0.75 && rng.chance(0.25)
     ? len
@@ -93,16 +93,18 @@ function addFill(rng: Rng, b: DrumBar, len: number, groups: number[], w: number,
   return F;
 }
 
-const CRASH_CHANCE: Record<Genre, number> = { rock: 1, pop: 0.8, funk: 0.45 };
+const CRASH_CHANCE: Record<Genre, number> = { rock: 1, pop: 0.8, funk: 0.45, hardrock: 1, metal: 1, grunge: 1, altmetal: 1 };
 
 export function generateDrums(rng: Rng, song: Song): DrumPart {
   const { w, bars, total, groupsFor, plan } = song;
   const genre = song.partGenres.drums;
   const ds = GENRES[genre].drum;
 
+  const fourFloor = rng.chance(ds.fourFloor);
+  const half = rng.chance(ds.halfTime); // rolled even when forced, so nothing else changes
   const base: BarOpts = {
-    fourFloor: rng.chance(ds.fourFloor),
-    halfTime: rng.chance(ds.halfTime),
+    fourFloor,
+    halfTime: song.forceHalf ?? half,
     hat: rng.pick(ds.hats),
     ride: false,
   };

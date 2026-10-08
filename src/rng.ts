@@ -41,6 +41,13 @@ export class Rng {
     return arr[Math.floor(this.next() * arr.length)];
   }
 
+  /** Pick from [item, weight] pairs. */
+  weighted<T>(items: readonly (readonly [T, number])[]): T {
+    let r = this.next() * items.reduce((a, [, wt]) => a + wt, 0);
+    for (const [item, wt] of items) if ((r -= wt) < 0) return item;
+    return items[items.length - 1][0];
+  }
+
   shuffle<T>(arr: readonly T[]): T[] {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
