@@ -156,5 +156,7 @@ export interface SectionInfo {
   /** Step where the band comes in (intros that start with the guitar alone); layers like the piano wait for it. */
   bandFrom?: number;
   /** How the section ends into the next one, so added layers stop or hit with the band. */
-  tail?: { stop: number } | { hits: number[] } | { build: number };
+  tail?: { stop: number } | { hits: number[] } | { build: number } | { push: number } | { ring: number };
+  /** The previous section pushed this one's first chord early: its downbeat isn't struck again. */
+  pushedIn?: boolean;
 }

@@ -16,7 +16,7 @@ import { naturalStrokes } from './parts/strum';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
-import { type Chord, type Mode, SCALES, chordPc, degreeChord } from './theory';
+import { type Chord, type Mode, QUALITIES, SCALES, chordPc, degreeChord } from './theory';
 import { lowestOf, powerChord } from './theory/fretboard';
 
 export type Choice = 'auto' | 'on' | 'off';
@@ -561,6 +561,233 @@ function bandHits(idea: Idea, rng: Rng) {
   idea.bassLen = lens;
 }
 
+/* ------------------------------------------------------------ seams: how one section hands over to the next */
+
+const lastBarOf = (idea: Idea) => idea.song.bars[idea.song.bars.length - 1];
+
+/** Where the second half of a bar starts (beat 3 in 4/4). */
+const halfOf = (bar: Bar) => bar.start + (groupStarts(bar.groups).find((p) => p >= bar.len / 2) ?? Math.floor(bar.len / 2));
+
+/** A section's first chord, written relative to another section's key (the last chorus can be in a new key). */
+function firstChordIn(from: Idea, to: Idea): Chord {
+  const c = from.chords.timeline[0].chord;
+  return { ...c, root: (chordPc(from.song.key, c) - to.song.key + 12) % 12 };
+}
+
+/** Rewrite a section's chords from step `s` to its end. */
+function setChordFrom(idea: Idea, s: number, chord: Chord) {
+  const timeline = [...idea.chords.timeline.filter((e) => e.step < s), { step: s, chord }];
+  idea.chords = { ...idea.chords, timeline, chordIdx: chordIdxFor(timeline, idea.song.total) };
+}
+
+const tonesOf = (key: number, c: Chord) => QUALITIES[c.q].map((i) => (key + c.root + i) % 12);
+/** A note a half step from a chord tone (or a tritone from the root) rubs against the chord. */
+const rubs = (n: number, key: number, c: Chord) => {
+  const pc = n % 12, tones = tonesOf(key, c);
+  return !tones.includes(pc) && (tones.some((t) => (pc - t + 12) % 12 === 1 || (t - pc + 12) % 12 === 1) || (pc - tones[0] + 12) % 12 === 6);
+};
+/** The nearest chord tone to a note. */
+function nearestTone(n: number, key: number, c: Chord): number {
+  const tones = tonesOf(key, c);
+  for (let d = 1; d < 7; d++) for (const m of [n - d, n + d]) if (tones.includes(((m % 12) + 12) % 12)) return m;
+  return n;
+}
+
+/** The next note of a scale above (dir 1) or below (dir -1) a note. */
+function scaleStep(n: number, dir: 1 | -1, key: number, mode: Mode): number {
+  const pcs = SCALES[mode].map((p) => (p + key) % 12);
+  let m = n + dir;
+  while (!pcs.includes(((m % 12) + 12) % 12)) m += dir;
+  return m;
+}
+
+/**
+ * A turnaround: the second half of the last bar moves to a chord that leads into the next section
+ * (V of its first chord, or IV or bVII of it), instead of sitting on the chord the next section
+ * starts on, or stepping to it awkwardly. Into a key change it's always the new key's V.
+ */
+function turnaround(a: Idea, b: Idea, rng: Rng, keyChange: boolean): string | null {
+  if (a.guitar) return null; // riffs write their own moves
+  const { song } = a;
+  const tl = a.chords.timeline, last = tl[tl.length - 1];
+  const bar = lastBarOf(a);
+  const target = firstChordIn(b, a);
+  const iv = (target.root - last.chord.root + 12) % 12;
+  // the last chord already held the whole bar, and the next section starts on it: nothing moves
+  const stuck = iv === 0 && last.step <= bar.start;
+  const awkward = iv === 1 || iv === 6 || iv === 11;
+  if (!keyChange && !(stuck && rng.chance(0.7)) && !awkward) return null;
+  const s = Math.max(halfOf(bar), last.step);
+  if (s > song.total - 4) return null;
+  const scale: readonly number[] = SCALES[song.mode];
+  const leads: [number, number][] = keyChange ? [[(target.root + 7) % 12, 1]]
+    : ([[(target.root + 7) % 12, 3], [(target.root + 5) % 12, 1], [(target.root + 10) % 12, 1]] as [number, number][])
+      .filter(([r]) => scale.includes(r) && r !== last.chord.root);
+  if (!leads.length) return null;
+  const chord = chordOn(song, rng.weighted(leads), false, rng);
+  const old = tl[a.chords.chordIdx[s]].chord;
+  setChordFrom(a, s, chord);
+  if (a.strum[s] !== 'D') a.strum[s] = 'D';
+  // the bass moves with the chord (keeping its figure)
+  let d = (chord.root - old.root + 12) % 12;
+  if (d > 6) d -= 12;
+  const playing = a.bass.slice(bar.start, song.total).some(Boolean);
+  for (let g = s; g < song.total; g++) {
+    if (!a.bass[g]) continue;
+    let m = a.bass[g] + d;
+    while (m > 52) m -= 12;
+    while (m < 28) m += 12;
+    a.bass[g] = m;
+  }
+  if (playing && !a.bass[s]) a.bass[s] = bassRoot(song.key, chord);
+  // Guitar 2: notes that would rub against the new chord move to its nearest chord tone (or stop, if held into it)
+  a.guitar2 = a.guitar2.map((h) => {
+    if (h.step + h.len <= s || h.swell) return h;
+    if (h.step < s) return h.notes.some((n) => rubs(n, song.key, chord)) ? capAt(s)(h) : h;
+    return h.notes.some((n) => rubs(n, song.key, chord)) ? { ...h, notes: h.notes.map((n) => (rubs(n, song.key, chord) ? nearestTone(n, song.key, chord) : n)) } : h;
+  });
+  return `Turnaround: the last bar turns to ${numeral(chord)}, leading into the ${b.section!.label.toLowerCase()}`;
+}
+
+/**
+ * The band pushes into the next section: its first chord comes an 8th early, on the "and" of the last
+ * beat, with a crash, and rings over the bar line (the downbeat isn't struck again).
+ * False when the next section has nothing on its downbeat to push.
+ */
+function push(a: Idea, b: Idea): boolean {
+  const total = a.song.total, s = total - 2;
+  const bar = lastBarOf(a);
+  if (s <= bar.start || !b.bass[0]) return false;
+  if (a.guitar) {
+    const first = b.guitar?.find((h) => h.step === 0 && !h.mute);
+    if (!first) return false;
+    b.guitar = b.guitar!.filter((h) => h !== first);
+    a.guitar = a.guitar.filter((h) => h.step < s).map(capAt(s));
+    a.guitar.push({ ...first, step: s, len: first.len + 2, vel: Math.max(first.vel, 0.9) });
+  } else {
+    if (b.strum[0] === '.' || b.strum[0] === 'x') return false;
+    b.strum[0] = '.';
+    for (let g = s; g < total; g++) a.strum[g] = '.';
+    a.strum[s] = 'D';
+  }
+  setChordFrom(a, s, firstChordIn(b, a));
+  // the bass pushes with the band, and rings into the next section
+  const lens = a.bassLen ?? zeros(total);
+  for (let g = s; g < total; g++) { a.bass[g] = 0; lens[g] = 0; }
+  for (let g = s - 1; g >= bar.start; g--) {
+    if (!a.bass[g]) continue;
+    if (lens[g]) lens[g] = Math.min(lens[g], s - g);
+    break;
+  }
+  a.bass[s] = b.bass[0];
+  b.bass[0] = 0;
+  if (b.bassLen) b.bassLen[0] = 0;
+  let next = 1;
+  while (next < 8 && !b.bass[next]) next++;
+  lens[s] = 2 + next;
+  a.bassLen = lens;
+  // drums: kick and crash on the push, nothing on the downbeat after it
+  for (const l of DRUM_LANES) for (let g = s; g < total; g++) a.drums[l][g] = 0;
+  crashAt(a.drums, s);
+  for (const l of ['kick', 'crash', 'hat', 'hatOpen', 'ride'] as const) b.drums[l][0] = 0;
+  a.section!.tail = { push: s };
+  b.section!.pushedIn = true;
+  return true;
+}
+
+/** Loud into quiet: the band strikes one chord halfway through the last bar and lets it ring into the next section. */
+function ringOut(a: Idea) {
+  const { song } = a;
+  const L = song.bars.length - 1, bar = song.bars[L];
+  const h = halfOf(bar), total = song.total;
+  const chord = a.chords.timeline[a.chords.chordIdx[h]].chord;
+  const pc = chordPc(song.key, chord);
+  for (const l of DRUM_LANES) for (let g = h; g < total; g++) a.drums[l][g] = 0;
+  a.drums.fills = a.drums.fills.filter((f) => f.bar !== L);
+  crashAt(a.drums, h);
+  const lens = a.bassLen ?? zeros(total);
+  for (let g = h; g < total; g++) { a.strum[g] = '.'; a.bass[g] = 0; lens[g] = 0; }
+  if (a.guitar && song.tuning) {
+    a.guitar = a.guitar.filter((x) => x.step < h).map(capAt(h));
+    a.guitar.push({ step: h, ...powerChord(pc, song.tuning, true), len: total - h + 4, vel: 0.9 });
+    let n = lowestOf(pc, song.tuning);
+    while (n > 40) n -= 12;
+    a.bass[h] = n;
+  } else {
+    a.strum[h] = 'D';
+    a.bass[h] = bassRoot(song.key, chord);
+  }
+  for (let g = h - 1; g >= bar.start; g--) {
+    if (!a.bass[g]) continue;
+    if (lens[g]) lens[g] = Math.min(lens[g], h - g);
+    break;
+  }
+  lens[h] = total - h + 4;
+  a.bassLen = lens;
+  a.section!.tail = { ring: h };
+}
+
+/**
+ * The bass walks into the next section's first note over the last beat: up or down the scale, or
+ * a chromatic approach from below, with the drum fill.
+ */
+function walkUp(a: Idea, b: Idea, rng: Rng): boolean {
+  if (a.guitar || !b.bass[0]) return false;
+  const { song } = a;
+  const bar = lastBarOf(a), total = song.total;
+  const beat = bar.groups[bar.groups.length - 1];
+  if (bar.len < 8 || beat < 4 || !a.bass.slice(bar.start, total - beat).some(Boolean)) return false;
+  const t = b.bass[0];
+  let how = rng.weighted<'up' | 'down' | 'chromatic'>(song.partGenres.bass === 'funk' ? [['chromatic', 3], ['up', 1]] : [['up', 3], ['chromatic', 2], ['down', 1]]);
+  const three = how === 'up' && bar.len >= 12 && rng.chance(0.35);
+  // no room below the target on the bass: come down onto it instead
+  if (how !== 'down' && t - (three ? 5 : 3) < 28) how = 'down';
+  let line: number[];
+  if (how === 'chromatic') line = [t - 2, t - 1];
+  else {
+    const dir = how === 'up' ? -1 : 1; // walking up means starting below
+    const n1 = scaleStep(t, dir, b.song.key, b.song.mode), n2 = scaleStep(n1, dir, b.song.key, b.song.mode);
+    line = three && how === 'up' ? [scaleStep(n2, dir, b.song.key, b.song.mode), n2, n1] : [n2, n1];
+  }
+  const from = total - 2 * line.length;
+  const lens = a.bassLen;
+  for (let g = from; g < total; g++) { a.bass[g] = 0; if (lens) lens[g] = 0; }
+  line.forEach((n, i) => {
+    a.bass[from + 2 * i] = n;
+    if (lens) lens[from + 2 * i] = 2;
+  });
+  if (lens) for (let g = from - 1; g >= bar.start; g--) {
+    if (!a.bass[g]) continue;
+    if (lens[g]) lens[g] = Math.min(lens[g], from - g);
+    break;
+  }
+  return true;
+}
+
+/** Guitar 2 leads into its next phrase: a note or two before the bar line, stepping into its first note. */
+function g2Pickup(a: Idea, b: Idea, rng: Rng): boolean {
+  const first = b.guitar2.find((h) => h.step === 0);
+  if (!first || first.notes.length !== 1 || first.swell || first.mute) return false;
+  const bar = lastBarOf(a), total = a.song.total;
+  const beat = bar.groups[bar.groups.length - 1];
+  if (bar.len < 8 || a.guitar2.some((h) => h.step + h.len > total - beat)) return false;
+  const t = first.notes[0], { key, mode } = b.song;
+  // up or down the scale into the note, two notes or one; only lines that sit with the chord under them
+  const chordAt = (g: number) => a.chords.timeline[a.chords.chordIdx[g]].chord;
+  const lines: [number[], number][] = [];
+  for (const [dir, w] of [[-1, 3], [1, 2]] as const) {
+    const n1 = scaleStep(t, dir, key, mode), n2 = scaleStep(n1, dir, key, mode);
+    lines.push([[n2, n1], w], [[n1], w * 0.7]);
+  }
+  const fits = lines.filter(([l]) => l.every((n, i) => !rubs(n, a.song.key, chordAt(total - 2 * (l.length - i)))));
+  if (!fits.length) return false;
+  const line = rng.weighted(fits);
+  line.forEach((n, i) => a.guitar2.push({
+    step: total - 2 * (line.length - i), notes: [n], strings: first.strings, len: 2, vel: first.vel * 0.85, clean: first.clean,
+  }));
+  return true;
+}
+
 /* ------------------------------------------------------------ guitar 2 */
 
 const runCount = (idea: Idea) => Math.ceil(idea.song.bars.length / 4);
@@ -873,25 +1100,44 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     return idea;
   });
 
-  // transitions: crash into each section; into a chorus a fill, a snare build, band hits or a stop
+  // a crash into each section (quiet openings don't crash)
   sections.forEach((idea, i) => {
-    const r = new Rng(`${S.structure}-t${i}`);
     const e = idea.section!.energy;
-    const kind = idea.section!.kind;
-    const next = sections[i + 1]?.section;
     if (i === 0 && e <= 2) idea.drums.crash[0] = 0;
     if (i > 0 && e >= 2) crashAt(idea.drums, 0);
-    if (!next || (kind === 'intro' && slots[i].intro !== 'band')) return;
-    if (next.kind === 'chorus' && kind !== 'chorus') {
-      const t = r.weighted<'fill' | 'build' | 'hits' | 'stop'>([['fill', 3], ['build', kind === 'prechorus' ? 4 : 2], ['hits', 2], ['stop', 2]]);
-      if (t === 'build') { snareBuild(idea); idea.notes.push('Snare build into the chorus'); }
-      else if (t === 'hits') { bandHits(idea, r); idea.notes.push('The band hits accents together into the chorus'); }
-      else if (t === 'stop') { bandStop(idea, r.pick([1, 2])); idea.notes.push('Band stops right before the chorus'); }
-      else { ensureFill(idea, r); idea.notes.push('Drum fill into the chorus'); }
-    } else if (next.energy >= e) {
-      ensureFill(idea, r);
-      idea.notes.push('Drum fill into the next section');
+  });
+  // transitions: into a chorus a fill, a snare build, band hits, a stop or a push; into a section as loud
+  // a fill or a push; into a quieter one a fill, a chord left ringing or a breath. Then the parts lead
+  // across the bar line: a turnaround chord, the bass walking in, Guitar 2's pickup notes.
+  sections.forEach((idea, i) => {
+    const b = sections[i + 1];
+    if (!b) return;
+    const r = new Rng(`${S.structure}-t${i}`);
+    const m = new Rng(`${S.structure}-seam${i}`);
+    const e = idea.section!.energy;
+    const kind = idea.section!.kind;
+    const next = b.section!;
+    const into = next.kind === 'chorus' ? 'the chorus' : 'the next section';
+    const turn = turnaround(idea, b, m, b.song.key !== idea.song.key);
+    if (turn) idea.notes.push(turn);
+    type Seam = 'none' | 'fill' | 'build' | 'hits' | 'stop' | 'push' | 'ring';
+    let t: Seam = 'none';
+    // intros that start with the guitar alone bring the drums in themselves
+    if (kind !== 'intro' || slots[i].intro === 'band') {
+      if (next.kind === 'chorus' && kind !== 'chorus') {
+        t = r.weighted<Seam>([['fill', 3], ['build', kind === 'prechorus' ? 4 : 2], ['hits', 2], ['stop', 2], ['push', 2]]);
+      } else if (next.energy >= e) t = r.weighted<Seam>([['fill', 3], ['push', 1]]);
+      else t = r.weighted<Seam>([['fill', 3], ['ring', 2], ['stop', 1]]);
     }
+    if (t === 'push' && !push(idea, b)) t = 'fill';
+    if (t === 'build') { snareBuild(idea); idea.notes.push('Snare build into the chorus'); }
+    else if (t === 'hits') { bandHits(idea, r); idea.notes.push('The band hits accents together into the chorus'); }
+    else if (t === 'stop') { bandStop(idea, r.pick([1, 2])); idea.notes.push(next.energy < e ? 'Band stops for a breath before the next section' : 'Band stops right before the chorus'); }
+    else if (t === 'push') idea.notes.push(`The band pushes into ${into}: its first chord comes an 8th early`);
+    else if (t === 'ring') { ringOut(idea); idea.notes.push('The last chord is left ringing into the next section'); }
+    else if (t === 'fill') { ensureFill(idea, r); idea.notes.push(`Drum fill into ${into}`); }
+    if ((t === 'fill' || t === 'none') && idea.section!.energy >= 2 && m.chance(0.55) && walkUp(idea, b, m)) idea.notes.push(`Bass walks into ${into}`);
+    if (t !== 'hits' && t !== 'push' && m.chance(0.6) && g2Pickup(idea, b, m)) idea.notes.push(`Guitar 2 leads into ${into} with pickup notes`);
   });
   makeEnding(sections[sections.length - 1], home);
   sections[sections.length - 1].notes.push('Ends on a held chord');

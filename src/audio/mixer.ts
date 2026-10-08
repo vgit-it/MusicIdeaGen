@@ -140,9 +140,15 @@ export class Mixer {
     this.delay.delayTime.rampTo((60 / bpm) * 0.75, 0.05);
   }
 
-  /** Glide to a section's level (dB) at an audio time. */
-  setSectionLevel(db: number, time: number) {
-    for (const g of [this.sectionLevel, ...this.stems]) g.gain.setTargetAtTime(Tone.dbToGain(db), time, 0.06);
+  private levelDb = 0;
+
+  /**
+   * Glide to a section's level (dB) at an audio time: quickly up (a section arrives), slowly down, so a
+   * quieter section settles in while the last chord and crash of the louder one ring out.
+   */
+  setSectionLevel(db: number, time: number, glide = db < this.levelDb - 0.1 ? 0.35 : 0.06) {
+    this.levelDb = db;
+    for (const g of [this.sectionLevel, ...this.stems]) g.gain.setTargetAtTime(Tone.dbToGain(db), time, glide);
   }
 
   setMasterVolume(slider: number) {

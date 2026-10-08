@@ -458,10 +458,18 @@ export class Engine {
     const lastBar = song.bars[song.bars.length - 1];
     const ending = !!idea.section?.ending && g >= lastBar.start;
 
-    // how many steps until the next non-empty step in a lane
-    const gapUntil = (lane: ArrayLike<unknown>, empty: unknown, cap: number) => {
+    // what plays after this item: the next section (or the same one again, on a loop)
+    const after = this.list[this.idx + 1] ?? (this.loop ? this.list[0] : null);
+    // how many steps until the next non-empty step in a lane, looking on into what plays next
+    // (a chord pushed early or left ringing sounds on over the bar line)
+    const gapUntil = (lane: (i: Idea) => ArrayLike<unknown>, empty: unknown, cap: number) => {
       let n = 1;
-      while (n < cap && lane[(g + n) % total] === empty) n++;
+      while (n < cap) {
+        const k = g + n;
+        const v = k < total ? lane(idea)[k] : after ? lane(after)[k - total] : empty;
+        if (v !== empty) break;
+        n++;
+      }
       return n;
     };
 
@@ -481,7 +489,7 @@ export class Engine {
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       // accents on the beat, and a little extra where the kick or snare lands (the band hits together)
       const accent = (groupStarts(bar.groups).includes(g - bar.start) ? 0.12 : 0) + (drums.kick[g] || drums.snare[g] >= 0.5 ? 0.06 : 0);
-      const n = gapUntil(strum, '.', 16);
+      const n = gapUntil((i) => i.strum, '.', 16);
       const maxRing = ci.kind === 'guitar' ? 2.4 : 1.6;
       ci.strum({
         stroke: st,
@@ -506,12 +514,18 @@ export class Engine {
     if (drums.tom[g]) d.hit('tom', time, 0.8, drums.tom[g]);
 
     if (bass[g]) {
-      const n = idea.bassLen?.[g] || gapUntil(bass, 0, 16);
+      const n = idea.bassLen?.[g] || gapUntil((i) => i.bass, 0, 16);
       // pluck harder on the beat
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
       const dur = ending ? 5 : Math.min(n * six * 0.92, idea.guitar ? 2.5 : 1.2);
       this.bass.play(bass[g], time, dur, (onBeat ? 0.9 : 0.74) * dyn);
+    }
+
+    // the last beat swells toward a louder next section (the drummer's fill builds into it)
+    if (after && after !== idea && g === lastBar.start + lastBar.len - lastBar.groups[lastBar.groups.length - 1]) {
+      const now = SECTION_DB[idea.section?.energy ?? 4], then = SECTION_DB[after.section?.energy ?? 4];
+      if (then > now) this.mixer.setSectionLevel((now + then) / 2, time, lastBar.groups[lastBar.groups.length - 1] * six / 2);
     }
 
     const bi = song.bars.findIndex((b) => b.start === g);

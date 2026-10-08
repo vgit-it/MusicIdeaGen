@@ -53,11 +53,14 @@ const MINORISH: Mode[] = ['minor', 'dorian', 'phrygian'];
 const LEAD_RANGE: [number, number] = [62, 81];
 const OCTAVE_RANGE: [number, number] = [55, 69];
 
-/** Pentatonic core plus some colour notes from the mode (semitones above the key). */
+/**
+ * Pentatonic core plus the odd colour note from the mode (semitones above the key). Guitar riffs
+ * and leads live in the pentatonic; a lot of modal colour made lines wander.
+ */
 function leadScale(rng: Rng, mode: Mode, w: number): number[] {
   const minor = MINORISH.includes(mode);
   const s = new Set(minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9]);
-  for (const n of SCALES[mode]) if (rng.chance(0.25 + w * 0.3)) s.add(n);
+  for (const n of SCALES[mode]) if (rng.chance(0.1 + w * 0.3)) s.add(n);
   if (minor && rng.chance(0.15 + w * 0.4)) s.add(6);
   return [...s].sort((a, b) => a - b);
 }
@@ -348,9 +351,10 @@ export function generateGuitar2(
     const runBars = run.map((i) => bars[i]);
     const last = runBars[runBars.length - 1];
     const from = runBars[0].start, to = last.start + last.len;
-    // a harmony needs single notes to follow (not chords, not the pedal)
+    // a harmony follows the riff's ringing single notes (not chords, not the pedal, not palm-muted
+    // chugs: harmonised chugs turn to mush through distortion)
     const harmonizable = (h: GuitarHit) =>
-      h.step >= from && h.step < to && h.notes.length === 1 && h.mute !== 'dead' && !h.clean && !h.pedal;
+      h.step >= from && h.step < to && h.notes.length === 1 && !h.mute && !h.clean && !h.pedal;
     if (style === 'harmony' && !riff?.some(harmonizable)) style = 'lead';
     styles.push(style);
     labels.push(GUITAR2_LABEL[style]);
@@ -390,11 +394,11 @@ export function generateGuitar2(
       labels[labels.length - 1] = `harmony of the riff, a${interval === 'octave' ? 'n' : ''} ${interval} up`;
     } else if (style === 'rhythm') {
       // ringing power chords following the chords (the second guitar under a picked hook):
-      // held through the bar, on beats 1 and 3, or on every beat
-      const feel = rng.weighted([['hold', 2], ['half', 2], ['beats', 1]] as const);
+      // held through the bar, or on beats 1 and 3
+      const feel = rng.weighted([['hold', 3], ['half', 2]] as const);
       for (const b of runBars) {
         const gs = groupStarts(b.groups);
-        const st = (feel === 'hold' ? [0] : feel === 'half' ? gs.filter((_, i) => i % 2 === 0) : gs).map((p) => b.start + p);
+        const st = (feel === 'hold' ? [0] : gs.filter((_, i) => i % 2 === 0)).map((p) => b.start + p);
         const changes = chords.timeline.map((e) => e.step).filter((s) => s > b.start && s < b.start + b.len);
         const starts = [...new Set([...st, ...changes])].sort((x, y) => x - y);
         starts.forEach((s, i) => {

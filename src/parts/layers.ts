@@ -83,9 +83,15 @@ function shape(idea: Idea) {
     end: tail && 'stop' in tail ? tail.stop : s?.ending ? last.start : total,
     hits: tail && 'hits' in tail ? tail.hits : null,
     hitsFrom: tail && 'hits' in tail ? last.start : total,
+    /** The band pushes the next section's chord early, or strikes one chord and lets it ring. */
+    push: tail && 'push' in tail ? tail.push : null,
+    ring: tail && 'ring' in tail ? tail.ring : null,
+    /** The previous section pushed this one's first chord: the downbeat isn't struck again. */
+    pushedIn: !!s?.pushedIn,
     /** The final held chord. */
     ending: s?.ending ? last.start : null,
     bandFrom: s?.bandFrom ?? 0,
+    total,
     /** Every section of a kind shares its picks (all choruses alike); the energy band still changes the options. */
     seedTag: s ? s.kind : 'idea',
   };
@@ -154,7 +160,7 @@ export function writeKeys(idea: Idea, choice: KeysChoice, seed: string): Layer {
     return n;
   };
   const start = sh.bandFrom;
-  const stop = Math.min(sh.end, sh.hitsFrom);
+  const stop = Math.min(sh.end, sh.hitsFrom, sh.push ?? sh.total, sh.ring ?? sh.total);
   // one comping rhythm and stab figure per section (so it grooves), driving 8ths only in loud pop
   const comp = sh.energy >= 5 && idea.song.partGenres.strum === 'pop' && rng.chance(0.6) ? EIGHTHS : rng.pick(COMP);
   const stabs = rng.pick(STABS);
@@ -224,15 +230,21 @@ export function writeKeys(idea: Idea, choice: KeysChoice, seed: string): Layer {
   // nothing rings into a band stop or the hits
   for (const n of out) n.len = Math.min(n.len, stop - n.step);
   punctuate(sh, out, rh, base);
+  // the chord pushed early from the section before is still ringing
+  if (sh.pushedIn) out.splice(0, out.length, ...out.filter((n) => n.step > 0));
   const desc = start >= idea.song.total ? 'sits out until the band comes in'
     : `${KEYS_DESC[style]}${leftHand ? ' with a low left hand' : ''}${start > 0 ? ' (comes in with the band)' : ''}`;
   return { notes: out, desc: `Piano: ${desc}` };
 }
 
-/** Band hits: short chords with the band. The final held chord: one long chord. */
-function punctuate(sh: ReturnType<typeof shape>, out: LayerNote[], rh: (g: number) => number[], base: number) {
+/** Band hits: short chords with the band. The final held chord: one long chord. `accents`: pushes and left-ringing chords too (the pad just follows the chords). */
+function punctuate(sh: ReturnType<typeof shape>, out: LayerNote[], rh: (g: number) => number[], base: number, accents = true) {
   for (const g of sh.hits ?? []) out.push({ step: g, notes: rh(g), len: 2, vel: base + 0.1 });
   if (sh.ending !== null) out.push({ step: sh.ending, notes: rh(sh.ending), len: 32, vel: base + 0.05 });
+  if (!accents) return;
+  // pushed and left-ringing chords sound on into the next section
+  if (sh.push !== null) out.push({ step: sh.push, notes: rh(sh.push), len: sh.total - sh.push + 6, vel: base + 0.1 });
+  if (sh.ring !== null) out.push({ step: sh.ring, notes: rh(sh.ring), len: sh.total - sh.ring + 4, vel: base + 0.05 });
 }
 
 /* ---------------------------------------------------------------- pad */
@@ -266,7 +278,7 @@ export function writePad(idea: Idea, seed: string): Layer {
   const stop = Math.min(sh.end, sh.hitsFrom);
   const list = changes(idea, 0, stop);
   list.forEach((g, i) => out.push({ step: g, notes: chordNotes(g), len: (list[i + 1] ?? stop) - g, vel }));
-  punctuate(sh, out, chordNotes, vel);
+  punctuate(sh, out, chordNotes, vel, false);
   const how = [open ? 'open voicing' : 'close voicing', ...(octave ? ['top note doubled an octave up'] : [])];
   return { notes: out, desc: `Pad: sustained chords, ${how.join(', ')}` };
 }

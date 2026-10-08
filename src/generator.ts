@@ -103,7 +103,8 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
   // last: the parts react to each other (pushes, kicks, fills, the end of the first phrase)
   const together = lockBand(new Rng(`${seeds.drums}-band`), song, chords, drums, strum, bass);
   const bassLen = bassLengths(new Rng(`${seeds.bass}-len`), song, bass);
-  const ending = phraseEnd(new Rng(`${seeds.strum}-end`), song, chords, drums, strum, bass, bassLen);
+  // the band's habit, not one part's: rerolling the strumming or the bass doesn't change it
+  const ending = phraseEnd(new Rng(`${seeds.song}-end`), song, chords, drums, strum, bass, bassLen);
   if (ending) together.push(ending);
   naturalStrokes(song, strum);
 

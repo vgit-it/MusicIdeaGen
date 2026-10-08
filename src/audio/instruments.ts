@@ -142,19 +142,22 @@ interface AmpSettings {
   bite: [number, number];
 }
 
-const AMP: Record<AmpTone, AmpSettings> = {
+export const AMP: Record<AmpTone, AmpSettings> = {
   clean: { comp: [-24, 3, 4], tight: 70, push: [800, 0], drive1: 1.3, drive2: 1, bass: 0, middle: 0, treble: 1.5, presence: 1, lowShelf: [450, -11], highShelf: [3000, 7], level: 28, lowCut: 75, top: 9000, bite: [3000, 0] },
   crunch: { comp: [-30, 3.5, 10], tight: 150, push: [750, 3], drive1: 6, drive2: 3.5, bass: 1, middle: 2, treble: 0, presence: 1.5, lowShelf: [400, -6], highShelf: [3000, 4], level: 2.2, lowCut: 130, top: 8000, bite: [2800, -2] },
   dist: { comp: [-42, 10, 26], tight: 300, push: [720, 6], drive1: 16, drive2: 10, bass: 3, middle: -1.5, treble: 0, presence: 2, lowShelf: [450, -6], highShelf: [3000, 1], level: 2.1, lowCut: 130, top: 6500, bite: [2700, -4] },
 };
 
 /**
- * A lead guitar's voicing of the driven settings: thinner at the bottom (it sits above the rhythm
- * guitars and bass), a vocal mid push, more sustain, and a smoother top.
+ * A lead guitar's voicing of the driven settings: a little mid push and sustain, a smoother top,
+ * less gain than the rhythm sound (single notes through rhythm-level gain turn into a square-wave
+ * buzz), and the note's body kept. An earlier voicing cut everything under 400 Hz before the drive
+ * and pushed 850 Hz by 8 dB: lead notes lost their fundamental (11 dB under the 2nd harmonic on an
+ * E4) and came out thin, nasal and buzzy. Now the fundamental leads and the harmonics taper off.
  */
-const LEAD: Partial<Record<AmpTone, AmpSettings>> = {
-  crunch: { ...AMP.crunch, comp: [-34, 4, 14], tight: 250, push: [900, 6], lowShelf: [450, -9], highShelf: [3000, 2], lowCut: 170, top: 6500, bite: [3000, -2] },
-  dist: { ...AMP.dist, comp: [-44, 10, 28], tight: 400, push: [850, 8], lowShelf: [450, -9], highShelf: [3000, -1], lowCut: 170, top: 6000, bite: [3000, -3] },
+export const LEAD: Partial<Record<AmpTone, AmpSettings>> = {
+  crunch: { ...AMP.crunch, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 3], level: 2.05, lowCut: 100, top: 6500, bite: [3000, -2] },
+  dist: { ...AMP.dist, comp: [-32, 4, 14], tight: 150, push: [800, 3], drive1: 9, drive2: 6, lowShelf: [300, -2], highShelf: [3000, -1], level: 1.98, lowCut: 100, top: 6000, bite: [3000, -3] },
 };
 
 /**
@@ -440,11 +443,13 @@ export class Guitar implements ChordInstrument {
     // a held single note gets real vibrato; a held driven chord just a little shimmer
     const vibrato = this.type !== 'electric' || letRing ? 0 : notes.length === 1 ? (driven ? 16 : 10) : driven ? 4 : 0;
 
-    // stopping ringing strings makes a little damping noise, like a real hand
+    // stopping ringing strings makes a little damping noise, like a real hand (but not between the
+    // notes of a single-note line: the fingers just move on, and the drive would blow the noise up)
+    const line = notes.length === 1 && stroke === 'D';
     const muteAll = (t: number, fade = 0.015) => {
       const ringing = take.strings.some((v) => MultiSampler.ringing(v, t));
-      take.strings.forEach((v) => take.ring.choke(v, t, fade));
-      if (ringing && Math.random() < 0.6) take.ring.releaseNoise(t, (0.18 + Math.random() * 0.1) * (driven ? 0.3 : 1));
+      take.strings.forEach((v) => take.ring.choke(v, t, line ? 0.025 : fade));
+      if (ringing && !line && Math.random() < 0.6) take.ring.releaseNoise(t, (0.18 + Math.random() * 0.1) * (driven ? 0.3 : 1));
     };
 
     if (stroke === 'D') {

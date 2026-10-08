@@ -68,10 +68,15 @@ export function generateStrum(rng: Rng, song: Song, chords: ChordPart): { strum:
   const lift = rng.weighted(lib.filter(([x]) => x.name !== pat.name));
   const spice = w >= 0.3 && rng.chance(0.3 + w);
   const second = plan.slice(4).some((v) => v === 'B' || v === 'C') && rng.chance(0.6);
+  // how this player phrases the pattern: as written, with a breath before the next bar (the last
+  // stroke left out), or a choke on the last off-beat; so two takes of one pattern still differ
+  const touch = rng.weighted<'plain' | 'breath' | 'choke'>([['plain', 2], ['breath', 1], ['choke', 1]]);
 
   const bar16 = (x: Pattern) => {
     const a = strokes(x.p);
     if (spice && x.spice) for (let i = 0; i < 16; i++) if (x.spice[i] !== '.') a[i] = x.spice[i] as Stroke;
+    if (touch === 'breath') { for (let i = 15; i >= 13; i--) if (a[i] !== '.') { a[i] = '.'; break; } }
+    if (touch === 'choke' && a[14] === '.' && a[15] === '.') a[14] = 'x';
     return a;
   };
   const byMeter: Record<string, { A: Stroke[]; B: Stroke[] }> = {};
