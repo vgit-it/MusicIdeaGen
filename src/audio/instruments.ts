@@ -514,11 +514,12 @@ export const BASS_INSTRUMENTS: { id: BassId; label: string }[] = [
 export type BassTone = 'clean' | 'warm' | 'grit' | 'heavy';
 
 const BASS_TONE: Record<BassTone, { grit: number; drive: number; clank: number; level: number }> = {
-  // grit = how much of the distorted "growl" path is blended in; clank = string/pick definition (dB)
+  // grit = how much of the distorted "growl" path is blended in; clank = string/pick definition (dB).
+  // Every tone stays close to clean: heavier styles get only a touch more growl (level keeps them even)
   clean: { grit: 0.12, drive: 2, clank: 5, level: 0.9 },
-  warm: { grit: 0.25, drive: 3, clank: 4, level: 0.47 },
-  grit: { grit: 0.45, drive: 6, clank: 4, level: 0.47 },
-  heavy: { grit: 0.65, drive: 10, clank: 5, level: 0.35 },
+  warm: { grit: 0.14, drive: 2.5, clank: 4.5, level: 0.79 },
+  grit: { grit: 0.17, drive: 3, clank: 4.5, level: 0.67 },
+  heavy: { grit: 0.2, drive: 3.5, clank: 5, level: 0.58 },
 };
 
 /**
