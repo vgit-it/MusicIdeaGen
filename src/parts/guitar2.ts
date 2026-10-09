@@ -288,6 +288,18 @@ function melody(
     });
   });
   evs.sort((a, b) => a.step - b.step);
+  // anticipations (a player's habit): a note that falls on a downbeat comes an 8th early and is tied
+  // over the bar line, so the line runs across the bar instead of starting again on each one
+  if (rng.chance(0.5)) {
+    for (const b of bars.slice(1)) {
+      const i = evs.findIndex((e) => e.step === b.start);
+      if (i <= 0 || !rng.chance(0.6)) continue;
+      const e = evs[i], early = b.start - 2, prev = evs[i - 1];
+      if (prev.step >= early || clashes(e.midi, early) || rubs(e.midi, early)) continue;
+      prev.len = Math.min(prev.len, early - prev.step);
+      evs[i] = { ...e, step: early, len: e.len + 2 };
+    }
+  }
   // nothing overlaps the next note
   return evs.filter((e, i) => i === 0 || e.step > evs[i - 1].step).map((e, i, a) => ({ ...e, len: Math.max(1, Math.min(e.len, (a[i + 1]?.step ?? Infinity) - e.step)) }));
 }

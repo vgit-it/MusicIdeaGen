@@ -4,7 +4,7 @@ import type { ChordChoice, Engine } from '../audio/engine';
 import { BASS_INSTRUMENTS, type BassId, CHORD_INSTRUMENTS, DRUM_KITS, type DrumKitId } from '../audio/instruments';
 import type { LayerPart, MixPart } from '../audio/mixer';
 import { PAD_TONES } from '../audio/pad';
-import { KEYS_STYLES } from '../parts/layers';
+import { KEYS_STYLES, PERC_STYLES, STRINGS_STYLES } from '../parts/layers';
 
 interface PartDef {
   part: MixPart;
@@ -52,6 +52,16 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       layer: { add: '+ Add pad', title: 'A synth pad that holds the chords underneath everything' },
       onInstrument: (id) => { engine.setLayer('pad', id as never); onChange(); },
     },
+    {
+      part: 'strings', label: 'Strings', volume: 70, options: STRINGS_STYLES,
+      layer: { add: '+ Add strings', title: 'A string section: held chords, swells, high violins or stabs to suit each section' },
+      onInstrument: (id) => { engine.setLayer('strings', id as never); onChange(); },
+    },
+    {
+      part: 'perc', label: 'Percussion', volume: 70, options: PERC_STYLES,
+      layer: { add: '+ Add percussion', title: 'Tambourine, shaker, claps or congas, more of it in the bigger sections' },
+      onInstrument: (id) => { engine.setLayer('perc', id as never); onChange(); },
+    },
   ];
 
   root.innerHTML = '';
@@ -61,7 +71,10 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
     row.className = 'part' + (d.layer ? ' layer off' : '');
     row.innerHTML = `
       <span class="name">${d.label}</span>
-      <select aria-label="${d.label} ${d.layer ? 'style' : 'instrument'}">${d.options.map((o) => `<option value="${o.id}">${o.label}</option>`).join('')}</select>
+      <span class="picks">
+        <select aria-label="${d.label} ${d.layer ? 'style' : 'instrument'}">${d.options.map((o) => `<option value="${o.id}">${o.label}</option>`).join('')}</select>
+        ${d.layer ? `<select class="use" aria-label="Where the ${d.label.toLowerCase()} plays" title="Comes and goes: the ${d.label.toLowerCase()} plays some sections and moments, not others, to suit the song. Throughout: every bar."><option value="auto">Comes and goes</option><option value="all">Throughout</option></select>` : ''}
+      </span>
       <input type="range" min="0" max="100" value="${d.volume}" aria-label="${d.label} volume">
       <span class="toggles">
         <button class="toggle mute" aria-pressed="false" title="Mute">M</button>
@@ -98,9 +111,13 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
         show(false);
         onChange();
       };
+      const use = row.querySelector<HTMLSelectElement>('.use')!;
+      use.onchange = () => { engine.setLayerThroughout(part, use.value === 'all'); onChange(); };
       syncs.push(() => {
-        const v = engine.layerSettings[part];
+        const s = engine.layerSettings;
+        const v = s[part];
         if (v) select.value = v;
+        use.value = s.throughout?.includes(part) ? 'all' : 'auto';
         show(!!v);
       });
     }

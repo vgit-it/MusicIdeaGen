@@ -33,6 +33,9 @@ export interface MidiOptions {
   /** Added layers: each one's part for an idea (null when it's off). */
   keysFor?: (idea: Idea) => Layer | null;
   padFor?: (idea: Idea) => Layer | null;
+  stringsFor?: (idea: Idea) => Layer | null;
+  /** Percussion notes are General MIDI percussion numbers (written on the drum channel). */
+  percFor?: (idea: Idea) => Layer | null;
 }
 
 const vel = (v: number) => Math.max(0.05, Math.min(1, v));
@@ -62,6 +65,8 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
   const drums = mk('Drums', 9, 0); // channel 10 (index 9): the GM drum kit
   const piano = mk('Piano', 3, 0);
   const pad = mk('Pad', 4, 89); // GM "Pad 2 (warm)"
+  const strings = mk('Strings', 5, 48); // GM "String Ensemble 1"
+  const perc = mk('Percussion', 9, 0);
 
   const note = (t: MidiTrack, midiNote: number, ticks: number, dur: number, v: number) => {
     if (midiNote < 0 || midiNote > 127) return;
@@ -101,7 +106,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       lastKey = keyName;
     }
     const expression = Math.round(127 * 10 ** (SECTION_DB[energy] / 20));
-    for (const t of [rhythm, g2, bass, drums, piano, pad]) t.addCC({ number: 11, value: expression / 127, ticks: offset });
+    for (const t of [rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset });
 
     const isGuitar = (id: ChordInstrumentId) => id !== 'piano';
     const id = o.chordIdFor(idea);
@@ -142,8 +147,10 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       for (const h of idea.guitar2) if (h.step === g) hit(g2, h, h.vel, false);
 
       if (bl[g]) {
-        const n = idea.bassLen?.[g] || gapUntil(bl, 0, g, 16);
-        const dur = ending ? 5 : Math.min(n * sixSec * 0.92, idea.guitar ? 2.5 : 1.2);
+        // as played: legato into the next note, unless written shorter
+        const next = gapUntil(bl, 0, g, 64);
+        const n = idea.bassLen?.[g] || next;
+        const dur = ending ? 5 : Math.min(n >= next ? next * sixSec * 0.98 : n * sixSec * 0.95, 4.5);
         note(bass, bl[g], at(g), secToTicks(dur), (onBeat ? 0.9 : 0.74) * dyn);
       }
 
@@ -158,7 +165,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       if (d.tom[g]) dn(DRUM_NOTE.tom[Math.min(2, d.tom[g] - 1)], 0.8);
     }
     // added layers: already written with their lengths and velocities (ending chords ring 2 bars)
-    for (const [t, layer] of [[piano, o.keysFor?.(idea)], [pad, o.padFor?.(idea)]] as const) {
+    for (const [t, layer] of [[piano, o.keysFor?.(idea)], [pad, o.padFor?.(idea)], [strings, o.stringsFor?.(idea)], [perc, o.percFor?.(idea)]] as const) {
       for (const n of layer?.notes ?? []) for (const m of n.notes) note(t, m, at(n.step), n.len * SIX * 0.97, n.vel);
     }
     offset += total * SIX;

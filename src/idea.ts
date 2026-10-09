@@ -4,6 +4,7 @@ import type { Genre, GenreSel, RiffStyle } from './genres';
 import type { SectionSound } from './sounds';
 import type { Bar, Variant } from './rhythm';
 import type { Chord, Mode } from './theory';
+import type { BassLine } from './parts/bass';
 import type { Tuning } from './theory/fretboard';
 
 export type PartName = 'chords' | 'drums' | 'strum' | 'bass';
@@ -17,9 +18,11 @@ export interface Seeds {
   bass: string;
   /** Optional so older seed sets still work. */
   guitar2?: string;
-  /** Piano and pad layers (optional, like guitar2). */
+  /** Piano, pad, strings and percussion layers (optional, like guitar2). */
   keys?: string;
   pad?: string;
+  strings?: string;
+  perc?: string;
 }
 
 export interface GenOptions {
@@ -132,6 +135,8 @@ export interface Idea {
   bass: number[];
   /** Optional note length in 16ths per step (otherwise a note lasts until the next one). */
   bassLen?: number[];
+  /** Strummed genres: how the bass plays (locked to the kick, held, flowing or driving). */
+  bassLine?: BassLine;
   /** Riff genres: the guitar part as explicit hits (replaces the strum lane for playback). */
   guitar?: GuitarHit[];
   /** Second guitar: lead, harmony, octaves, arpeggios or swells. */
@@ -159,4 +164,6 @@ export interface SectionInfo {
   tail?: { stop: number } | { hits: number[] } | { build: number } | { push: number } | { ring: number };
   /** The previous section pushed this one's first chord early: its downbeat isn't struck again. */
   pushedIn?: boolean;
+  /** Where it sits in its track (and what the track is), so added layers can plan where they play. */
+  pos?: { index: number; all: { kind: SectionKind; energy: number }[] };
 }

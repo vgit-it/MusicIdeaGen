@@ -85,6 +85,29 @@
       "rr": 2,
       "noises": 0,
       "releases": 0
+    },
+    "strings": {
+      "notes": [
+        36,
+        40,
+        43,
+        47,
+        50,
+        53,
+        59,
+        62,
+        65,
+        69,
+        72,
+        76,
+        79,
+        83,
+        86
+      ],
+      "layers": 1,
+      "rr": 1,
+      "noises": 0,
+      "releases": 0
     }
   },
   "drums": {
@@ -123,6 +146,23 @@
     "tom3": {
       "layers": 1,
       "rr": 1
+    }
+  },
+  "perc": {
+    "tambDown": {
+      "rr": 4
+    },
+    "tambUp": {
+      "rr": 4
+    },
+    "shaker": {
+      "rr": 8
+    },
+    "conga": {
+      "rr": 4
+    },
+    "congaLow": {
+      "rr": 4
     }
   }
 }

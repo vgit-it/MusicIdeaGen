@@ -45,8 +45,13 @@ export function generateChords(rng: Rng, song: Song): ChordPart {
     return colours[root % colours.length];
   };
 
-  const durChoices = w > 0.4 && rng.chance(w * 0.7) ? [0.5, 1, 1, 1.5, 2] : [1];
-  if (durChoices.length > 1) notes.push('Uneven harmonic rhythm — some chords last half a bar, some two');
+  const uneven = w > 0.4 && rng.chance(w * 0.7);
+  const durChoices = uneven ? [0.5, 1, 1, 1.5, 2] : [1];
+  if (uneven) notes.push('Uneven harmonic rhythm — some chords last half a bar, some two');
+  // otherwise a chord a bar, a chord every two bars, or a mix: chords held across the bar line
+  // are as common in songs as one per bar
+  const rhythm = uneven ? null : rng.weighted(HARMONIC_RHYTHMS);
+  if (rhythm && rhythm.desc) notes.push(`Chord rhythm: ${rhythm.desc}`);
 
   // bar position (e.g. 2.5 = halfway through bar 3) -> step, snapped to 8ths
   const barPosToStep = (p: number) => {
@@ -69,7 +74,7 @@ export function generateChords(rng: Rng, song: Song): ChordPart {
       step = Math.max(timeline[timeline.length - 1].step + 2, step - 2);
     }
     timeline.push({ step, chord: c });
-    cur += rng.pick(durChoices);
+    cur += rhythm ? rhythm.bars[ci % rhythm.bars.length] : rng.pick(durChoices);
     ci++;
   }
 
@@ -83,6 +88,15 @@ export function generateChords(rng: Rng, song: Song): ChordPart {
 }
 
 const MINORISH: Mode[] = ['minor', 'dorian', 'phrygian'];
+
+/** How long each chord lasts, in bars, repeating (strummed genres). */
+const HARMONIC_RHYTHMS: [{ bars: number[]; desc: string }, number][] = [
+  [{ bars: [1], desc: '' }, 4],
+  [{ bars: [2], desc: 'each chord lasts two bars' }, 2],
+  [{ bars: [2, 1, 1], desc: 'a chord held for two bars, then two quicker ones' }, 2],
+  [{ bars: [1, 1, 2], desc: 'two quick chords, then one held for two bars' }, 2],
+  [{ bars: [3, 1], desc: 'a chord held for three bars, then a change' }, 1],
+];
 
 /**
  * Out-of-key chords that still sound intended (semitones above the tonic). Major keys: bVII, bVI, bIII,

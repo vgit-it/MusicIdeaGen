@@ -3,7 +3,7 @@ import * as Tone from 'tone';
 import { Engine, type LayerSettings } from './audio/engine';
 import { CHORD_INSTRUMENTS } from './audio/instruments';
 import type { GenreSel } from './genres';
-import type { MixPart } from './audio/mixer';
+import { LAYER_PARTS, type LayerPart, type MixPart } from './audio/mixer';
 import { type Rendered, encodeMp3, encodeWav, isSilent, renderAudio, zipFiles } from './export/audio';
 import { exportBaseName, toMidi } from './export/midi';
 import { generate, randomSeeds } from './generator';
@@ -58,7 +58,7 @@ function render() {
   const sound = `Sound: ${SOUND_NAME[engine.chordIdFor(cur)]}${cur.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[engine.guitar2IdFor(cur)]}` : ''}`;
   const shownIdea = { ...cur, notes: cur.notes.map((n) => (n.startsWith('Sound: ') ? sound : n)) };
   renderIdea(shownIdea, engine.shapesFor(cur), label(engine.chordIdFor(cur)), label(engine.guitar2IdFor(cur)),
-    { keys: engine.layerFor(cur, 'keys'), pad: engine.layerFor(cur, 'pad') });
+    Object.fromEntries(LAYER_PARTS.map((p) => [p, engine.layerFor(cur, p)])));
   if (track) {
     drawTrack(track);
     markSection(shown, looping);
@@ -111,7 +111,9 @@ $('copylink').onclick = async () => {
 type ExportKind = 'midi' | 'mp3' | 'wav' | 'stems';
 interface ExportFile { bytes: Uint8Array; name: string; type: string }
 
-const STEM_NAMES: Record<MixPart, string> = { chords: 'rhythm-guitar', guitar2: 'guitar-2', bass: 'bass', drums: 'drums', keys: 'piano', pad: 'pad' };
+const STEM_NAMES: Record<MixPart, string> = {
+  chords: 'rhythm-guitar', guitar2: 'guitar-2', bass: 'bass', drums: 'drums', keys: 'piano', pad: 'pad', strings: 'strings', perc: 'percussion',
+};
 const exportButtons = ['ex-mp3', 'ex-wav', 'ex-stems', 'ex-midi'].map((id) => $<HTMLButtonElement>(id));
 let exporting = false;
 
@@ -124,6 +126,7 @@ async function buildExport(kind: ExportKind, progress: (msg: string) => void = (
     const bytes = toMidi(list, {
       chordIdFor: (i) => engine.chordIdFor(i), guitar2IdFor: (i) => engine.guitar2IdFor(i),
       keysFor: (i) => engine.layerFor(i, 'keys'), padFor: (i) => engine.layerFor(i, 'pad'),
+      stringsFor: (i) => engine.layerFor(i, 'strings'), percFor: (i) => engine.layerFor(i, 'perc'),
     });
     return { bytes, name: `${base}.mid`, type: 'audio/midi' };
   }
@@ -254,7 +257,7 @@ function readTempo(): number | undefined {
 /* ---- ideas, locks and rerolls */
 
 const lockPanel = buildLockPanel($('locks'), locks, (k) => reroll(k), () => updateLink(),
-  (k) => (k !== 'keys' && k !== 'pad') || !!engine.layerSettings[k]);
+  (k) => !(LAYER_PARTS as string[]).includes(k) || !!engine.layerSettings[k as LayerPart]);
 
 function showIdea(next: Idea, keepPlace = false) {
   idea = next;
@@ -501,7 +504,8 @@ if (shared) {
   weird.value = String(Math.round(shared.o.weirdness * 100));
   $('wv').textContent = weird.value;
   if (shared.o.bpm) tempo.value = String(shared.o.bpm);
-  for (const p of ['keys', 'pad'] as const) if (shared.l?.[p]) engine.setLayer(p, shared.l[p]!);
+  for (const p of LAYER_PARTS) if (shared.l?.[p]) engine.setLayer(p, shared.l[p]!);
+  for (const p of shared.l?.throughout ?? []) engine.setLayerThroughout(p, true);
   partsPanel.sync();
   showIdea(generate(shared.o, shared.s));
   if (shared.t) enterTrack(shared.t);

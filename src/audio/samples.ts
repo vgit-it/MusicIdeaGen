@@ -122,3 +122,23 @@ export function loadCab(name: CabName): Promise<AudioBuffer> {
   }
   return p;
 }
+
+export type PercPiece = keyof typeof manifest.perc;
+export const PERC_PIECES = Object.keys(manifest.perc) as PercPiece[];
+
+let percCache: Promise<Record<PercPiece, AudioBuffer[]>> | null = null;
+
+/** Percussion one-shots (tambourine, shaker, congas): round robins per piece (loaded once, shared). */
+export function loadPerc(): Promise<Record<PercPiece, AudioBuffer[]>> {
+  if (!percCache) {
+    percCache = withTimeout(
+      Promise.all(PERC_PIECES.map(async (piece) => {
+        const bufs = await Promise.all(range(manifest.perc[piece].rr).map((r) => load(`perc/${piece}-${r}.mp3`)));
+        return [piece, bufs] as const;
+      })).then((e) => Object.fromEntries(e) as Record<PercPiece, AudioBuffer[]>),
+      'percussion',
+    );
+    percCache.catch(() => { percCache = null; });
+  }
+  return percCache;
+}

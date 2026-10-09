@@ -11,6 +11,7 @@ import type {
 } from './idea';
 import { type DrumBar, addFill } from './parts/drums';
 import { type Guitar2Style, generateGuitar2, generateHook, pickStyle } from './parts/guitar2';
+import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
 import { Rng } from './rng';
@@ -137,6 +138,7 @@ function join(segs: Seg[], info: SectionInfo): Idea {
     strum,
     bass,
     bassLen: riff || segs.some((s) => s.idea.bassLen) ? bassLen : undefined,
+    bassLine: first.bassLine,
     guitar: riff ? guitar : undefined,
     guitar2,
     notes: [],
@@ -272,6 +274,17 @@ const bassRoot = (key: number, c: Chord) => {
   return m;
 };
 
+/** Where a held chord is struck: on each change, and again at the top of every second bar it carries on for. */
+function restrikes(song: Song, changes: Set<number>): Set<number> {
+  const out = new Set(changes);
+  let held = 0;
+  song.bars.forEach((b) => {
+    held = changes.has(b.start) ? 0 : held + 1;
+    if (held && held % 2 === 0) out.add(b.start);
+  });
+  return out;
+}
+
 /** Strummed parts: held chords (1), palm mutes (2), as written (3–4), every beat struck (5). */
 function shapeStrum(idea: Idea, e: number) {
   if (e === 3 || e === 4) return;
@@ -279,10 +292,10 @@ function shapeStrum(idea: Idea, e: number) {
   const genre = song.partGenres.strum;
   const beat = beatSet(song);
   const changes = new Set(chords.timeline.map((t) => t.step));
-  const barStarts = new Set(song.bars.map((b) => b.start));
+  const again = restrikes(song, changes);
   for (let g = 0; g < song.total; g++) {
     const s = strum[g];
-    if (e <= 1) strum[g] = barStarts.has(g) || changes.has(g) ? 'D' : '.';
+    if (e <= 1) strum[g] = again.has(g) ? 'D' : '.';
     else if (e === 2 && genre !== 'funk') {
       if (s === 'U' || (genre === 'pop' && s === 'x')) strum[g] = '.';
       else if (genre !== 'pop' && s === 'D' && !beat.has(g) && !changes.has(g)) strum[g] = 'p';
@@ -297,15 +310,16 @@ function shapeStrum(idea: Idea, e: number) {
 function shapeBass(idea: Idea, e: number) {
   if (e === 3 || e === 4) return;
   const { bass, song, chords } = idea;
-  if (e >= 5 && song.partGenres.bass === 'funk') return;
+  // a flowing line already moves: the biggest sections keep it (funk keeps its groove)
+  if (e >= 5 && (song.partGenres.bass === 'funk' || idea.bassLine === 'flowing')) return;
   // long roots and driving 8ths are played legato
   idea.bassLen?.fill(0);
   const beat = beatSet(song);
   const changes = new Set(chords.timeline.map((t) => t.step));
-  const barStarts = new Set(song.bars.map((b) => b.start));
+  const again = restrikes(song, changes);
   for (let g = 0; g < song.total; g++) {
     const r = bassRoot(song.key, chords.timeline[chords.chordIdx[g]].chord);
-    if (e <= 2) bass[g] = changes.has(g) || (e === 2 ? beat.has(g) : barStarts.has(g)) ? r : 0;
+    if (e <= 2) bass[g] = changes.has(g) || (e === 2 ? beat.has(g) : again.has(g)) ? r : 0;
     else if (g % 2 === 0 && !bass[g]) bass[g] = r;
   }
 }
@@ -1092,6 +1106,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     notes.unshift(`${label} · energy ${s.energy} of 5 · ${idea.song.bars.length} bars · ${rhythm}`, `Chords: ${describeChords(idea)}`);
     notes.push(g2);
     if (idea.drums.groove && s.intro !== 'alone' && s.energy >= 2) notes.push(`Drums: ${idea.drums.groove}`);
+    if (!riff && idea.bassLine && s.intro !== 'alone') {
+      notes.push(`Bass: ${s.energy <= 2 ? 'long held roots' : s.energy >= 5 && idea.bassLine !== 'flowing' && idea.song.partGenres.bass !== 'funk' ? 'driving 8th notes, held into each other' : BASS_LINE_DESC[idea.bassLine]}`);
+    }
     if (s.energy >= 5) notes.push('Drums: crashes every 2 bars');
     if (s.energy === 2 && s.intro !== 'alone') notes.push('Drums: lighter, closed hi-hat');
     if (s.energy === 3 && s.intro !== 'alone') notes.push('Drums: closed hi-hat');
@@ -1147,6 +1164,10 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const { chords, guitar2 } = idea.section!.sound!;
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
   }
+
+  // each section knows the shape of its track (added layers plan where they play from it)
+  const all = sections.map((s) => ({ kind: s.section!.kind, energy: s.section!.energy }));
+  sections.forEach((s, index) => { s.section!.pos = { index, all }; });
 
   const bars = sections.reduce((a, s) => a + s.song.bars.length, 0);
   const steps = sections.reduce((a, s) => a + s.song.total, 0);

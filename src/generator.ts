@@ -2,21 +2,21 @@
 
 import { GENRES, GENRE_LIST, type Genre, type RiffStyle } from './genres';
 import type { ChordPart, Cycle, GenOptions, Idea, Seeds, Song, Stroke } from './idea';
-import { bassLengths, generateBass, generateRiffBass } from './parts/bass';
+import { BASS_LINE_DESC, bassLengths, generateBass, generateRiffBass, pickBassLine, writeBassLine } from './parts/bass';
 import { generateChords } from './parts/chords';
 import { clearFills, lockBand, phraseEnd } from './parts/cohesion';
 import { generateDrums } from './parts/drums';
 import { generateGuitar2 } from './parts/guitar2';
 import { generateHeavyDrums } from './parts/heavyDrums';
 import { generateRiff } from './parts/riff';
-import { generateStrum, naturalStrokes } from './parts/strum';
+import { carryOver, generateStrum, naturalStrokes } from './parts/strum';
 import { Rng, newSeed } from './rng';
 import { type Bar, METERS, lcm, phrasePlan, pickMeters } from './rhythm';
 import { TUNINGS, type Tuning } from './theory/fretboard';
 
 
 export function randomSeeds(): Seeds {
-  return { song: newSeed(), chords: newSeed(), drums: newSeed(), strum: newSeed(), bass: newSeed(), guitar2: newSeed(), keys: newSeed(), pad: newSeed() };
+  return { song: newSeed(), chords: newSeed(), drums: newSeed(), strum: newSeed(), bass: newSeed(), guitar2: newSeed(), keys: newSeed(), pad: newSeed(), strings: newSeed(), perc: newSeed() };
 }
 
 /** Genres whose parts mix well with a strummed genre (Random only). */
@@ -99,10 +99,15 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
   if (song.sections) return generateRiffIdea(opts, seeds, song, chords);
   const drums = generateDrums(new Rng(seeds.drums), song);
   const { strum, name: pattern } = generateStrum(new Rng(seeds.strum), song, chords);
-  const bass = generateBass(new Rng(seeds.bass), song, chords, drums);
+  // where a chord carries on into the next bar, the strumming can too
+  const carried = carryOver(new Rng(`${seeds.strum}-carry`), song, chords, strum);
+  // the bass: locked to the kick (short notes), or a held, flowing or driving line (notes held into each other)
+  const bassLine = pickBassLine(new Rng(`${seeds.bass}-line`), song.partGenres.bass);
+  const written = bassLine === 'locked' ? null : writeBassLine(new Rng(seeds.bass), song, chords, bassLine);
+  const bass = written?.bass ?? generateBass(new Rng(seeds.bass), song, chords, drums);
   // last: the parts react to each other (pushes, kicks, fills, the end of the first phrase)
   const together = lockBand(new Rng(`${seeds.drums}-band`), song, chords, drums, strum, bass);
-  const bassLen = bassLengths(new Rng(`${seeds.bass}-len`), song, bass);
+  const bassLen = written ? written.lens.map((l, g) => (bass[g] ? l : 0)) : bassLengths(new Rng(`${seeds.bass}-len`), song, bass);
   // the band's habit, not one part's: rerolling the strumming or the bass doesn't change it
   const ending = phraseEnd(new Rng(`${seeds.song}-end`), song, chords, drums, strum, bass, bassLen);
   if (ending) together.push(ending);
@@ -115,6 +120,8 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
       (drums.halfTime ? ' · half-time' : '') +
       (drums.fourFloor ? ' · four-on-the-floor' : ''),
     ...(pattern ? [`Strumming: ${pattern}`] : []),
+    ...(carried ? [carried] : []),
+    `Bass: ${BASS_LINE_DESC[bassLine]}`,
     ...chords.notes,
     ...together,
     ...song.cycles.map((c) => {
@@ -131,7 +138,7 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
   const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, null);
   notes.splice(1, 0, ...g2.notes);
 
-  return { seeds, opts, song, chords, drums, strum, bass, bassLen, guitar2: clearFills(song, drums, g2.hits), notes };
+  return { seeds, opts, song, chords, drums, strum, bass, bassLen, bassLine, guitar2: clearFills(song, drums, g2.hits), notes };
 }
 
 /** Riff genres: guitar riff first, then drums locked to it and bass doubling it. */

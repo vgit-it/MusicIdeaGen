@@ -1,6 +1,7 @@
 // Riff-based guitar for heavy genres: single-note riffs, chugs with stabs, big chords, clean arpeggios.
 // A one-bar "cell" is written per section and repeated (that repetition is what makes it a riff),
-// with a turnaround at the end of each section. Cells are realized against the chord at each step.
+// often as a two-bar riff (the second bar answers the first), with a turnaround at the end of each
+// section. Cells are realized against the chord at each step.
 
 import { GENRES, type RiffGenre, type RiffStyle } from '../genres';
 import type { ChordPart, GuitarHit, Song } from '../idea';
@@ -149,6 +150,30 @@ function turnaround(rng: Rng, cell: Ev[], bar: Bar, style: RiffStyle): Ev[] {
   return [...keep, ...Array.from({ length: lastG }, (_, i) => ({ pos: from + i, len: 1, kind: 'palm' as const, deg: 0, vel: 0.72 + i * 0.05 }))];
 }
 
+/**
+ * The second bar of a two-bar riff: the first half as in the first bar, then an answer: new notes,
+ * a note or chord held to the end of the bar, or (big chords, when the chord carries on) nothing at
+ * all, the first bar's chord ringing on across the bar line (`tie`).
+ */
+function answerCell(rng: Rng, cell: Ev[], bar: Bar, style: RiffStyle, fresh: () => Ev[], canTie: boolean): { cell: Ev[]; tie: boolean } {
+  const half = groupStarts(bar.groups)[Math.ceil(bar.groups.length / 2)] ?? Math.floor(bar.len / 2);
+  const first = cell.filter((e) => e.pos < half).map((e) => ({ ...e, len: Math.min(e.len, half - e.pos) }));
+  const kind = rng.weighted<'new' | 'hold' | 'tie'>(style === 'big'
+    ? [['tie', canTie ? 3 : 0], ['new', 2], ['hold', 1]]
+    : [['new', 3], ['hold', 2]]);
+  if (kind === 'tie') return { cell: [], tie: true };
+  if (kind === 'hold') {
+    // single-note riffs hold the 5th or b7; the others let a power chord ring
+    const held: Ev = style === 'single'
+      ? { pos: half, len: bar.len - half, kind: 'note', deg: rng.pick([7, 10, 0, 12]), vel: 0.9 }
+      : { pos: half, len: bar.len - half, kind: 'chord', deg: rng.pick([0, 0, 10, 5]), vel: 0.95 };
+    return { cell: [...first, held], tie: false };
+  }
+  // new notes for the second half, in the same style
+  const second = fresh().filter((e) => e.pos >= half);
+  return { cell: [...first, ...(second.length ? second : [{ pos: half, len: bar.len - half, kind: 'chord' as const, deg: 0, vel: 0.92 }])], tie: false };
+}
+
 const ARP_PATTERNS = [
   [0, 0.6, 0.8, 1, 0.8, 0.6, 0.8, 1],
   [0, 0.8, 0.6, 1, 0.3, 0.8, 0.6, 1],
@@ -221,9 +246,10 @@ export function generateRiff(rng: Rng, song: Song, chords: ChordPart): RiffPart 
     return out;
   };
 
+  // the arpeggio carries on across the bar line while the chord does (a pattern can span two bars)
+  let k = 0;
   const arpBar = (bar: Bar) => {
     const step = arp16 ? 1 : 2;
-    let k = 0;
     for (let p = 0; p < bar.len; p += step) {
       const g = bar.start + p;
       const ti = chordIdx[g];
@@ -245,6 +271,7 @@ export function generateRiff(rng: Rng, song: Song, chords: ChordPart): RiffPart 
   let cells: Record<string, Ev[]> = {};
   let motifs: Record<string, unknown> = {};
   const figureNotes = new Set<string>();
+  const pairNotes = new Set<'answer' | 'tie'>();
   for (const run of [[0, 1, 2, 3], [4, 5, 6, 7]]) {
     const style = sections[run[0]];
     if (style !== prevStyle || rng.chance(0.25 + w * 0.4)) { cells = {}; motifs = {}; }
@@ -256,13 +283,27 @@ export function generateRiff(rng: Rng, song: Song, chords: ChordPart): RiffPart 
       prevStyle = style;
       continue;
     }
+    // a two-bar riff (the second bar answers the first) or the same bar over and over
+    const pairs = style !== 'arp' && rng.chance(0.55);
+    const answers: Record<string, { cell: Ev[]; tie: boolean }> = {};
     for (const bi of run) {
       const bar = bars[bi];
       if (style === 'arp') { arpBar(bar); continue; }
-      const cell = cells[bar.meter] ??= style === 'single' ? singleCell(rng, bar, scale, R, w)
-        : style === 'chug' ? chugCell(rng, bar, R, w, pedal) : bigCell(rng, bar);
+      const make = () => (style === 'single' ? singleCell(rng, bar, scale, R, w) : style === 'chug' ? chugCell(rng, bar, R, w, pedal) : bigCell(rng, bar));
+      const cell = cells[bar.meter] ??= make();
       const last = bi === run[run.length - 1];
-      hits.push(...realize(last && rng.chance(0.7) ? turnaround(rng, cell, bar, style) : cell, bar, style));
+      if (last && rng.chance(0.7)) { hits.push(...realize(turnaround(rng, cell, bar, style), bar, style)); continue; }
+      if (pairs && (bi - run[0]) % 2 === 1) {
+        // the answer is written once and comes back each time round; a tie needs the chord to carry on
+        const carries = chordIdx[bar.start] === chordIdx[bar.start - 1];
+        const ans = answers[bar.meter] ??= answerCell(rng, cell, bar, style, make, carries);
+        if (ans.tie && carries) {
+          const ring = hits.filter((h) => h.step < bar.start).reduce((m, h) => (h.step > (m?.step ?? -1) ? h : m), undefined as GuitarHit | undefined);
+          if (ring && !ring.mute) { ring.len = bar.start + bar.len - ring.step; pairNotes.add('tie'); continue; }
+        }
+        if (!ans.tie) { hits.push(...realize(ans.cell, bar, style)); pairNotes.add('answer'); continue; }
+      }
+      hits.push(...realize(cell, bar, style));
     }
     prevStyle = style;
   }
@@ -284,6 +325,8 @@ export function generateRiff(rng: Rng, song: Song, chords: ChordPart): RiffPart 
       : `Guitar in ${t.name}: bars 1–4 ${RIFF_STYLE_LABEL[a]} → bars 5–8 ${RIFF_STYLE_LABEL[b]}`,
   ];
   notes.push(...figureNotes);
+  if (pairNotes.has('tie')) notes.push('Two-bar riff: the chord rings on through the second bar');
+  else if (pairNotes.has('answer')) notes.push('Two-bar riff: the second bar answers the first');
   if (hits.some((h) => h.slide)) notes.push('Slides into some riff notes');
   return { hits, accents, sounding, notes };
 }

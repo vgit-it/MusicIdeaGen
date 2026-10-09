@@ -1,6 +1,6 @@
 // Downloads a subset of free, real-instrument samples and converts them to small
 // mono MP3s in public/samples/, plus a manifest the app reads (src/audio/sample-manifest.json).
-// Run with: npm run samples
+// Run with: npm run samples (everything), or npm run samples -- strings perc (only those sets, the rest kept)
 //
 // Sources (see public/samples/CREDITS.md):
 // - Piano: Salamander Grand Piano V3 by Alexander Holm (CC-BY 3.0)
@@ -8,9 +8,10 @@
 // - Electric guitar: Emilyguitar by Karoryfer Samples / D. Smolken (CC0), recorded direct (amp is simulated in the app)
 // - Bass: Black And Blue Basses by Karoryfer Samples (CC0)
 // - Drums: Big Rusty Drums by Karoryfer Samples (CC0)
+// - Strings and percussion: VSCO 2 Community Edition by Versilian Studios (CC0)
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync, statSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, statSync, readdirSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ffmpeg from 'ffmpeg-static';
@@ -21,6 +22,40 @@ const out = join(root, 'public', 'samples');
 const manifestFile = join(root, 'src', 'audio', 'sample-manifest.json');
 
 const GH = 'https://raw.githubusercontent.com/sfzinstruments';
+const VSCO = 'https://raw.githubusercontent.com/sgossner/VSCO-2-CE/master';
+const vsco = (path) => `${VSCO}/${path.split('/').map(encodeURIComponent).join('/')}`;
+/** Sets named on the command line (empty: all). */
+const only = process.argv.slice(2);
+const wanted = (name) => !only.length || only.includes(name);
+
+// String section: cellos low, violas in the middle, violins on top, the soft sustain (with vibrato) of each.
+// VSCO names notes an octave low (its cello "C1" is C2), so the keys here are the real notes.
+const STRING_FILES = {
+  C2: 'Strings/Cello Section/susvib/susvib_C1_v1_1.wav',
+  E2: 'Strings/Cello Section/susvib/susvib_E1_v1_1.wav',
+  G2: 'Strings/Cello Section/susvib/susvib_G1_v1_1.wav',
+  B2: 'Strings/Cello Section/susvib/susvib_B1_v1_1.wav',
+  D3: 'Strings/Cello Section/susvib/susvib_D2_v1_1.wav',
+  F3: 'Strings/Cello Section/susvib/susvib_F2_v1_1.wav',
+  B3: 'Strings/Viola Section/susvib/ViolaEns_susvib_B2_v1_1.wav',
+  D4: 'Strings/Viola Section/susvib/ViolaEns_susvib_D3_v1_1.wav',
+  F4: 'Strings/Viola Section/susvib/ViolaEns_susvib_F3_v1_1.wav',
+  A4: 'Strings/Viola Section/susvib/ViolaEns_susvib_A3_v1_1.wav',
+  C5: 'Strings/Violin Section/susVib/VlnEns_susVib_C4_v1.wav',
+  E5: 'Strings/Violin Section/susVib/VlnEns_susVib_E4_v1.wav',
+  G5: 'Strings/Violin Section/susVib/VlnEns_susVib_G4_v1.wav',
+  B5: 'Strings/Violin Section/susVib/VlnEns_susVib_B4_v1.wav',
+  D6: 'Strings/Violin Section/susVib/VlnEns_susVib_D5_v1.wav',
+};
+
+// Percussion one-shots: [file paths] per piece (each file is a round robin).
+const PERC = {
+  tambDown: { secs: 0.8, files: ['tambourine_Down', 'tambourine_down_2', 'tambourine_down_3', 'tambourine_down_4'].map((f) => `VSCO 1 Percussion/varWood/${f}.wav`) },
+  tambUp: { secs: 0.6, files: ['tambourine_up_2', 'tambourine_up_3', 'tambourine_up_4', 'tambourine_up_6'].map((f) => `VSCO 1 Percussion/varWood/${f}.wav`) },
+  shaker: { secs: 0.4, files: [1, 2, 3, 4, 5, 6, 7, 8].map((i) => `VSCO 1 Percussion/varWood/Camo's Shaker/shake${i}.wav`) },
+  conga: { secs: 0.8, files: ['v2_rr1', 'v2_rr2', 'v3_rr1', 'v3_rr2'].map((v) => `Percussion/Conga-HitN_${v}_Sum.wav`) },
+  congaLow: { secs: 0.9, files: ['v2_rr1', 'v2_rr2', 'v3_rr1', 'v3_rr2'].map((v) => `Percussion/Tumba-HitN_${v}_Sum.wav`) },
+};
 const RUSTY_TREE = 'https://api.github.com/repos/sfzinstruments/karoryfer.big-rusty-drums/git/trees/main?recursive=1';
 
 // Minor thirds across each instrument's range; layers = velocity layers (soft to loud); rr = round robins.
@@ -54,8 +89,14 @@ const PITCHED = {
     // this library names notes one octave higher than standard (its "e2" is E1)
     octaveShift: -1,
     notes: ['db2', 'e2', 'g2', 'bb2', 'db3', 'e3', 'g3', 'bb3', 'db4', 'e4', 'g4'],
-    layers: ['f', 'ff'], rr: 2, secs: 2.5,
+    // long enough for held notes (a bass note rings for seconds)
+    layers: ['f', 'ff'], rr: 2, secs: 5,
     file: (n, v, r) => `babyblue_${n}_${v}_rr${r}.wav`,
+  },
+  strings: {
+    // long: strings hold chords for bars at a time
+    base: VSCO, notes: Object.keys(STRING_FILES), layers: ['v1'], rr: 1, secs: 8,
+    file: (n) => STRING_FILES[n].split('/').map(encodeURIComponent).join('/'),
   },
 };
 
@@ -144,6 +185,7 @@ const IR_BASE = 'https://media.githubusercontent.com/media/fnpngn/IR/master/Daun
 const IRS = { clean: '1 Engl Fireball B906.wav', crunch: '5 Engl Fireball SM48.wav', dist: 'Res Dauntless X.wav' };
 
 async function irs() {
+  if (!wanted('ir')) return;
   for (const [name, file] of Object.entries(IRS)) {
     const src = await download(`${IR_BASE}/${encodeURIComponent(file)}`, join(cache, 'ir', file));
     mkdirSync(join(out, 'ir'), { recursive: true });
@@ -152,10 +194,13 @@ async function irs() {
   console.log(`  cab IRs: ${Object.keys(IRS).join(', ')}`);
 }
 
-const manifest = { pitched: {}, drums: {} };
+const manifest = { pitched: {}, drums: {}, perc: {} };
+if (only.length && existsSync(manifestFile)) Object.assign(manifest, JSON.parse(readFileSync(manifestFile, 'utf8')));
+manifest.perc ??= {};
 
 async function pitched() {
   for (const [inst, cfg] of Object.entries(PITCHED)) {
+    if (!wanted(inst)) continue;
     const jobs = [];
     for (const n of cfg.notes) {
       const midi = toMidi(n, cfg.octaveShift);
@@ -189,7 +234,20 @@ async function pitched() {
   }
 }
 
+async function perc() {
+  if (!wanted('perc')) return;
+  for (const [name, { secs, files }] of Object.entries(PERC)) {
+    await pool(files.map((path, i) => async () => {
+      const src = await download(vsco(path), join(cache, 'perc', path.split('/').pop()));
+      encode([src], join(out, 'perc', `${name}-${i + 1}.mp3`), secs);
+    }));
+    manifest.perc[name] = { rr: files.length };
+  }
+  console.log(`  perc: ${Object.keys(PERC).join(', ')}`);
+}
+
 async function drums() {
+  if (!wanted('drums')) return;
   const tree = await (await fetch(RUSTY_TREE)).json();
   const paths = tree.tree.map((t) => t.path);
   for (const [name, { dir, mics, layers, rr, secs }] of Object.entries(DRUMS)) {
@@ -229,15 +287,17 @@ function report() {
   console.log(`Total sample size: ${(total / 1024 / 1024).toFixed(2)} MB`);
 }
 
-// start clean so old files don't linger
+// start clean so old files don't linger (only the sets being made)
 for (const e of existsSync(out) ? readdirSync(out, { withFileTypes: true }) : []) {
-  if (e.isDirectory()) rmSync(join(out, e.name), { recursive: true, force: true });
+  if (e.isDirectory() && (wanted(e.name) || (e.name === 'perc' && wanted('perc')))) rmSync(join(out, e.name), { recursive: true, force: true });
 }
 mkdirSync(cache, { recursive: true });
 console.log('Pitched instruments…');
 await pitched();
 console.log('Drums…');
 await drums();
+console.log('Percussion…');
+await perc();
 console.log('Cabinets…');
 await irs();
 writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);

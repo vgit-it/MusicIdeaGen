@@ -2,6 +2,7 @@
 
 import { GENRE_LABEL } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
+import type { LayerPart } from '../audio/mixer';
 import type { Layer } from '../parts/layers';
 import { NOTE_NAMES, chordName } from '../theory';
 import type { GuitarVoicing } from '../theory/guitar';
@@ -12,10 +13,10 @@ const $ = (id: string) => document.getElementById(id)!;
 const shapeText = (v: GuitarVoicing) =>
   v.frets.map((f) => (f === null ? 'x' : f > 9 ? `(${f})` : String(f))).join('');
 
-/** `layers`: the piano and pad parts, when added. */
+/** `layers`: the added layers' parts (piano, pad, strings, percussion). */
 export function renderIdea(
   idea: Idea, shapes: GuitarVoicing[] | null, instrumentLabel: string, guitar2Label: string,
-  layers: { keys: Layer | null; pad: Layer | null } = { keys: null, pad: null },
+  layers: Partial<Record<LayerPart, Layer | null>> = {},
 ) {
   const { song, chords, drums } = idea;
   const name = (i: number) => chordName(song.key, chords.timeline[i].chord);
@@ -34,7 +35,7 @@ export function renderIdea(
   ].map((t) => `<span class="pill">${t}</span>`).join('') +
     `<span class="pill seed" title="Seed (for sharing later)">#${idea.seeds.song}</span>`;
 
-  const extra = [layers.keys?.desc, layers.pad?.desc].filter(Boolean);
+  const extra = [layers.keys?.desc, layers.pad?.desc, layers.strings?.desc, layers.perc?.desc].filter(Boolean);
   $('notes').innerHTML = [...idea.notes, ...extra].map((n) => `<li>${n}</li>`).join('');
 
   $('bars').innerHTML = song.bars.map((b, i) => {
@@ -82,6 +83,8 @@ export function renderIdea(
     `Bass  ${lane(idea.bass, (v) => (v ? 'o' : '.'))}`,
     layers.keys ? `Piano ${lane(layerLane(layers.keys), (v) => v)}` : '',
     layers.pad ? `Pad   ${lane(layerLane(layers.pad), (v) => v)}` : '',
+    layers.strings ? `Strng ${lane(layerLane(layers.strings), (v) => v)}` : '',
+    layers.perc ? `Perc  ${lane(layerLane(layers.perc), (v) => (v === '-' ? '.' : v === 'n' ? 'x' : v))}` : '',
   ].filter(Boolean).join('\n');
 }
 

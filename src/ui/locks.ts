@@ -13,6 +13,8 @@ export const LOCK_PARTS: { key: PartKey; label: string; title: string }[] = [
   { key: 'bass', label: 'Bass', title: 'The bass line' },
   { key: 'keys', label: 'Piano', title: 'The piano part' },
   { key: 'pad', label: 'Pad', title: 'The pad voicing' },
+  { key: 'strings', label: 'Strings', title: 'The string part' },
+  { key: 'perc', label: 'Percussion', title: 'The percussion part' },
 ];
 
 const LOCK_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none"/></svg>';
@@ -29,7 +31,7 @@ export function buildLockPanel(
   locks: Set<PartKey>,
   onReroll: (k: PartKey) => void,
   onChange: () => void,
-  /** Whether a part is shown (the piano and pad only once added). */
+  /** Whether a part is shown (added layers only once added). */
   shown: (k: PartKey) => boolean = () => true,
 ): LockPanel {
   root.innerHTML = LOCK_PARTS.map((p) => `

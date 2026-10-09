@@ -119,3 +119,28 @@ export function naturalStrokes(song: Song, strum: Stroke[]) {
     }
   }
 }
+
+/**
+ * Where a chord carries on into the next bar, the strumming can carry on too instead of starting the
+ * pattern again: the downbeat tied over (the last strum keeps ringing), or the first half of the bar
+ * left to ring and the pattern picking up halfway. Once per idea (a player's habit). Returns a note.
+ */
+export function carryOver(rng: Rng, song: Song, chords: ChordPart, strum: Stroke[]): string | null {
+  const habit = rng.weighted<'restrike' | 'tie' | 'ring'>([['restrike', 2], ['tie', 2], ['ring', 1]]);
+  if (habit === 'restrike') return null;
+  let done = false;
+  song.bars.forEach((bar, bi) => {
+    const a = bar.start;
+    if (bi === 0 || chords.chordIdx[a] !== chords.chordIdx[a - 1]) return;
+    // something has to be ringing into the bar: an open strum in the last beat before it
+    const prev = song.bars[bi - 1];
+    let last = -1;
+    for (let g = a - 1; g >= prev.start + prev.len - prev.groups[prev.groups.length - 1]; g--) if (strum[g] !== '.') { last = g; break; }
+    if (last < 0 || strum[last] === 'x' || strum[last] === 'p') return;
+    const until = habit === 'tie' ? a + 2 : a + (groupStarts(bar.groups)[Math.ceil(bar.groups.length / 2)] ?? bar.len);
+    for (let g = a; g < until; g++) if (chords.chordIdx[g] === chords.chordIdx[a]) strum[g] = '.';
+    done = true;
+  });
+  if (!done) return null;
+  return habit === 'tie' ? 'Strumming: tied over the bar line where a chord carries on' : 'Strumming: a chord that carries on is left ringing into the next bar, the pattern picks up halfway';
+}

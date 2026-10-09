@@ -600,7 +600,8 @@ export class Bass {
     if (this.state !== 'idle') return;
     this.state = 'loading';
     try {
-      this.sampler = new MultiSampler(await loadPitched('bass-electric'), this.rig.input, 0.05, this.ctx);
+      // a finger mute, not a click, when a note stops
+      this.sampler = new MultiSampler(await loadPitched('bass-electric'), this.rig.input, 0.09, this.ctx);
       this.state = 'ready';
     } catch {
       this.state = 'failed';
@@ -609,9 +610,11 @@ export class Bass {
 
   play(midi: number, time: number, dur: number, vel: number) {
     if (this.sampler && !this.useSynth) {
-      // one string at a time: a new note stops the last one
-      this.sampler.choke(this.last, time, 0.015);
-      this.last = this.sampler.play(midi, time, dur, vel * (0.92 + Math.random() * 0.08), { detune: 3 });
+      // a player sits a few milliseconds behind the beat, never exactly on the grid
+      const t = time + 0.004 + Math.random() * 0.006;
+      // one string at a time: a new note takes over from the last one
+      this.sampler.choke(this.last, t, 0.02);
+      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 3 });
     } else this.synth.triggerAttackRelease(midiNote(midi), dur, time, vel);
   }
 

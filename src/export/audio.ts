@@ -7,7 +7,7 @@
 
 import * as Tone from 'tone';
 import { Engine, type EngineSettings } from '../audio/engine';
-import { MIX_PARTS, type MixPart } from '../audio/mixer';
+import { MIX_PARTS, type MixPart, isLayer } from '../audio/mixer';
 import type { Idea } from '../idea';
 
 /** Seconds after the last bar, so the final chord rings out. */
@@ -108,7 +108,7 @@ export async function renderAudio(
   const sec = (steps: number) => (steps * 15) / bpm;
   const totalMusic = sec(list.reduce((a, i) => a + i.song.total, 0));
   // stems: one pass (the mix + a stereo pair per part), so the instruments only play once; added layers only
-  const parts = MIX_PARTS.filter((p) => (p !== 'keys' && p !== 'pad') || settings.layers[p]);
+  const parts = MIX_PARTS.filter((p) => !isLayer(p) || settings.layers[p]);
   const channels = withStems ? 2 + parts.length * 2 : 2;
   // the live context's sample rate: the samples and cabinet impulse responses were decoded at it,
   // and a convolver only accepts an impulse response at its own rate

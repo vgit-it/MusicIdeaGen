@@ -69,6 +69,7 @@ button.small:disabled { opacity: .45; }
 .lockhead .hint { margin-right: auto; }
 .locks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
 .lock { display: flex; align-items: center; gap: 4px; background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 4px 4px 4px 10px; }
+.lock[hidden] { display: none; }
 .lock .ln { font-size: 13px; font-weight: 600; margin-right: auto; white-space: nowrap; }
 .lock button { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; background: transparent; border-radius: 8px; color: var(--mute); }
 .lock button svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.6; fill: none; }
@@ -84,6 +85,8 @@ button.small:disabled { opacity: .45; }
 .part { display: grid; grid-template-columns: 76px 1fr 1fr auto; gap: 12px; align-items: center; }
 .part .name { font-weight: 600; }
 .part select { padding: 8px; font-size: 14px; }
+.part .picks { display: flex; gap: 6px; min-width: 0; }
+.part .picks select { flex: 1 1 0; min-width: 0; }
 .part .toggles { display: flex; gap: 6px; width: 132px; } /* room for a layer's remove button, so every row lines up */
 .toggle { width: 40px; height: 36px; padding: 0; font-size: 13px; background: var(--field); border: 1px solid var(--line); color: var(--mute); }
 .toggle.mute.on { background: #3a2222; color: #ff8f8f; border-color: #6a3434; }
@@ -93,7 +96,7 @@ button.small:disabled { opacity: .45; }
 .part.layer + .part.layer { border-top: 0; padding-top: 0; }
 .part.layer .add { display: none; justify-self: start; }
 .part.layer.off .add { display: block; grid-column: 2 / -1; }
-.part.layer.off select, .part.layer.off input, .part.layer.off .toggles { display: none; }
+.part.layer.off .picks, .part.layer.off input, .part.layer.off .toggles { display: none; }
 .part.layer.off .name { color: var(--mute); }
 .toggle.remove:hover { color: var(--text); }
 
@@ -128,6 +131,6 @@ button.small:disabled { opacity: .45; }
   .part { grid-template-columns: 1fr auto; row-gap: 8px; }
   .part .name { grid-column: 1; }
   .part .toggles { grid-column: 2; grid-row: 1; width: auto; }
-  .part select, .part input { grid-column: 1 / -1; }
+  .part .picks, .part input { grid-column: 1 / -1; }
   .part.layer.off .add { grid-column: 2; grid-row: 1; }
 }

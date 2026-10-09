@@ -178,6 +178,14 @@ export function addFill(rng: Rng, b: DrumBar, len: number, groups: number[], w: 
 const CRASH_CHANCE: Record<Genre, number> = { rock: 1, pop: 0.8, funk: 0.45, hardrock: 1, metal: 1, grunge: 1, altmetal: 1 };
 const HAT_CYM: Record<HatPattern, Cym> = { '8': 'hat8', '16': 'hat16', off: 'off' };
 
+/** The end of the second bar of a pair: a kick pushing into the next bar, an open hat, or a ghost note. */
+function turnBar(v: DrumBar, len: number, turn: 'kick' | 'open' | 'ghost') {
+  const p = len - 2;
+  if (turn === 'kick') { v.K[p] = Math.max(v.K[p], 0.75); v.S[p] = 0; }
+  else if (turn === 'open') { if (v.H[p] || v.R[p]) { v.O[p] = 0.7; v.H[p] = 0; v.R[p] = 0; v.H[p + 1] = 0; } }
+  else if (!v.S[len - 1] && !v.K[len - 1]) v.S[len - 1] = 0.22;
+}
+
 export function generateDrums(rng: Rng, song: Song): DrumPart {
   const { w, bars, total, groupsFor, plan } = song;
   const genre = song.partGenres.drums;
@@ -192,6 +200,9 @@ export function generateDrums(rng: Rng, song: Song): DrumPart {
     : lib.map(([x]) => x).find((x) => !!x.half === song.forceHalf) ?? groove;
   const halfTime = song.forceHalf ?? !!g.half;
   const spice = w >= 0.3 && rng.chance(0.3 + w);
+  // the groove as two bars: the second of each pair turns around at its end, into the next pair
+  const turn = rng.weighted<'kick' | 'open' | 'ghost' | 'none'>(genre === 'funk' ? [['ghost', 2], ['open', 2], ['none', 1]]
+    : genre === 'pop' ? [['kick', 2], ['open', 1], ['ghost', 1], ['none', 2]] : [['kick', 2], ['open', 2], ['none', 2]]);
   const answer = rng.weighted<Answer>(genre === 'funk' ? [['open', 2], ['drag', 2], ['pickup', 1]] : [['pickup', 3], ['open', 2], ['drag', 1], ['none', 1]]);
   // the B half lifts: ride or open hats (same kick and snare); C is the contrast: half-time or floor tom
   const lift: Cym = g.cym === 'tom8' ? 'hat8' : rng.chance(ds.ride * (0.8 + w)) || g.cym === 'off' ? 'ride8' : g.cym === 'hat8' ? 'hat16' : 'ride8';
@@ -241,7 +252,7 @@ export function generateDrums(rng: Rng, song: Song): DrumPart {
       const a2 = copyBar(variants[b.meter].A2);
       answerBar(a2, b.len, answer);
       Object.assign(v, a2);
-    }
+    } else if (i % 2 === 1 && turn !== 'none') turnBar(v, b.len, turn);
     for (let j = 0; j < b.len; j++) {
       const gs = b.start + j;
       L.kick[gs] = v.K[j]; L.snare[gs] = v.S[j]; L.hat[gs] = v.H[j];

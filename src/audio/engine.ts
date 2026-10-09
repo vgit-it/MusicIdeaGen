@@ -11,10 +11,12 @@ import {
 } from './instruments';
 import { DYNAMICS, SECTION_DB } from './dynamics';
 import { inContext } from './context';
-import { type LayerPart, type MixPart, type MixState, Mixer } from './mixer';
+import { LAYER_PARTS, type LayerPart, type MixPart, type MixState, Mixer } from './mixer';
+import { Percussion } from './percussion';
+import { Strings } from './strings';
 import { AUTO_PAD, Pad, type PadChoice } from './pad';
 import { AUTO_CHORDS, AUTO_GUITAR2 } from '../sounds';
-import { type KeysChoice, type Layer, type LayerNote, byStep, writeKeys, writePad } from '../parts/layers';
+import { type KeysChoice, type Layer, type LayerNote, type PercChoice, type StringsChoice, byStep, writeLayer } from '../parts/layers';
 
 export interface EngineSettings {
   chord: ChordChoice;
@@ -26,7 +28,11 @@ export interface EngineSettings {
 }
 
 /** The layers you've added (left out = removed) and their style or tone. */
-export interface LayerSettings { keys?: KeysChoice; pad?: PadChoice }
+export interface LayerSettings {
+  keys?: KeysChoice; pad?: PadChoice; strings?: StringsChoice; perc?: PercChoice;
+  /** Layers that play every bar of every section (the rest come and go with the arrangement). */
+  throughout?: LayerPart[];
+}
 
 export type ChordChoice = ChordInstrumentId | 'auto';
 
@@ -47,6 +53,7 @@ const TAIL_STEPS = 32;
 
 export const INSTRUMENT_NAMES: Record<string, string> = {
   piano: 'piano', pad: 'synth pad', acoustic: 'acoustic guitar', electric: 'electric guitar', bass: 'bass', drums: 'drums',
+  strings: 'strings', perc: 'percussion',
 };
 
 type Voicing = { notes: number[]; strings?: number[] };
@@ -82,6 +89,8 @@ export class Engine {
   private layers: LayerSettings = {};
   private keysInst: Piano | null = null;
   private padInst: Pad | null = null;
+  private stringsInst: Strings | null = null;
+  private percInst: Percussion | null = null;
   /** Layer parts per item, written when first needed (and again if the style changes). */
   private layerCache = new WeakMap<Idea, Map<string, { layer: Layer; at: LayerNote[][] }>>();
   private step = 0;
@@ -108,7 +117,7 @@ export class Engine {
   settings(): EngineSettings {
     return {
       chord: this.chordChoice, guitar2: this.g2Choice, bassSynth: this.bass.useSynth, drumSynth: this.drums.useSynth,
-      mix: this.mixer.state(), layers: { ...this.layers },
+      mix: this.mixer.state(), layers: this.layerSettings,
     };
   }
 
@@ -122,18 +131,39 @@ export class Engine {
       ? (Object.fromEntries(Object.entries(s.mix).map(([p, v]) => [p, { ...v, mute: false, solo: false }])) as MixState)
       : s.mix;
     this.mixer.restore(mix);
-    for (const p of ['keys', 'pad'] as const) this.setLayer(p, s.layers[p] ?? null);
+    for (const p of LAYER_PARTS) this.setLayer(p, s.layers[p] ?? null);
+    this.layers.throughout = [...(s.layers.throughout ?? [])];
   }
 
   /* ---- layers you can add and remove */
 
   get layerSettings(): LayerSettings {
-    return { ...this.layers };
+    const { throughout, ...rest } = this.layers;
+    return throughout?.length ? { ...rest, throughout: [...throughout] } : rest;
+  }
+
+  /** A layer plays every bar (true) or comes and goes with the arrangement (false, the default). */
+  setLayerThroughout(part: LayerPart, on: boolean) {
+    const t = new Set(this.layers.throughout ?? []);
+    if (on) t.add(part); else t.delete(part);
+    this.layers.throughout = [...t];
+    if (!this.layers.throughout.length) delete this.layers.throughout;
   }
 
   /** Add a layer (or change its style/tone), or remove it with null. */
-  setLayer(part: LayerPart, choice: KeysChoice | PadChoice | null) {
-    if (part === 'keys') {
+  setLayer(part: LayerPart, choice: KeysChoice | PadChoice | StringsChoice | PercChoice | null) {
+    if (part === 'strings') {
+      if (choice === null) { delete this.layers.strings; this.stringsInst?.releaseAll(); return; }
+      this.layers.strings = choice as StringsChoice;
+      this.stringsInst ??= inContext(this.ctx, () => new Strings(this.mixer.input('strings')));
+      this.stringsInst.setEnergy(this.idea?.section?.energy ?? 4, this.ctx.now());
+      if (!this.offline) void this.ensureLoaded(this.stringsInst, 'strings');
+    } else if (part === 'perc') {
+      if (choice === null) { delete this.layers.perc; return; }
+      this.layers.perc = choice as PercChoice;
+      this.percInst ??= inContext(this.ctx, () => new Percussion(this.mixer.input('perc')));
+      if (!this.offline) void this.ensureLoaded(this.percInst, 'perc');
+    } else if (part === 'keys') {
       if (choice === null) { delete this.layers.keys; this.keysInst?.releaseAll(); return; }
       this.layers.keys = choice as KeysChoice;
       this.keysInst ??= inContext(this.ctx, () => new Piano(this.mixer.input('keys')));
@@ -163,11 +193,12 @@ export class Engine {
     if (!choice) return null;
     let m = this.layerCache.get(idea);
     if (!m) this.layerCache.set(idea, (m = new Map()));
-    const k = `${part}:${part === 'keys' ? choice : ''}`;
+    const all = !!this.layers.throughout?.includes(part);
+    const k = `${part}:${part === 'pad' ? '' : choice}:${all}`;
     let v = m.get(k);
     if (!v) {
       const seed = idea.seeds[part] ?? `${idea.seeds.chords}-${part}`;
-      const layer = part === 'keys' ? writeKeys(idea, choice as KeysChoice, seed) : writePad(idea, seed);
+      const layer = writeLayer(part, idea, choice, seed, all);
       m.set(k, (v = { layer, at: byStep(layer.notes, idea.song.total) }));
     }
     return v;
@@ -182,7 +213,8 @@ export class Engine {
 
   /** Offline: wait until every instrument the list needs has its samples. */
   async loadAll() {
-    const insts = [this.drums, this.bass, this.g2Inst, this.keysInst, ...this.instsNeeded().map(([inst]) => inst)].filter((x): x is NonNullable<typeof x> => !!x);
+    const insts = [this.drums, this.bass, this.g2Inst, this.keysInst, this.stringsInst, this.percInst, ...this.instsNeeded().map(([inst]) => inst)]
+      .filter((x): x is NonNullable<typeof x> => !!x);
     // load() hands back the same promise while loading, so this waits for loads already under way
     await Promise.all(insts.map((inst) => inst.load()));
   }
@@ -282,6 +314,7 @@ export class Engine {
     const e = this.idea?.section?.energy ?? 4;
     this.mixer.setSectionLevel(SECTION_DB[e], time);
     this.padInst?.setEnergy(e, time);
+    this.stringsInst?.setEnergy(e, time);
   }
 
   get guitar2InstrumentId(): ChordInstrumentId {
@@ -401,6 +434,7 @@ export class Engine {
     this.bass.releaseAll();
     this.keysInst?.releaseAll();
     this.padInst?.releaseAll();
+    this.stringsInst?.releaseAll();
     this.onBar(-1);
   }
 
@@ -482,6 +516,11 @@ export class Engine {
     }
     const pad = this.padInst && this.layerAt(idea, 'pad');
     if (pad) for (const n of pad.at[g]) this.padInst!.play(n.notes, time, n.len * six * 0.98, n.vel);
+    const strings = this.stringsInst && this.layerAt(idea, 'strings');
+    if (strings) for (const n of strings.at[g]) this.stringsInst!.play(n.notes, time, n.len * six, n.vel, n.swell);
+    // the tambourine's off-beat 8ths are up strokes
+    const perc = this.percInst && this.layerAt(idea, 'perc');
+    if (perc) for (const n of perc.at[g]) for (const note of n.notes) this.percInst!.play(note, time, n.vel, g % 4 === 2);
 
     const st = strum[g];
     if (st !== '.' && !idea.guitar && ci) {
@@ -514,11 +553,13 @@ export class Engine {
     if (drums.tom[g]) d.hit('tom', time, 0.8, drums.tom[g]);
 
     if (bass[g]) {
-      const n = idea.bassLen?.[g] || gapUntil((i) => i.bass, 0, 16);
+      // a note rings until the next one takes over (legato), unless it's written shorter (a rest after it)
+      const next = gapUntil((i) => i.bass, 0, 64);
+      const n = idea.bassLen?.[g] || next;
       // pluck harder on the beat
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
-      const dur = ending ? 5 : Math.min(n * six * 0.92, idea.guitar ? 2.5 : 1.2);
+      const dur = ending ? 5 : Math.min(n >= next ? next * six + 0.03 : n * six * 0.95, 4.5);
       this.bass.play(bass[g], time, dur, (onBeat ? 0.9 : 0.74) * dyn);
     }
 
