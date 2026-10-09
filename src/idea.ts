@@ -162,6 +162,8 @@ export interface SectionInfo {
   bandFrom?: number;
   /** How the section ends into the next one, so added layers stop or hit with the band. */
   tail?: { stop: number } | { hits: number[] } | { build: number } | { push: number } | { ring: number };
+  /** A reversed cymbal swells up into the next section (a big lift). */
+  riser?: boolean;
   /** The previous section pushed this one's first chord early: its downbeat isn't struck again. */
   pushedIn?: boolean;
   /** Where it sits in its track (and what the track is), so added layers can plan where they play. */

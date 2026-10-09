@@ -754,6 +754,31 @@ export class DrumKit {
     if (what === 'hatOpen') this.openHat = src;
   }
 
+  private reversed: AudioBuffer | null = null;
+
+  /**
+   * A reversed crash cymbal that swells up and stops right on `end` (the next section's downbeat),
+   * `len` seconds long: the loud end of the reversed crash, trimmed to fit.
+   */
+  swell(end: number, len: number, vel: number) {
+    if (!this.bufs || this.useSynth || len < 0.2) return;
+    const layers = this.bufs.crash;
+    const top = layers[layers.length - 1];
+    if (!top?.length) return;
+    if (!this.reversed) {
+      const src = top[0];
+      const rev = new AudioBuffer({ length: src.length, numberOfChannels: src.numberOfChannels, sampleRate: src.sampleRate });
+      for (let c = 0; c < src.numberOfChannels; c++) rev.getChannelData(c).set(src.getChannelData(c).slice().reverse());
+      this.reversed = rev;
+    }
+    const rev = this.reversed;
+    const n = Math.min(rev.length, Math.round(len * rev.sampleRate));
+    const buf = new AudioBuffer({ length: n, numberOfChannels: rev.numberOfChannels, sampleRate: rev.sampleRate });
+    for (let c = 0; c < rev.numberOfChannels; c++) buf.getChannelData(c).set(rev.getChannelData(c).subarray(rev.length - n));
+    const v = new SampleVoice(this.outs.crash.context, buf, this.outs.crash, { fadeIn: Math.min(0.3, n / rev.sampleRate / 3), fadeOut: 0.01 });
+    v.start(end - n / rev.sampleRate, PIECE_LEVEL.crash * 0.7 * vel);
+  }
+
   private synthHit(what: DrumHit, time: number, vel: number, tom: number) {
     const fb = this.fb;
     if (what === 'kick') fb.kick.triggerAttackRelease('C1', '8n', time, vel);

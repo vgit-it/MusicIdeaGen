@@ -511,6 +511,13 @@ export class Engine {
       return n;
     };
 
+    // a big lift: a reversed cymbal swells up into the next section
+    const stepsLeft = total - g;
+    if (idea.section?.riser && after && !ending) {
+      const R = Math.min(2, song.bars[song.bars.length - 1].len * six);
+      if (stepsLeft * six <= R && (stepsLeft + 1) * six > R) this.drums.swell(time + stepsLeft * six, stepsLeft * six, 0.9);
+    }
+
     const ci = this.chordInst;
     if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined, driven(this.chordId));
     if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time, six);
@@ -570,10 +577,12 @@ export class Engine {
       this.bass.play(bass[g], time, dur, (onBeat ? 0.9 : 0.74) * dyn);
     }
 
-    // the last beat swells toward a louder next section (the drummer's fill builds into it)
-    if (after && after !== idea && g === lastBar.start + lastBar.len - lastBar.groups[lastBar.groups.length - 1]) {
+    // the last beat swells toward a louder next section (the drummer's fill builds into it); before a
+    // big lift the whole last bar does
+    const rise = idea.section?.riser ? lastBar.len : lastBar.groups[lastBar.groups.length - 1];
+    if (after && after !== idea && g === lastBar.start + lastBar.len - rise) {
       const now = SECTION_DB[idea.section?.energy ?? 4], then = SECTION_DB[after.section?.energy ?? 4];
-      if (then > now) this.mixer.setSectionLevel((now + then) / 2, time, lastBar.groups[lastBar.groups.length - 1] * six / 2);
+      if (then > now) this.mixer.setSectionLevel((now + then) / 2, time, rise * six / 2);
     }
 
     const bi = song.bars.findIndex((b) => b.start === g);

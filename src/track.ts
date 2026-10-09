@@ -1139,11 +1139,16 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if (turn) idea.notes.push(turn);
     type Seam = 'none' | 'fill' | 'build' | 'hits' | 'stop' | 'push' | 'ring';
     let t: Seam = 'none';
-    // intros that start with the guitar alone bring the drums in themselves
-    if (kind !== 'intro' || slots[i].intro === 'band') {
+    // a big lift (quiet into loud) needs setting up: the band builds or fills into it, a stop only
+    // works when there's something loud to stop, and a cymbal swells up into the new section
+    const lift = next.energy - e >= 2;
+    // intros that start with the guitar alone bring the drums in themselves (layered intros have
+    // the band by their last bars, so they hand over like any other section)
+    if (slots[i].intro !== 'alone') {
       if (next.kind === 'chorus' && kind !== 'chorus') {
-        t = r.weighted<Seam>([['fill', 3], ['build', kind === 'prechorus' ? 4 : 2], ['hits', 2], ['stop', 2], ['push', 2]]);
-      } else if (next.energy >= e) t = r.weighted<Seam>([['fill', 3], ['push', 1]]);
+        t = r.weighted<Seam>([['fill', 3], ['build', kind === 'prechorus' || lift ? 4 : 2], ['hits', 2], ['stop', e >= 3 ? 2 : 0], ['push', lift ? 1 : 2]]);
+      } else if (lift) t = r.weighted<Seam>([['fill', 3], ['build', 2], ['push', 1]]);
+      else if (next.energy >= e) t = r.weighted<Seam>([['fill', 3], ['push', 1]]);
       else t = r.weighted<Seam>([['fill', 3], ['ring', 2], ['stop', 1]]);
     }
     if (t === 'push' && !push(idea, b)) t = 'fill';
@@ -1153,7 +1158,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     else if (t === 'push') idea.notes.push(`The band pushes into ${into}: its first chord comes an 8th early`);
     else if (t === 'ring') { ringOut(idea); idea.notes.push('The last chord is left ringing into the next section'); }
     else if (t === 'fill') { ensureFill(idea, r); idea.notes.push(`Drum fill into ${into}`); }
-    if ((t === 'fill' || t === 'none') && idea.section!.energy >= 2 && m.chance(0.55) && walkUp(idea, b, m)) idea.notes.push(`Bass walks into ${into}`);
+    if (lift) { idea.section!.riser = true; idea.notes.push(`A cymbal swells up into ${into}`); }
+    if ((t === 'fill' || t === 'none') && idea.section!.energy >= 2 && m.chance(lift ? 0.8 : 0.55) && walkUp(idea, b, m)) idea.notes.push(`Bass walks into ${into}`);
     if (t !== 'hits' && t !== 'push' && m.chance(0.6) && g2Pickup(idea, b, m)) idea.notes.push(`Guitar 2 leads into ${into} with pickup notes`);
   });
   makeEnding(sections[sections.length - 1], home);
