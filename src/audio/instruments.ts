@@ -453,8 +453,12 @@ export class Guitar implements ChordInstrument {
     };
 
     if (stroke === 'D') {
-      // fretting hand lifts: anything still ringing stops as the new chord sounds
-      if (!letRing) muteAll(time + 0.002);
+      // fretting hand lifts: anything still ringing stops as the new chord sounds. Driven chords
+      // hand over smoothly (the old chord fades under the new one), so the wall of sound never drops out
+      if (!letRing) {
+        if (driven && notes.length > 1) take.strings.forEach((v) => take.ring.choke(v, time + gap * 2, 0.06));
+        else muteAll(time + 0.002);
+      }
       notes.forEach((m, i) => {
         const t = time + i * gap + jitter(1.5);
         if (letRing) take.ring.choke(take.strings[str[i]], t);

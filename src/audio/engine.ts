@@ -373,6 +373,8 @@ export class Engine {
     const prev = this.chordInst;
     this.chordInst = this.instFor(id);
     this.chordId = id;
+    // driven guitars sit in more room: a wall of sound rather than a dry, close-miked part
+    this.mixer.setReverbExtra('chords', driven(id) ? 5 : 0);
     if (release && prev && prev !== this.chordInst && !this.offline) prev.releaseAll();
     void this.ensureLoaded(this.chordInst, kindOf(id));
   }
@@ -439,13 +441,14 @@ export class Engine {
   }
 
   /** `ring` overrides how long the hit rings (the final chord of a track). */
-  private playHit(inst: ChordInstrument, h: GuitarHit, time: number, six: number, dyn = 1, ring?: number) {
+  private playHit(inst: ChordInstrument, h: GuitarHit, time: number, six: number, dyn = 1, ring?: number, legato = false) {
     inst.strum({
       stroke: h.mute === 'palm' ? 'p' : h.mute === 'dead' ? 'x' : 'D',
       notes: h.notes,
       strings: h.strings,
       time,
-      dur: ring ?? Math.min(h.len * six * 0.97, 4),
+      // driven guitars sustain into the next hit (a gap is loud through the drive); others breathe
+      dur: ring ?? (legato ? Math.min(h.len * six + 0.05, 5) : Math.min(h.len * six * 0.97, 4)),
       vel: h.vel * dyn,
       sixteenth: six,
       clean: h.clean,
@@ -508,7 +511,7 @@ export class Engine {
     };
 
     const ci = this.chordInst;
-    if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined);
+    if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined, driven(this.chordId));
     if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time, six);
     const keys = this.keysInst && this.layerAt(idea, 'keys');
     if (keys) for (const n of keys.at[g]) {
@@ -529,13 +532,16 @@ export class Engine {
       // accents on the beat, and a little extra where the kick or snare lands (the band hits together)
       const accent = (groupStarts(bar.groups).includes(g - bar.start) ? 0.12 : 0) + (drums.kick[g] || drums.snare[g] >= 0.5 ? 0.06 : 0);
       const n = gapUntil((i) => i.strum, '.', 16);
-      const maxRing = ci.kind === 'guitar' ? 2.4 : 1.6;
+      // driven guitars sustain right into the next strum (a gap is loud through the drive) and hold
+      // sparse chords longer; other sounds breathe between strums
+      const legato = driven(this.chordId);
+      const maxRing = legato ? 4.5 : ci.kind === 'guitar' ? 2.4 : 1.6;
       ci.strum({
         stroke: st,
         notes,
         strings,
         time,
-        dur: ending ? 6 : Math.min(n * six * 0.97, maxRing),
+        dur: ending ? 6 : Math.min(n * six * (legato ? 1 : 0.97) + (legato ? 0.05 : 0), maxRing),
         vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn,
         sixteenth: six,
       });
@@ -588,4 +594,5 @@ function makeInst(id: ChordInstrumentId, out: Tone.InputNode, double: boolean, p
 }
 
 const kindOf = (id: ChordInstrumentId) => (id === 'piano' ? 'piano' : id === 'acoustic' ? 'acoustic' : 'electric');
+const driven = (id: ChordInstrumentId) => id === 'electric-crunch' || id === 'electric-dist';
 const ampOf = (id: ChordInstrumentId) => (id === 'electric-clean' ? 'clean' : id === 'electric-crunch' ? 'crunch' : 'dist');

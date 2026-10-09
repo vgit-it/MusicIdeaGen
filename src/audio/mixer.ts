@@ -49,6 +49,8 @@ interface Strip {
   volume: Tone.Volume;
   /** 0 or 1: mute/solo switch, after the fader so it also silences the reverb send. */
   gate: Tone.Gain;
+  /** Send into the shared reverb. */
+  reverb: Tone.Volume;
   mute: boolean;
   solo: boolean;
   /** Fader position (0-100). */
@@ -94,9 +96,10 @@ export class Mixer {
       const gate = new Tone.Gain(1);
       volume.chain(new Tone.Volume(TRIM[p]), gate);
       gate.connect(this.master);
-      gate.connect(new Tone.Volume(REVERB_SEND[p]).connect(fx));
+      const reverb = new Tone.Volume(REVERB_SEND[p]).connect(fx);
+      gate.connect(reverb);
       if (DELAY_SEND[p] > -Infinity) gate.connect(new Tone.Volume(DELAY_SEND[p]).connect(this.delay));
-      this.strips[p] = { volume, gate, mute: false, solo: false, slider: 80 };
+      this.strips[p] = { volume, gate, reverb, mute: false, solo: false, slider: 80 };
     }
   }
 
@@ -137,6 +140,11 @@ export class Mixer {
   setVolume(part: MixPart, slider: number) {
     this.strips[part].slider = slider;
     this.strips[part].volume.volume.value = sliderToDb(slider);
+  }
+
+  /** More (or less) reverb on a part than usual, in dB (0 = the usual amount). */
+  setReverbExtra(part: MixPart, db: number) {
+    this.strips[part].reverb.volume.value = REVERB_SEND[part] + db;
   }
 
   /** Keep the echo on the beat: a dotted 8th at this tempo. */
