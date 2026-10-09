@@ -144,8 +144,8 @@ interface AmpSettings {
 
 export const AMP: Record<AmpTone, AmpSettings> = {
   clean: { comp: [-24, 3, 4], tight: 70, push: [800, 0], drive1: 1.3, drive2: 1, bass: 0, middle: 0, treble: 1.5, presence: 1, lowShelf: [450, -11], highShelf: [3000, 7], level: 28, lowCut: 75, top: 9000, bite: [3000, 0] },
-  crunch: { comp: [-30, 3.5, 10], tight: 150, push: [750, 3], drive1: 6, drive2: 3.5, bass: 1, middle: 2, treble: 0, presence: 1.5, lowShelf: [400, -6], highShelf: [3000, 4], level: 2.2, lowCut: 130, top: 8000, bite: [2800, -2] },
-  dist: { comp: [-42, 10, 26], tight: 300, push: [720, 6], drive1: 16, drive2: 10, bass: 3, middle: -1.5, treble: 0, presence: 2, lowShelf: [450, -6], highShelf: [3000, 1], level: 2.1, lowCut: 130, top: 6500, bite: [2700, -4] },
+  crunch: { comp: [-36, 5, 14], tight: 150, push: [750, 3], drive1: 6, drive2: 3.5, bass: 1, middle: 2, treble: 0, presence: 1.5, lowShelf: [400, -6], highShelf: [3000, 4], level: 2, lowCut: 130, top: 8000, bite: [2800, -2] },
+  dist: { comp: [-46, 12, 29], tight: 300, push: [720, 6], drive1: 16, drive2: 10, bass: 3, middle: -1.5, treble: 0, presence: 2, lowShelf: [450, -6], highShelf: [3000, 1], level: 2.1, lowCut: 130, top: 6500, bite: [2700, -4] },
 };
 
 /**
@@ -453,8 +453,12 @@ export class Guitar implements ChordInstrument {
     };
 
     if (stroke === 'D') {
-      // fretting hand lifts: anything still ringing stops as the new chord sounds
-      if (!letRing) muteAll(time + 0.002);
+      // fretting hand lifts: anything still ringing stops as the new chord sounds. Driven chords
+      // hand over smoothly (the old chord fades under the new one), so the wall of sound never drops out
+      if (!letRing) {
+        if (driven && notes.length > 1) take.strings.forEach((v) => take.ring.choke(v, time + gap * 2, 0.06));
+        else muteAll(time + 0.002);
+      }
       notes.forEach((m, i) => {
         const t = time + i * gap + jitter(1.5);
         if (letRing) take.ring.choke(take.strings[str[i]], t);
