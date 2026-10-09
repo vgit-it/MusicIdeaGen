@@ -373,9 +373,9 @@ export class Engine {
     const prev = this.chordInst;
     this.chordInst = this.instFor(id);
     this.chordId = id;
-    // driven guitars sit in more room: a wall of sound rather than a dry, close-miked part
-    this.mixer.setReverbExtra('chords', driven(id) ? 5 : 0);
-    this.mixer.setHall('chords', driven(id) ? -12 : -Infinity);
+    // driven guitars sit in more room: a wall of sound rather than a dry, close-miked part (the shared
+    // reverb, not a reverb of their own: a second long reverb made phones crackle and drop out)
+    this.mixer.setReverbExtra('chords', driven(id) ? 7 : 0);
     if (release && prev && prev !== this.chordInst && !this.offline) prev.releaseAll();
     void this.ensureLoaded(this.chordInst, kindOf(id));
   }
