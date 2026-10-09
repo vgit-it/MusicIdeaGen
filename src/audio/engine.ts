@@ -375,6 +375,7 @@ export class Engine {
     this.chordId = id;
     // driven guitars sit in more room: a wall of sound rather than a dry, close-miked part
     this.mixer.setReverbExtra('chords', driven(id) ? 5 : 0);
+    this.mixer.setHall('chords', driven(id) ? -12 : -Infinity);
     if (release && prev && prev !== this.chordInst && !this.offline) prev.releaseAll();
     void this.ensureLoaded(this.chordInst, kindOf(id));
   }

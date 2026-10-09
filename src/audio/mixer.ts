@@ -17,17 +17,17 @@ const DELAY_SEND: Record<MixPart, number> = {
   chords: -Infinity, guitar2: -9, drums: -Infinity, bass: -Infinity, keys: -Infinity, pad: -Infinity, strings: -Infinity, perc: -Infinity,
 };
 
-const irCache = new Map<number, AudioBuffer>();
+const irCache = new Map<string, AudioBuffer>();
 
 /**
- * Room reverb impulse response: stereo noise fading out exponentially (-60 dB at 1.8 s), the same
+ * Reverb impulse response: stereo noise fading out exponentially (-60 dB at `decay` s), the same
  * recipe as Tone's Reverb. Made once in code and shared: Tone's Reverb renders its own each time,
- * which slowed down audio exports (one per piece).
+ * which slowed down audio exports (one per piece). Default: the room every part shares.
  */
-function reverbIR(sampleRate: number): AudioBuffer {
-  let ir = irCache.get(sampleRate);
+function reverbIR(sampleRate: number, decay = 1.8, pre = 0.01): AudioBuffer {
+  const key = `${sampleRate}/${decay}/${pre}`;
+  let ir = irCache.get(key);
   if (!ir) {
-    const decay = 1.8, pre = 0.01;
     const length = Math.round((decay + pre) * sampleRate);
     ir = new AudioBuffer({ length, numberOfChannels: 2, sampleRate });
     for (let c = 0; c < 2; c++) {
@@ -37,7 +37,7 @@ function reverbIR(sampleRate: number): AudioBuffer {
         d[i] = (Math.random() * 2 - 1) * 10 ** ((-3 * t) / decay);
       }
     }
-    irCache.set(sampleRate, ir);
+    irCache.set(key, ir);
   }
   return ir;
 }
@@ -51,6 +51,8 @@ interface Strip {
   gate: Tone.Gain;
   /** Send into the shared reverb. */
   reverb: Tone.Volume;
+  /** Send into the long ambience (off unless a part asks for it). */
+  hall: Tone.Volume;
   mute: boolean;
   solo: boolean;
   /** Fader position (0-100). */
@@ -65,6 +67,7 @@ export class Mixer {
   /** Overall output level (the master volume slider); after everything else. */
   readonly out = new Tone.Volume(0).toDestination();
   private strips = {} as Record<MixPart, Strip>;
+  private hallIn = new Tone.Gain(1);
   private delay = new Tone.FeedbackDelay({ delayTime: 0.375, feedback: 0.32, wet: 1 });
   /** Resolves when the mixer is ready to render (kept for offline renders; the reverb is ready at once now). */
   readonly ready: Promise<void>;
@@ -91,6 +94,17 @@ export class Mixer {
     this.delay.chain(echo, this.master);
     echo.connect(fx);
 
+    // a long, wide, slowly moving tail for parts that should fill the space (driven guitars):
+    // only the mids go in (no boom, no fizz), and a slow chorus makes the tail shimmer across the stereo field
+    const hall = new Tone.Convolver({ normalize: true });
+    hall.buffer = new Tone.ToneAudioBuffer(reverbIR(hall.context.sampleRate, 3.6, 0.03));
+    this.hallIn.chain(
+      new Tone.BiquadFilter({ type: 'highpass', frequency: 250 }),
+      new Tone.BiquadFilter({ type: 'lowpass', frequency: 4500 }),
+      new Tone.Chorus({ frequency: 0.4, delayTime: 6, depth: 0.6, spread: 180, wet: 1 }).start(),
+      hall, new Tone.Volume(-6), this.master,
+    );
+
     for (const p of MIX_PARTS) {
       const volume = new Tone.Volume(0);
       const gate = new Tone.Gain(1);
@@ -98,8 +112,10 @@ export class Mixer {
       gate.connect(this.master);
       const reverb = new Tone.Volume(REVERB_SEND[p]).connect(fx);
       gate.connect(reverb);
+      const hallSend = new Tone.Volume(-Infinity).connect(this.hallIn);
+      gate.connect(hallSend);
       if (DELAY_SEND[p] > -Infinity) gate.connect(new Tone.Volume(DELAY_SEND[p]).connect(this.delay));
-      this.strips[p] = { volume, gate, reverb, mute: false, solo: false, slider: 80 };
+      this.strips[p] = { volume, gate, reverb, hall: hallSend, mute: false, solo: false, slider: 80 };
     }
   }
 
@@ -145,6 +161,11 @@ export class Mixer {
   /** More (or less) reverb on a part than usual, in dB (0 = the usual amount). */
   setReverbExtra(part: MixPart, db: number) {
     this.strips[part].reverb.volume.value = REVERB_SEND[part] + db;
+  }
+
+  /** Send a part into the long ambience (dB; -Infinity = off). */
+  setHall(part: MixPart, db: number) {
+    this.strips[part].hall.volume.value = db;
   }
 
   /** Keep the echo on the beat: a dotted 8th at this tempo. */
