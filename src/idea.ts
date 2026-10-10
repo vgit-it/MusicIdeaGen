@@ -148,12 +148,22 @@ export interface Idea {
   bass: number[];
   /** Optional note length in 16ths per step (otherwise a note lasts until the next one). */
   bassLen?: number[];
+  /** Tracks, played by the band: how far the bassist sits behind the kick, in ms. */
+  bassFeel?: number;
   /** Strummed genres: how the bass plays (locked to the kick, held, flowing or driving). */
   bassLine?: BassLine;
   /** Riff genres: the guitar part as explicit hits (replaces the strum lane for playback). */
   guitar?: GuitarHit[];
   /** Second guitar: lead, harmony, octaves, arpeggios or swells. */
   guitar2: GuitarHit[];
+  /** Tracks, played by the band: how hard the strummed rhythm guitar plays (1 = as written). */
+  strumGain?: number;
+  /** Tracks, played by the band: how far Guitar 2 sits behind the beat, in ms. */
+  g2Feel?: number;
+  /** Tracks, played by the band: how far the strummed rhythm guitar sits behind the beat, in ms (- ahead). */
+  strumFeel?: number;
+  /** Tracks, played by the band: the in-between 16ths come this share of a 16th late (everyone). */
+  lilt?: number;
   notes: string[];
   /** Set when this is one section of a track. */
   section?: SectionInfo;

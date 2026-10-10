@@ -15,7 +15,7 @@ import { type DrumBar, type FillType, addFill } from '../parts/drums';
 import { Rng } from '../rng';
 import type { Bar } from '../rhythm';
 
-type Feel = 'ahead' | 'on' | 'behind';
+export type Feel = 'ahead' | 'on' | 'behind';
 type Touch = 'light' | 'even' | 'dig';
 
 interface Drummer {
@@ -85,7 +85,7 @@ function followsFill(idea: Idea, a: number, b: number): boolean {
 }
 
 /** Steps inside a fill (left alone by everything but the fill itself). */
-function fillSteps(idea: Idea): Set<number> {
+export function fillSteps(idea: Idea): Set<number> {
   const out = new Set<number>();
   for (const f of idea.drums.fills) {
     const bar = idea.song.bars[f.bar];
@@ -94,9 +94,8 @@ function fillSteps(idea: Idea): Set<number> {
   return out;
 }
 
-/** The drummer plays every section of a track (in place). `seed`: who the drummer is. */
-export function playDrums(sections: Idea[], seed: string) {
-  if (!sections.length) return;
+/** The drummer plays every section of a track (in place). `seed`: who the drummer is. Returns their feel (the bassist listens to it). */
+export function playDrums(sections: Idea[], seed: string): Feel {
   const genre = sections[0].song.partGenres.drums;
   const dr = pickDrummer(new Rng(`${seed}-drummer`), genre);
   const kinds = sections.map((s) => s.section!.kind);
@@ -191,4 +190,5 @@ export function playDrums(sections: Idea[], seed: string) {
 
     idea.notes.push(...notes);
   });
+  return dr.feel;
 }

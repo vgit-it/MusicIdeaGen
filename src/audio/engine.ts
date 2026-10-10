@@ -491,6 +491,8 @@ export class Engine {
     const total = song.total;
     const g = this.step++;
     const six = 15 / this.transport.bpm.value;
+    // the band's lilt: the in-between 16ths come a touch late, for everyone
+    if (g % 2 && idea.lilt) time += idea.lilt * six;
     const dyn = DYNAMICS[idea.section?.energy ?? 4];
     // the final held chord of a track rings out
     const lastBar = song.bars[song.bars.length - 1];
@@ -520,7 +522,7 @@ export class Engine {
 
     const ci = this.chordInst;
     if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined, driven(this.chordId));
-    if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time, six);
+    if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time + (idea.g2Feel ?? 0) / 1000, six);
     const keys = this.keysInst && this.layerAt(idea, 'keys');
     if (keys) for (const n of keys.at[g]) {
       this.keysInst!.strum({ stroke: 'D', notes: n.notes, time, dur: n.len * six * 0.97, vel: n.vel, sixteenth: six });
@@ -548,9 +550,9 @@ export class Engine {
         stroke: st,
         notes,
         strings,
-        time,
+        time: Math.max(0, time + (idea.strumFeel ?? 0) / 1000),
         dur: ending ? 6 : Math.min(n * six * (legato ? 1 : 0.97) + (legato ? 0.05 : 0), maxRing),
-        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn,
+        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1),
         sixteenth: six,
       });
     }
@@ -576,7 +578,7 @@ export class Engine {
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
       const dur = ending ? 5 : Math.min(n >= next ? next * six + 0.03 : n * six * 0.95, 4.5);
-      this.bass.play(bass[g], time, dur, (onBeat ? 0.9 : 0.74) * dyn);
+      this.bass.play(bass[g], time + (idea.bassFeel ?? 0) / 1000, dur, (onBeat ? 0.9 : 0.74) * dyn);
     }
 
     // the last beat swells toward a louder next section (the drummer's fill builds into it); before a
