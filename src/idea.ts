@@ -95,11 +95,17 @@ export interface DrumPart {
   ride: number[];
   crash: number[];
   tom: number[];
-  fills: { bar: number; len: number }[];
+  /**
+   * `seam`: a fill the track adds between sections (or where the drums come in), not part of a groove.
+   * `build`: a snare build into a chorus (always played as written).
+   */
+  fills: { bar: number; len: number; seam?: boolean; build?: boolean }[];
   halfTime: boolean;
   fourFloor: boolean;
   /** The groove's name (strummed genres), for the notes. */
   groove?: string;
+  /** Tracks, played by the band: where the drummer sits against the beat, in ms (+ late, - early; the kick is the anchor). */
+  feel?: { snare: number; cym: number };
 }
 
 /**

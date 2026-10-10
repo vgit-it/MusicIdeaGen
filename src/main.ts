@@ -462,6 +462,7 @@ const optSel = {
   keyChange: $<HTMLSelectElement>('t-key'),
   outro: $<HTMLSelectElement>('t-outro'),
   riffVerse: $<HTMLSelectElement>('t-riff'),
+  band: $<HTMLSelectElement>('t-band'),
 };
 function syncTrackOptions() {
   if (!track) return;
@@ -471,12 +472,15 @@ function syncTrackOptions() {
   optSel.keyChange.value = track.opts.keyChange;
   optSel.outro.value = track.opts.outro ?? 'auto';
   optSel.riffVerse.value = track.opts.riffVerse ?? 'auto';
+  optSel.band.value = track.opts.band ?? 'on';
   // only riff genres have a riff to carry through the verses
   optSel.riffVerse.closest('label')!.style.display = track.source.guitar ? '' : 'none';
 }
 for (const [k, sel] of Object.entries(optSel)) {
   sel.onchange = () => {
     if (!track) return;
+    // the band playing it (or not) changes how it's played, not the song: stay where you are
+    if (k === 'band') return rebuildTrack({ ...track.opts, band: sel.value as 'on' | 'off' }, shown, true);
     const opts: TrackOptions = { ...track.opts, order: undefined };
     if (k === 'intro') opts.intro = sel.value as IntroChoice;
     else if (k === 'outro') opts.outro = sel.value as OutroChoice;

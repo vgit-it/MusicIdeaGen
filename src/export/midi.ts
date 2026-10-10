@@ -154,13 +154,15 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
         note(bass, bl[g], at(g), secToTicks(dur), (onBeat ? 0.9 : 0.74) * dyn);
       }
 
-      const dn = (n: number, v: number) => note(drums, n, at(g), SIX, v);
+      // (the drummer's feel moves the snare and cymbals off the grid, as played)
+      const dn = (n: number, v: number, ms = 0) => note(drums, n, Math.max(0, at(g) + secToTicks(ms / 1000)), SIX, v);
+      const sn = d.feel?.snare ?? 0, cy = d.feel?.cym ?? 0;
       if (d.kick[g]) dn(DRUM_NOTE.kick, d.kick[g]);
-      if (d.snare[g]) dn(DRUM_NOTE.snare, d.snare[g]);
+      if (d.snare[g]) dn(DRUM_NOTE.snare, d.snare[g], sn);
       const acc = cymbalAccent(bar.groups, g - bar.start);
-      if (d.hat[g]) dn(DRUM_NOTE.hat, Math.min(1, d.hat[g] * acc));
-      if (d.hatOpen[g]) dn(DRUM_NOTE.hatOpen, d.hatOpen[g]);
-      if (d.ride[g]) dn(DRUM_NOTE.ride, Math.min(1, d.ride[g] * acc));
+      if (d.hat[g]) dn(DRUM_NOTE.hat, Math.min(1, d.hat[g] * acc), cy);
+      if (d.hatOpen[g]) dn(DRUM_NOTE.hatOpen, d.hatOpen[g], cy);
+      if (d.ride[g]) dn(DRUM_NOTE.ride, Math.min(1, d.ride[g] * acc), cy);
       if (d.crash[g]) dn(DRUM_NOTE.crash, d.crash[g]);
       if (d.tom[g]) dn(DRUM_NOTE.tom[Math.min(2, d.tom[g] - 1)], 0.8);
     }

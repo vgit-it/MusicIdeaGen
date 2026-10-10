@@ -15,6 +15,7 @@ import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
 import { applySheet, hasPins } from './parts/sheet';
+import { playDrums } from './players/drummer';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
@@ -28,7 +29,7 @@ export type OutroChoice = 'auto' | 'short' | 'long' | 'jam';
 /** How a track is built: its own seeds (so each block can be rerolled alone), structure choices, and an optional hand-edited order. */
 export interface TrackOptions {
   /** `chorus`: a riff track's new chorus, when the idea's riff plays the verses (missing in older links). */
-  seeds: { structure: string; verse: string; pre: string; bridge: string; hook: string; chorus?: string };
+  seeds: { structure: string; verse: string; pre: string; bridge: string; hook: string; chorus?: string; band?: string };
   intro: IntroChoice;
   pre: Choice;
   interlude: Choice;
@@ -37,6 +38,8 @@ export interface TrackOptions {
   outro?: OutroChoice;
   /** Riff genres: the idea's riff plays under the verses (missing in older links: Auto). */
   riffVerse?: Choice;
+  /** Played by the band: each player plays the written parts their own way (missing in older links: on). */
+  band?: 'on' | 'off';
   /** Sections in order, when edited by hand (otherwise the genre template decides). */
   order?: SectionKind[];
   /** Rhythm instrument chosen by hand for a kind of section (every verse, every chorus...). */
@@ -227,7 +230,7 @@ function ensureFill(idea: Idea, rng: Rng) {
   const b = barOf(idea.drums, bars[L]);
   const len = addFill(rng, b, bars[L].len, bars[L].groups, w, idea.song.partGenres.drums);
   putBar(idea.drums, bars[L], b);
-  idea.drums.fills.push({ bar: L, len });
+  idea.drums.fills.push({ bar: L, len, seam: true });
 }
 
 /** Drums sit out, then come in with a fill at the end (intros). */
@@ -238,7 +241,7 @@ function pickup(idea: Idea, rng: Rng) {
   const b = emptyBar(bars[L].len);
   const len = addFill(rng, b, bars[L].len, bars[L].groups, w, idea.song.partGenres.drums);
   putBar(idea.drums, bars[L], b);
-  idea.drums.fills.push({ bar: L, len });
+  idea.drums.fills.push({ bar: L, len, seam: true });
 }
 
 /* ------------------------------------------------------------ energy */
@@ -532,7 +535,7 @@ function fillBar(idea: Idea, bi: number, rng: Rng) {
   const b = emptyBar(bars[bi].len);
   const len = addFill(rng, b, bars[bi].len, bars[bi].groups, w, idea.song.partGenres.drums);
   putBar(idea.drums, bars[bi], b);
-  idea.drums.fills.push({ bar: bi, len });
+  idea.drums.fills.push({ bar: bi, len, seam: true });
 }
 
 /** Eight-bar intro: the hook alone for four bars, the drums come in with a fill, the bass joins (now or two bars later). */
@@ -570,7 +573,7 @@ function longIntro(idea: Idea, rng: Rng): string {
   fillBar(idea, 3, rng);
   if (bars[11] && !d.fills.some((f) => f.bar === 11)) {
     const b = barOf(d, bars[11]);
-    d.fills.push({ bar: 11, len: addFill(rng, b, bars[11].len, bars[11].groups, idea.song.w, idea.song.partGenres.drums) });
+    d.fills.push({ bar: 11, len: addFill(rng, b, bars[11].len, bars[11].groups, idea.song.w, idea.song.partGenres.drums), seam: true });
     putBar(d, bars[11], b);
   }
   crashAt(d, allIn);
@@ -592,7 +595,7 @@ function jamBuild(idea: Idea, firstBars: number, rng: Rng) {
   const L = firstBars - 1;
   if (bars[L] && !d.fills.some((f) => f.bar === L)) {
     const b = barOf(d, bars[L]);
-    d.fills.push({ bar: L, len: addFill(rng, b, bars[L].len, bars[L].groups, idea.song.w, idea.song.partGenres.drums) });
+    d.fills.push({ bar: L, len: addFill(rng, b, bars[L].len, bars[L].groups, idea.song.w, idea.song.partGenres.drums), seam: true });
     putBar(d, bars[L], b);
   }
   crashAt(d, at);
@@ -615,7 +618,7 @@ function snareBuild(idea: Idea) {
       idea.bass[g] = bassRoot(key, idea.chords.timeline[idea.chords.chordIdx[g]].chord);
     } else if (!idea.guitar) { idea.strum[g] = '.'; idea.bass[g] = 0; }
   }
-  d.fills = [...d.fills.filter((f) => f.bar !== L), { bar: L, len: bar.len }];
+  d.fills = [...d.fills.filter((f) => f.bar !== L), { bar: L, len: bar.len, build: true }];
   idea.section!.tail = { build: bar.start };
 }
 
@@ -1360,6 +1363,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const { chords, guitar2 } = idea.section!.sound!;
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
   }
+
+  // the band plays it: each player reads the whole track and plays the written part their way
+  if (opts.band !== 'off') playDrums(sections, S.band ?? `${src.seeds.song}-band`);
 
   // each section knows the shape of its track (added layers plan where they play from it)
   const all = sections.map((s) => ({ kind: s.section!.kind, energy: s.section!.energy }));
