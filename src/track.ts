@@ -4,7 +4,7 @@
 //
 // Pure and deterministic: the same idea always grows into the same track.
 
-import { type BuildOptions, buildIdea } from './generator';
+import { type BuildOptions, buildIdea, withSheet } from './generator';
 import { GENRES, type Genre, QUIET_STYLES, type RiffStyle } from './genres';
 import type {
   ChordEvent, ChordPart, DrumPart, GuitarHit, Idea, SectionInfo, SectionKind, Seeds, Song, Stroke,
@@ -880,7 +880,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const riff = !!src.song.sections;
   const P = plansFor(mode);
   // the idea again, but the drums never wait out its first bars (it gets sliced and repeated)
-  const base = riff ? buildIdea(src.opts, src.seeds, { ...src.song, noTacet: true }) : src;
+  const baseSong = { ...src.song, noTacet: true };
+  const base = riff ? buildIdea(src.opts, src.seeds, baseSong, withSheet(src.opts, src.seeds, baseSong)) : src;
   const preRoll = rng.chance(PRE_CHANCE[genre]);
   const withPre = opts.order ? opts.order.includes('prechorus') : opts.pre === 'on' || (opts.pre === 'auto' && preRoll);
   const vTag = `v-${S.verse}`, pTag = `p-${S.pre}`, bTag = `b-${S.bridge}`;

@@ -4,7 +4,7 @@
 import { GENRES } from '../genres';
 import type { ChordSheet, Idea, SheetCell } from '../idea';
 import {
-  CELLS_PER_BAR, PICK_QUALITIES, canSetChords, cellChord, chordsAtCells, hasPins, keyChords, numeral, suggest,
+  CELLS_PER_BAR, PICK_QUALITIES, cellChord, chordsAtCells, hasPins, keyChords, numeral, suggest,
 } from '../parts/sheet';
 import { type Chord, NOTE_NAMES, type Quality, chordName } from '../theory';
 
@@ -58,8 +58,18 @@ export function buildChordEditor(root: HTMLElement, apply: (sheet: ChordSheet | 
     const after = split && half === 0 ? ci + 1 : a + CELLS_PER_BAR;
     const next = after < sounding.length ? sounding[after] : null;
     const genre = GENRES[song.genre];
-    const inKey = keyChords(song.mode, genre.seventh).filter((c) => c.q !== 'dim' && c.q !== 'aug');
-    const fits = suggest(song.mode, now, prev, next);
+    // heavy riffs play power chords: offer the key's chords (and the ideas) as power chords there
+    const tl = idea.chords.timeline;
+    const power = !!genre.riff && tl.filter((e) => e.chord.q === '5').length * 2 >= tl.length;
+    const asPower = (cs: Chord[]) => cs.map((c) => ({ root: c.root, q: '5' as Quality }))
+      .filter((c, k, all) => all.findIndex((x) => x.root === c.root) === k);
+    const inKey = power ? asPower(keyChords(song.mode)) : keyChords(song.mode, genre.seventh).filter((c) => c.q !== 'dim' && c.q !== 'aug');
+    let fits = suggest(song.mode, now, prev, next, power ? 10 : 6);
+    if (power) {
+      fits = fits.map((f) => ({ ...f, chord: { root: f.chord.root, q: '5' as Quality } }))
+        .filter((f, k, all) => f.chord.root !== now.root && all.findIndex((x) => x.chord.root === f.chord.root) === k)
+        .slice(0, 6);
+    }
     const last = bar === song.bars.length - 1;
     const keyRoot = (song.key + now.root) % 12;
     const half2 = (k: number) => `${k ? '2nd' : '1st'} half: ${name(sounding[a + k])}`;
@@ -166,7 +176,7 @@ export function buildChordEditor(root: HTMLElement, apply: (sheet: ChordSheet | 
     close() { bar = -1; draw(); },
     refresh(next, inTrack) {
       idea = next;
-      if (!idea || inTrack || !canSetChords(idea.song)) bar = -1;
+      if (!idea || inTrack) bar = -1;
       draw();
     },
   };
