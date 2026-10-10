@@ -652,9 +652,9 @@ const CYMBAL_MAKEUP = 7;
 /** Per-drum EQ, the usual rock-mix moves. */
 const PIECE_EQ: Record<DrumPiece, Band[]> = {
   // thump, less cardboard, beater click
-  kick: [['peaking', 60, 3, 1], ['peaking', 380, -5, 1.2], ['peaking', 3800, 4, 1.4]],
+  kick: [['highpass', 42, 0, 0.8], ['peaking', 70, 2, 1], ['peaking', 260, -6, 0.9], ['peaking', 3500, 6, 1.2]],
   // body and crack
-  snare: [['peaking', 200, 4, 1], ['peaking', 800, -2, 1], ['highshelf', 4500, 3, 0.7]],
+  snare: [['peaking', 200, 4, 1], ['peaking', 600, -3, 1.2], ['peaking', 2500, 2, 1], ['highshelf', 6000, -2, 0.7]],
   hat: [['highpass', 300, 0, 0.7], ['highshelf', 7000, 1, 0.7]],
   hatOpen: [['highpass', 300, 0, 0.7], ['highshelf', 7000, 1, 0.7]],
   crash: [['highpass', 250, 0, 0.7], ['highshelf', 7000, 1, 0.7]],
