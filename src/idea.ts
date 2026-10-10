@@ -156,6 +156,10 @@ export interface Idea {
   guitar?: GuitarHit[];
   /** Second guitar: lead, harmony, octaves, arpeggios or swells. */
   guitar2: GuitarHit[];
+  /** Tracks, played by the band: how hard the strummed rhythm guitar plays (1 = as written). */
+  strumGain?: number;
+  /** Tracks, played by the band: how far Guitar 2 sits behind the beat, in ms. */
+  g2Feel?: number;
   notes: string[];
   /** Set when this is one section of a track. */
   section?: SectionInfo;

@@ -116,13 +116,13 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       : chords.timeline.map((e) => pianoVoicing(song.key, e.chord));
 
     /** A guitar hit (riff or guitar 2) as notes, strummed low to high. */
-    const hit = (t: MidiTrack, h: GuitarHit, v: number, ending: boolean) => {
+    const hit = (t: MidiTrack, h: GuitarHit, v: number, ending: boolean, late = 0) => {
       let dur = ending ? 6 : Math.min(h.len * sixSec * 0.97, 4);
       let hv = v;
       if (h.mute === 'palm') { dur = Math.min(dur, 0.2); hv *= 0.9; }
       if (h.mute === 'dead') { dur = 0.05; hv *= 0.6; }
       if (h.swell) hv *= 0.8;
-      h.notes.forEach((m, i) => note(t, m, at(h.step) + i * 6, secToTicks(dur), hv));
+      h.notes.forEach((m, i) => note(t, m, at(h.step) + secToTicks(late / 1000) + i * 6, secToTicks(dur), hv));
     };
 
     for (let g = 0; g < total; g++) {
@@ -138,13 +138,13 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
         const accent = (onBeat ? 0.12 : 0) + (d.kick[g] || d.snare[g] >= 0.5 ? 0.06 : 0);
         const n = gapUntil(strum, '.', g, 16);
         const ring = ending ? 6 : Math.min(n * sixSec * 0.97, isGuitar(id) ? 2.4 : 1.6);
-        const v = ((st === 'U' ? 0.55 : 0.68) + accent) * dyn;
+        const v = ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1);
         if (st === 'x') notes.slice(-3).forEach((m, i) => note(rhythm, m, at(g) + i * 3, 30, 0.3));
         else if (st === 'p') notes.slice(0, 3).forEach((m, i) => note(rhythm, m, at(g) + i * 4, secToTicks(Math.min(ring, 0.14)), v * 0.8));
         else (st === 'U' ? [...notes].reverse() : notes).forEach((m, i) => note(rhythm, m, at(g) + i * 10, secToTicks(ring), v));
       }
 
-      for (const h of idea.guitar2) if (h.step === g) hit(g2, h, h.vel, false);
+      for (const h of idea.guitar2) if (h.step === g) hit(g2, h, h.vel, false, idea.g2Feel ?? 0);
 
       if (bl[g]) {
         // as played: legato into the next note, unless written shorter

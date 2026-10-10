@@ -520,7 +520,7 @@ export class Engine {
 
     const ci = this.chordInst;
     if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined, driven(this.chordId));
-    if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time, six);
+    if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time + (idea.g2Feel ?? 0) / 1000, six);
     const keys = this.keysInst && this.layerAt(idea, 'keys');
     if (keys) for (const n of keys.at[g]) {
       this.keysInst!.strum({ stroke: 'D', notes: n.notes, time, dur: n.len * six * 0.97, vel: n.vel, sixteenth: six });
@@ -550,7 +550,7 @@ export class Engine {
         strings,
         time,
         dur: ending ? 6 : Math.min(n * six * (legato ? 1 : 0.97) + (legato ? 0.05 : 0), maxRing),
-        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn,
+        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1),
         sixteenth: six,
       });
     }

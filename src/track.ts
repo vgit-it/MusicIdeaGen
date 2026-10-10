@@ -17,6 +17,7 @@ import { naturalStrokes } from './parts/strum';
 import { applySheet, hasPins } from './parts/sheet';
 import { playBass } from './players/bassist';
 import { playDrums } from './players/drummer';
+import { playGuitars } from './players/guitarists';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
@@ -1369,6 +1370,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   if (opts.band !== 'off') {
     const band = S.band ?? `${src.seeds.song}-band`;
     playBass(sections, band, playDrums(sections, band));
+    playGuitars(sections, band);
   }
 
   // each section knows the shape of its track (added layers plan where they play from it)
