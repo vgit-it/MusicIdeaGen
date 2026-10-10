@@ -18,19 +18,25 @@ import { applySheet, hasPins } from './parts/sheet';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
-import { type Chord, type Mode, QUALITIES, SCALES, chordPc, degreeChord } from './theory';
+import { type Chord, type Mode, NOTE_NAMES, QUALITIES, SCALES, chordPc, degreeChord } from './theory';
 import { lowestOf, powerChord } from './theory/fretboard';
 
 export type Choice = 'auto' | 'on' | 'off';
-export type IntroChoice = 'auto' | 'alone' | 'layered' | 'band';
+export type IntroChoice = 'auto' | 'alone' | 'layered' | 'long' | 'band';
+export type OutroChoice = 'auto' | 'short' | 'long' | 'jam';
 
 /** How a track is built: its own seeds (so each block can be rerolled alone), structure choices, and an optional hand-edited order. */
 export interface TrackOptions {
-  seeds: { structure: string; verse: string; pre: string; bridge: string; hook: string };
+  /** `chorus`: a riff track's new chorus, when the idea's riff plays the verses (missing in older links). */
+  seeds: { structure: string; verse: string; pre: string; bridge: string; hook: string; chorus?: string };
   intro: IntroChoice;
   pre: Choice;
   interlude: Choice;
   keyChange: Choice;
+  /** Short (4 bars), long (the last line repeats as a tag) or a jam (new music in a new key); missing in older links: Auto. */
+  outro?: OutroChoice;
+  /** Riff genres: the idea's riff plays under the verses (missing in older links: Auto). */
+  riffVerse?: Choice;
   /** Sections in order, when edited by hand (otherwise the genre template decides). */
   order?: SectionKind[];
   /** Rhythm instrument chosen by hand for a kind of section (every verse, every chorus...). */
@@ -40,7 +46,7 @@ export interface TrackOptions {
 }
 
 /** Blocks whose chords you can set in a track (the chorus is the idea itself). */
-export type ChordBlock = 'verse' | 'pre' | 'bridge';
+export type ChordBlock = 'verse' | 'pre' | 'bridge' | 'chorus';
 
 /**
  * Where a section's chords are set: a block (its bars as written, `opts.chords` its sheet), or the idea
@@ -51,7 +57,7 @@ export interface ChordTarget { block: ChordBlock | 'idea'; idea: Idea; from: num
 export const defaultTrackOptions = (src: Idea): TrackOptions => {
   const s = src.seeds.song;
   return {
-    seeds: { structure: `${s}-track`, verse: `${s}-verse`, pre: `${s}-pre`, bridge: `${s}-bridge`, hook: `${s}-hook` },
+    seeds: { structure: `${s}-track`, verse: `${s}-verse`, pre: `${s}-pre`, bridge: `${s}-bridge`, hook: `${s}-hook`, chorus: `${s}-chorus` },
     intro: 'auto', pre: 'auto', interlude: 'auto', keyChange: 'auto',
   };
 };
@@ -68,6 +74,9 @@ export interface Track {
   steps: number;
   /** Where each kind of section's chords can be set (kinds missing here can't be edited). */
   edit: Partial<Record<SectionKind, ChordTarget>>;
+  /** Riff genres: the idea's riff plays the verses, and (`newChorus`) the chorus is new music. */
+  riffVerse: boolean;
+  newChorus: boolean;
 }
 
 /** Length in seconds at the track's tempo. */
@@ -447,6 +456,18 @@ const MINOR_PLANS: Record<'verse' | 'pre' | 'bridge', Plan[]> = {
   ],
 };
 
+/** Choruses written for a riff that plays the verses: away from home, then back (V bVII I, IV V I…). */
+const CHORUS_PLANS: Record<'major' | 'minor', Plan[]> = {
+  major: [[[7, 2], [10, 2], [0, 4]], [[5, 2], [7, 2], [0, 4]], [[10, 2], [5, 2], [0, 4]], [[5, 2], [0, 2], [7, 2], [0, 2]]],
+  minor: [[[8, 2], [10, 2], [0, 4]], [[3, 2], [10, 2], [0, 4]], [[5, 2], [8, 2], [10, 2], [0, 2]], [[8, 2], [3, 2], [10, 2], [0, 2]]],
+};
+
+/** Outro jams: a short loop in the new key, round and round. */
+const JAM_PLANS: Record<'major' | 'minor', Plan[]> = {
+  minor: [[[0, 1], [8, 1], [10, 1], [0, 1]], [[0, 2], [10, 1], [8, 1]], [[0, 1], [3, 1], [10, 1], [5, 1]], [[0, 1], [10, 1], [8, 1], [10, 1]]],
+  major: [[[0, 1], [10, 1], [5, 1], [0, 1]], [[0, 1], [7, 1], [10, 1], [5, 1]], [[0, 2], [5, 1], [10, 1]]],
+};
+
 /** Riff verses sit on the tonic and move in the last bar. */
 const RIFF_VERSE_MOVE = { major: [10, 5, 7], minor: [10, 8, 5, 3, 7] };
 
@@ -528,6 +549,53 @@ function layerIntro(idea: Idea, rng: Rng): string {
   return bassFrom > half
     ? 'Layered: guitar alone, the drums come in with a fill at bar 5, the bass two bars later'
     : 'Layered: guitar alone, then drums (with a fill) and bass come in at bar 5';
+}
+
+/**
+ * Sixteen-bar intro, built up a layer at a time: the guitar alone, the drums come in (with a fill),
+ * then the bass, then Guitar 2 and the full band. The drums stay light (no crashes, closed hats)
+ * until everyone's in, and fill into the last four bars.
+ */
+function longIntro(idea: Idea, rng: Rng): string {
+  const { bars, total } = idea.song;
+  const at = (bi: number) => bars[bi]?.start ?? total;
+  const drumsIn = at(4), bassIn = at(8), allIn = at(12);
+  const d = idea.drums;
+  for (const l of DRUM_LANES) for (let g = 0; g < drumsIn; g++) d[l][g] = 0;
+  for (let g = drumsIn; g < allIn; g++) {
+    d.crash[g] = 0;
+    if (d.hatOpen[g]) { d.hat[g] = Math.max(d.hat[g], d.hatOpen[g] * 0.8); d.hatOpen[g] = 0; }
+  }
+  d.fills = d.fills.filter((f) => f.bar > 3);
+  fillBar(idea, 3, rng);
+  if (bars[11] && !d.fills.some((f) => f.bar === 11)) {
+    const b = barOf(d, bars[11]);
+    d.fills.push({ bar: 11, len: addFill(rng, b, bars[11].len, bars[11].groups, idea.song.w, idea.song.partGenres.drums) });
+    putBar(d, bars[11], b);
+  }
+  crashAt(d, allIn);
+  for (let g = 0; g < bassIn; g++) { idea.bass[g] = 0; if (idea.bassLen) idea.bassLen[g] = 0; }
+  idea.guitar2 = idea.guitar2.filter((h) => h.step >= allIn);
+  idea.section!.bandFrom = allIn;
+  return 'Long build: guitar alone, the drums come in with a fill at bar 5, the bass at bar 9, everyone (Guitar 2 too) at bar 13';
+}
+
+/**
+ * An outro jam builds: the half-time first part keeps its cymbals down (a crash only where it starts)
+ * and fills into the full band, which crashes in.
+ */
+function jamBuild(idea: Idea, firstBars: number, rng: Rng) {
+  const { bars, total } = idea.song;
+  const at = bars[firstBars]?.start ?? total;
+  const d = idea.drums;
+  for (let g = 1; g < at; g++) d.crash[g] = 0;
+  const L = firstBars - 1;
+  if (bars[L] && !d.fills.some((f) => f.bar === L)) {
+    const b = barOf(d, bars[L]);
+    d.fills.push({ bar: L, len: addFill(rng, b, bars[L].len, bars[L].groups, idea.song.w, idea.song.partGenres.drums) });
+    putBar(d, bars[L], b);
+  }
+  crashAt(d, at);
 }
 
 /** The last bar builds: snare 8ths, then 16ths, getting louder; the band drives 8ths with it. */
@@ -848,7 +916,7 @@ interface Slot {
   segs: Seg[];
   /** Guitar 2: keep what the block has, drop it, rewrite it, force roles, or play the track's hook. */
   g2: 'keep' | 'drop' | 'pick' | 'play' | 'lead' | 'swell' | 'hook' | 'build';
-  intro?: 'alone' | 'band' | 'layered';
+  intro?: 'alone' | 'band' | 'layered' | 'long';
   /** Number for repeated kinds ("Verse 2"). */
   n?: number;
   /** The last chorus: everything, and the key change. */
@@ -898,12 +966,15 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const preRoll = rng.chance(PRE_CHANCE[genre]);
   const withPre = opts.order ? opts.order.includes('prechorus') : opts.pre === 'on' || (opts.pre === 'auto' && preRoll);
   const vTag = `v-${S.verse}`, pTag = `p-${S.pre}`, bTag = `b-${S.bridge}`;
+  const cSeed = S.chorus ?? `${src.seeds.song}-chorus`;
+  const seedOf = (b: ChordBlock) => (b === 'chorus' ? cSeed : S[b]);
+  let riffVerse = false, newChorus = false;
   // chords you set on a block: the block's own chords are written around them, like the idea's
   const pinned = (b: ChordBlock) => hasPins(opts.chords?.[b]);
   const pin = (b: ChordBlock, song: Song, f?: BuildOptions['chords']): BuildOptions['chords'] => {
     const sheet = opts.chords?.[b];
     if (!hasPins(sheet)) return f;
-    return (c) => applySheet(new Rng(`${S[b]}-sheet`), song, f ? f(c) : c, sheet);
+    return (c) => applySheet(new Rng(`${seedOf(b)}-sheet`), song, f ? f(c) : c, sheet);
   };
 
   let verse: Seg[], chorus: Seg[], bridge: Seg[], hookSegs: Seg[];
@@ -916,7 +987,12 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const s = base.song.sections!;
     const [va, vb] = [s[0], s[4]];
     let verseStyle = va;
-    if (va !== vb && S.verse === defaultTrackOptions(src).seeds.verse) {
+    // the hook: the most riff-like half of the idea
+    const hookHalf = [0, 1].find((h) => HOOKY.includes(s[h * 4]));
+    const split = va !== vb && S.verse === defaultTrackOptions(src).seeds.verse;
+    const rv = opts.riffVerse ?? 'auto';
+    riffVerse = rv === 'on' || (rv === 'auto' && new Rng(`${S.structure}-riffverse`).chance(hookHalf !== undefined ? 0.5 : 0.25));
+    if (split) {
       // ideas that change style halfway split: first half is the verse, second half the chorus
       // (with chords you set on the verse: the same riff, written to them)
       const v = pinned('verse')
@@ -933,6 +1009,21 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       const move = vr.pick(RIFF_VERSE_MOVE[isMinor(mode) ? 'minor' : 'major']);
       verse = [seg(block(base, vTag, ['chords', 'strum'], { sections: fill8(verseStyle) },
         pin('verse', base.song, planned(base.song, [[0, 3], [move, 1]], vr, !chordal(verseStyle)))))];
+    }
+    hookSegs = hookHalf !== undefined ? [seg(base, hookHalf * 4, 4)] : take(chorus, 4);
+    // the riff carries the song: it plays under the verses (an idea that splits with the riff first
+    // already does). A chorus that would play the same riff gets new chords and big chords instead.
+    if (riffVerse && !(split && hookHalf === 0)) {
+      const h = hookSegs[0];
+      verse = [h, h];
+      verseStyle = s[h.from];
+      if (chorus.some((c) => c.idea === h.idea && c.from < h.from + h.n && h.from < c.from + c.n)) {
+        newChorus = true;
+        const cr = new Rng(cSeed);
+        const style = cr.weighted<RiffStyle>([['big', 3], ['chug', verseStyle === 'chug' ? 0 : 1]]);
+        chorus = [seg(block(base, `c-${cSeed}`, ['chords', 'strum'], { sections: fill8(style) },
+          pin('chorus', base.song, planned(base.song, cr.pick(CHORUS_PLANS[isMinor(mode) ? 'minor' : 'major']), cr, !chordal(style)))))];
+      }
     }
     const quietVerse = QUIET_STYLES.includes(verseStyle);
     verseE = quietVerse ? 2 : 3;
@@ -953,9 +1044,6 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       bridge = [seg(block(base, bTag, ['chords', 'strum'], { sections: fill8(style), forceHalf: quiet ? undefined : true },
         pin('bridge', base.song, planned(base.song, br.pick(P.bridge), br, !chordal(style)))))];
     }
-    // the hook: the most riff-like half of the idea
-    const hookHalf = [0, 1].find((h) => HOOKY.includes(s[h * 4]));
-    hookSegs = hookHalf !== undefined ? [seg(base, hookHalf * 4, 4)] : take(chorus, 4);
     home = { root: 0, q: '5' };
   } else {
     chorus = [seg(src)];
@@ -985,14 +1073,16 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const v = join([x], { kind: 'verse', label: '', energy: 3 });
     return { block: b, idea: { ...v, section: undefined, notes: [], opts: { ...v.opts, chords: opts.chords?.[b] } }, from: x.from, n: x.n };
   };
-  const chorusAt: ChordTarget = { block: 'idea', idea: src, from: chorus[0].from, n: chorus[0].n };
+  // (a riff that plays the verses is the idea's: its chords are the idea's; a new chorus is its own block)
+  const ideaAt = (x: Seg): ChordTarget => ({ block: 'idea', idea: src, from: x.from, n: x.n });
+  const chorusAt = newChorus ? view('chorus', chorus[0]) : ideaAt(chorus[0]);
   const edit: Track['edit'] = {
-    verse: view('verse', verse[0]), chorus: chorusAt, outro: chorusAt,
+    verse: riffVerse && verse[0].idea === base ? ideaAt(verse[0]) : view('verse', verse[0]), chorus: chorusAt, outro: chorusAt,
     ...(pre ? { prechorus: view('pre', pre[0]) } : {}),
     [bridgeKind]: view('bridge', bridge[0]),
   };
   const kept: Partial<Record<SectionKind, boolean>> = {
-    chorus: hasPins(src.opts.chords), interlude: hasPins(src.opts.chords), outro: hasPins(src.opts.chords),
+    chorus: newChorus ? pinned('chorus') : hasPins(src.opts.chords), interlude: hasPins(src.opts.chords), outro: hasPins(src.opts.chords),
     verse: pinned('verse'), prechorus: pinned('pre'), bridge: pinned('bridge'), breakdown: pinned('bridge'),
   };
 
@@ -1021,16 +1111,17 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   // intro: layered (the hook alone, then the band joins), the hook alone, or the band playing softly
   const verseQuiet = verseE <= 2 && riff;
-  const introRoll = rng.weighted<'alone' | 'band' | 'layered'>(riff
-    ? [['layered', verseQuiet ? 1 : 3], ['alone', 3], ['band', verseQuiet ? 0 : 1]]
-    : [['layered', 1], ['alone', 2], ['band', 2]]);
+  const introRoll = rng.weighted<'alone' | 'band' | 'layered' | 'long'>(riff
+    ? [['layered', verseQuiet ? 1 : 3], ['alone', 3], ['band', verseQuiet ? 0 : 1], ['long', verseQuiet ? 1 : 2]]
+    : [['layered', 1], ['alone', 2], ['band', 2], ['long', 1]]);
   const introKind = opts.intro === 'auto' ? introRoll : opts.intro;
   const alone: Slot = { kind: 'intro', energy: riff && !verseQuiet ? 2 : 1, segs: take(verseQuiet ? verse : hookSegs, 4), g2: riff ? 'drop' : 'hook', intro: 'alone' };
-  const introSlot: Slot = introKind === 'band'
-    ? { kind: 'intro', energy: riff ? 4 : 2, segs: take(riff ? chorus : verse, 4), g2: 'drop', intro: 'band' }
-    : introKind === 'layered'
-      ? { kind: 'intro', energy: 3, segs: [...take(hookSegs, 4), ...take(hookSegs, 4)], g2: riff ? 'drop' : 'hook', intro: 'layered' }
-      : alone;
+  const layered: Slot = { kind: 'intro', energy: 3, segs: [...take(hookSegs, 4), ...take(hookSegs, 4)], g2: riff ? 'drop' : 'hook', intro: 'layered' };
+  const introSlot: Slot = introKind === 'long'
+    ? { kind: 'intro', energy: 3, segs: [0, 1, 2, 3].flatMap(() => take(hookSegs, 4)), g2: riff ? 'pick' : 'hook', intro: 'long' }
+    : introKind === 'band'
+      ? { kind: 'intro', energy: riff ? 4 : 2, segs: take(riff ? chorus : verse, 4), g2: 'drop', intro: 'band' }
+      : introKind === 'layered' ? layered : alone;
 
   // the order of sections: by hand, or the genre's template
   const keyRoll = rng.chance(0.3);
@@ -1038,7 +1129,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   if (opts.order?.length) order = [...opts.order];
   else {
     // on Auto, an interlude only some of the time: it's the chorus chords again, and choruses already fill much of a song
-    const interlude = opts.interlude === 'on' || (opts.interlude === 'auto' && new Rng(`${S.structure}-interlude`).chance(0.4));
+    // (when the riff plays the verses, it comes back after the first chorus to lead into the next verse)
+    const interlude = opts.interlude === 'on' || (opts.interlude === 'auto' && (riffVerse || new Rng(`${S.structure}-interlude`).chance(0.4)));
     order = ['intro', 'verse', ...(pre ? ['prechorus' as const] : []), 'chorus', ...(interlude ? ['interlude' as const] : []),
       'verse', ...(pre ? ['prechorus' as const] : []), ...(genre !== 'funk' ? ['chorus' as const] : []), bridgeKind, 'chorus', 'outro'];
   }
@@ -1046,6 +1138,37 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   order = order.map((k) => (k === 'bridge' || k === 'breakdown' ? bridgeKind : k));
 
   const verse2E = riff ? verseE : Math.min(3, verseE + 1);
+  // the outro: a jam (new music in a new key), or long (the chorus's last line repeats as a tag), or short
+  const outroOpt = opts.outro ?? 'auto';
+  const jamSeed = riff ? S.structure : S.hook; // rerolling the outro rerolls its jam
+  let outroJam = outroOpt === 'jam' || (outroOpt === 'auto' && new Rng(`${jamSeed}-jam`).chance(riff ? 0.3 : 0.15));
+  let outroLong = !outroJam && (outroOpt === 'long' || (outroOpt === 'auto' && new Rng(`${S.structure}-outro`).chance(0.4)));
+  // the jam: a new key (up a step to minor, or the relative minor or major), a short chord loop and
+  // (riff genres) a new driving riff; half-time for 8 bars, then the full band for 8
+  let jam: { segs: Seg[]; home: Chord; note: (key: number) => string } | null = null;
+  if (outroJam) {
+    const jr = new Rng(`${jamSeed}-jamkey`);
+    const minorHome = isMinor(mode);
+    const [shift, jamMode] = minorHome
+      ? jr.weighted<[number, Mode]>([[[3, 'major'], 2], [[5, 'minor'], 1], [[2, 'minor'], 1]])
+      : jr.weighted<[number, Mode]>([[[2, 'minor'], 2], [[9, 'minor'], 2]]);
+    const R = GENRES[genre].riff;
+    const loud = (R ? [...R.verse, ...R.bridge] : []).filter(([x]) => !QUIET_STYLES.includes(x) && x !== 'arp');
+    const style: RiffStyle | undefined = R ? (loud.length ? jr.weighted(loud) : 'chug') : undefined;
+    const plan = jr.pick(JAM_PLANS[isMinor(jamMode) ? 'minor' : 'major']);
+    const over = { key: (src.song.key + shift) % 12, mode: jamMode, ...(style ? { sections: fill8(style) } : {}) };
+    const from = riff ? base : src;
+    const write = (half: boolean) => block(from, `j-${jamSeed}`, ['chords', 'strum', 'drums', 'bass'], { ...over, forceHalf: half },
+      planned({ ...from.song, ...over }, plan, new Rng(`${jamSeed}-jamchords`), !!style && !chordal(style)));
+    const a = write(true), b = write(false);
+    jam = {
+      segs: [seg(a), seg(b)],
+      home: a.chords.timeline[0].chord,
+      note: (key: number) => `Outro jam: a new key (${NOTE_NAMES[key]} ${jamMode}), a chord loop${style ? ` and a new ${RIFF_STYLE_LABEL[style]} riff` : ''}; half-time for 8 bars, then the full band, Guitar 2 leading`,
+    };
+  }
+  const lastSeg = chorus[chorus.length - 1];
+  const tag: Seg = { idea: lastSeg.idea, from: lastSeg.from + lastSeg.n - 2, n: 2 };
   const lastChorus = order.lastIndexOf('chorus');
   const choruses = order.filter((k) => k === 'chorus').length;
   const seen: Partial<Record<SectionKind, number>> = {};
@@ -1056,7 +1179,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if (kind === 'prechorus') return { kind, n, energy: 3, segs: pre ?? take(verse, 4), g2: 'drop' };
     if (kind === 'interlude') return { kind, n, energy: 4, segs: hookSegs, g2: riff ? 'keep' : 'hook' };
     if (kind === 'bridge' || kind === 'breakdown') return { kind, n, energy: bridgeE, segs: bridge, g2: bridgeE <= 2 ? 'swell' : 'pick' };
-    if (kind === 'outro') return { kind, n, energy: 5, segs: take(chorus, 4), g2: riff ? 'lead' : 'hook' };
+    if (kind === 'outro' && jam) return { kind, n, energy: 5, segs: jam.segs, g2: 'lead' };
+    if (kind === 'outro') return { kind, n, energy: 5, segs: outroLong ? [...take(chorus, 4), tag, tag] : take(chorus, 4), g2: riff ? 'lead' : 'hook' };
     if (i === lastChorus && choruses > 1) return { kind, n, energy: 5, segs: chorus, g2: riff ? 'lead' : 'hook', final: true };
     return { kind, n, energy: 4, segs: chorus, g2: 'keep' };
   };
@@ -1068,6 +1192,16 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   if (!opts.order?.length) {
     if (seconds(slots) > MAX_SECONDS && opts.interlude === 'auto') slots = slots.filter((s) => s.kind !== 'interlude');
     if (seconds(slots) > MAX_SECONDS && opts.pre === 'auto') slots = slots.filter((s) => s.kind !== 'prechorus');
+    // a jam shortens to 4 + 4 bars before anything else goes
+    if (seconds(slots) > MAX_SECONDS && jam) {
+      const short = [seg(jam.segs[0].idea, 0, 4), seg(jam.segs[1].idea, 0, 4)];
+      slots = slots.map((x) => (x.kind === 'outro' ? { ...x, segs: short } : x));
+    }
+    if (seconds(slots) > MAX_SECONDS && outroOpt === 'auto' && outroLong) {
+      outroLong = false;
+      slots = slots.map((x) => (x.kind === 'outro' ? { ...x, segs: take(chorus, 4) } : x));
+    }
+    if (seconds(slots) > MAX_SECONDS && opts.intro === 'auto' && slots[0].intro === 'long') slots[0] = { ...layered, n: 1 };
     if (seconds(slots) > MAX_SECONDS && opts.intro === 'auto' && slots[0].intro === 'layered') slots[0] = { ...alone, n: 1 };
   }
   // when there's room, the first verse plays twice through and Guitar 2 joins halfway: a song's verses
@@ -1126,7 +1260,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     } else if (s.g2 === 'play') g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));
     else if (s.g2 === 'swell') g2 = writeGuitar2(idea, r, new Array<Guitar2Style>(runs).fill('swell'));
     else if (s.g2 === 'hook') {
-      placeHook(idea, s.intro === 'layered' ? 4 : 0, s.kind === 'chorus' ? idea.song.bars.length : 4);
+      placeHook(idea, s.intro === 'layered' ? 4 : s.intro === 'long' ? 12 : 0, s.kind === 'chorus' ? idea.song.bars.length : 4);
       g2 = hookNote;
     } else if (s.g2 === 'lead') {
       const rs = idea.song.sections?.[0];
@@ -1137,8 +1271,17 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       g2 = writeGuitar2(idea, r, new Array<Guitar2Style>(runs).fill(style));
     } else if (s.g2 === 'keep' && !idea.guitar2.length) g2 = 'Guitar 2: sits out';
     if (s.kind === 'interlude') notes.push(riff ? 'The hook riff comes back with the full band' : 'The hook comes back over the chorus chords');
+    if (s.kind === 'verse' && riffVerse) notes.push('The idea\'s riff carries on under the verse');
+    if (s.kind === 'chorus' && newChorus) notes.push('A new chorus: its own chords and big chords, so the riff stands out in the verses');
 
     if (s.intro === 'layered') notes.push(layerIntro(idea, r));
+    if (s.intro === 'long') notes.push(longIntro(idea, r));
+    if (s.kind === 'outro' && outroLong) notes.push('Long outro: the last line repeats as a tag before the end');
+    if (s.kind === 'outro' && jam) {
+      // (named in the key it ends up in: a last-chorus key change carries on into it)
+      notes.push(jam.note((idea.song.key + (keyUp && finalAt >= 0 && si >= finalAt ? keyUp : 0)) % 12));
+      jamBuild(idea, s.segs[0].n, r);
+    }
     if (keyUp && finalAt >= 0 && si >= finalAt) {
       transpose(idea, keyUp);
       if (si === finalAt) notes.push(`Key change: up a ${keyUp === 1 ? 'half' : 'whole'} step for the last chorus`);
@@ -1206,7 +1349,10 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if ((t === 'fill' || t === 'none') && idea.section!.energy >= 2 && m.chance(lift ? 0.8 : 0.55) && walkUp(idea, b, m)) idea.notes.push(`Bass walks into ${into}`);
     if (t !== 'hits' && t !== 'push' && m.chance(0.6) && g2Pickup(idea, b, m)) idea.notes.push(`Guitar 2 leads into ${into} with pickup notes`);
   });
-  makeEnding(sections[sections.length - 1], home);
+  // a long outro's tag repeats the chorus's last bars: its bars don't line up with the chorus's
+  if (outroLong || jam) delete edit.outro;
+  // (a jam ends in its own key)
+  makeEnding(sections[sections.length - 1], jam && slots[slots.length - 1].kind === 'outro' ? jam.home : home);
   sections[sections.length - 1].notes.push('Ends on a held chord');
   for (const idea of sections) {
     // reshaping and transitions can leave downstrokes between 8ths: strum them as a hand would
@@ -1221,12 +1367,13 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   const bars = sections.reduce((a, s) => a + s.song.bars.length, 0);
   const steps = sections.reduce((a, s) => a + s.song.total, 0);
-  return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps, edit };
+  return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps, edit, riffVerse, newChorus };
 }
 
 /** Which of the track's seeds a section's reroll changes (null: the section is the idea itself). */
-export function rerollSeedFor(kind: SectionKind, riffGenre: boolean): keyof TrackOptions['seeds'] | null {
-  if (kind === 'verse') return 'verse';
+export function rerollSeedFor(kind: SectionKind, riffGenre: boolean, t?: Pick<Track, 'riffVerse' | 'newChorus'>): keyof TrackOptions['seeds'] | null {
+  if (kind === 'verse') return t?.riffVerse ? null : 'verse';
+  if (kind === 'chorus' && t?.newChorus) return 'chorus';
   if (kind === 'prechorus') return 'pre';
   if (kind === 'bridge' || kind === 'breakdown') return 'bridge';
   if (kind === 'chorus') return null;

@@ -137,7 +137,7 @@ export interface SoundSection {
   energy: number;
   /** The last chorus. */
   final?: boolean;
-  intro?: 'alone' | 'band' | 'layered';
+  intro?: 'alone' | 'band' | 'layered' | 'long';
   /** Guitar 2 plays the track's hook here. */
   hook?: boolean;
 }
@@ -168,7 +168,7 @@ export function orchestrate(
   const hookSound = pick(r.hook, pal.hook);
   const intro = (s: SoundSection): SoundId => {
     if (s.intro === 'band') return riff ? chorus : verse;
-    if (s.intro === 'layered') return riff ? chorus : r.track.weighted<SoundId>([[chorus, 1], [verse, 1]]);
+    if (s.intro === 'layered' || s.intro === 'long') return riff ? chorus : r.track.weighted<SoundId>([[chorus, 1], [verse, 1]]);
     // the riff alone: mostly on the chorus sound (the classic riff intro), sometimes soft first
     if (riff) return s.energy <= 1 ? verse : r.track.weighted<SoundId>([[chorus, 3], [pick(r.track, pal.soft), 1]]);
     return r.track.weighted<SoundId>([[verse, 2], [pick(r.track, pal.soft), 1], [chorus, 1]]);
