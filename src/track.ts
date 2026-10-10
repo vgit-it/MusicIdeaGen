@@ -294,6 +294,18 @@ function shapeDrums(idea: Idea, e: number, rng: Rng) {
   }
 }
 
+/** The hi-hat or ride on the beats only (no 8ths or 16ths between); the crash and open hats stay. Returns whether anything changed. */
+function quarterTime(idea: Idea): boolean {
+  const d = idea.drums, beat = beatSet(idea.song);
+  let n = 0;
+  for (let g = 0; g < idea.song.total; g++) {
+    if (beat.has(g)) continue;
+    if (d.hat[g] || d.ride[g]) n++;
+    d.hat[g] = 0; d.ride[g] = 0;
+  }
+  return n > 0;
+}
+
 const bassRoot = (key: number, c: Chord) => {
   let m = 36 + chordPc(key, c);
   if (m > 43) m -= 12;
@@ -1233,6 +1245,10 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       bridge: new Rng(`${S.bridge}-sound`), hook: new Rng(`${S.hook}-sound`),
     }, opts.sounds);
 
+  // the drummer's way with space, the same all track: quarter notes in half-time sections, and in the verses
+  const space = new Rng(`${S.structure}-space`);
+  const halfQuarters = space.chance(0.7);
+  const verseQuarters = ['rock', 'pop', 'hardrock', 'altmetal'].includes(src.song.partGenres.drums) && space.chance(0.45);
   const sections = slots.map((s, si) => {
     const r = new Rng(`${S.structure}-${si}-${s.kind}`);
     const label = s.n ? `${KIND_LABEL[s.kind]} ${s.n}` : KIND_LABEL[s.kind];
@@ -1249,6 +1265,12 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     } else {
       shapeDrums(idea, s.energy, r);
       if (!riff) shapeBass(idea, s.energy);
+      // room to breathe: half-time sections, and (for some drummers) every verse, on quarter notes
+      const drumGenre = idea.song.partGenres.drums;
+      const half = idea.song.forceHalf ?? idea.drums.halfTime;
+      if (drumGenre !== 'funk' && s.energy <= 4 && ((half && halfQuarters) || (s.kind === 'verse' && s.energy === 3 && verseQuarters))) {
+        if (quarterTime(idea)) notes.push(`Drums: ${s.kind === 'verse' && !half ? 'quarter notes on the cymbal, leaving the verse room' : 'quarter notes on the cymbal in the half-time feel'}`);
+      }
     }
     if (!riff) shapeStrum(idea, s.energy);
 
