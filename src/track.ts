@@ -7,14 +7,14 @@
 import { type BuildOptions, buildIdea, withSheet } from './generator';
 import { GENRES, type Genre, QUIET_STYLES, type RiffStyle } from './genres';
 import type {
-  ChordEvent, ChordPart, DrumPart, GuitarHit, Idea, SectionInfo, SectionKind, Seeds, Song, Stroke,
+  ChordEvent, ChordPart, ChordSheet, DrumPart, GuitarHit, Idea, SectionInfo, SectionKind, Seeds, Song, Stroke,
 } from './idea';
 import { type DrumBar, addFill } from './parts/drums';
 import { type Guitar2Style, generateGuitar2, generateHook, pickStyle } from './parts/guitar2';
 import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
-import { hasPins } from './parts/sheet';
+import { applySheet, hasPins } from './parts/sheet';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
@@ -35,7 +35,18 @@ export interface TrackOptions {
   order?: SectionKind[];
   /** Rhythm instrument chosen by hand for a kind of section (every verse, every chorus...). */
   sounds?: Partial<Record<SoundSlot, SoundId>>;
+  /** Chords you set on a block (every verse, pre-chorus or bridge plays them). The chorus is the idea's own sheet. */
+  chords?: Partial<Record<ChordBlock, ChordSheet>>;
 }
+
+/** Blocks whose chords you can set in a track (the chorus is the idea itself). */
+export type ChordBlock = 'verse' | 'pre' | 'bridge';
+
+/**
+ * Where a section's chords are set: a block (its bars as written, `opts.chords` its sheet), or the idea
+ * itself (`block` 'idea'). A section's bar i is bar `from + i % n` of `idea`.
+ */
+export interface ChordTarget { block: ChordBlock | 'idea'; idea: Idea; from: number; n: number }
 
 export const defaultTrackOptions = (src: Idea): TrackOptions => {
   const s = src.seeds.song;
@@ -55,6 +66,8 @@ export interface Track {
   sections: Idea[];
   bars: number;
   steps: number;
+  /** Where each kind of section's chords can be set (kinds missing here can't be edited). */
+  edit: Partial<Record<SectionKind, ChordTarget>>;
 }
 
 /** Length in seconds at the track's tempo. */
@@ -621,10 +634,10 @@ function scaleStep(n: number, dir: 1 | -1, key: number, mode: Mode): number {
  * (V of its first chord, or IV or bVII of it), instead of sitting on the chord the next section
  * starts on, or stepping to it awkwardly. Into a key change it's always the new key's V.
  */
-function turnaround(a: Idea, b: Idea, rng: Rng, keyChange: boolean): string | null {
+function turnaround(a: Idea, b: Idea, rng: Rng, keyChange: boolean, pinned: boolean): string | null {
   if (a.guitar) return null; // riffs write their own moves
-  // sections built from the idea keep the chords you set (a key change still needs its V)
-  if (!keyChange && hasPins(a.opts.chords) && ['chorus', 'interlude', 'outro'].includes(a.section!.kind)) return null;
+  // sections whose chords you set keep them (a key change still needs its V)
+  if (!keyChange && pinned) return null;
   const { song } = a;
   const tl = a.chords.timeline, last = tl[tl.length - 1];
   const bar = lastBarOf(a);
@@ -885,6 +898,13 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const preRoll = rng.chance(PRE_CHANCE[genre]);
   const withPre = opts.order ? opts.order.includes('prechorus') : opts.pre === 'on' || (opts.pre === 'auto' && preRoll);
   const vTag = `v-${S.verse}`, pTag = `p-${S.pre}`, bTag = `b-${S.bridge}`;
+  // chords you set on a block: the block's own chords are written around them, like the idea's
+  const pinned = (b: ChordBlock) => hasPins(opts.chords?.[b]);
+  const pin = (b: ChordBlock, song: Song, f?: BuildOptions['chords']): BuildOptions['chords'] => {
+    const sheet = opts.chords?.[b];
+    if (!hasPins(sheet)) return f;
+    return (c) => applySheet(new Rng(`${S[b]}-sheet`), song, f ? f(c) : c, sheet);
+  };
 
   let verse: Seg[], chorus: Seg[], bridge: Seg[], hookSegs: Seg[];
   let pre: Seg[] | null = null;
@@ -898,7 +918,11 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     let verseStyle = va;
     if (va !== vb && S.verse === defaultTrackOptions(src).seeds.verse) {
       // ideas that change style halfway split: first half is the verse, second half the chorus
-      verse = [seg(base, 0, 4), seg(base, 0, 4)];
+      // (with chords you set on the verse: the same riff, written to them)
+      const v = pinned('verse')
+        ? block(base, vTag, [], { sections: fill8(va) }, pin('verse', base.song, withSheet(src.opts, src.seeds, baseSong).chords))
+        : base;
+      verse = [seg(v, 0, 4), seg(v, 0, 4)];
       chorus = [seg(base, 4, 4), seg(base, 4, 4)];
     } else {
       // a new verse riff (also when the verse is rerolled): it sits on the home chord and moves in its last bar
@@ -908,26 +932,26 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       verseStyle = options.length ? vr.weighted(options) : 'arp';
       const move = vr.pick(RIFF_VERSE_MOVE[isMinor(mode) ? 'minor' : 'major']);
       verse = [seg(block(base, vTag, ['chords', 'strum'], { sections: fill8(verseStyle) },
-        planned(base.song, [[0, 3], [move, 1]], vr, !chordal(verseStyle))))];
+        pin('verse', base.song, planned(base.song, [[0, 3], [move, 1]], vr, !chordal(verseStyle)))))];
     }
     const quietVerse = QUIET_STYLES.includes(verseStyle);
     verseE = quietVerse ? 2 : 3;
     if (withPre) {
       const preStyle = pr.weighted<RiffStyle>([['big', 3], ['chug', 2]]);
       pre = [seg(block(base, pTag, ['strum', 'drums'], { sections: fill8(preStyle) },
-        planned(base.song, prePlan(pr, P.pre, chorus), pr, !chordal(preStyle))), 0, 4)];
+        pin('pre', base.song, planned(base.song, prePlan(pr, P.pre, chorus), pr, !chordal(preStyle)))), 0, 4)];
     }
     if (R.breakdown) {
       bridgeKind = 'breakdown';
       bridgeE = 5;
-      bridge = [seg(block(base, bTag, ['strum', 'drums'], { sections: fill8('chug'), forceHalf: true }, tonicOnly))];
+      bridge = [seg(block(base, bTag, ['strum', 'drums'], { sections: fill8('chug'), forceHalf: true }, pin('bridge', base.song, tonicOnly)))];
     } else {
       const quiet = !quietVerse && br.chance(0.4);
       const options = R.bridge.filter(([x]) => x !== vb && x !== verseStyle);
       const style: RiffStyle = quiet ? 'arp' : options.length ? br.weighted(options) : 'single';
       bridgeE = quiet ? 2 : 4;
       bridge = [seg(block(base, bTag, ['chords', 'strum'], { sections: fill8(style), forceHalf: quiet ? undefined : true },
-        planned(base.song, br.pick(P.bridge), br, !chordal(style))))];
+        pin('bridge', base.song, planned(base.song, br.pick(P.bridge), br, !chordal(style)))))];
     }
     // the hook: the most riff-like half of the idea
     const hookHalf = [0, 1].find((h) => HOOKY.includes(s[h * 4]));
@@ -940,21 +964,37 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     let vb: Idea | null = null;
     for (let i = 0; i < 5 && (!vb || chordSig(vb) === chordSig(src)); i++) {
       // the verse gets its own groove (a drummer plays the verse differently from the chorus)
-      vb = block(src, `${vTag}${i || ''}`, ['strum', 'drums'], { avoidGroove: src.drums.groove }, planned(src.song, vr.pick(vPlans), vr, false));
+      vb = block(src, `${vTag}${i || ''}`, ['strum', 'drums'], { avoidGroove: src.drums.groove }, pin('verse', src.song, planned(src.song, vr.pick(vPlans), vr, false)));
     }
     verse = [seg(vb!)];
     // usually a soft first verse, so the chorus lands
     verseE = vr.pick([2, 2, 2, 3]);
-    if (withPre) pre = [seg(block(src, pTag, ['strum'], {}, planned(src.song, prePlan(pr, P.pre, chorus), pr, false)), 0, 4)];
+    if (withPre) pre = [seg(block(src, pTag, ['strum'], {}, pin('pre', src.song, planned(src.song, prePlan(pr, P.pre, chorus), pr, false))), 0, 4)];
     bridgeE = br.weighted([[2, 1], [3, 2], [4, 1]]);
     // pop bridges are four bars: the plan at double speed, still ending on V
     const bPlan = br.pick(P.bridge).map(([r, n]): [number, number] => [r, genre === 'pop' ? Math.max(1, n / 2) : n]);
-    const b = block(src, bTag, ['strum'], { forceHalf: bridgeE <= 3 ? !src.drums.halfTime : undefined }, planned(src.song, bPlan, br, false));
+    const b = block(src, bTag, ['strum'], { forceHalf: bridgeE <= 3 ? !src.drums.halfTime : undefined }, pin('bridge', src.song, planned(src.song, bPlan, br, false)));
     bridge = genre === 'pop' ? [seg(b, 0, 4)] : [seg(b)];
     hookSegs = take(chorus, 4);
     const tl = src.chords.timeline;
     home = (tl.find((e) => e.chord.root === 0) ?? tl[0]).chord;
   }
+
+  // where each kind of section's chords are set: a block's bars as written, or the idea (the chorus)
+  const view = (b: ChordBlock, x: Seg): ChordTarget => {
+    const v = join([x], { kind: 'verse', label: '', energy: 3 });
+    return { block: b, idea: { ...v, section: undefined, notes: [], opts: { ...v.opts, chords: opts.chords?.[b] } }, from: x.from, n: x.n };
+  };
+  const chorusAt: ChordTarget = { block: 'idea', idea: src, from: chorus[0].from, n: chorus[0].n };
+  const edit: Track['edit'] = {
+    verse: view('verse', verse[0]), chorus: chorusAt, outro: chorusAt,
+    ...(pre ? { prechorus: view('pre', pre[0]) } : {}),
+    [bridgeKind]: view('bridge', bridge[0]),
+  };
+  const kept: Partial<Record<SectionKind, boolean>> = {
+    chorus: hasPins(src.opts.chords), interlude: hasPins(src.opts.chords), outro: hasPins(src.opts.chords),
+    verse: pinned('verse'), prechorus: pinned('pre'), bridge: pinned('bridge'), breakdown: pinned('bridge'),
+  };
 
   // strummed genres: a lead hook over the chorus chords, which comes back through the track.
   // If the idea's Guitar 2 already plays a melody throughout, that melody is the hook.
@@ -1139,7 +1179,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const kind = idea.section!.kind;
     const next = b.section!;
     const into = next.kind === 'chorus' ? 'the chorus' : 'the next section';
-    const turn = turnaround(idea, b, m, b.song.key !== idea.song.key);
+    const turn = turnaround(idea, b, m, b.song.key !== idea.song.key, !!kept[kind]);
     if (turn) idea.notes.push(turn);
     type Seam = 'none' | 'fill' | 'build' | 'hits' | 'stop' | 'push' | 'ring';
     let t: Seam = 'none';
@@ -1181,7 +1221,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   const bars = sections.reduce((a, s) => a + s.song.bars.length, 0);
   const steps = sections.reduce((a, s) => a + s.song.total, 0);
-  return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps };
+  return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps, edit };
 }
 
 /** Which of the track's seeds a section's reroll changes (null: the section is the idea itself). */

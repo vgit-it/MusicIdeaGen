@@ -18,8 +18,11 @@ export interface ChordEditor {
   readonly bar: number;
   open(bar: number): void;
   close(): void;
-  /** Redraw for the current idea; `inTrack`: track sections can't be edited. */
-  refresh(idea: Idea | null, inTrack: boolean): void;
+  /**
+   * Redraw for the chords being edited (null: nothing to edit here). `key` names what's edited
+   * (the idea, a track's verse…): the editor closes when it changes.
+   */
+  refresh(idea: Idea | null, key?: string): void;
 }
 
 /** `apply`: the new sheet (undefined: no chords set), and a short status message. */
@@ -28,6 +31,7 @@ export function buildChordEditor(root: HTMLElement, apply: (sheet: ChordSheet | 
   let bar = -1;
   let split = false;
   let half = 0;
+  let editing = '';
 
   const cellsOf = (i: Idea): SheetCell[] => {
     const n = i.song.bars.length * CELLS_PER_BAR;
@@ -174,9 +178,11 @@ export function buildChordEditor(root: HTMLElement, apply: (sheet: ChordSheet | 
     get bar() { return bar; },
     open,
     close() { bar = -1; draw(); },
-    refresh(next, inTrack) {
+    refresh(next, key = 'idea') {
       idea = next;
-      if (!idea || inTrack) bar = -1;
+      if (!idea || key !== editing) bar = -1;
+      editing = key;
+      if (idea && bar >= idea.song.bars.length) bar = -1;
       draw();
     },
   };

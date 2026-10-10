@@ -1,7 +1,7 @@
 // Shows the current idea: summary pills, notes, bar grid and step lanes.
 
 import { GENRE_LABEL } from '../genres';
-import type { GuitarHit, Idea } from '../idea';
+import type { ChordSheet, GuitarHit, Idea } from '../idea';
 import type { LayerPart } from '../audio/mixer';
 import type { Layer } from '../parts/layers';
 import { NOTE_NAMES, chordName } from '../theory';
@@ -18,12 +18,14 @@ const shapeText = (v: GuitarVoicing) =>
 export function renderIdea(
   idea: Idea, shapes: GuitarVoicing[] | null, instrumentLabel: string, guitar2Label: string,
   layers: Partial<Record<LayerPart, Layer | null>> = {},
-  /** The bar open in the chord editor (-1: none). */
-  selectedBar = -1,
+  /**
+   * Chords you can set here (null: not here): the sheet, which of its bars this bar is (track sections
+   * repeat a block's bars: bar i is `from + i % n`), and the bar open in the chord editor (-1: none).
+   */
+  edit: { sheet: ChordSheet | undefined; from: number; n: number; selected: number } | null = null,
 ) {
   const { song, chords, drums } = idea;
-  // chords can be set on the idea itself (not a track section)
-  const editable = !idea.section;
+  const editable = !!edit;
   const name = (i: number) => chordName(song.key, chords.timeline[i].chord);
   const gLabel = song.genreSel === 'random' ? `Random → ${GENRE_LABEL[song.genre]}` : GENRE_LABEL[song.genre];
 
@@ -56,10 +58,11 @@ export function renderIdea(
     const shape = shapes ? `<div class="shape">${shapeIdx.map((t) => shapeText(shapes[t])).join(' · ')}</div>` : '';
     const nums = shapeIdx.map((t) => numeral(chords.timeline[t].chord, song.mode)).join(' · ');
     // chords you set: the bar is marked, and (on the idea itself) tapping it opens the chord editor
-    const sheet = editable ? idea.opts.chords : undefined;
-    const set = !!sheet && [0, 1].some((k) => (sheet[i * CELLS_PER_BAR + k] ?? null) !== null);
+    const at = edit ? edit.from + (i % edit.n) : -1;
+    const sheet = edit?.sheet;
+    const set = !!sheet && [0, 1].some((k) => (sheet[at * CELLS_PER_BAR + k] ?? null) !== null);
     const tag = editable ? 'button' : 'div';
-    return `<${tag} class="bar${set ? ' set' : ''}${editable ? ' edit' : ''}${i === selectedBar ? ' sel' : ''}" id="bar${i}" data-bar="${i}">` +
+    return `<${tag} class="bar${set ? ' set' : ''}${editable ? ' edit' : ''}${edit && at === edit.selected ? ' sel' : ''}" id="bar${i}" data-bar="${i}" data-at="${at}">` +
       `<div class="n"><span>Bar ${i + 1}${set ? ' <b class="pin" title="Set by you">●</b>' : ''}</span><i>${b.meter}</i></div>` +
       `<div class="c">${held}${names}</div><div class="num">${nums}</div>${shape}</${tag}>`;
   }).join('');
