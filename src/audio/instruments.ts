@@ -143,8 +143,8 @@ interface AmpSettings {
 }
 
 export const AMP: Record<AmpTone, AmpSettings> = {
-  clean: { comp: [-24, 3, 4], tight: 70, push: [800, 0], drive1: 1.3, drive2: 1, bass: 0, middle: 0, treble: 1.5, presence: 1, lowShelf: [450, -11], highShelf: [3000, 7], level: 28, lowCut: 75, top: 9000, bite: [3000, 0] },
-  crunch: { comp: [-36, 5, 14], tight: 150, push: [750, 3], drive1: 6, drive2: 3.5, bass: 1, middle: 2, treble: 0, presence: 0, lowShelf: [400, -3], highShelf: [3000, 1], level: 2, lowCut: 110, top: 5500, bite: [2800, -3] },
+  clean: { comp: [-24, 3, 4], tight: 70, push: [800, 0], drive1: 1.3, drive2: 1, bass: 0, middle: 0, treble: 1.5, presence: 1, lowShelf: [450, -11], highShelf: [3000, 4], level: 28, lowCut: 75, top: 7500, bite: [3000, 0] },
+  crunch: { comp: [-32, 4, 10], tight: 150, push: [750, 3], drive1: 4, drive2: 2.5, bass: 1, middle: 2, treble: 0, presence: 0, lowShelf: [400, -3], highShelf: [3000, 1], level: 2.9, lowCut: 110, top: 5500, bite: [2800, -3] },
   dist: { comp: [-40, 8, 22], tight: 180, push: [720, 6], drive1: 8.5, drive2: 5, bass: 3, middle: -1.5, treble: 0, presence: 0.5, lowShelf: [450, -3], highShelf: [3000, -1.5], level: 1.96, lowCut: 110, top: 5000, bite: [2700, -5] },
 };
 
@@ -156,7 +156,7 @@ export const AMP: Record<AmpTone, AmpSettings> = {
  * E4) and came out thin, nasal and buzzy. Now the fundamental leads and the harmonics taper off.
  */
 export const LEAD: Partial<Record<AmpTone, AmpSettings>> = {
-  crunch: { ...AMP.crunch, presence: 1.5, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 3], level: 2.05, lowCut: 100, top: 6500, bite: [3000, -2] },
+  crunch: { ...AMP.crunch, presence: 1.5, drive1: 6, drive2: 3.5, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 3], level: 2.05, lowCut: 100, top: 6500, bite: [3000, -2] },
   dist: { ...AMP.dist, presence: 2, comp: [-32, 4, 14], tight: 150, push: [800, 3], drive1: 9, drive2: 6, lowShelf: [300, -2], highShelf: [3000, -1], level: 1.98, lowCut: 100, top: 6000, bite: [3000, -3] },
 };
 
@@ -299,6 +299,8 @@ interface Take {
   ring: MultiSampler;
   muted: MultiSampler;
   strings: (Voice | undefined)[];
+  /** The notes of the last chord strummed (a repeat of it rings on instead of being stopped). */
+  last: number[];
 }
 
 export class Guitar implements ChordInstrument {
@@ -409,6 +411,7 @@ export class Guitar implements ChordInstrument {
           ring: new MultiSampler(set, head, 0.08, this.ctx),
           muted: new MultiSampler(set, pm, 0.04, this.ctx),
           strings: [] as (Voice | undefined)[],
+          last: [] as number[],
         };
       }));
       // the double never plays the exact same recording as the main take
@@ -437,45 +440,58 @@ export class Guitar implements ChordInstrument {
     const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell } = a;
     const fadeIn = swell ? Math.min(0.6, dur * 0.4) : 0;
     const str = strings ?? notes.map((_, i) => 6 - notes.length + i);
-    // time between strings: faster at quicker tempos, ~25-45 ms across six strings
-    const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.85 + Math.random() * 0.3);
+    // time between strings: faster at quicker tempos, ~25-45 ms across six strings; a hand never
+    // strums at exactly the same speed twice
+    const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6);
     const detune = this.type === 'electric' ? 4 : 3;
-    // a held single note gets real vibrato; a held driven chord just a little shimmer
-    const vibrato = this.type !== 'electric' || letRing ? 0 : notes.length === 1 ? (driven ? 16 : 10) : driven ? 4 : 0;
+    // a held single note gets real vibrato (chords none: a wobbling chord through an amp sounds like a toy)
+    const vibrato = this.type !== 'electric' || letRing || notes.length > 1 ? 0 : driven ? 16 : 10;
+    // strummed chords: the pick brushes the strings rather than clicking each one (a few ms of fade-in
+    // takes the click off), and each string comes out a little louder or softer
+    const chord = notes.length > 1 && !letRing && !swell;
+    const brush = () => (chord ? 0.003 + Math.random() * 0.006 : 0);
+    const touch = () => (chord ? 0.85 + Math.random() * 0.25 : 0.9 + Math.random() * 0.1);
 
     // stopping ringing strings makes a little damping noise, like a real hand (but not between the
     // notes of a single-note line: the fingers just move on, and the drive would blow the noise up)
     const line = notes.length === 1 && stroke === 'D';
-    const muteAll = (t: number, fade = 0.015) => {
+    const muteAll = (t: number, fade = 0.015, noise = 0.6) => {
       const ringing = take.strings.some((v) => MultiSampler.ringing(v, t));
       take.strings.forEach((v) => take.ring.choke(v, t, line ? 0.025 : fade));
-      if (ringing && !line && Math.random() < 0.6) take.ring.releaseNoise(t, (0.18 + Math.random() * 0.1) * (driven ? 0.3 : 1));
+      if (ringing && !line && Math.random() < noise) take.ring.releaseNoise(t, (0.18 + Math.random() * 0.1) * (driven ? 0.3 : 1));
     };
+    // the same chord strummed again: the strings ring on into the new strum (only the ones hit restart)
+    const same = chord && take.last.length === notes.length && take.last.every((m, i) => m === notes[i]);
+    if (stroke === 'D' || stroke === 'U') take.last = [...notes];
 
     if (stroke === 'D') {
       // fretting hand lifts: anything still ringing stops as the new chord sounds. Driven chords
       // hand over smoothly (the old chord fades under the new one), so the wall of sound never drops out
-      if (!letRing) {
+      if (!letRing && !same) {
         if (driven && notes.length > 1) take.strings.forEach((v) => take.ring.choke(v, time + gap * 2, 0.06));
-        else muteAll(time + 0.002);
+        else muteAll(time + 0.002, chord ? 0.03 : 0.015, chord ? 0.2 : 0.6);
       }
-      notes.forEach((m, i) => {
+      // sometimes the pick misses the top string
+      const n = chord && notes.length > 4 && Math.random() < 0.2 ? notes.length - 1 : notes.length;
+      for (let i = 0; i < n; i++) {
+        const m = notes[i];
         const t = time + i * gap + jitter(1.5);
-        if (letRing) take.ring.choke(take.strings[str[i]], t);
-        const v = vel * (0.9 + Math.random() * 0.1) * (1 - (notes.length - 1 - i) * 0.015);
-        take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn });
-      });
+        if (letRing || same) take.ring.choke(take.strings[str[i]], t, same ? 0.02 : undefined);
+        const v = vel * touch() * (1 - (notes.length - 1 - i) * 0.015);
+        take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn: fadeIn || brush() });
+      }
     } else if (stroke === 'U') {
-      // up-strokes catch the top 3-4 strings, a little lighter; lower strings keep ringing
-      const n = Math.min(notes.length, Math.random() < 0.5 ? 3 : 4);
+      // up-strokes catch the top 2-4 strings, a little lighter; lower strings keep ringing
+      const n = Math.min(notes.length, 2 + Math.floor(Math.random() * 3));
       for (let k = 0; k < n; k++) {
         const i = notes.length - 1 - k;
         const t = time + k * gap * 0.8 + jitter(1.5);
-        take.ring.choke(take.strings[str[i]], t);
-        take.strings[str[i]] = take.ring.play(notes[i], t, dur, vel * 0.8 * (1 - k * 0.06), { detune });
+        take.ring.choke(take.strings[str[i]], t, 0.02);
+        take.strings[str[i]] = take.ring.play(notes[i], t, dur, vel * 0.8 * (1 - k * 0.06) * touch(), { detune, fadeIn: brush() });
       }
     } else if (stroke === 'x') {
       // fretting hand mutes the strings: chord stops, pick scrapes dead strings
+      take.last = [];
       muteAll(time, 0.01);
       if (take.ring.hasNoises) {
         take.ring.noise(time, Math.min(1, vel * 0.9));
@@ -485,6 +501,7 @@ export class Guitar implements ChordInstrument {
       }
     } else if (stroke === 'p') {
       // palm mute: low strings only, short and dark
+      take.last = [];
       muteAll(time, 0.01);
       notes.slice(0, Math.min(3, notes.length)).forEach((m, i) =>
         take.muted.play(m, time + i * gap * 0.6 + jitter(1), Math.min(dur, 0.18), Math.min(1, vel * 1.1), { detune }));
@@ -498,7 +515,7 @@ export class Guitar implements ChordInstrument {
   }
 
   releaseAll() {
-    this.takes.forEach((t) => { t.ring.stopAll(); t.muted.stopAll(); t.strings = []; });
+    this.takes.forEach((t) => { t.ring.stopAll(); t.muted.stopAll(); t.strings = []; t.last = []; });
     this._fallback?.releaseAll();
   }
 }
