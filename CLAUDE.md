@@ -30,7 +30,7 @@ Paul is a senior designer, not a full-time dev. Keep explanations short and non-
 - M4 lock/reroll per part + track editing + shareable links — done
 - M5 MIDI export (idea + track) — done
 - Set your own chords (idea, all genres, per section in tracks) — done; next: finer timing (any beat)
-- The band plays it: players perform the written track their way (`src/players/`). Drummer done; next: bassist, guitarists, feel for all
+- The band plays it: players perform the written track their way (`src/players/`). Drummer and bassist done; next: guitarists, feel for all
 - M6 UI design · M7 GitHub Pages deploy — done (deploys on push to main)
 
 ## Design

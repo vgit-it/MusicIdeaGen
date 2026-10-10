@@ -576,7 +576,7 @@ export class Engine {
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
       const dur = ending ? 5 : Math.min(n >= next ? next * six + 0.03 : n * six * 0.95, 4.5);
-      this.bass.play(bass[g], time, dur, (onBeat ? 0.9 : 0.74) * dyn);
+      this.bass.play(bass[g], time + (idea.bassFeel ?? 0) / 1000, dur, (onBeat ? 0.9 : 0.74) * dyn);
     }
 
     // the last beat swells toward a louder next section (the drummer's fill builds into it); before a

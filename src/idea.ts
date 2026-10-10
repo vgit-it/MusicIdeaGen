@@ -148,6 +148,8 @@ export interface Idea {
   bass: number[];
   /** Optional note length in 16ths per step (otherwise a note lasts until the next one). */
   bassLen?: number[];
+  /** Tracks, played by the band: how far the bassist sits behind the kick, in ms. */
+  bassFeel?: number;
   /** Strummed genres: how the bass plays (locked to the kick, held, flowing or driving). */
   bassLine?: BassLine;
   /** Riff genres: the guitar part as explicit hits (replaces the strum lane for playback). */

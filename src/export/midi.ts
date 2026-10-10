@@ -151,7 +151,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
         const next = gapUntil(bl, 0, g, 64);
         const n = idea.bassLen?.[g] || next;
         const dur = ending ? 5 : Math.min(n >= next ? next * sixSec * 0.98 : n * sixSec * 0.95, 4.5);
-        note(bass, bl[g], at(g), secToTicks(dur), (onBeat ? 0.9 : 0.74) * dyn);
+        note(bass, bl[g], at(g) + secToTicks((idea.bassFeel ?? 0) / 1000), secToTicks(dur), (onBeat ? 0.9 : 0.74) * dyn);
       }
 
       // (the drummer's feel moves the snare and cymbals off the grid, as played)

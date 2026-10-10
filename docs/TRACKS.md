@@ -2,7 +2,7 @@
 
 Turn an 8-bar idea into a full track with sections: intro, verses, choruses, bridge and outro.
 
-**Status:** MVP built (2026-10-07). Since then: written chord plans for verse, pre-chorus and bridge; pre-choruses; an interlude where the hook returns; layered 8-bar intros; snare builds and band hits into choruses; a key change for the last chorus; riff genres' riff through the verses (with a new chorus); 16-bar long-build intros, long outros with a tag and outro jams in a new key; chords you set per block (verse, pre-chorus, bridge; the chorus is the idea's); the band plays it (Band feel: so far the drummer) (see the decisions log in `SPEC.md`). Code: `src/track.ts` (builder), `src/audio/engine.ts` (plays a list of sections), `src/ui/render.ts` (section strip).
+**Status:** MVP built (2026-10-07). Since then: written chord plans for verse, pre-chorus and bridge; pre-choruses; an interlude where the hook returns; layered 8-bar intros; snare builds and band hits into choruses; a key change for the last chorus; riff genres' riff through the verses (with a new chorus); 16-bar long-build intros, long outros with a tag and outro jams in a new key; chords you set per block (verse, pre-chorus, bridge; the chorus is the idea's); the band plays it (Band feel: so far the drummer and bassist) (see the decisions log in `SPEC.md`). Code: `src/track.ts` (builder), `src/audio/engine.ts` (plays a list of sections), `src/ui/render.ts` (section strip).
 
 ## Decisions
 - **Start from a loop.** The 8-bar idea stays as it is. When you like one, **Make track** builds a song around it.

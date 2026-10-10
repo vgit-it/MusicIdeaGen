@@ -15,6 +15,7 @@ import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
 import { applySheet, hasPins } from './parts/sheet';
+import { playBass } from './players/bassist';
 import { playDrums } from './players/drummer';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
@@ -1365,7 +1366,10 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   }
 
   // the band plays it: each player reads the whole track and plays the written part their way
-  if (opts.band !== 'off') playDrums(sections, S.band ?? `${src.seeds.song}-band`);
+  if (opts.band !== 'off') {
+    const band = S.band ?? `${src.seeds.song}-band`;
+    playBass(sections, band, playDrums(sections, band));
+  }
 
   // each section knows the shape of its track (added layers plan where they play from it)
   const all = sections.map((s) => ({ kind: s.section!.kind, energy: s.section!.energy }));
