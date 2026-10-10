@@ -29,4 +29,8 @@ Paul is a senior designer, not a full-time dev. Keep explanations short and non-
 - M3 tracks MVP: sections built from an idea (scope: `docs/TRACKS.md`) — done
 - M4 lock/reroll per part + track editing + shareable links — done
 - M5 MIDI export (idea + track) — done
-- M6 UI design (Figma) · M7 GitHub Pages deploy
+- Set your own chords (idea mode, strummed genres) — done; next: per-section chords in tracks, riff genres, finer timing
+- M6 UI design · M7 GitHub Pages deploy — done (deploys on push to main)
+
+## Design
+- No Figma for this project. Design straight in code: build a rough working version Paul can try on his phone, then iterate.

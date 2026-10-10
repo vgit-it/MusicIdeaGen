@@ -16,6 +16,8 @@ import {
 } from './track';
 import { type PartKey, buildLockPanel } from './ui/locks';
 import { buildPartsPanel } from './ui/parts';
+import { buildChordEditor } from './ui/chordedit';
+import { canSetChords, hasPins } from './parts/sheet';
 import { highlightBar, markSection, renderIdea, renderTrack } from './ui/render';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -58,7 +60,8 @@ function render() {
   const sound = `Sound: ${SOUND_NAME[engine.chordIdFor(cur)]}${cur.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[engine.guitar2IdFor(cur)]}` : ''}`;
   const shownIdea = { ...cur, notes: cur.notes.map((n) => (n.startsWith('Sound: ') ? sound : n)) };
   renderIdea(shownIdea, engine.shapesFor(cur), label(engine.chordIdFor(cur)), label(engine.guitar2IdFor(cur)),
-    Object.fromEntries(LAYER_PARTS.map((p) => [p, engine.layerFor(cur, p)])));
+    Object.fromEntries(LAYER_PARTS.map((p) => [p, engine.layerFor(cur, p)])), track ? -1 : chordEditor.bar);
+  renderChordHead();
   if (track) {
     drawTrack(track);
     markSection(shown, looping);
@@ -70,6 +73,43 @@ function setPlaying(on: boolean) {
   playBtn.textContent = on ? 'Stop' : 'Play';
   playBtn.classList.toggle('on', on);
 }
+
+/* ---- chords you set: tap a bar to open the editor; the band is rewritten around them */
+
+const chordReset = $<HTMLButtonElement>('chordreset');
+const chordEditor = buildChordEditor($('chordedit'), (sheet, msg) => {
+  if (!idea) return;
+  showIdea(generate({ ...idea.opts, chords: sheet }, idea.seeds), true);
+  setStatus(msg);
+  setTimeout(() => setStatus(''), 4000);
+}, () => render());
+
+function renderChordHead() {
+  const hint = $('chordhint');
+  const pins = hasPins(idea?.opts.chords);
+  chordReset.hidden = !pins || !!track;
+  if (track) hint.textContent = 'Set chords on the idea (Back to idea): the choruses play them.';
+  else if (idea && !canSetChords(idea.song)) hint.textContent = 'Setting chords works in Rock, Pop and Funk for now (riffs write their own chords).';
+  else hint.textContent = pins
+    ? 'Your chords are kept when you Generate; the rest is written around them. Tap a bar to change it.'
+    : 'Tap a bar to set its chord. The rest of the band follows.';
+}
+
+$('bars').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('button.bar');
+  if (!b || !idea || track) return;
+  const i = Number(b.dataset.bar);
+  if (chordEditor.bar === i) chordEditor.close(); else chordEditor.open(i);
+  render();
+});
+
+chordReset.onclick = () => {
+  if (!idea) return;
+  chordEditor.close();
+  showIdea(generate({ ...idea.opts, chords: undefined }, idea.seeds), true);
+  setStatus('Chords back to the generator\'s.');
+  setTimeout(() => setStatus(''), 3000);
+};
 
 /* ---- shareable link: the address always holds the current idea (and track) */
 
@@ -219,6 +259,7 @@ engine.onEnd = () => {
 
 function leaveTrack() {
   track = null;
+  chordEditor.refresh(idea, false);
   looping = null;
   shown = 0;
   trackCard.hidden = true;
@@ -257,7 +298,8 @@ function readTempo(): number | undefined {
 /* ---- ideas, locks and rerolls */
 
 const lockPanel = buildLockPanel($('locks'), locks, (k) => reroll(k), () => updateLink(),
-  (k) => !(LAYER_PARTS as string[]).includes(k) || !!engine.layerSettings[k as LayerPart]);
+  (k) => !(LAYER_PARTS as string[]).includes(k) || !!engine.layerSettings[k as LayerPart],
+  () => hasPins(idea?.opts.chords));
 
 function showIdea(next: Idea, keepPlace = false) {
   idea = next;
@@ -273,6 +315,7 @@ function showIdea(next: Idea, keepPlace = false) {
     if (keepPlace) playTrack(true);
     else { shown = 0; looping = null; engine.setList(track.sections, false, 0); }
   } else engine.setIdea(idea, keepPlace);
+  chordEditor.refresh(idea, !!track);
   render();
   updateLink();
 }
@@ -282,9 +325,11 @@ function newIdea() {
   const seeds = randomSeeds();
   if (idea) {
     for (const k of locks) (seeds as unknown as Record<string, string>)[k] = idea.seeds[k] ?? seeds[k]!;
-    if (locks.size) seeds.song = idea.seeds.song;
+    // chords you set belong to the song's key and bars: keep it (and them)
+    if (locks.size || hasPins(idea.opts.chords)) seeds.song = idea.seeds.song;
   }
-  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo() }, seeds));
+  const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
+  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords }, seeds));
 }
 
 /** One part gets new seeds; everything else stays. Playback carries on from the same spot. */
@@ -332,6 +377,7 @@ function enterTrack(opts: TrackOptions) {
   shown = 0;
   trackCard.hidden = false;
   trackBtn.hidden = true;
+  chordEditor.refresh(idea, true);
   drawTrack(track);
   syncTrackOptions();
   engine.setList(track.sections, false, 0);

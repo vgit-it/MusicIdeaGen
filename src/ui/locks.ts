@@ -33,6 +33,8 @@ export function buildLockPanel(
   onChange: () => void,
   /** Whether a part is shown (added layers only once added). */
   shown: (k: PartKey) => boolean = () => true,
+  /** The song is kept anyway (chords you set belong to its key and bars). */
+  keepsSong: () => boolean = () => false,
 ): LockPanel {
   root.innerHTML = LOCK_PARTS.map((p) => `
     <div class="lock" data-k="${p.key}" title="${p.title}">
@@ -46,11 +48,13 @@ export function buildLockPanel(
       const k = el.dataset.k as PartKey;
       const on = locks.has(k);
       // locking any part keeps the song (key, tempo, time), or that part couldn't stay the same
-      const implied = k === 'song' && !on && locks.size > 0;
+      const bySheet = k === 'song' && !on && keepsSong();
+      const implied = k === 'song' && !on && (locks.size > 0 || bySheet);
       const btn = el.querySelector<HTMLButtonElement>('.lk')!;
       btn.innerHTML = on || implied ? LOCK_ICON : OPEN_ICON;
       btn.setAttribute('aria-pressed', String(on));
-      btn.title = implied ? 'Kept while other parts are locked' : on ? 'Locked: kept when you Generate' : 'Lock: keep this when you Generate';
+      btn.title = bySheet ? 'Kept while you have chords set (they belong to its key and bars)'
+        : implied ? 'Kept while other parts are locked' : on ? 'Locked: kept when you Generate' : 'Lock: keep this when you Generate';
       el.classList.toggle('on', on);
       el.classList.toggle('implied', implied);
       el.hidden = !shown(k);
