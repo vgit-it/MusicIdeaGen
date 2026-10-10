@@ -556,13 +556,15 @@ export class Engine {
     }
 
     const d = this.drums;
+    // the drummer's feel: snare and cymbals sit a little ahead of or behind the kick
+    const sn = Math.max(0, time + (drums.feel?.snare ?? 0) / 1000), cy = Math.max(0, time + (drums.feel?.cym ?? 0) / 1000);
     if (drums.kick[g]) d.hit('kick', time, drums.kick[g]);
-    if (drums.snare[g]) d.hit('snare', time, drums.snare[g]);
+    if (drums.snare[g]) d.hit('snare', sn, drums.snare[g]);
     const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
     const acc = cymbalAccent(bar.groups, g - bar.start);
-    if (drums.hat[g]) d.hit('hat', time, Math.min(1, drums.hat[g] * acc));
-    if (drums.hatOpen[g]) d.hit('hatOpen', time, drums.hatOpen[g]);
-    if (drums.ride[g]) d.hit('ride', time, Math.min(1, drums.ride[g] * acc));
+    if (drums.hat[g]) d.hit('hat', cy, Math.min(1, drums.hat[g] * acc));
+    if (drums.hatOpen[g]) d.hit('hatOpen', cy, drums.hatOpen[g]);
+    if (drums.ride[g]) d.hit('ride', cy, Math.min(1, drums.ride[g] * acc));
     if (drums.crash[g]) d.hit('crash', time, drums.crash[g]);
     if (drums.tom[g]) d.hit('tom', time, 0.8, drums.tom[g]);
 

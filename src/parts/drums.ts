@@ -140,9 +140,12 @@ function answerBar(b: DrumBar, len: number, a: Answer) {
  * Writes a fill over the end of the bar from a pattern (a roll, toms down the kit, a syncopated
  * figure, a ghost-note roll for funk). Returns its length in 16ths.
  */
-export function addFill(rng: Rng, b: DrumBar, len: number, groups: number[], w: number, genre: Genre): number {
+export type FillType = 'roll' | 'ghostroll' | 'toms' | 'sync' | 'eighths';
+
+/** `force`: a set length (16ths) and kind of fill (a drummer playing their own fill). */
+export function addFill(rng: Rng, b: DrumBar, len: number, groups: number[], w: number, genre: Genre, force: { len?: number; type?: FillType } = {}): number {
   const lastGroup = groups[groups.length - 1];
-  const F = w > 0.75 && rng.chance(0.25)
+  const F = force.len ? Math.min(len, force.len) : w > 0.75 && rng.chance(0.25)
     ? len
     : rng.chance(0.3 + w * 0.4) ? Math.min(len, lastGroup + (groups[groups.length - 2] ?? 0)) : lastGroup;
   const s0 = len - F;
@@ -150,7 +153,8 @@ export function addFill(rng: Rng, b: DrumBar, len: number, groups: number[], w: 
     b.K[i] = 0; b.S[i] = 0; b.T[i] = 0; b.O[i] = 0;
     if (F > 4) { b.H[i] = 0; b.R[i] = 0; }
   }
-  const type = genre === 'funk' ? rng.pick(['ghostroll', 'sync', 'toms'] as const) : rng.weighted([['roll', 2], ['toms', 3], ['sync', 2], ['eighths', 2]] as const);
+  const type: FillType = force.type
+    ?? (genre === 'funk' ? rng.pick(['ghostroll', 'sync', 'toms'] as const) : rng.weighted([['roll', 2], ['toms', 3], ['sync', 2], ['eighths', 2]] as const));
   // toms: the fill walks down the kit, a quarter of it on each drum (snare, high, mid, floor)
   const kit = (pr: number) => Math.floor(pr * 4); // 0 = snare, 1-3 = toms
   for (let j = 0; j < F; j++) {
