@@ -17,7 +17,7 @@ import {
 import { type PartKey, buildLockPanel } from './ui/locks';
 import { buildPartsPanel } from './ui/parts';
 import { buildChordEditor } from './ui/chordedit';
-import { canSetChords, hasPins } from './parts/sheet';
+import { hasPins } from './parts/sheet';
 import { highlightBar, markSection, renderIdea, renderTrack } from './ui/render';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -89,7 +89,6 @@ function renderChordHead() {
   const pins = hasPins(idea?.opts.chords);
   chordReset.hidden = !pins || !!track;
   if (track) hint.textContent = 'Set chords on the idea (Back to idea): the choruses play them.';
-  else if (idea && !canSetChords(idea.song)) hint.textContent = 'Setting chords works in Rock, Pop and Funk for now (riffs write their own chords).';
   else hint.textContent = pins
     ? 'Your chords are kept when you Generate; the rest is written around them. Tap a bar to change it.'
     : 'Tap a bar to set its chord. The rest of the band follows.';

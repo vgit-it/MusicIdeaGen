@@ -5,7 +5,7 @@ import type { GuitarHit, Idea } from '../idea';
 import type { LayerPart } from '../audio/mixer';
 import type { Layer } from '../parts/layers';
 import { NOTE_NAMES, chordName } from '../theory';
-import { CELLS_PER_BAR, canSetChords, numeral } from '../parts/sheet';
+import { CELLS_PER_BAR, numeral } from '../parts/sheet';
 import type { GuitarVoicing } from '../theory/guitar';
 import { type Track, trackSeconds } from '../track';
 
@@ -22,8 +22,8 @@ export function renderIdea(
   selectedBar = -1,
 ) {
   const { song, chords, drums } = idea;
-  // chords can be set on the idea itself (not a track section), in strummed genres
-  const editable = !idea.section && canSetChords(song);
+  // chords can be set on the idea itself (not a track section)
+  const editable = !idea.section;
   const name = (i: number) => chordName(song.key, chords.timeline[i].chord);
   const gLabel = song.genreSel === 'random' ? `Random → ${GENRE_LABEL[song.genre]}` : GENRE_LABEL[song.genre];
 

@@ -4,7 +4,6 @@
 // with the chord before a pinned one sometimes turned to lead into it. Everything else (strumming,
 // bass, Guitar 2, layers) is then written to the result as usual. Pure and deterministic.
 
-import { GENRES } from '../genres';
 import type { ChordEvent, ChordPart, ChordSheet, SheetCell, Song } from '../idea';
 import { groupStarts, zeros } from '../rhythm';
 import type { Rng } from '../rng';
@@ -23,8 +22,8 @@ export function cellSteps(song: Song): number[] {
 
 export const hasPins = (sheet: ChordSheet | undefined): sheet is ChordSheet => !!sheet?.some((c) => c !== null);
 
-/** Riff genres write chords from the riff: chords can't be set there (yet). */
-export const canSetChords = (song: Song) => !GENRES[song.genre].riff;
+/** Power chords only: heavy riffs (every generated chord a power chord) take your chords as power chords too. */
+export const powerOnly = (chords: ChordPart) => chords.timeline.every((e) => e.chord.q === '5');
 
 const same = (a: Chord, b: Chord) => a.root === b.root && a.q === b.q;
 export const cellChord = (c: SheetCell): Chord | null => (Array.isArray(c) ? { root: c[0], q: c[1] } : null);
@@ -75,6 +74,8 @@ export function applySheet(rng: Rng, song: Song, gen: ChordPart, sheet: ChordShe
     out.push(Array.isArray(c) ? { root: c[0], q: c[1] } : c === '-' && i > 0 ? out[i - 1] : genAt(i));
   }
   // ideas around your chords: the free chord right before a pinned change often leads into it
+  // (heavy riffs: as a power chord, like everything else they play)
+  const power = powerOnly(gen);
   const led = new Set<number>();
   for (let i = 0; i + 1 < n; i++) {
     if (pinned(i) || !pinned(i + 1) || sheet[i + 1] === '-') continue;
@@ -82,6 +83,7 @@ export function applySheet(rng: Rng, song: Song, gen: ChordPart, sheet: ChordShe
     // a free chord that already is the pinned one would just hold it: change it too
     if (same(out[i], to) || rng.chance(0.5)) {
       out[i] = approach(rng, song.mode, to);
+      if (power) out[i] = { root: out[i].root, q: '5' };
       led.add(i);
     }
   }
