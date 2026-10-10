@@ -491,6 +491,8 @@ export class Engine {
     const total = song.total;
     const g = this.step++;
     const six = 15 / this.transport.bpm.value;
+    // the band's lilt: the in-between 16ths come a touch late, for everyone
+    if (g % 2 && idea.lilt) time += idea.lilt * six;
     const dyn = DYNAMICS[idea.section?.energy ?? 4];
     // the final held chord of a track rings out
     const lastBar = song.bars[song.bars.length - 1];
@@ -548,7 +550,7 @@ export class Engine {
         stroke: st,
         notes,
         strings,
-        time,
+        time: Math.max(0, time + (idea.strumFeel ?? 0) / 1000),
         dur: ending ? 6 : Math.min(n * six * (legato ? 1 : 0.97) + (legato ? 0.05 : 0), maxRing),
         vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1),
         sixteenth: six,

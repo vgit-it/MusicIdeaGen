@@ -160,6 +160,10 @@ export interface Idea {
   strumGain?: number;
   /** Tracks, played by the band: how far Guitar 2 sits behind the beat, in ms. */
   g2Feel?: number;
+  /** Tracks, played by the band: how far the strummed rhythm guitar sits behind the beat, in ms (- ahead). */
+  strumFeel?: number;
+  /** Tracks, played by the band: the in-between 16ths come this share of a 16th late (everyone). */
+  lilt?: number;
   notes: string[];
   /** Set when this is one section of a track. */
   section?: SectionInfo;

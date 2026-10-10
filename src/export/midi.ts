@@ -14,6 +14,13 @@ import { NOTE_NAMES, pianoVoicing } from '../theory';
 import { guitarVoicings } from '../theory/guitar';
 
 const PPQ = 480;
+
+/** A small string hash (FNV-1a), for repeatable variations. */
+function hash(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return h >>> 0;
+}
 const SIX = PPQ / 4; // ticks per 16th
 
 /** General MIDI programs for the instruments. */
@@ -68,8 +75,15 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
   const strings = mk('Strings', 5, 48); // GM "String Ensemble 1"
   const perc = mk('Percussion', 9, 0);
 
+  // played by the band: every note a hair off the grid and a touch louder or softer, the same each export
+  let human = false;
   const note = (t: MidiTrack, midiNote: number, ticks: number, dur: number, v: number) => {
     if (midiNote < 0 || midiNote > 127) return;
+    if (human) {
+      const h = hash(`${t.channel}:${midiNote}:${Math.round(ticks)}`);
+      ticks += ((h & 0xff) / 255 - 0.5) * 6;
+      v *= 0.96 + (((h >>> 8) & 0xff) / 255) * 0.08;
+    }
     t.addNote({ midi: midiNote, ticks: Math.max(0, Math.round(ticks)), durationTicks: Math.max(10, Math.round(dur)), velocity: vel(v) });
   };
 
@@ -78,12 +92,14 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
   let lastKey = '';
   list.forEach((idea) => {
     const { song, chords, drums: d, strum, bass: bl } = idea;
+    human = idea.lilt !== undefined;
     const total = song.total;
     const energy = idea.section?.energy ?? 4;
     const dyn = DYNAMICS[energy];
     const lastBar = song.bars[song.bars.length - 1];
     // swing: odd 16ths come late, as Tone's transport plays them
-    const at = (g: number) => offset + g * SIX + (g % 2 ? song.swing * (2 / 3) * SIX : 0);
+    // (and the band's lilt, when the band plays it)
+    const at = (g: number) => offset + g * SIX + (g % 2 ? (song.swing * (2 / 3) + (idea.lilt ?? 0)) * SIX : 0);
     const gapUntil = (lane: ArrayLike<unknown>, empty: unknown, g: number, cap: number) => {
       let n = 1;
       while (n < cap && g + n < total && lane[g + n] === empty) n++;
@@ -139,9 +155,10 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
         const n = gapUntil(strum, '.', g, 16);
         const ring = ending ? 6 : Math.min(n * sixSec * 0.97, isGuitar(id) ? 2.4 : 1.6);
         const v = ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1);
-        if (st === 'x') notes.slice(-3).forEach((m, i) => note(rhythm, m, at(g) + i * 3, 30, 0.3));
-        else if (st === 'p') notes.slice(0, 3).forEach((m, i) => note(rhythm, m, at(g) + i * 4, secToTicks(Math.min(ring, 0.14)), v * 0.8));
-        else (st === 'U' ? [...notes].reverse() : notes).forEach((m, i) => note(rhythm, m, at(g) + i * 10, secToTicks(ring), v));
+        const t0 = at(g) + secToTicks((idea.strumFeel ?? 0) / 1000);
+        if (st === 'x') notes.slice(-3).forEach((m, i) => note(rhythm, m, t0 + i * 3, 30, 0.3));
+        else if (st === 'p') notes.slice(0, 3).forEach((m, i) => note(rhythm, m, t0 + i * 4, secToTicks(Math.min(ring, 0.14)), v * 0.8));
+        else (st === 'U' ? [...notes].reverse() : notes).forEach((m, i) => note(rhythm, m, t0 + i * 10, secToTicks(ring), v));
       }
 
       for (const h of idea.guitar2) if (h.step === g) hit(g2, h, h.vel, false, idea.g2Feel ?? 0);
