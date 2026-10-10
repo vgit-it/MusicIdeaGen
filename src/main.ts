@@ -106,7 +106,7 @@ const chordEditor = buildChordEditor($('chordedit'), (sheet, msg) => {
   setTimeout(() => setStatus(''), 4000);
 }, () => render());
 
-const BLOCK_NAME: Record<ChordTarget['block'], string> = { idea: 'chorus', verse: 'verse', pre: 'pre-chorus', bridge: 'bridge' };
+const BLOCK_NAME: Record<ChordTarget['block'], string> = { idea: 'chorus', verse: 'verse', pre: 'pre-chorus', bridge: 'bridge', chorus: 'chorus' };
 
 function renderChordHead() {
   const hint = $('chordhint');
@@ -119,7 +119,7 @@ function renderChordHead() {
       : 'Tap a bar to set its chord. The rest of the band follows.';
   } else if (!t) hint.textContent = 'Chords can be set on a verse, pre-chorus, bridge or chorus.';
   else {
-    const name = BLOCK_NAME[t.block];
+    const name = t.block === 'idea' ? KIND_LABEL[track.sections[shown].section!.kind].toLowerCase() : BLOCK_NAME[t.block];
     hint.textContent = `Tap a bar to set the ${name}'s chords: every ${name} plays them${t.block === 'idea' ? ' (they\'re the idea\'s chords)' : ''}.`;
   }
 }
@@ -461,6 +461,7 @@ const optSel = {
   interlude: $<HTMLSelectElement>('t-interlude'),
   keyChange: $<HTMLSelectElement>('t-key'),
   outro: $<HTMLSelectElement>('t-outro'),
+  riffVerse: $<HTMLSelectElement>('t-riff'),
 };
 function syncTrackOptions() {
   if (!track) return;
@@ -469,6 +470,9 @@ function syncTrackOptions() {
   optSel.interlude.value = track.opts.interlude;
   optSel.keyChange.value = track.opts.keyChange;
   optSel.outro.value = track.opts.outro ?? 'auto';
+  optSel.riffVerse.value = track.opts.riffVerse ?? 'auto';
+  // only riff genres have a riff to carry through the verses
+  optSel.riffVerse.closest('label')!.style.display = track.source.guitar ? '' : 'none';
 }
 for (const [k, sel] of Object.entries(optSel)) {
   sel.onchange = () => {
@@ -483,17 +487,18 @@ for (const [k, sel] of Object.entries(optSel)) {
 
 // tools for the selected section
 const REROLL_LABEL: Record<string, string> = {
-  verse: 'New verse', pre: 'New pre-chorus', bridge: 'New bridge', hook: 'New hook', structure: 'New arrangement',
+  verse: 'New verse', chorus: 'New chorus', pre: 'New pre-chorus', bridge: 'New bridge', hook: 'New hook', structure: 'New arrangement',
 };
 function renderSectionTools() {
   if (!track) return;
   const sec = track.sections[shown].section!;
   $('sectname').textContent = sec.label;
-  const key = rerollSeedFor(sec.kind, !!track.source.guitar);
+  const key = rerollSeedFor(sec.kind, !!track.source.guitar, track);
   const rr = $<HTMLButtonElement>('s-reroll');
+  const kindName = KIND_LABEL[sec.kind].toLowerCase();
   rr.disabled = !key;
-  rr.textContent = key ? (key === 'bridge' && sec.kind === 'breakdown' ? 'New breakdown' : REROLL_LABEL[key]) : 'New chorus';
-  rr.title = key ? '' : 'The chorus is your idea: reroll its parts in Keep / reroll';
+  rr.textContent = key ? (key === 'bridge' && sec.kind === 'breakdown' ? 'New breakdown' : REROLL_LABEL[key]) : `New ${kindName}`;
+  rr.title = key ? '' : `The ${kindName} is your idea: reroll its parts in Keep / reroll`;
   const slot = soundSlot(sec.kind);
   soundSel.value = track.opts.sounds?.[slot] ?? 'auto';
   soundSel.disabled = !engine.rhythmAuto;
@@ -515,7 +520,7 @@ function editOrder(f: (order: SectionKind[]) => number) {
 
 $('s-reroll').onclick = () => {
   if (!track) return;
-  const key = rerollSeedFor(track.sections[shown].section!.kind, !!track.source.guitar);
+  const key = rerollSeedFor(track.sections[shown].section!.kind, !!track.source.guitar, track);
   if (!key) return;
   rebuildTrack({ ...track.opts, seeds: { ...track.opts.seeds, [key]: newSeed() } });
 };
