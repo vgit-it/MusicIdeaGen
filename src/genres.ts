@@ -111,11 +111,12 @@ export const GENRES: Record<Genre, GenreDef> = {
     drum: { fourFloor: 0, halfTime: 0, kick8: 0.25, kick16: 0.2, ghost: 0.32, hats: ['16', '16', '8'], openHat: 0.4, ride: 0.1 },
     bass: { lock: 0.85, oct: 0.35, fifth: 0.15, six: 0.22 },
   },
-  // Alice in Chains, Soundgarden, Nirvana: slow and heavy, single-note riffs, dark minor/phrygian moves
+  // Alice in Chains, Soundgarden, Nirvana: slow and heavy with room to breathe (often half-time, the
+// drummer on quarter notes), single-note riffs, dark minor/phrygian moves
   grunge: {
-    bpm: [72, 118], swing: 0, modes: ['minor', 'minor', 'phrygian', 'dorian'], altMeters: ['6/8', '7/8'],
+    bpm: [62, 96], swing: 0, modes: ['minor', 'minor', 'phrygian', 'dorian'], altMeters: ['6/8', '7/8'],
     prog: [[0, 2, 5, 6]], flavor: (c) => c,
-    drum: { fourFloor: 0, halfTime: 0.45, kick8: 0.2, kick16: 0.05, ghost: 0.04, hats: ['8', '8', '16'], openHat: 0.35, ride: 0.4 },
+    drum: { fourFloor: 0, halfTime: 0.55, kick8: 0.2, kick16: 0.05, ghost: 0.04, hats: ['8', '8', '16'], openHat: 0.35, ride: 0.4 },
     bass: { lock: 0.9, oct: 0.1, fifth: 0.05, six: 0 },
     riff: {
       progs: [
@@ -127,7 +128,7 @@ export const GENRES: Record<Genre, GenreDef> = {
         ['single', 'single', 3], ['single', 'big', 3], ['arp', 'big', 2], ['chug', 'big', 2],
         ['big', 'big', 1], ['single', 'chug', 1], ['arp', 'single', 1],
       ],
-      sixteenths: 0.25, slide: 0.35, halfTime: 0.45, kickChug: 0.25,
+      sixteenths: 0.15, slide: 0.35, halfTime: 0.55, kickChug: 0.2,
       verse: [['single', 2], ['arp', 1], ['chug', 1]],
       bridge: [['single', 1], ['big', 1], ['chug', 1]],
     },

@@ -8,7 +8,7 @@ import { groupStarts, zeros } from '../rhythm';
 import { type DrumBar, addFill } from './drums';
 import type { RiffPart } from './riff';
 
-type Cymbal = 'hat8' | 'hat16' | 'ride' | 'openhat' | 'crashride';
+type Cymbal = 'hat8' | 'hat16' | 'ride' | 'openhat' | 'crashride' | 'hat4' | 'ride4';
 
 export function generateHeavyDrums(rng: Rng, song: Song, riff: RiffPart): DrumPart {
   const { w, bars, total } = song;
@@ -33,13 +33,15 @@ export function generateHeavyDrums(rng: Rng, song: Song, riff: RiffPart): DrumPa
     const rolledHalf = rng.chance(style === 'big' ? R.halfTime * 0.5 : R.halfTime);
     const half = song.forceHalf ?? rolledHalf;
     if (ri === 0) firstHalf = half;
-    const cym: Cymbal = style === 'arp' ? rng.pick(['hat8', 'hat8', 'ride'] as const)
+    let cym: Cymbal = style === 'arp' ? rng.pick(['hat8', 'hat8', 'ride'] as const)
       : style === 'big' ? rng.pick(['ride', 'openhat', 'crashride', 'hat8'] as const)
         : style === 'chug' ? (rng.pick(G.drum.hats) === '16' ? 'hat16' : 'hat8')
           : style === 'gallop' ? rng.pick(['hat8', 'ride', 'ride'] as const)
             : style === 'pedal' ? rng.pick(['hat8', 'hat16'] as const)
               : style === 'picked' || style === 'lick' ? rng.pick(['hat8', 'hat8', 'ride'] as const)
                 : rng.pick(['hat8', 'hat8', 'ride', 'hat16'] as const);
+    // grunge drummers leave room: often just quarter notes on the hats or ride (always when half-time)
+    if (genre === 'grunge' && (cym === 'hat8' || cym === 'ride' || cym === 'hat16') && (half || rng.chance(0.35))) cym = cym === 'ride' ? 'ride4' : 'hat4';
     const soft = style === 'arp' ? 0.65 : 1;
     const stops = (style === 'chug' || style === 'big') && rng.chance(0.8);
     if (style !== 'arp' && (ri > 0 || tacet === 0)) crashBars.add(run[0]);
@@ -82,6 +84,8 @@ export function generateHeavyDrums(rng: Rng, song: Song, riff: RiffPart): DrumPa
         if (cym === 'ride' && j % 2 === 0) b.R[j] = isStart ? 0.65 : 0.5;
         if (cym === 'openhat' && j % 2 === 0) b.O[j] = isStart ? 0.55 : 0.42;
         if (cym === 'crashride' && isStart) b.R[j] = 0.8;
+        if (cym === 'hat4' && isStart) b.H[j] = 0.6 * soft;
+        if (cym === 'ride4' && isStart) b.R[j] = 0.62;
       }
       if (cym === 'crashride' && bi % 2 === 0) crashBars.add(bi);
 
