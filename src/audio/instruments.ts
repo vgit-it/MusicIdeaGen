@@ -144,8 +144,8 @@ interface AmpSettings {
 
 export const AMP: Record<AmpTone, AmpSettings> = {
   clean: { comp: [-24, 3, 4], tight: 70, push: [800, 0], drive1: 1.3, drive2: 1, bass: 0, middle: 0, treble: 1.5, presence: 1, lowShelf: [450, -11], highShelf: [3000, 7], level: 28, lowCut: 75, top: 9000, bite: [3000, 0] },
-  crunch: { comp: [-36, 5, 14], tight: 150, push: [750, 3], drive1: 6, drive2: 3.5, bass: 1, middle: 2, treble: 0, presence: 1.5, lowShelf: [400, -6], highShelf: [3000, 4], level: 2, lowCut: 130, top: 8000, bite: [2800, -2] },
-  dist: { comp: [-46, 12, 29], tight: 300, push: [720, 6], drive1: 16, drive2: 10, bass: 3, middle: -1.5, treble: 0, presence: 2, lowShelf: [450, -6], highShelf: [3000, 1], level: 2.1, lowCut: 130, top: 6500, bite: [2700, -4] },
+  crunch: { comp: [-36, 5, 14], tight: 150, push: [750, 3], drive1: 6, drive2: 3.5, bass: 1, middle: 2, treble: 0, presence: 0, lowShelf: [400, -3], highShelf: [3000, 1], level: 2, lowCut: 110, top: 5500, bite: [2800, -3] },
+  dist: { comp: [-46, 12, 29], tight: 300, push: [720, 6], drive1: 16, drive2: 10, bass: 3, middle: -1.5, treble: 0, presence: 0.5, lowShelf: [450, -3], highShelf: [3000, -1.5], level: 2.1, lowCut: 110, top: 5000, bite: [2700, -5] },
 };
 
 /**
@@ -156,8 +156,8 @@ export const AMP: Record<AmpTone, AmpSettings> = {
  * E4) and came out thin, nasal and buzzy. Now the fundamental leads and the harmonics taper off.
  */
 export const LEAD: Partial<Record<AmpTone, AmpSettings>> = {
-  crunch: { ...AMP.crunch, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 3], level: 2.05, lowCut: 100, top: 6500, bite: [3000, -2] },
-  dist: { ...AMP.dist, comp: [-32, 4, 14], tight: 150, push: [800, 3], drive1: 9, drive2: 6, lowShelf: [300, -2], highShelf: [3000, -1], level: 1.98, lowCut: 100, top: 6000, bite: [3000, -3] },
+  crunch: { ...AMP.crunch, presence: 1.5, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 3], level: 2.05, lowCut: 100, top: 6500, bite: [3000, -2] },
+  dist: { ...AMP.dist, presence: 2, comp: [-32, 4, 14], tight: 150, push: [800, 3], drive1: 9, drive2: 6, lowShelf: [300, -2], highShelf: [3000, -1], level: 1.98, lowCut: 100, top: 6000, bite: [3000, -3] },
 };
 
 /**
@@ -371,7 +371,7 @@ export class Guitar implements ChordInstrument {
       // driven guitars hard left and right; clean and acoustic a little less wide, and each take
       // a little quieter (two takes of a clean guitar add up louder than two distorted ones)
       const driven = this.type === 'electric' && tone !== 'clean';
-      const width = driven ? 0.9 : 0.65;
+      const width = driven ? 0.75 : 0.65;
       const take = driven ? 1 : this.type === 'acoustic' ? 0.85 : 0.75;
       this.outs[0].gain.value = take;
       this.outs[1].gain.value = take;
@@ -648,17 +648,17 @@ type Band = [BiquadFilterType, number, number, number]; // type, Hz, dB, Q
 
 const CYMBALS: readonly DrumPiece[] = ['hat', 'hatOpen', 'crash', 'ride'];
 /** dB: what the bus compressors' make-up gain gave the cymbals before they had their own path. */
-const CYMBAL_MAKEUP = 11;
+const CYMBAL_MAKEUP = 7;
 /** Per-drum EQ, the usual rock-mix moves. */
 const PIECE_EQ: Record<DrumPiece, Band[]> = {
   // thump, less cardboard, beater click
-  kick: [['peaking', 60, 3, 1], ['peaking', 380, -5, 1.2], ['peaking', 3800, 7, 1.4]],
+  kick: [['peaking', 60, 3, 1], ['peaking', 380, -5, 1.2], ['peaking', 3800, 4, 1.4]],
   // body and crack
-  snare: [['peaking', 200, 4, 1], ['peaking', 800, -2, 1], ['highshelf', 4500, 6, 0.7]],
-  hat: [['highpass', 300, 0, 0.7], ['highshelf', 7000, 5, 0.7]],
-  hatOpen: [['highpass', 300, 0, 0.7], ['highshelf', 7000, 5, 0.7]],
-  crash: [['highpass', 250, 0, 0.7], ['highshelf', 7000, 5, 0.7]],
-  ride: [['highpass', 250, 0, 0.7], ['highshelf', 7000, 5, 0.7]],
+  snare: [['peaking', 200, 4, 1], ['peaking', 800, -2, 1], ['highshelf', 4500, 3, 0.7]],
+  hat: [['highpass', 300, 0, 0.7], ['highshelf', 7000, 1, 0.7]],
+  hatOpen: [['highpass', 300, 0, 0.7], ['highshelf', 7000, 1, 0.7]],
+  crash: [['highpass', 250, 0, 0.7], ['highshelf', 7000, 1, 0.7]],
+  ride: [['highpass', 250, 0, 0.7], ['highshelf', 7000, 1, 0.7]],
   tom1: [['peaking', 450, -4, 1], ['highshelf', 4000, 4, 0.7]],
   tom2: [['peaking', 400, -4, 1], ['highshelf', 4000, 4, 0.7]],
   tom3: [['peaking', 350, -4, 1], ['highshelf', 4000, 4, 0.7]],
@@ -667,7 +667,7 @@ const PIECE_EQ: Record<DrumPiece, Band[]> = {
 /** Drum bus settings (tuned by measuring against the guitars). */
 const DRUM_SMASH = 0.5;
 const DRUM_DRIVE = 1;
-const DRUM_LEVEL = 1;
+const DRUM_LEVEL = 0.75;
 const PIECE_PAN: Record<DrumPiece, number> = {
   kick: 0, snare: 0.05, hat: 0.4, hatOpen: 0.4, crash: -0.5, ride: -0.45, tom1: 0.35, tom2: 0, tom3: -0.4,
 };
