@@ -9,6 +9,7 @@ import { generateDrums } from './parts/drums';
 import { generateGuitar2 } from './parts/guitar2';
 import { generateHeavyDrums } from './parts/heavyDrums';
 import { generateRiff } from './parts/riff';
+import { applySheet, canSetChords, hasPins } from './parts/sheet';
 import { carryOver, generateStrum, naturalStrokes } from './parts/strum';
 import { Rng, newSeed } from './rng';
 import { type Bar, METERS, lcm, phrasePlan, pickMeters } from './rhythm';
@@ -84,7 +85,13 @@ function planSong(rng: Rng, opts: GenOptions): Song {
 }
 
 export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
-  return buildIdea(opts, seeds, planSong(new Rng(seeds.song), opts));
+  const song = planSong(new Rng(seeds.song), opts);
+  // chords you set: the generator fills in around them (only the idea itself; track sections write their own)
+  const sheet = opts.chords;
+  const withSheet = hasPins(sheet) && canSetChords(song)
+    ? { chords: (c: ChordPart) => applySheet(new Rng(`${seeds.chords}-sheet`), song, c, sheet) }
+    : {};
+  return buildIdea(opts, seeds, song, withSheet);
 }
 
 export interface BuildOptions {

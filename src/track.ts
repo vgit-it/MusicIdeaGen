@@ -14,6 +14,7 @@ import { type Guitar2Style, generateGuitar2, generateHook, pickStyle } from './p
 import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
+import { hasPins } from './parts/sheet';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
@@ -622,6 +623,8 @@ function scaleStep(n: number, dir: 1 | -1, key: number, mode: Mode): number {
  */
 function turnaround(a: Idea, b: Idea, rng: Rng, keyChange: boolean): string | null {
   if (a.guitar) return null; // riffs write their own moves
+  // sections built from the idea keep the chords you set (a key change still needs its V)
+  if (!keyChange && hasPins(a.opts.chords) && ['chorus', 'interlude', 'outro'].includes(a.section!.kind)) return null;
   const { song } = a;
   const tl = a.chords.timeline, last = tl[tl.length - 1];
   const bar = lastBarOf(a);

@@ -5,6 +5,7 @@ import type { GuitarHit, Idea } from '../idea';
 import type { LayerPart } from '../audio/mixer';
 import type { Layer } from '../parts/layers';
 import { NOTE_NAMES, chordName } from '../theory';
+import { CELLS_PER_BAR, canSetChords, numeral } from '../parts/sheet';
 import type { GuitarVoicing } from '../theory/guitar';
 import { type Track, trackSeconds } from '../track';
 
@@ -17,8 +18,12 @@ const shapeText = (v: GuitarVoicing) =>
 export function renderIdea(
   idea: Idea, shapes: GuitarVoicing[] | null, instrumentLabel: string, guitar2Label: string,
   layers: Partial<Record<LayerPart, Layer | null>> = {},
+  /** The bar open in the chord editor (-1: none). */
+  selectedBar = -1,
 ) {
   const { song, chords, drums } = idea;
+  // chords can be set on the idea itself (not a track section), in strummed genres
+  const editable = !idea.section && canSetChords(song);
   const name = (i: number) => chordName(song.key, chords.timeline[i].chord);
   const gLabel = song.genreSel === 'random' ? `Random → ${GENRE_LABEL[song.genre]}` : GENRE_LABEL[song.genre];
 
@@ -49,8 +54,14 @@ export function renderIdea(
       .join(' · ');
     const shapeIdx = here.length ? here.map((e) => e.ti) : [heldIdx];
     const shape = shapes ? `<div class="shape">${shapeIdx.map((t) => shapeText(shapes[t])).join(' · ')}</div>` : '';
-    return `<div class="bar" id="bar${i}"><div class="n"><span>Bar ${i + 1}</span><i>${b.meter}</i></div>` +
-      `<div class="c">${held}${names}</div>${shape}</div>`;
+    const nums = shapeIdx.map((t) => numeral(chords.timeline[t].chord, song.mode)).join(' · ');
+    // chords you set: the bar is marked, and (on the idea itself) tapping it opens the chord editor
+    const sheet = editable ? idea.opts.chords : undefined;
+    const set = !!sheet && [0, 1].some((k) => (sheet[i * CELLS_PER_BAR + k] ?? null) !== null);
+    const tag = editable ? 'button' : 'div';
+    return `<${tag} class="bar${set ? ' set' : ''}${editable ? ' edit' : ''}${i === selectedBar ? ' sel' : ''}" id="bar${i}" data-bar="${i}">` +
+      `<div class="n"><span>Bar ${i + 1}${set ? ' <b class="pin" title="Set by you">●</b>' : ''}</span><i>${b.meter}</i></div>` +
+      `<div class="c">${held}${names}</div><div class="num">${nums}</div>${shape}</${tag}>`;
   }).join('');
 
   const lane = <T>(arr: T[], f: (v: T) => string) =>

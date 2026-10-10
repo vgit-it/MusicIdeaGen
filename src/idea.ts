@@ -3,7 +3,7 @@
 import type { Genre, GenreSel, RiffStyle } from './genres';
 import type { SectionSound } from './sounds';
 import type { Bar, Variant } from './rhythm';
-import type { Chord, Mode } from './theory';
+import type { Chord, Mode, Quality } from './theory';
 import type { BassLine } from './parts/bass';
 import type { Tuning } from './theory/fretboard';
 
@@ -31,7 +31,14 @@ export interface GenOptions {
   weirdness: number; // 0..1
   /** Fixed tempo; leave out for the genre's own range. */
   bpm?: number;
+  /** Chords you set (strummed genres); the generator writes the rest around them. */
+  chords?: ChordSheet;
 }
+
+/** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */
+export type SheetCell = [number, Quality] | '-' | null;
+/** Chords you set: two cells per bar (first half, second half). */
+export type ChordSheet = SheetCell[];
 
 /** A rhythm that repeats every `len` 16ths regardless of the bar line. */
 export interface Cycle {

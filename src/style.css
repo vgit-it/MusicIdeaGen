@@ -115,6 +115,33 @@ button.small:disabled { opacity: .45; }
 .bar .c s { text-decoration: none; color: var(--mute); font-weight: 400; }
 .bar .shape { font: 11px/1.4 ui-monospace, Consolas, monospace; color: var(--mute); margin-top: 2px; }
 .bar.now { border-color: var(--accent); background: #221812; }
+.bar .num { font-size: 11px; color: var(--mute); margin-top: 1px; }
+button.bar { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.bar.set { border-color: color-mix(in srgb, var(--accent2) 60%, var(--line)); }
+.bar .pin { color: var(--accent2); font-size: 9px; vertical-align: 1px; }
+.bar.sel { box-shadow: 0 0 0 2px var(--accent2); }
+
+/* chord editor */
+.barshead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.barshead .lt, .celabel { font-size: 12px; color: var(--mute); text-transform: uppercase; letter-spacing: .06em; }
+.barshead .hint { margin-right: auto; }
+.chordedit { margin-top: 10px; background: var(--field); border: 1px solid var(--accent2); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
+.chordedit[hidden] { display: none; }
+.cehead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cehead b { font-size: 15px; }
+.cenow { margin-right: auto; font-size: 13px; color: var(--mute); }
+.cenow i, .chip i { font-style: normal; color: var(--accent2); }
+.seg { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; padding: 9px 8px; font-size: 13px; font-weight: 600; background: transparent; border-radius: 0; color: var(--mute); }
+.seg button.on { background: #232836; color: var(--text); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 12px; min-width: 56px; font-size: 15px; background: #232836; border: 1px solid var(--line); border-radius: 10px; }
+.chip i { font-size: 11px; }
+.chip small { font-size: 10px; font-weight: 400; color: var(--mute); max-width: 120px; text-align: left; }
+.chip.cur { border-color: var(--accent); }
+.anyrow { display: flex; gap: 8px; }
+.anyrow select { width: auto; flex: 1; padding: 8px; font-size: 14px; }
+.ceacts { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .lanes { margin-top: 14px; font: 12px/1.6 ui-monospace, Consolas, monospace; color: var(--mute); overflow-x: auto; white-space: pre; padding-bottom: 6px; }
 .hint, .credits { font-size: 12px; color: var(--mute); }
