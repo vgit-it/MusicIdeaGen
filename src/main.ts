@@ -12,7 +12,7 @@ import { METER_CHOICES } from './rhythm';
 import { newSeed } from './rng';
 import { SOUND_NAME, SOUND_SHORT, type SoundId, soundSlot } from './sounds';
 import {
-  type ChordTarget, type Choice, type IntroChoice, type Track, type TrackOptions, KIND_LABEL, buildTrack, defaultTrackOptions, rerollSeedFor,
+  type ChordTarget, type Choice, type IntroChoice, type OutroChoice, type Track, type TrackOptions, KIND_LABEL, buildTrack, defaultTrackOptions, rerollSeedFor,
 } from './track';
 import { type PartKey, buildLockPanel } from './ui/locks';
 import { buildPartsPanel } from './ui/parts';
@@ -460,6 +460,7 @@ const optSel = {
   pre: $<HTMLSelectElement>('t-pre'),
   interlude: $<HTMLSelectElement>('t-interlude'),
   keyChange: $<HTMLSelectElement>('t-key'),
+  outro: $<HTMLSelectElement>('t-outro'),
 };
 function syncTrackOptions() {
   if (!track) return;
@@ -467,12 +468,14 @@ function syncTrackOptions() {
   optSel.pre.value = track.opts.pre;
   optSel.interlude.value = track.opts.interlude;
   optSel.keyChange.value = track.opts.keyChange;
+  optSel.outro.value = track.opts.outro ?? 'auto';
 }
 for (const [k, sel] of Object.entries(optSel)) {
   sel.onchange = () => {
     if (!track) return;
     const opts: TrackOptions = { ...track.opts, order: undefined };
     if (k === 'intro') opts.intro = sel.value as IntroChoice;
+    else if (k === 'outro') opts.outro = sel.value as OutroChoice;
     else (opts as unknown as Record<string, Choice>)[k] = sel.value as Choice;
     rebuildTrack(opts, 0);
   };
