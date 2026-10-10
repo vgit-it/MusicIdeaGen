@@ -18,12 +18,12 @@ import { applySheet, hasPins } from './parts/sheet';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
-import { type Chord, type Mode, QUALITIES, SCALES, chordPc, degreeChord } from './theory';
+import { type Chord, type Mode, NOTE_NAMES, QUALITIES, SCALES, chordPc, degreeChord } from './theory';
 import { lowestOf, powerChord } from './theory/fretboard';
 
 export type Choice = 'auto' | 'on' | 'off';
 export type IntroChoice = 'auto' | 'alone' | 'layered' | 'long' | 'band';
-export type OutroChoice = 'auto' | 'short' | 'long';
+export type OutroChoice = 'auto' | 'short' | 'long' | 'jam';
 
 /** How a track is built: its own seeds (so each block can be rerolled alone), structure choices, and an optional hand-edited order. */
 export interface TrackOptions {
@@ -33,7 +33,7 @@ export interface TrackOptions {
   pre: Choice;
   interlude: Choice;
   keyChange: Choice;
-  /** Short (4 bars) or long (the last line repeats as a tag); missing in older links: Auto. */
+  /** Short (4 bars), long (the last line repeats as a tag) or a jam (new music in a new key); missing in older links: Auto. */
   outro?: OutroChoice;
   /** Riff genres: the idea's riff plays under the verses (missing in older links: Auto). */
   riffVerse?: Choice;
@@ -462,6 +462,12 @@ const CHORUS_PLANS: Record<'major' | 'minor', Plan[]> = {
   minor: [[[8, 2], [10, 2], [0, 4]], [[3, 2], [10, 2], [0, 4]], [[5, 2], [8, 2], [10, 2], [0, 2]], [[8, 2], [3, 2], [10, 2], [0, 2]]],
 };
 
+/** Outro jams: a short loop in the new key, round and round. */
+const JAM_PLANS: Record<'major' | 'minor', Plan[]> = {
+  minor: [[[0, 1], [8, 1], [10, 1], [0, 1]], [[0, 2], [10, 1], [8, 1]], [[0, 1], [3, 1], [10, 1], [5, 1]], [[0, 1], [10, 1], [8, 1], [10, 1]]],
+  major: [[[0, 1], [10, 1], [5, 1], [0, 1]], [[0, 1], [7, 1], [10, 1], [5, 1]], [[0, 2], [5, 1], [10, 1]]],
+};
+
 /** Riff verses sit on the tonic and move in the last bar. */
 const RIFF_VERSE_MOVE = { major: [10, 5, 7], minor: [10, 8, 5, 3, 7] };
 
@@ -572,6 +578,24 @@ function longIntro(idea: Idea, rng: Rng): string {
   idea.guitar2 = idea.guitar2.filter((h) => h.step >= allIn);
   idea.section!.bandFrom = allIn;
   return 'Long build: guitar alone, the drums come in with a fill at bar 5, the bass at bar 9, everyone (Guitar 2 too) at bar 13';
+}
+
+/**
+ * An outro jam builds: the half-time first part keeps its cymbals down (a crash only where it starts)
+ * and fills into the full band, which crashes in.
+ */
+function jamBuild(idea: Idea, firstBars: number, rng: Rng) {
+  const { bars, total } = idea.song;
+  const at = bars[firstBars]?.start ?? total;
+  const d = idea.drums;
+  for (let g = 1; g < at; g++) d.crash[g] = 0;
+  const L = firstBars - 1;
+  if (bars[L] && !d.fills.some((f) => f.bar === L)) {
+    const b = barOf(d, bars[L]);
+    d.fills.push({ bar: L, len: addFill(rng, b, bars[L].len, bars[L].groups, idea.song.w, idea.song.partGenres.drums) });
+    putBar(d, bars[L], b);
+  }
+  crashAt(d, at);
 }
 
 /** The last bar builds: snare 8ths, then 16ths, getting louder; the band drives 8ths with it. */
@@ -1114,9 +1138,35 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   order = order.map((k) => (k === 'bridge' || k === 'breakdown' ? bridgeKind : k));
 
   const verse2E = riff ? verseE : Math.min(3, verseE + 1);
-  // a long outro: the chorus's last line repeats as a tag before the end
+  // the outro: a jam (new music in a new key), or long (the chorus's last line repeats as a tag), or short
   const outroOpt = opts.outro ?? 'auto';
-  let outroLong = outroOpt === 'long' || (outroOpt === 'auto' && new Rng(`${S.structure}-outro`).chance(0.4));
+  const jamSeed = riff ? S.structure : S.hook; // rerolling the outro rerolls its jam
+  let outroJam = outroOpt === 'jam' || (outroOpt === 'auto' && new Rng(`${jamSeed}-jam`).chance(riff ? 0.3 : 0.15));
+  let outroLong = !outroJam && (outroOpt === 'long' || (outroOpt === 'auto' && new Rng(`${S.structure}-outro`).chance(0.4)));
+  // the jam: a new key (up a step to minor, or the relative minor or major), a short chord loop and
+  // (riff genres) a new driving riff; half-time for 8 bars, then the full band for 8
+  let jam: { segs: Seg[]; home: Chord; note: (key: number) => string } | null = null;
+  if (outroJam) {
+    const jr = new Rng(`${jamSeed}-jamkey`);
+    const minorHome = isMinor(mode);
+    const [shift, jamMode] = minorHome
+      ? jr.weighted<[number, Mode]>([[[3, 'major'], 2], [[5, 'minor'], 1], [[2, 'minor'], 1]])
+      : jr.weighted<[number, Mode]>([[[2, 'minor'], 2], [[9, 'minor'], 2]]);
+    const R = GENRES[genre].riff;
+    const loud = (R ? [...R.verse, ...R.bridge] : []).filter(([x]) => !QUIET_STYLES.includes(x) && x !== 'arp');
+    const style: RiffStyle | undefined = R ? (loud.length ? jr.weighted(loud) : 'chug') : undefined;
+    const plan = jr.pick(JAM_PLANS[isMinor(jamMode) ? 'minor' : 'major']);
+    const over = { key: (src.song.key + shift) % 12, mode: jamMode, ...(style ? { sections: fill8(style) } : {}) };
+    const from = riff ? base : src;
+    const write = (half: boolean) => block(from, `j-${jamSeed}`, ['chords', 'strum', 'drums', 'bass'], { ...over, forceHalf: half },
+      planned({ ...from.song, ...over }, plan, new Rng(`${jamSeed}-jamchords`), !!style && !chordal(style)));
+    const a = write(true), b = write(false);
+    jam = {
+      segs: [seg(a), seg(b)],
+      home: a.chords.timeline[0].chord,
+      note: (key: number) => `Outro jam: a new key (${NOTE_NAMES[key]} ${jamMode}), a chord loop${style ? ` and a new ${RIFF_STYLE_LABEL[style]} riff` : ''}; half-time for 8 bars, then the full band, Guitar 2 leading`,
+    };
+  }
   const lastSeg = chorus[chorus.length - 1];
   const tag: Seg = { idea: lastSeg.idea, from: lastSeg.from + lastSeg.n - 2, n: 2 };
   const lastChorus = order.lastIndexOf('chorus');
@@ -1129,6 +1179,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if (kind === 'prechorus') return { kind, n, energy: 3, segs: pre ?? take(verse, 4), g2: 'drop' };
     if (kind === 'interlude') return { kind, n, energy: 4, segs: hookSegs, g2: riff ? 'keep' : 'hook' };
     if (kind === 'bridge' || kind === 'breakdown') return { kind, n, energy: bridgeE, segs: bridge, g2: bridgeE <= 2 ? 'swell' : 'pick' };
+    if (kind === 'outro' && jam) return { kind, n, energy: 5, segs: jam.segs, g2: 'lead' };
     if (kind === 'outro') return { kind, n, energy: 5, segs: outroLong ? [...take(chorus, 4), tag, tag] : take(chorus, 4), g2: riff ? 'lead' : 'hook' };
     if (i === lastChorus && choruses > 1) return { kind, n, energy: 5, segs: chorus, g2: riff ? 'lead' : 'hook', final: true };
     return { kind, n, energy: 4, segs: chorus, g2: 'keep' };
@@ -1141,6 +1192,11 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   if (!opts.order?.length) {
     if (seconds(slots) > MAX_SECONDS && opts.interlude === 'auto') slots = slots.filter((s) => s.kind !== 'interlude');
     if (seconds(slots) > MAX_SECONDS && opts.pre === 'auto') slots = slots.filter((s) => s.kind !== 'prechorus');
+    // a jam shortens to 4 + 4 bars before anything else goes
+    if (seconds(slots) > MAX_SECONDS && jam) {
+      const short = [seg(jam.segs[0].idea, 0, 4), seg(jam.segs[1].idea, 0, 4)];
+      slots = slots.map((x) => (x.kind === 'outro' ? { ...x, segs: short } : x));
+    }
     if (seconds(slots) > MAX_SECONDS && outroOpt === 'auto' && outroLong) {
       outroLong = false;
       slots = slots.map((x) => (x.kind === 'outro' ? { ...x, segs: take(chorus, 4) } : x));
@@ -1221,6 +1277,11 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if (s.intro === 'layered') notes.push(layerIntro(idea, r));
     if (s.intro === 'long') notes.push(longIntro(idea, r));
     if (s.kind === 'outro' && outroLong) notes.push('Long outro: the last line repeats as a tag before the end');
+    if (s.kind === 'outro' && jam) {
+      // (named in the key it ends up in: a last-chorus key change carries on into it)
+      notes.push(jam.note((idea.song.key + (keyUp && finalAt >= 0 && si >= finalAt ? keyUp : 0)) % 12));
+      jamBuild(idea, s.segs[0].n, r);
+    }
     if (keyUp && finalAt >= 0 && si >= finalAt) {
       transpose(idea, keyUp);
       if (si === finalAt) notes.push(`Key change: up a ${keyUp === 1 ? 'half' : 'whole'} step for the last chorus`);
@@ -1289,8 +1350,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if (t !== 'hits' && t !== 'push' && m.chance(0.6) && g2Pickup(idea, b, m)) idea.notes.push(`Guitar 2 leads into ${into} with pickup notes`);
   });
   // a long outro's tag repeats the chorus's last bars: its bars don't line up with the chorus's
-  if (outroLong) delete edit.outro;
-  makeEnding(sections[sections.length - 1], home);
+  if (outroLong || jam) delete edit.outro;
+  // (a jam ends in its own key)
+  makeEnding(sections[sections.length - 1], jam && slots[slots.length - 1].kind === 'outro' ? jam.home : home);
   sections[sections.length - 1].notes.push('Ends on a held chord');
   for (const idea of sections) {
     // reshaping and transitions can leave downstrokes between 8ths: strum them as a hand would
