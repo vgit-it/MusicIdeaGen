@@ -593,11 +593,11 @@ function showReal() {
   realBtn.disabled = st === 'none' || st === 'failed';
   realBtn.textContent = on ? 'Real amps on ✓' : st === 'todo' ? 'Prepare real amps' : st === 'ready' ? 'Use real amps' : 'Real amps';
   realHint.textContent = st === 'failed' ? 'Real amps can\'t run on this device.'
-    : st === 'none' ? 'For crunch and distortion guitars (none in this one).'
-    : on ? 'Guitars through a real Marshall amp. Tap to go back to the simple amp.'
+    : st === 'none' ? 'For electric guitars (none in this one).'
+    : on ? 'Guitars through real amps (Marshall, Fender for clean). Tap to go back to the simple amp.'
     : st === 'ready' ? 'Playing the simple amp. The real amp is prepared: tap to use it.'
     : engine.realAmpsOn ? 'Changed since: prepare again for the real amp sound.'
-    : 'Real Marshall amp sound for crunch and distortion guitars. Takes a moment, then plays smoothly.';
+    : 'Real amp sound for electric guitars: Marshall for crunch and distortion, Fender for clean. Takes a moment, then plays smoothly.';
 }
 engine.onRealChange = showReal;
 realBtn.onclick = async () => {

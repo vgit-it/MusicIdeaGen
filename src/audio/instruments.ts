@@ -150,7 +150,8 @@ interface AmpSettings {
 }
 
 export const AMP: Record<AmpTone, AmpSettings> = {
-  clean: { comp: [-24, 3, 4], tight: 70, push: [800, 0], drive1: 1.3, drive2: 1, bass: 0, middle: 0, treble: 1.5, presence: 1, lowShelf: [450, -11], highShelf: [3000, 4], level: 28, lowCut: 75, top: 7500, bite: [3000, 0] },
+  // (clean: a Fender's scooped mids and sparkle, voiced to match the real Twin amp, through its open-back 2x12)
+  clean: { comp: [-24, 3, 4], tight: 70, push: [800, 0], drive1: 1.3, drive2: 1, bass: 0, middle: -7, treble: 4, presence: 1, lowShelf: [450, -9], highShelf: [3000, 4], level: 31.4, lowCut: 75, top: 7500, bite: [3000, 0] },
   crunch: { comp: [-32, 4, 10], tight: 150, push: [750, 3], drive1: 4, drive2: 2.5, bass: 1, middle: 2, treble: 0, presence: 0, lowShelf: [400, -3], highShelf: [3000, 1], level: 2.9, lowCut: 110, top: 5500, bite: [2800, -3] },
   dist: { comp: [-40, 8, 22], tight: 180, push: [720, 6], drive1: 8.5, drive2: 5, bass: 3, middle: -1.5, treble: 0, presence: 0.5, lowShelf: [450, -3], highShelf: [3000, -1.5], level: 1.96, lowCut: 110, top: 5000, bite: [2700, -5] },
 };
@@ -225,8 +226,8 @@ class Amp {
   /** Real amps: in a render that prepares them, a driven amp's dry input is recorded instead (see realamp.ts). */
   private captured = false;
 
-  /** `lead`: the lead guitar voicing of driven tones (see LEAD). */
-  constructor(out: Tone.InputNode, private readonly lead = false) {
+  /** `lead`: the lead guitar voicing of driven tones (see LEAD). `guitar2`: it's Guitar 2's amp. */
+  constructor(out: Tone.InputNode, private readonly lead = false, private readonly guitar2 = lead) {
     this.out = out;
     this.stage1.oversample = '4x';
     this.stage2.oversample = '4x';
@@ -277,7 +278,7 @@ class Amp {
 
   set(tone: AmpTone) {
     // (an amp keeps its tone, so this happens once)
-    const tap = !this.captured && captureAmp(this.ctx, tone, this.lead, () => (this.out as Tone.Panner).pan?.value ?? 0);
+    const tap = !this.captured && captureAmp(this.ctx, tone, this.lead, this.guitar2, () => (this.out as Tone.Panner).pan?.value ?? 0);
     if (tap) {
       this.input.disconnect();
       Tone.connect(this.input, tap);
@@ -370,7 +371,8 @@ export class Guitar implements ChordInstrument {
       const panner = new Tone.Panner(pan).connect(out);
       const head = new Tone.Gain(role === 'double' ? 0 : 1);
       if (type === 'electric') {
-        const amp = new Amp(panner, lead && role !== 'clean');
+        // (Guitar 2's clean channel isn't voiced as a lead, but it's still Guitar 2's)
+        const amp = new Amp(panner, lead && role !== 'clean', lead);
         head.connect(amp.input);
         if (role !== 'clean') this.amps.push(amp);
         else { amp.set('clean'); this.cleanAmp = amp; }

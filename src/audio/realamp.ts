@@ -20,13 +20,15 @@ export const REAL_RATE = 48000;
  * cabinet and the output level (about as loud as the app's own amp). Crunch: the Marshall's crunch
  * channel, pushed. Distortion: its high-gain channel, with the harsh 2.7 kHz and the fizz above
  * 6.5 kHz trimmed. Guitar 2 drives them a little less (clearer single notes), with a rounder top
- * (its melodies sit high, and came out sharp and piercing with the rhythm EQ).
+ * (its melodies sit high, and came out sharp and piercing with the rhythm EQ). Clean: a Fender Twin
+ * Reverb (bright channel: 4 dB off the top, the same top as the app's clean amp); the model plays very
+ * quietly (about 21 dB under its input), hence its level.
  */
 type Eq = [BiquadFilterType, number, number, number][];
 interface RealAmpSettings { drive: number; leadDrive: number; eq: Eq; leadEq: Eq; level: number; leadLevel: number }
 export const REAL_AMP: Record<RealTone, RealAmpSettings> = {
-  crunch: { drive: 0.66, leadDrive: 0.8, eq: [['highpass', 90, 0, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 90, 0, 0.7], ['lowpass', 6000, 0, 0.7]], level: 5.6, leadLevel: 7.9 },
-  clean: { drive: 0.5, leadDrive: 0.5, eq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 9000, 0, 0.7]], level: 10, leadLevel: 10 },
+  crunch: { drive: 0.66, leadDrive: 0.8, eq: [['highpass', 90, 0, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 90, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 6000, 0, 0.7]], level: 5.6, leadLevel: 9.1 },
+  clean: { drive: 0.5, leadDrive: 0.5, eq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 7500, 0, 0.7]], leadEq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 7500, 0, 0.7]], level: 146, leadLevel: 146 },
   dist: { drive: 0.33, leadDrive: 0.4, eq: [['highpass', 100, 0, 0.7], ['peaking', 2700, -3, 1.2], ['lowpass', 6500, 0, 0.7]], leadEq: [['highpass', 100, 0, 0.7], ['peaking', 3200, -4, 1], ['lowpass', 4500, 0, 0.7]], level: 5.6, leadLevel: 8.3 },
 };
 
@@ -110,11 +112,13 @@ async function runAmp(tone: RealTone, input: Float32Array): Promise<Float32Array
 
 /* ---- capturing the dry guitar in an offline render */
 
-/** A driven amp whose dry input an offline render records. */
+/** An amp whose dry input an offline render records. */
 export interface CapturedAmp {
   tone: RealTone;
-  /** Guitar 2's lead voicing (drives the amp less); otherwise the rhythm part. */
+  /** Guitar 2's lead voicing (drives the amp less). */
   lead: boolean;
+  /** Guitar 2's (else the rhythm part's): where its take goes. */
+  guitar2: boolean;
   /** Where the amp's take sits (read once the render is built). */
   pan: () => number;
   /** Its channel in the render. */
@@ -136,11 +140,11 @@ export const capturedAmps = (ctx: Tone.BaseContext) => captures.get(ctx)?.amps ?
  * In a capturing context: where a driven amp's dry input should go instead of the amp (its own
  * channel), or null (no capture here, or no channels left: the app's own amp plays).
  */
-export function captureAmp(ctx: Tone.BaseContext, tone: RealTone, lead: boolean, pan: () => number): AudioNode | null {
+export function captureAmp(ctx: Tone.BaseContext, tone: RealTone, lead: boolean, guitar2: boolean, pan: () => number): AudioNode | null {
   const c = captures.get(ctx);
   if (!c || c.amps.length >= c.max) return null;
   const channel = c.first + c.amps.length;
-  c.amps.push({ tone, lead, pan, channel });
+  c.amps.push({ tone, lead, guitar2, pan, channel });
   const raw = ctx.rawContext as unknown as BaseAudioContext;
   const mono = raw.createGain();
   mono.channelCount = 1;
@@ -194,7 +198,7 @@ export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: 
     node.connect(level).connect(pan);
     const split = ctx.createChannelSplitter(2);
     pan.connect(split);
-    const o = a.lead ? 2 : 0;
+    const o = a.guitar2 ? 2 : 0;
     split.connect(merger, 0, o);
     split.connect(merger, 1, o + 1);
     src.start();
