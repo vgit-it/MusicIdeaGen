@@ -37,6 +37,8 @@ export interface PlayOptions {
   detune?: number;
   /** Fade-in time in seconds (volume swell). */
   fadeIn?: number;
+  /** Start this far (seconds) into the sample, past its attack. */
+  offset?: number;
 }
 
 /** How the hand moves to a legato note on the same string. */
@@ -75,8 +77,9 @@ export class MultiSampler {
     // a sample measured out of tune is played back in tune
     const tuning = this.set.tuning.get(buf);
     const rate = 2 ** ((midi - notes[ni]) / 12 + (cents - (tuning?.settle ?? 0)) / 1200);
-    const v = this.start(buf, time, dur, (0.3 + 0.7 * vel) ** 1.5, rate, opts.release ?? this.release, opts.fadeIn);
-    Object.assign(v, { root: notes[ni], tune: cents - (tuning?.settle ?? 0), len: buf.duration, at: time, rate, free: 0 });
+    const offset = opts.offset ?? 0;
+    const v = this.start(buf, time, dur, (0.3 + 0.7 * vel) ** 1.5, rate, opts.release ?? this.release, opts.fadeIn, offset);
+    Object.assign(v, { root: notes[ni], tune: cents - (tuning?.settle ?? 0), len: buf.duration - offset, at: time, rate, free: 0 });
     const pr = v.src.playbackRate;
     const bend = opts.bend ?? 0;
     // (a bend gets up to pitch quickly: a slow one sounds out of tune)
@@ -94,7 +97,7 @@ export class MultiSampler {
       pr.setValueAtTime(low, time);
       pr.setValueAtTime(low, time + 0.02);
       pr.linearRampToValueAtTime(rate, settle);
-    } else if (tuning?.curve.length) this.untwang(pr, tuning.curve, time, rate, Math.min(vibrato ? vibStart : Infinity, until));
+    } else if (tuning?.curve.length && !offset) this.untwang(pr, tuning.curve, time, rate, Math.min(vibrato ? vibStart : Infinity, until));
     this.tail(v, rate, vibStart, time + dur, opts);
     return v;
   }
@@ -195,11 +198,11 @@ export class MultiSampler {
     return this.set.noises.length > 0;
   }
 
-  private start(buf: AudioBuffer, time: number, dur: number, gain: number, rate: number, release: number, fadeIn = 0): Voice {
+  private start(buf: AudioBuffer, time: number, dur: number, gain: number, rate: number, release: number, fadeIn = 0, offset = 0): Voice {
     const src = new SampleVoice(this.ctx, buf, this.out, { rate, fadeIn, fadeOut: release });
     const voice: Voice = { src, endAt: time + dur };
     src.onended = () => this.active.delete(voice);
-    src.start(time, gain);
+    src.start(time, gain, offset);
     src.stop(time + dur);
     this.active.add(voice);
     return voice;

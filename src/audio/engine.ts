@@ -577,7 +577,7 @@ export class Engine {
     this.prepPlaying = '';
   }
 
-  /** Bass sound: Auto (by the bass part's genre), Clean, Driven or the synth. */
+  /** Bass sound: Auto (by the bass part's genre), Clean, Driven, Smooth or the synth. */
   setBass(id: BassId) {
     this.bassChoice = id;
     this.bass.useSynth = id === 'synth';
@@ -592,7 +592,7 @@ export class Engine {
   /** The bass sound an item plays with (Auto: by the bass part's genre). */
   private bassToneFor(idea: Idea | undefined): BassTone {
     const c = this.bassChoice;
-    return c === 'clean' || c === 'driven' ? c : BASS_TONES[idea?.song.partGenres.bass ?? 'rock'];
+    return c === 'clean' || c === 'driven' || c === 'smooth' ? c : BASS_TONES[idea?.song.partGenres.bass ?? 'rock'];
   }
 
   setDrums(id: DrumKitId) {
