@@ -15,6 +15,7 @@ import type { Genre } from '../genres';
 import type { GuitarHit, Idea, Move, SectionKind, Touch } from '../idea';
 import { Rng } from '../rng';
 import { groupStarts } from '../rhythm';
+import { SCALES } from '../theory';
 import { TUNINGS } from '../theory/fretboard';
 
 interface Hands {
@@ -268,6 +269,13 @@ function playChanges(idea: Idea, hands: Hands, seed: string) {
 const sameShape = (a: LineNote, b: LineNote) =>
   a.offs.length === b.offs.length && a.offs.every((o, k) => o === b.offs[k]) && a.notes.every((m, k) => m - a.notes[0] === b.notes[k] - b.notes[0]);
 
+/** How far below `midi` the next note of the song's scale is, if it's a bend's reach (1 or 2 semitones). */
+function scaleBelow(midi: number, song: Idea['song']): number | undefined {
+  const pcs = SCALES[song.mode].map((p) => (p + song.key) % 12);
+  for (const d of [2, 1]) if (pcs.includes((((midi - d) % 12) + 12) % 12)) return d;
+  return undefined;
+}
+
 const beatSteps = (idea: Idea) => {
   const beats = new Set<number>();
   for (const bar of idea.song.bars) for (const b of groupStarts(bar.groups)) beats.add(bar.start + b);
@@ -372,7 +380,10 @@ function moves(idea: Idea, line: LineNote[], spots: (Spot | null)[], hands: Hand
     const restBefore = !pn || !pn.joined && n.step - (pn.step + pn.len) >= 4;
     if (t.move === 'pick') {
       // into a long note after a rest: a bend (Guitar 2) or a slide (bass)
-      if (who === 'guitar' && n.notes.length === 1 && n.len >= 4 && t.fret >= 4 && t.string >= 2 && at(n.step, 'bend').chance(hands.bend)) t.bend = at(n.step, 'bend2').chance(0.6) ? 2 : 1;
+      // a bend starts on the scale note below and pushes up to the note (from anywhere else the
+      // start is heard as a wrong note); rarely in quiet sections, where the melody is plainer
+      const below = scaleBelow(n.notes[0], song);
+      if (who === 'guitar' && n.notes.length === 1 && below && n.len >= 4 && t.fret >= 4 && t.string >= 2 && at(n.step, 'bend').chance(hands.bend * (e >= 3 ? 1 : 0.25))) t.bend = below;
       else if (who === 'bass' && restBefore && beats.has(n.step) && t.fret >= 3 && at(n.step, 'in').chance(hands.slideIn)) t.from = -Math.min(t.fret, 3);
     }
     // a fall-off into a rest (not the section's last note: the next section takes over from it)

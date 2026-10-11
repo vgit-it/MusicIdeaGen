@@ -79,7 +79,8 @@ export class MultiSampler {
     Object.assign(v, { root: notes[ni], tune: cents - (tuning?.settle ?? 0), len: buf.duration, at: time, rate, free: 0 });
     const pr = v.src.playbackRate;
     const bend = opts.bend ?? 0;
-    const settle = opts.slide ? time + 0.07 + Math.abs(opts.slide) * 0.03 : bend ? time + 0.1 + bend * 0.05 : time;
+    // (a bend gets up to pitch quickly: a slow one sounds out of tune)
+    const settle = opts.slide ? time + 0.07 + Math.abs(opts.slide) * 0.03 : bend ? time + 0.05 + bend * 0.025 : time;
     // vibrato fades in after the note has spoken, like a player's wrist
     const vibStart = Math.max(settle, time + 0.28);
     const until = this.pitchEnd(time + dur, settle, opts);
@@ -91,7 +92,7 @@ export class MultiSampler {
       // picked a step or two flat, then pushed up to the note
       const low = rate * 2 ** (-bend / 12);
       pr.setValueAtTime(low, time);
-      pr.setValueAtTime(low, time + 0.035);
+      pr.setValueAtTime(low, time + 0.02);
       pr.linearRampToValueAtTime(rate, settle);
     } else if (tuning?.curve.length) this.untwang(pr, tuning.curve, time, rate, Math.min(vibrato ? vibStart : Infinity, until));
     this.tail(v, rate, vibStart, time + dur, opts);
