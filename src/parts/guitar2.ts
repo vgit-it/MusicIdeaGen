@@ -51,7 +51,7 @@ export function pickStyle(rng: Rng, genre: Genre, section: RiffStyle | null): Gu
   return rng.weighted([['funk', 3], ['fills', 1]]);
 }
 
-const MINORISH: Mode[] = ['minor', 'dorian', 'phrygian'];
+export const MINORISH: Mode[] = ['minor', 'dorian', 'phrygian'];
 
 /**
  * Where melodies sit (MIDI notes), above the rhythm guitars and bass: a melody from D4 to A5;
@@ -64,7 +64,7 @@ const OCTAVE_RANGE: [number, number] = [55, 69];
  * Pentatonic core plus the odd colour note from the mode (semitones above the key). Guitar riffs
  * and leads live in the pentatonic; a lot of modal colour made lines wander.
  */
-function leadScale(rng: Rng, mode: Mode, w: number): number[] {
+export function leadScale(rng: Rng, mode: Mode, w: number): number[] {
   const minor = MINORISH.includes(mode);
   const s = new Set(minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9]);
   for (const n of SCALES[mode]) if (rng.chance(0.1 + w * 0.3)) s.add(n);
@@ -73,7 +73,7 @@ function leadScale(rng: Rng, mode: Mode, w: number): number[] {
 }
 
 /** Lead notes sit around one hand position on the middle/high strings. */
-function leadFret(midi: number, t: Tuning, pos: number): { notes: number[]; strings: number[] } {
+export function leadFret(midi: number, t: Tuning, pos: number): { notes: number[]; strings: number[] } {
   let best = 5, bestCost = Infinity;
   for (let s = 1; s < 6; s++) {
     const fret = midi - t.strings[s];
@@ -84,7 +84,7 @@ function leadFret(midi: number, t: Tuning, pos: number): { notes: number[]; stri
   return { notes: [midi], strings: [best] };
 }
 
-const chordTones = (key: number, c: Chord) => QUALITIES[c.q].map((i) => mod(chordPc(key, c) + i, 12));
+export const chordTones = (key: number, c: Chord) => QUALITIES[c.q].map((i) => mod(chordPc(key, c) + i, 12));
 
 type Density = 'slow' | 'medium' | 'busy';
 
@@ -618,93 +618,4 @@ export function generateGuitar2(
     ? `Guitar 2: ${labels[0]} throughout`
     : `Guitar 2: ${labels.map((l, i) => `bars ${i * 4 + 1}–${Math.min(bars.length, i * 4 + 4)} ${l}`).join(' → ')}`];
   return { hits, notes };
-}
-
-/**
- * A guitar solo over a section (8 or 16 bars), told as a story: it starts low and sparse (now and
- * then quoting the hook), climbs and gets busier four bars at a time, peaks in the last two bars (the
- * player's way: a held bend, a fast run, a hammered note, a funky stab) and lands on the root at the
- * end. `lick`: the lead player's kind (see players/lead.ts). `hook`: the track's hook, written over the
- * same chords (quoted at the start), or null.
- */
-export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null): Guitar2Part {
-  const { key, w, mode, bars, total } = song;
-  const t = song.tuning ?? TUNINGS.standard;
-  // bluesy players solo in the blues scale (minor pentatonic and the flat 5th) over any key
-  const scale = lick === 'blues' ? [0, 3, 5, 6, 7, 10] : leadScale(rng, mode, w);
-  const pos = rng.int(5, 12);
-  const runs: Bar[][] = [];
-  for (let i = 0; i < bars.length; i += 4) runs.push(bars.slice(i, i + 4));
-  const K = runs.length;
-  const evs: (NoteEv & { bend?: number })[] = [];
-  runs.forEach((B, k) => {
-    // the register climbs run by run (about an octave and a half from G3), the playing gets busier
-    const lo = 55 + Math.round((k * 12) / Math.max(1, K - 1)), hi = lo + 14;
-    const last = k === K - 1;
-    // (only a shredder gets busy: busy 16ths from the others came out as runs)
-    const density: Density = k === 0 ? 'slow' : last && lick === 'run' ? 'busy' : 'medium';
-    const shape: Shape = k === 0 ? 'answer' : last ? 'line' : rng.pick(['line', 'riff', 'answer'] as const);
-    evs.push(...melody(rng, song, chords, B, density, lo, hi, scale, 0.15, riff, shape));
-  });
-
-  // the start quotes the hook (its first two bars, moved into the solo's low register)
-  const b2 = bars[Math.min(2, bars.length - 1)].start;
-  const quote = hook?.filter((h) => h.step < b2 && h.notes.length) ?? [];
-  const quoted = quote.length >= 3 && rng.chance(0.6);
-  if (quoted) {
-    const low = Math.min(...quote.map((h) => h.notes[0]));
-    const shift = 12 * Math.round((57 - low) / 12);
-    for (let i = evs.length - 1; i >= 0; i--) if (evs[i].step < b2) evs.splice(i, 1);
-    evs.unshift(...quote.map((h) => ({ step: h.step, midi: h.notes[0] + shift, len: h.len, vel: h.vel })));
-  }
-
-  // the peak and the landing: the last two bars, the player's way
-  const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(g, total - 1)]].chord;
-  const toneNear = (m: number, g: number, up = true) => {
-    const tones = chordTones(key, chordAt(g));
-    for (let d = 0; d < 12; d++) { const x = up ? m - d : m + d; if (tones.includes(mod(x, 12))) return x; }
-    return m;
-  };
-  const pk = bars.length >= 2 ? bars[bars.length - 2] : bars[0];
-  const end = bars[bars.length - 1];
-  for (let i = evs.length - 1; i >= 0; i--) if (evs[i].step >= pk.start) evs.splice(i, 1);
-  const peak: typeof evs = [];
-  const top = toneNear(80, pk.start);
-  const pst = groupStarts(pk.groups).map((p) => pk.start + p);
-  if (lick === 'run') {
-    // a 16th run by step up to the top note
-    const pool: number[] = [];
-    for (let m = 60; m <= top; m++) if (scale.includes(mod(m - key, 12))) pool.push(m);
-    const n = Math.min(pk.len - 4, pool.length);
-    for (let i = 0; i < n; i++) peak.push({ step: pk.start + 4 + i, midi: pool[pool.length - n + i], len: 1, vel: 0.82 + 0.1 * (i / n) });
-  } else if (lick === 'simple') {
-    // the top note hammered on the 8ths
-    for (let p = 0; p < pk.len; p += 2) peak.push({ step: pk.start + p, midi: top, len: 2, vel: p === 0 ? 0.95 : 0.85 });
-  } else if (lick === 'muted') {
-    for (const p of [0, 3, 6, 8, 11, 14].filter((x) => x < pk.len)) peak.push({ step: pk.start + p, midi: p % 2 ? top - 12 : top, len: 1, vel: 0.88 });
-  } else {
-    // a long bend up to the top note (twice for the blues player), held
-    const twice = lick === 'blues' && pst.length >= 3;
-    peak.push({ step: pk.start, midi: top, len: twice ? pst[2] - pk.start : pk.len, vel: 0.95, bend: 2 });
-    if (twice) peak.push({ step: pst[2], midi: top, len: pk.start + pk.len - pst[2], vel: 0.92, bend: 2 });
-  }
-  // the landing: on the root of the chord underneath, from a step above, held to the end
-  const est = groupStarts(end.groups).map((p) => end.start + p);
-  const landAt = est.length >= 2 ? est[1] : end.start;
-  const rootPc = chordPc(key, chordAt(landAt));
-  const rootM = 64 + mod(rootPc - 64, 12);
-  const into = scale.map((s) => mod(key + s, 12));
-  let above = rootM + 1;
-  while (!into.includes(mod(above, 12)) && above < rootM + 4) above++;
-  if (landAt > end.start) peak.push({ step: end.start, midi: above, len: landAt - end.start, vel: 0.88 });
-  peak.push({ step: landAt, midi: rootM, len: end.start + end.len - landAt, vel: 0.92, bend: lick === 'blues' ? 1 : undefined });
-  const all = [...evs, ...peak].sort((a, b) => a.step - b.step).filter((e, i, a) => i === 0 || e.step > a[i - 1].step);
-
-  const hits: GuitarHit[] = all.map((e, i) => {
-    const next = all[i + 1]?.step ?? total;
-    // a solo stands out a little: picked harder
-    return { step: e.step, ...leadFret(e.midi, t, pos), len: Math.max(1, Math.min(e.len, next - e.step)), vel: Math.min(1, e.vel + 0.06), slide: e.slide, bend: e.bend };
-  });
-  const PEAK: Record<LickKind, string> = { sung: 'a long held bend', blues: 'a bend, twice', run: 'a fast run up', simple: 'one note hammered', muted: 'funky stabs' };
-  return { hits, notes: [`Guitar 2: a solo: starts low${quoted ? ' quoting the hook' : ''}, builds four bars at a time, peaks with ${PEAK[lick]}, lands on the root`] };
 }

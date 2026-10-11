@@ -10,7 +10,8 @@ import type {
   ChordEvent, ChordPart, ChordSheet, DrumPart, GuitarHit, Idea, SectionInfo, SectionKind, Seeds, Song, Stroke,
 } from './idea';
 import { type DrumBar, addFill } from './parts/drums';
-import { type Guitar2Style, generateGuitar2, generateHook, generateSolo, pickStyle } from './parts/guitar2';
+import { type Guitar2Style, generateGuitar2, generateHook, pickStyle } from './parts/guitar2';
+import { generateSolo } from './parts/solo';
 import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';

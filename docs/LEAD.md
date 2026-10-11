@@ -51,17 +51,33 @@ The section:
 - Track option "Solo: Auto / On / Off"; shown as "Solo" in the sections (and in Add after…), with its own
   "New solo" reroll.
 
-As built (`generateSolo` in `src/parts/guitar2.ts`, placement in `src/track.ts`):
+As built (`src/parts/solo.ts`, rules in `docs/SOLO-THEORY.md`; placement in `src/track.ts`):
 - Where: after the 2nd chorus (70%), else after the 1st (taking the interlude's place); 20% of songs
   also solo over the outro. Hand-edited orders keep what you set.
 - 8 bars over the verse (60%) or chorus (40%) chords; metal and hard rock 16 bars half the time (back
   to 8 if the song runs long, and the outro solo goes before the pre-choruses do).
-- Four bars at a time, the register climbs from G3 and the playing gets busier (busy only for a
-  shredder); over the chorus chords it starts by quoting the hook (60%); the last two bars peak the
-  player's way (melodic: a long held bend; bluesy: a bend twice; shredder: a 16th run up; raw: one
-  note hammered on the 8ths; funky: stabs) and land on the root of the chord underneath.
+- The arc, two bars at a time: opening (first ~30%: low, sparse; maybe the hook quoted or one bold
+  bent note), build (the ceiling climbing, busier), the peak at ~70% (the motif climbing two or three
+  times, then the solo's highest note on the downbeat, never heard before: held and bent, or the
+  player's way), the release (lower, sparser) landing on the root of the last chord on beat 1 (or an
+  8th early), held, the last beat left to the drums.
+- Phrases: a call ending open (3rd/5th) and an answer ending home (root); rests between them early,
+  none in the build; starts on the downbeat about a third of the time.
+- Rhythm first (2-4 note cells); the first phrase's rhythm and shape are the motif, reused and varied
+  in about 60% of phrases.
+- Pitch: mostly steps, ~12% leaps then a step back, arches most; chord notes on strong beats, chord
+  changes and held notes; no held note rubbing against the chord or the riff; at most two repeats.
+- Scales by player: melodic: pentatonic + mode colour; bluesy: the blues scale, the blue third curled
+  up over major chords; shredder: the full mode; raw / funky: pentatonic.
+- Bends written by the solo (a step up into a chord note on held notes; by player 10-50%); slides
+  into ~20% of phrases.
 - Mix: Guitar 2 +2.5 dB and the rhythm guitar -2 dB through a solo (eased in); strummed rhythm
   guitars also play a level softer.
+- The drummer under it (`playUnderSolo`, drummer.ts): the ride instead of the hi-hat, a crash with
+  the kick every four bars, building to the peak bar (+16%) then easing off, short fills at the ends
+  of four-bar phrases where the guitar isn't busy, their big fill into the peak bar (crash on the
+  peak), crashes caught on the guitar's long notes and the peak note (once per two bars at most), no
+  ghost notes.
 
 ## 4. Later
 - Revisit each player's style and playing nuances (Paul, 2026-10-11: "keep this for now"). Known: the
