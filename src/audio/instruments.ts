@@ -278,7 +278,7 @@ class Amp {
 
   set(tone: AmpTone) {
     // (an amp keeps its tone, so this happens once)
-    const tap = !this.captured && captureAmp(this.ctx, tone, this.lead, this.guitar2, () => (this.out as Tone.Panner).pan?.value ?? 0);
+    const tap = !this.captured && captureAmp(this.ctx, tone, this.lead, this.guitar2 ? 'guitar2' : 'chords', () => (this.out as Tone.Panner).pan?.value ?? 0);
     if (tap) {
       this.input.disconnect();
       Tone.connect(this.input, tap);
@@ -579,69 +579,79 @@ export class Guitar implements ChordInstrument {
 
 /* ---------------------------------------------------------------- bass */
 
-export type BassId = 'electric' | 'synth';
+export type BassId = 'auto' | 'clean' | 'driven' | 'synth';
 export const BASS_INSTRUMENTS: { id: BassId; label: string }[] = [
-  { id: 'electric', label: 'Electric bass' },
+  { id: 'auto', label: 'Auto (by genre)' },
+  { id: 'clean', label: 'Electric bass, clean' },
+  { id: 'driven', label: 'Electric bass, driven' },
   { id: 'synth', label: 'Synth bass' },
 ];
 
-export type BassTone = 'clean' | 'warm' | 'grit' | 'heavy';
-
-const BASS_TONE: Record<BassTone, { grit: number; drive: number; clank: number; level: number }> = {
-  // grit = how much of the distorted "growl" path is blended in; clank = string/pick definition (dB).
-  // Every tone stays close to clean: heavier styles get only a touch more growl (level keeps them even)
-  clean: { grit: 0.12, drive: 2, clank: 5, level: 0.9 },
-  warm: { grit: 0.14, drive: 2.5, clank: 4.5, level: 0.79 },
-  grit: { grit: 0.17, drive: 3, clank: 4.5, level: 0.67 },
-  heavy: { grit: 0.2, drive: 3.5, clank: 5, level: 0.58 },
-};
+/** Clean: the bass straight into the desk, like most pop, funk and rock records. Driven: with a distorted bass preamp blended in (heavier styles). */
+export type BassTone = 'clean' | 'driven';
 
 /**
- * Rock bass rig: compressor, then a clean low-end path blended with a distorted "growl" path
- * (how most rock bass is recorded), string clank, and a final glue compressor.
+ * Bass rig, as bass is usually recorded: the DI (the bass straight in, full range, compressed) and,
+ * for Driven, a distorted bass preamp blended under it, its lows taken out so the bottom stays tight.
+ * (The old rig played the lows clean and everything above 320 Hz only through a small distorted
+ * path: a pure low tone with a buzz on top, which is how a video-game bass is made.)
  */
+const BASS_RIG: Record<BassTone, { grit: number; level: number }> = {
+  // grit: the distorted path's level under the DI; level: the same loudness either way
+  clean: { grit: 0, level: 1.27 },
+  driven: { grit: 0.2, level: 0.69 },
+};
+
 class BassRig {
   readonly input = new Tone.Gain();
-  private grit = new Tone.Gain(0.3);
-  private shaper = new Tone.WaveShaper((x) => Math.tanh(4 * x) / Math.tanh(4), 4096);
-  private clank = new Tone.Filter({ type: 'peaking', frequency: 2400, Q: 0.9, gain: 5 });
+  /** Driven: the distorted path's input. */
+  private drive = new Tone.Gain(0);
+  private dist = new Tone.Gain(1);
   private level = new Tone.Gain(1);
-  private drive = 4;
+  private readonly ctx = Tone.getContext();
+  /** Real amps: in a render that prepares them, the preamp's input is recorded instead (see realamp.ts). */
+  private captured = false;
+  tone: BassTone = 'clean';
 
   constructor(out: Tone.InputNode) {
-    this.shaper.oversample = '4x';
-    const comp = new Tone.Compressor({ threshold: -26, ratio: 4, attack: 0.006, release: 0.12, knee: 6 });
+    const comp = new Tone.Compressor({ threshold: -24, ratio: 4, attack: 0.008, release: 0.15, knee: 6 });
     const sum = new Tone.Gain(1);
-    this.input.connect(comp);
-    // clean path: solid lows only
-    comp.chain(new Tone.Filter({ type: 'lowpass', frequency: 320, rolloff: -24 }), sum);
-    // growl path: no lows into the distortion (keeps it tight), speaker-ish top roll-off
+    this.input.chain(new Tone.Filter({ type: 'highpass', frequency: 28, rolloff: -12 }), comp);
+    // the DI: weight down low, less 250 Hz mud, a little finger and string definition, no fizz
     comp.chain(
-      new Tone.Filter({ type: 'highpass', frequency: 220, rolloff: -24 }),
-      new Tone.Gain(3), this.shaper,
-      new Tone.Filter({ type: 'peaking', frequency: 800, Q: 0.8, gain: 4 }),
-      new Tone.Filter({ type: 'lowpass', frequency: 4200, rolloff: -24 }),
-      this.grit, sum,
+      new Tone.Filter({ type: 'lowshelf', frequency: 100, gain: 4 }),
+      new Tone.Filter({ type: 'peaking', frequency: 250, Q: 1, gain: -3 }),
+      new Tone.Filter({ type: 'highshelf', frequency: 1000, gain: -7 }),
+      new Tone.Filter({ type: 'lowpass', frequency: 3500, rolloff: -24 }),
+      sum,
     );
-    sum.chain(
-      // the recordings have weak fundamentals: put the weight back down low, less 250 Hz mud
-      new Tone.Filter({ type: 'lowshelf', frequency: 110, gain: 6 }),
-      new Tone.Filter({ type: 'peaking', frequency: 250, Q: 1, gain: -5 }),
-      this.clank,
-      new Tone.Compressor({ threshold: -18, ratio: 3, attack: 0.01, release: 0.15 }),
-      this.level, out,
+    // the preamp: no lows into the distortion (keeps it tight), growl in the mids, a speaker's top
+    const shaper = new Tone.WaveShaper((x) => Math.tanh(5 * x) / Math.tanh(5), 4096);
+    shaper.oversample = '4x';
+    comp.connect(this.drive);
+    this.drive.chain(new Tone.Filter({ type: 'highpass', frequency: 180, rolloff: -24 }), new Tone.Gain(4), shaper, this.dist);
+    this.dist.chain(
+      new Tone.Filter({ type: 'highpass', frequency: 300, rolloff: -12 }),
+      new Tone.Filter({ type: 'peaking', frequency: 900, Q: 0.8, gain: 3 }),
+      new Tone.Filter({ type: 'lowpass', frequency: 3500, rolloff: -24 }),
+      sum,
     );
+    sum.chain(new Tone.Compressor({ threshold: -18, ratio: 3, attack: 0.01, release: 0.15 }), this.level, out);
   }
 
   set(tone: BassTone) {
-    const s = BASS_TONE[tone];
-    this.grit.gain.value = s.grit;
-    this.clank.gain.value = s.clank;
-    this.level.gain.value = s.level;
-    if (s.drive !== this.drive) {
-      this.drive = s.drive;
-      this.shaper.setMap((x) => Math.tanh(s.drive * x) / Math.tanh(s.drive), 4096);
+    const s = BASS_RIG[tone];
+    this.tone = tone;
+    // the real preamp gets the DI as it is (after the compressor) and gives back its distorted path
+    const tap = tone === 'driven' && !this.captured && captureAmp(this.ctx, 'bass', false, 'bass', () => 0);
+    if (tap) {
+      this.drive.disconnect();
+      Tone.connect(this.drive, tap);
+      this.captured = true;
     }
+    this.drive.gain.value = tone === 'driven' ? 1 : 0;
+    this.dist.gain.value = s.grit;
+    this.level.gain.value = s.level;
   }
 }
 
@@ -703,10 +713,10 @@ export class Bass {
     } else this.synth.triggerAttackRelease(midiNote(midi), dur, time, vel);
   }
 
-  releaseAll() {
-    this.sampler?.stopAll();
+  releaseAll(time?: number) {
+    this.sampler?.stopAll(time);
     this.last = undefined;
-    this.synth.triggerRelease();
+    this.synth.triggerRelease(time);
   }
 }
 

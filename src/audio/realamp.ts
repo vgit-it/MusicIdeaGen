@@ -1,6 +1,7 @@
 // Real amps: recordings of real guitar amps (Neural Amp Modeler, public/amp/) instead of the app's
 // own amp. Marshall JCM2000: crunch channel for Crunch, high gain for Distortion; a Fender Twin
-// Reverb for Clean (and the clean channel of the driven guitars). They're too heavy to run live on phones, so the guitars are prepared ahead, on request (prep.ts):
+// Reverb for Clean (and the clean channel of the driven guitars); a Tech 21 dUg bass preamp for the
+// Driven bass. They're too heavy to run live on phones, so the guitars are prepared ahead, on request (prep.ts):
 //   1. an offline render records the dry guitar going into each driven amp (captureAmp)
 //   2. Web Workers run the amp models over those recordings, side by side (one per processor core:
 //      inside an offline render they'd all share one thread)
@@ -8,10 +9,13 @@
 
 import * as Tone from 'tone';
 
-export type RealTone = 'crunch' | 'dist' | 'clean';
+export type RealTone = 'crunch' | 'dist' | 'clean' | 'bass';
+/** The parts real amps play: their stereo pairs in a prepared render. */
+export type RealPart = 'chords' | 'guitar2' | 'bass';
+export const REAL_PARTS: RealPart[] = ['chords', 'guitar2', 'bass'];
 
 const BASE = `${import.meta.env.BASE_URL}amp/`;
-const MODELS: Record<RealTone, string> = { crunch: 'marshall-crunch.nam', dist: 'marshall-high.nam', clean: 'fender-clean.nam' };
+const MODELS: Record<RealTone, string> = { crunch: 'marshall-crunch.nam', dist: 'marshall-high.nam', clean: 'fender-clean.nam', bass: 'bass-drive.nam' };
 /** The models' own sample rate. */
 export const REAL_RATE = 48000;
 
@@ -22,13 +26,16 @@ export const REAL_RATE = 48000;
  * 6.5 kHz trimmed. Guitar 2 drives them a little less (clearer single notes), with a rounder top
  * (its melodies sit high, and came out sharp and piercing with the rhythm EQ). Clean: a Fender Twin
  * Reverb (bright channel: 4 dB off the top, the same top as the app's clean amp); the model plays very
- * quietly (about 21 dB under its input), hence its level.
+ * quietly (about 21 dB under its input), hence its level. Bass: the dUg (a distorted bass preamp,
+ * with its own speaker voicing: no cabinet) blended under the bass's DI like the app's own driven
+ * path, its lows taken out so the bottom stays the DI's.
  */
 type Eq = [BiquadFilterType, number, number, number][];
 interface RealAmpSettings { drive: number; leadDrive: number; eq: Eq; leadEq: Eq; level: number; leadLevel: number }
 export const REAL_AMP: Record<RealTone, RealAmpSettings> = {
   crunch: { drive: 0.66, leadDrive: 0.8, eq: [['highpass', 90, 0, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 90, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 6000, 0, 0.7]], level: 5.6, leadLevel: 9.1 },
   clean: { drive: 0.5, leadDrive: 0.5, eq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 7500, 0, 0.7]], leadEq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 7500, 0, 0.7]], level: 146, leadLevel: 146 },
+  bass: { drive: 1, leadDrive: 1, eq: [['highpass', 300, 0, 0.7], ['peaking', 750, 6, 0.7], ['highshelf', 1800, -8, 0.7], ['lowpass', 3000, 0, 0.7]], leadEq: [], level: 0.95, leadLevel: 0.95 },
   dist: { drive: 0.33, leadDrive: 0.4, eq: [['highpass', 100, 0, 0.7], ['peaking', 2700, -3, 1.2], ['lowpass', 6500, 0, 0.7]], leadEq: [['highpass', 100, 0, 0.7], ['peaking', 3200, -4, 1], ['lowpass', 4500, 0, 0.7]], level: 5.6, leadLevel: 8.3 },
 };
 
@@ -54,16 +61,18 @@ function startLanes(): Promise<Lane[]> {
       if (!r.ok) throw new Error(`${f}: ${r.status}`);
       return r;
     };
-    const [wasm, crunch, dist, clean] = await Promise.all([
-      get('nam.wasm').then((r) => r.arrayBuffer()), ...(['crunch', 'dist', 'clean'] as const).map((t) => get(MODELS[t]).then((r) => r.text())),
-    ]) as [ArrayBuffer, string, string, string];
+    const tones = Object.keys(MODELS) as RealTone[];
+    const [wasm, ...texts] = await Promise.all([
+      get('nam.wasm').then((r) => r.arrayBuffer()), ...tones.map((t) => get(MODELS[t]).then((r) => r.text())),
+    ]) as [ArrayBuffer, ...string[]];
+    const models = Object.fromEntries(tones.map((t, i) => [t, texts[i]]));
     return Array.from({ length: LANES }, () => {
       const worker = new Worker(`${BASE}nam-worker.js`);
       const ready = new Promise<void>((res, rej) => {
         worker.onmessage = (e) => (e.data.ready ? res() : rej(new Error(e.data.error)));
         worker.onerror = (e) => rej(new Error(e.message || 'amp worker failed'));
       });
-      worker.postMessage({ init: { wasm, models: { crunch, dist, clean } } });
+      worker.postMessage({ init: { wasm, models } });
       return { worker, ready, busy: false };
     });
   })();
@@ -117,8 +126,8 @@ export interface CapturedAmp {
   tone: RealTone;
   /** Guitar 2's lead voicing (drives the amp less). */
   lead: boolean;
-  /** Guitar 2's (else the rhythm part's): where its take goes. */
-  guitar2: boolean;
+  /** Whose amp it is: where its take goes. */
+  part: RealPart;
   /** Where the amp's take sits (read once the render is built). */
   pan: () => number;
   /** Its channel in the render. */
@@ -140,11 +149,11 @@ export const capturedAmps = (ctx: Tone.BaseContext) => captures.get(ctx)?.amps ?
  * In a capturing context: where a driven amp's dry input should go instead of the amp (its own
  * channel), or null (no capture here, or no channels left: the app's own amp plays).
  */
-export function captureAmp(ctx: Tone.BaseContext, tone: RealTone, lead: boolean, guitar2: boolean, pan: () => number): AudioNode | null {
+export function captureAmp(ctx: Tone.BaseContext, tone: RealTone, lead: boolean, part: RealPart, pan: () => number): AudioNode | null {
   const c = captures.get(ctx);
   if (!c || c.amps.length >= c.max) return null;
   const channel = c.first + c.amps.length;
-  c.amps.push({ tone, lead, guitar2, pan, channel });
+  c.amps.push({ tone, lead, part, pan, channel });
   const raw = ctx.rawContext as unknown as BaseAudioContext;
   const mono = raw.createGain();
   mono.channelCount = 1;
@@ -154,10 +163,11 @@ export function captureAmp(ctx: Tone.BaseContext, tone: RealTone, lead: boolean,
 }
 
 /**
- * The captured amps through the real amps and their cabinets (the Marshalls a 4x12, the Twin its open-back 2x12), mixed into the guitars' stereo pairs:
- * returns [chords L, chords R, guitar2 L, guitar2 R], added onto `base` (the rest of each part).
+ * The captured amps through the real amps and their cabinets (the Marshalls a 4x12, the Twin its
+ * open-back 2x12, the bass preamp none), mixed into the parts' stereo pairs: returns [chords L,
+ * chords R, guitar2 L, guitar2 R, bass L, bass R], added onto `base` (the rest of each part).
  */
-export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: Float32Array[], cabs: Record<RealTone, AudioBuffer>): Promise<Float32Array[]> {
+export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: Float32Array[], cabs: Partial<Record<RealTone, AudioBuffer>>): Promise<Float32Array[]> {
   const length = rendered.length;
   // every amp at once, spread over the workers (silent ones are skipped)
   const outs = await Promise.all(amps.map(async (a) => {
@@ -167,10 +177,11 @@ export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: 
     const drive = a.lead ? r.leadDrive : r.drive;
     return runAmp(a.tone, x.map((v) => v * drive));
   }));
-  const ctx = new OfflineAudioContext(4, length, REAL_RATE);
-  const merger = ctx.createChannelMerger(4);
+  const n = REAL_PARTS.length * 2;
+  const ctx = new OfflineAudioContext(n, length, REAL_RATE);
+  const merger = ctx.createChannelMerger(n);
   merger.connect(ctx.destination);
-  const cabBufs = Object.fromEntries(Object.entries(cabs).map(([t, c]) => [t, resample(c, REAL_RATE)])) as Record<RealTone, AudioBuffer>;
+  const cabBufs = Object.fromEntries(Object.entries(cabs).map(([t, c]) => [t, resample(c!, REAL_RATE)])) as Partial<Record<RealTone, AudioBuffer>>;
   amps.forEach((a, i) => {
     const y = outs[i];
     if (!y) return;
@@ -178,11 +189,15 @@ export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: 
     buf.copyToChannel(y as Float32Array<ArrayBuffer>, 0);
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    const conv = ctx.createConvolver();
-    conv.normalize = true;
-    conv.buffer = cabBufs[a.tone];
-    let node: AudioNode = conv;
-    src.connect(conv);
+    let node: AudioNode = src;
+    const cab = cabBufs[a.tone];
+    if (cab) {
+      const conv = ctx.createConvolver();
+      conv.normalize = true;
+      conv.buffer = cab;
+      src.connect(conv);
+      node = conv;
+    }
     const r = REAL_AMP[a.tone];
     for (const [type, frequency, gain, Q] of a.lead ? r.leadEq : r.eq) {
       const f = ctx.createBiquadFilter();
@@ -198,13 +213,13 @@ export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: 
     node.connect(level).connect(pan);
     const split = ctx.createChannelSplitter(2);
     pan.connect(split);
-    const o = a.guitar2 ? 2 : 0;
+    const o = REAL_PARTS.indexOf(a.part) * 2;
     split.connect(merger, 0, o);
     split.connect(merger, 1, o + 1);
     src.start();
   });
   const out = await ctx.startRendering();
-  return [0, 1, 2, 3].map((c) => {
+  return Array.from({ length: n }, (_, c) => {
     const d = out.getChannelData(c), b = base[c];
     for (let i = 0; i < length; i++) d[i] += b[i];
     return d;

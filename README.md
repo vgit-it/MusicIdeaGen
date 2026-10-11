@@ -28,7 +28,7 @@ Then open the URL it prints. `npm run build` makes a static build in `dist/`.
 ## Sample credits
 
 - Piano: [Salamander Grand Piano V3](https://github.com/sfzinstruments/SalamanderGrandPiano) by Alexander Holm, [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/).
-- Acoustic guitar (Shinyguitar), electric guitar (Emilyguitar), bass (Black And Blue Basses) and drums (Big Rusty Drums): [Karoryfer Samples](https://github.com/sfzinstruments), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- Acoustic guitar (Shinyguitar), electric guitar (Emilyguitar), bass (Growlybass) and drums (Big Rusty Drums): [Karoryfer Samples](https://github.com/sfzinstruments), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
 - Strings and percussion: [VSCO 2 Community Edition](https://github.com/sgossner/VSCO-2-CE) by Versilian Studios, [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
 - Electric guitar speaker cabinets: Dauntless IR pack by resington (via github.com/fnpngn/IR), "free to share however you wish but is not for resale".
 

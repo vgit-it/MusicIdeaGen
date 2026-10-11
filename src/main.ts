@@ -218,7 +218,7 @@ async function buildExport(kind: ExportKind, progress: (msg: string) => void = (
   progress('Rendering audio…');
   let r: Rendered;
   try {
-    // real amps: the driven guitars first (those already prepared while playing are reused)
+    // real amps: the electric guitars (and a driven bass) first (those already prepared while playing are reused)
     const prepared = await engine.prepareFor(list, (p) => {
       pct = Math.round(p * 100);
       progress(`Preparing real amps… ${pct}%`);
@@ -593,11 +593,11 @@ function showReal() {
   realBtn.disabled = st === 'none' || st === 'failed';
   realBtn.textContent = on ? 'Real amps on ✓' : st === 'todo' ? 'Prepare real amps' : st === 'ready' ? 'Use real amps' : 'Real amps';
   realHint.textContent = st === 'failed' ? 'Real amps can\'t run on this device.'
-    : st === 'none' ? 'For electric guitars (none in this one).'
-    : on ? 'Guitars through real amps (Marshall, Fender for clean). Tap to go back to the simple amp.'
+    : st === 'none' ? 'For electric guitars and driven bass (none in this one).'
+    : on ? 'Through real amps (Marshall, Fender for clean guitar, a dUg for driven bass). Tap to go back to the simple amp.'
     : st === 'ready' ? 'Playing the simple amp. The real amp is prepared: tap to use it.'
     : engine.realAmpsOn ? 'Changed since: prepare again for the real amp sound.'
-    : 'Real amp sound for electric guitars: Marshall for crunch and distortion, Fender for clean. Takes a moment, then plays smoothly.';
+    : 'Real amp sound: Marshall for crunch and distortion, Fender for clean guitar, a Tech 21 dUg for driven bass. Takes a moment, then plays smoothly.';
 }
 engine.onRealChange = showReal;
 realBtn.onclick = async () => {
