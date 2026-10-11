@@ -1,4 +1,4 @@
-// Guitar prep: renders the driven guitar parts with real amps ahead of playback, section by section
+// Guitar prep: renders the electric guitar parts with real amps ahead of playback, section by section
 // (item), a few side by side, when you tap Prepare real amps (preparing while music played held up
 // phones). The engine then plays each prepared section from its buffer; anything not prepared (the
 // song changed since) plays live on the app's own amp. Exports use them too.
@@ -178,7 +178,7 @@ export class GuitarPrep {
       Tone.setContext(live);
     }
     const out = await renderGently(ctx);
-    const mixed = await mixAmps(out, capturedAmps(ctx), [0, 1, 2, 3].map((c) => out.getChannelData(c)), await loadCab('dist'));
+    const mixed = await mixAmps(out, capturedAmps(ctx), [0, 1, 2, 3].map((c) => out.getChannelData(c)), { crunch: await loadCab('dist'), dist: await loadCab('dist'), clean: await loadCab('clean') });
     const pair = (i: number) => {
       const b = new AudioBuffer({ length: out.length, numberOfChannels: 2, sampleRate: REAL_RATE });
       b.copyToChannel(mixed[i * 2] as Float32Array<ArrayBuffer>, 0);

@@ -381,7 +381,7 @@ export class Engine {
     this.realChanged();
   }
 
-  /* ---- real amps: driven guitars prepared ahead */
+  /* ---- real amps: electric guitars prepared ahead */
 
   get realAmpsOn(): boolean {
     return this.realAmps;
@@ -446,8 +446,8 @@ export class Engine {
   /** Which parts of an item need real amps. */
   private realParts(idea: Idea) {
     return {
-      chords: driven(this.chordIdFor(idea)),
-      guitar2: driven(this.guitar2IdFor(idea)) && idea.guitar2.length > 0,
+      chords: electric(this.chordIdFor(idea)),
+      guitar2: electric(this.guitar2IdFor(idea)) && idea.guitar2.length > 0,
     };
   }
 
@@ -480,12 +480,14 @@ export class Engine {
       if (!parts.chords && !parts.guitar2) continue;
       const { prev, next } = this.around(list, loop, i);
       const sub = [prev, list[i], next].filter((x): x is Idea => !!x);
-      // a channel per driven amp its render builds: two per rhythm sound (double-tracked), one per Guitar 2 sound
-      const rhythm = new Set(sub.map((x) => this.chordIdFor(x)).filter(driven));
-      const lead = new Set(sub.map((x) => this.guitar2IdFor(x)).filter(driven));
+      // a channel per amp its render builds: two per rhythm sound (double-tracked), one per Guitar 2
+      // sound, and a driven guitar's clean channel
+      const rhythm = [...new Set(sub.map((x) => this.chordIdFor(x)).filter(electric))];
+      const lead = [...new Set(sub.map((x) => this.guitar2IdFor(x)).filter(electric))];
+      const amps = rhythm.reduce((a, id) => a + 2 + (driven(id) ? 1 : 0), 0) + lead.reduce((a, id) => a + 1 + (driven(id) ? 1 : 0), 0);
       items.push({
         key: this.prepKey(list, loop, i), list: sub, at: prev ? 1 : 0, ...parts, last: !next,
-        amps: rhythm.size * 2 + lead.size + 1, index: i,
+        amps: amps + 1, index: i,
       });
     }
     return items;
@@ -921,4 +923,6 @@ function makeInst(id: ChordInstrumentId, out: Tone.InputNode, double: boolean, p
 
 const kindOf = (id: ChordInstrumentId) => (id === 'piano' ? 'piano' : id === 'acoustic' ? 'acoustic' : 'electric');
 const driven = (id: ChordInstrumentId) => id === 'electric-crunch' || id === 'electric-dist';
+/** Electric guitars play through amps (real amps when prepared); acoustic and piano don't. */
+const electric = (id: ChordInstrumentId) => id.startsWith('electric');
 const ampOf = (id: ChordInstrumentId) => (id === 'electric-clean' ? 'clean' : id === 'electric-crunch' ? 'crunch' : 'dist');

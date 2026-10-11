@@ -32,7 +32,7 @@ Paul is a senior designer, not a full-time dev. Keep explanations short and non-
 - Set your own chords (idea, all genres, per section in tracks) — done; next: finer timing (any beat)
 - The band plays it: players perform the written track their way (`src/players/`). Done: drummer, bassist, guitarists, shared groove and human MIDI
 - The hands: how each player physically plays their notes (string, fret, picked / hammer-on / pull-off / slide, bends, fall-offs), by persona (`src/players/hands.ts`). Done: bass, Guitar 2, riffs, chord changes (squeaks, open strings); later: a tab view
-- Real amps (Neural Amp Modeler, Marshall JCM2000) for Crunch and Distortion: guitars prepared up front with the Prepare real amps button (`src/audio/prep.ts`, `src/audio/realamp.ts`, `public/amp/`) — done
+- Real amps (Neural Amp Modeler: Marshall JCM2000 for Crunch and Distortion, Fender Twin Reverb for Clean): guitars prepared up front with the Prepare real amps button (`src/audio/prep.ts`, `src/audio/realamp.ts`, `public/amp/`) — done
 - M6 UI design · M7 GitHub Pages deploy — done (deploys on push to main)
 
 ## Design
