@@ -325,7 +325,7 @@ interface Take {
 }
 
 /** How loud a finger squeak goes in (driven amps bring it up a lot). */
-const SQUEAK = { driven: 0.04, clean: 0.06, acoustic: 0.08 };
+const SQUEAK = { driven: 0.03, clean: 0.045, acoustic: 0.06 };
 
 export class Guitar implements ChordInstrument {
   readonly kind = 'guitar';
