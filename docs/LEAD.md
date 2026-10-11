@@ -51,5 +51,7 @@ The section:
 - Track option "Solo: Auto / Off / After 2nd chorus / Outro"; shown as "Solo" in the sections.
 
 ## 4. Later
+- Revisit each player's style and playing nuances (Paul, 2026-10-11: "keep this for now"). Known: the
+  shredder's runs and the melodic, raw and funky licks haven't been reworked like the bluesy ones.
 - Richer solos per player: lick library, double-stops, fast runs, the louder solo sound.
 - A "new solo" button, locking a solo, a tab view.
