@@ -579,16 +579,21 @@ export class Guitar implements ChordInstrument {
 
 /* ---------------------------------------------------------------- bass */
 
-export type BassId = 'auto' | 'clean' | 'driven' | 'synth';
+export type BassId = 'auto' | 'clean' | 'driven' | 'smooth' | 'synth';
 export const BASS_INSTRUMENTS: { id: BassId; label: string }[] = [
   { id: 'auto', label: 'Auto (by genre)' },
   { id: 'clean', label: 'Electric bass, clean' },
   { id: 'driven', label: 'Electric bass, driven' },
+  { id: 'smooth', label: 'Electric bass, smooth (no pluck)' },
   { id: 'synth', label: 'Synth bass' },
 ];
 
-/** Clean: the bass straight into the desk, like most pop, funk and rock records. Driven: with a distorted bass preamp blended in (heavier styles). */
-export type BassTone = 'clean' | 'driven';
+/**
+ * Clean: the bass straight into the desk, like most pop, funk and rock records. Driven: with a
+ * distorted bass preamp blended in (heavier styles). Smooth: no pluck: each note swells in (played
+ * from just past the finger's attack) and blends into the next, compressed harder so it holds.
+ */
+export type BassTone = 'clean' | 'driven' | 'smooth';
 
 /**
  * Bass rig, as bass is usually recorded: the DI (the bass straight in, full range, compressed) and,
@@ -596,10 +601,12 @@ export type BassTone = 'clean' | 'driven';
  * (The old rig played the lows clean and everything above 320 Hz only through a small distorted
  * path: a pure low tone with a buzz on top, which is how a video-game bass is made.)
  */
-const BASS_RIG: Record<BassTone, { grit: number; level: number }> = {
-  // grit: the distorted path's level under the DI; level: the same loudness either way
-  clean: { grit: 0, level: 1.27 },
-  driven: { grit: 0.2, level: 0.69 },
+const BASS_RIG: Record<BassTone, { grit: number; level: number; comp: [number, number]; top: number }> = {
+  // grit: the distorted path's level under the DI; level: the same loudness each way; comp: the
+  // compressor's threshold (dB) and ratio; top: the high shelf (dB)
+  clean: { grit: 0, level: 1.27, comp: [-24, 4], top: -7 },
+  driven: { grit: 0.2, level: 0.69, comp: [-24, 4], top: -7 },
+  smooth: { grit: 0, level: 1.52, comp: [-34, 8], top: -10 },
 };
 
 class BassRig {
@@ -608,20 +615,22 @@ class BassRig {
   private drive = new Tone.Gain(0);
   private dist = new Tone.Gain(1);
   private level = new Tone.Gain(1);
+  private comp = new Tone.Compressor({ threshold: -24, ratio: 4, attack: 0.008, release: 0.15, knee: 6 });
+  private top = new Tone.Filter({ type: 'highshelf', frequency: 1000, gain: -7 });
   private readonly ctx = Tone.getContext();
   /** Real amps: in a render that prepares them, the preamp's input is recorded instead (see realamp.ts). */
   private captured = false;
   tone: BassTone = 'clean';
 
   constructor(out: Tone.InputNode) {
-    const comp = new Tone.Compressor({ threshold: -24, ratio: 4, attack: 0.008, release: 0.15, knee: 6 });
+    const comp = this.comp;
     const sum = new Tone.Gain(1);
     this.input.chain(new Tone.Filter({ type: 'highpass', frequency: 28, rolloff: -12 }), comp);
     // the DI: weight down low, less 250 Hz mud, a little finger and string definition, no fizz
     comp.chain(
       new Tone.Filter({ type: 'lowshelf', frequency: 100, gain: 4 }),
       new Tone.Filter({ type: 'peaking', frequency: 250, Q: 1, gain: -3 }),
-      new Tone.Filter({ type: 'highshelf', frequency: 1000, gain: -7 }),
+      this.top,
       new Tone.Filter({ type: 'lowpass', frequency: 3500, rolloff: -24 }),
       sum,
     );
@@ -652,8 +661,14 @@ class BassRig {
     this.drive.gain.value = tone === 'driven' ? 1 : 0;
     this.dist.gain.value = s.grit;
     this.level.gain.value = s.level;
+    this.comp.threshold.value = s.comp[0];
+    this.comp.ratio.value = s.comp[1];
+    this.top.gain.value = s.top;
   }
 }
+
+/** Smooth bass: where the samples are played from (past the finger's pluck, s). */
+const SMOOTH_OFFSET = 0.07;
 
 export class Bass {
   state: LoadState = 'idle';
@@ -661,7 +676,7 @@ export class Bass {
   private sampler: MultiSampler | null = null;
   private last: Voice | undefined;
   private synth: Tone.MonoSynth;
-  private rig: BassRig;
+  private readonly rig: BassRig;
   /** The audio context it was made in (its voices play there, whichever context is current). */
   private ctx = Tone.getContext();
 
@@ -702,6 +717,13 @@ export class Bass {
     if (this.sampler && !this.useSynth) {
       // a player sits a few milliseconds behind the beat, never exactly on the grid
       const t = time + 0.004 + Math.random() * 0.006;
+      if (this.rig.tone === 'smooth') {
+        // no pluck: the note swells in from just past the finger's attack, and the last one fades
+        // out under it (an even touch: the compressor holds it up)
+        this.sampler.choke(this.last, t + 0.04, 0.1);
+        this.last = this.sampler.play(midi, t, dur + 0.06, 0.6 + 0.25 * vel, { detune: 1, slide: touch?.from, offset: SMOOTH_OFFSET, fadeIn: 0.07, release: 0.25 });
+        return;
+      }
       // the string rings on into a hammer-on, pull-off or slide
       if (touch && touch.move !== 'pick' && this.sampler.canLegato(this.last, midi, t, dur)) {
         this.sampler.legato(this.last, midi, t, dur, touch.move, { tied: touch.tied, fall: touch.fall });

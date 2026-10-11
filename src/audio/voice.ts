@@ -36,14 +36,15 @@ export class SampleVoice {
     };
   }
 
-  start(time: number, gain: number) {
+  /** `offset`: seconds into the sample to start from. */
+  start(time: number, gain: number, offset = 0) {
     this.level = gain;
     const p = this.g.gain;
     if (this.fadeIn > 0) {
       p.setValueAtTime(0, time);
       p.linearRampToValueAtTime(gain, time + this.fadeIn);
     } else p.setValueAtTime(gain, time);
-    this.src.start(time);
+    this.src.start(time, offset);
   }
 
   /** Fade out from `time` and stop (calling again moves the stop, e.g. a choke). */
