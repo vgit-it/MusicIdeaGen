@@ -1,4 +1,4 @@
-// Guitar prep: renders the electric guitar parts with real amps ahead of playback, section by section
+// Guitar prep: renders the electric guitar parts (and a Driven bass) with real amps ahead of playback, section by section
 // (item), a few side by side, when you tap Prepare real amps (preparing while music played held up
 // phones). The engine then plays each prepared section from its buffer; anything not prepared (the
 // song changed since) plays live on the app's own amp. Exports use them too.
@@ -10,7 +10,7 @@
 import * as Tone from 'tone';
 import type { Idea } from '../idea';
 import { Engine, type EngineSettings } from './engine';
-import { LANES, REAL_RATE, capturedAmps, mixAmps, startCapture, warmUpRealAmps } from './realamp';
+import { LANES, REAL_PARTS, REAL_RATE, capturedAmps, mixAmps, startCapture, warmUpRealAmps } from './realamp';
 import { loadCab } from './samples';
 
 /** The rendered guitars of one item. */
@@ -18,6 +18,7 @@ export interface Prepared {
   /** Stereo, as they go into their mixer strips (before the fader); null when that part plays live. */
   chords: AudioBuffer | null;
   guitar2: AudioBuffer | null;
+  bass: AudioBuffer | null;
   /** Seconds into the buffers where the item's first step falls. */
   offset: number;
 }
@@ -31,6 +32,7 @@ export interface PrepItem {
   /** Which parts need real amps. */
   chords: boolean;
   guitar2: boolean;
+  bass: boolean;
   /** Ring out at the end (the track's last item). */
   last: boolean;
   /** Most driven amps its render can build (each gets a channel). */
@@ -140,20 +142,21 @@ export class GuitarPrep {
 
     // channels: each part's strip input (clean takes and other sounds), then each driven amp's dry input
     const live = Tone.getContext();
-    const channels = 4 + item.amps;
+    const first = REAL_PARTS.length * 2;
+    const channels = first + item.amps;
     const ctx = new Tone.OfflineContext(channels, seconds, REAL_RATE);
     const raw = ctx.rawContext;
     const merger = raw.createChannelMerger(channels);
     merger.connect(raw.destination);
-    startCapture(ctx, merger, 4, item.amps);
+    startCapture(ctx, merger, first, item.amps);
     Tone.setContext(ctx);
     let engine: Engine;
     try {
       engine = new Engine(true);
       engine.guitarsOnly = true;
+      engine.prepBass = item.bass;
       engine.applySettings(this.settings(), true);
-      engine.setVolume('chords', 100);
-      engine.setVolume('guitar2', 100);
+      for (const part of REAL_PARTS) engine.setVolume(part, 100);
       engine.setList(list, false, 0);
     } finally {
       Tone.setContext(live);
@@ -162,7 +165,7 @@ export class GuitarPrep {
     Tone.setContext(ctx);
     try {
       engine.mixer.out.disconnect();
-      (['chords', 'guitar2'] as const).forEach((part, i) => {
+      REAL_PARTS.forEach((part, i) => {
         const up = raw.createGain();
         up.channelCount = 2;
         up.channelCountMode = 'explicit';
@@ -178,14 +181,14 @@ export class GuitarPrep {
       Tone.setContext(live);
     }
     const out = await renderGently(ctx);
-    const mixed = await mixAmps(out, capturedAmps(ctx), [0, 1, 2, 3].map((c) => out.getChannelData(c)), { crunch: await loadCab('dist'), dist: await loadCab('dist'), clean: await loadCab('clean') });
+    const mixed = await mixAmps(out, capturedAmps(ctx), Array.from({ length: first }, (_, c) => out.getChannelData(c)), { crunch: await loadCab('dist'), dist: await loadCab('dist'), clean: await loadCab('clean') });
     const pair = (i: number) => {
       const b = new AudioBuffer({ length: out.length, numberOfChannels: 2, sampleRate: REAL_RATE });
       b.copyToChannel(mixed[i * 2] as Float32Array<ArrayBuffer>, 0);
       b.copyToChannel(mixed[i * 2 + 1] as Float32Array<ArrayBuffer>, 1);
       return b;
     };
-    return { chords: item.chords ? pair(0) : null, guitar2: item.guitar2 ? pair(1) : null, offset: LEAD + pre };
+    return { chords: item.chords ? pair(0) : null, guitar2: item.guitar2 ? pair(1) : null, bass: item.bass ? pair(2) : null, offset: LEAD + pre };
   }
 }
 

@@ -18,12 +18,12 @@ import { AUTO_PAD, Pad, type PadChoice } from './pad';
 import { AUTO_CHORDS, AUTO_GUITAR2 } from '../sounds';
 import { type KeysChoice, type Layer, type LayerNote, type PercChoice, type StringsChoice, byStep, writeLayer } from '../parts/layers';
 import { GuitarPrep, type PrepItem, type Prepared } from './prep';
-import { realAmpsSupported } from './realamp';
+import { REAL_PARTS, realAmpsSupported } from './realamp';
 
 export interface EngineSettings {
   chord: ChordChoice;
   guitar2: ChordChoice;
-  bassSynth: boolean;
+  bass: BassId;
   drumSynth: boolean;
   mix: MixState;
   layers: LayerSettings;
@@ -40,15 +40,15 @@ export interface LayerSettings {
 
 export type ChordChoice = ChordInstrumentId | 'auto';
 
-/** Bass sound per genre: more growl for heavier styles. */
+/** Bass sound per genre (Auto): a distorted preamp blended in for the heavier styles. */
 const BASS_TONES: Record<Genre, BassTone> = {
-  rock: 'grit',
-  pop: 'warm',
+  rock: 'clean',
+  pop: 'clean',
   funk: 'clean',
-  hardrock: 'grit',
-  metal: 'grit',
-  grunge: 'heavy',
-  altmetal: 'heavy',
+  hardrock: 'driven',
+  metal: 'driven',
+  grunge: 'driven',
+  altmetal: 'driven',
 };
 
 
@@ -89,6 +89,7 @@ export class Engine {
   private voicingCache = new WeakMap<Idea, Map<ChordInstrumentId, { voicings: Voicing[]; shapes: GuitarVoicing[] | null }>>();
 
   private chordChoice: ChordChoice = 'auto';
+  private bassChoice: BassId = 'auto';
   private chordInst: ChordInstrument | null = null;
   private chordId: ChordInstrumentId = 'piano';
 
@@ -120,14 +121,15 @@ export class Engine {
   private ctx = Tone.getContext();
   private transport = Tone.getTransport();
 
-  /** Offline: play only the guitars (preparing them with real amps). */
+  /** Offline: play only the guitars (preparing them with real amps), and the bass if `prepBass`. */
   guitarsOnly = false;
+  prepBass = false;
   /** Real amps: driven guitars play from prepared buffers (see prepareRealAmps) where they're ready. */
   private realAmps = false;
   private prep: GuitarPrep | null = null;
   /** Prepared guitars playing now, and which parts they cover (those parts don't play live). */
   private realSrcs: { src: AudioBufferSourceNode; gain: GainNode }[] = [];
-  private realNow = { chords: false, guitar2: false };
+  private realNow = { chords: false, guitar2: false, bass: false };
   private ids = new WeakMap<Idea, number>();
   private nextId = 1;
 
@@ -139,7 +141,7 @@ export class Engine {
   /** Instrument choices and the mix, to copy into an offline render. */
   settings(): EngineSettings {
     return {
-      chord: this.chordChoice, guitar2: this.g2Choice, bassSynth: this.bass.useSynth, drumSynth: this.drums.useSynth,
+      chord: this.chordChoice, guitar2: this.g2Choice, bass: this.bassChoice, drumSynth: this.drums.useSynth,
       mix: this.mixer.state(), layers: this.layerSettings, realAmps: this.realAmps,
     };
   }
@@ -149,7 +151,7 @@ export class Engine {
     this.chordChoice = s.chord;
     this.g2Choice = s.guitar2;
     this.realAmps = !!s.realAmps;
-    this.bass.useSynth = s.bassSynth;
+    this.setBass(s.bass);
     this.drums.useSynth = s.drumSynth;
     const mix = openAll
       ? (Object.fromEntries(Object.entries(s.mix).map(([p, v]) => [p, { ...v, mute: false, solo: false }])) as MixState)
@@ -317,7 +319,7 @@ export class Engine {
     tr.swing = song.swing;
     tr.swingSubdivision = '16n';
     this.setTempo(song.bpm);
-    this.bass.setTone(BASS_TONES[song.partGenres.bass]);
+    this.applyBassTone();
     const index = (hits: GuitarHit[], total: number) => {
       const at = Array.from({ length: total }, () => [] as GuitarHit[]);
       for (const h of hits) at[h.step]?.push(h);
@@ -448,12 +450,13 @@ export class Engine {
     return {
       chords: electric(this.chordIdFor(idea)),
       guitar2: electric(this.guitar2IdFor(idea)) && idea.guitar2.length > 0,
+      bass: this.bassChoice !== 'synth' && this.bassToneFor(idea) === 'driven' && idea.bass.some((n) => n),
     };
   }
 
   /** What a prepared item's sound depends on: the item itself, its sounds and tempo. */
   private prepCore(idea: Idea): string {
-    return [this.idOf(idea), this.chordIdFor(idea), this.guitar2IdFor(idea), idea.song.bpm, idea.song.swing].join('|');
+    return [this.idOf(idea), this.chordIdFor(idea), this.guitar2IdFor(idea), this.realParts(idea).bass, idea.song.bpm, idea.song.swing].join('|');
   }
 
   /** Everything a prepared item depends on: its core, then the items around it (lead-in and ring-over). */
@@ -477,17 +480,17 @@ export class Engine {
     for (let k = 0; k < n; k++) {
       const i = (from + k) % n;
       const parts = this.realParts(list[i]);
-      if (!parts.chords && !parts.guitar2) continue;
+      if (!parts.chords && !parts.guitar2 && !parts.bass) continue;
       const { prev, next } = this.around(list, loop, i);
       const sub = [prev, list[i], next].filter((x): x is Idea => !!x);
       // a channel per amp its render builds: two per rhythm sound (double-tracked), one per Guitar 2
-      // sound, and a driven guitar's clean channel
+      // sound, a driven guitar's clean channel, and the bass preamp
       const rhythm = [...new Set(sub.map((x) => this.chordIdFor(x)).filter(electric))];
       const lead = [...new Set(sub.map((x) => this.guitar2IdFor(x)).filter(electric))];
       const amps = rhythm.reduce((a, id) => a + 2 + (driven(id) ? 1 : 0), 0) + lead.reduce((a, id) => a + 1 + (driven(id) ? 1 : 0), 0);
       items.push({
         key: this.prepKey(list, loop, i), list: sub, at: prev ? 1 : 0, ...parts, last: !next,
-        amps: amps + 1, index: i,
+        amps: amps + 2, index: i,
       });
     }
     return items;
@@ -529,7 +532,7 @@ export class Engine {
     else {
       if (!this.realAmps || !this.prep) return;
       const parts = this.realParts(this.list[this.idx]);
-      if (!parts.chords && !parts.guitar2) return;
+      if (!parts.chords && !parts.guitar2 && !parts.bass) return;
       // prepared for this spot, or for the same item elsewhere (a section looped on its own was
       // prepared with the track's sections around it: only its first moment's ring-over differs)
       p = this.prep.get(this.keyNow) ?? this.prep.find(`${this.prepCore(this.list[this.idx])}#`);
@@ -537,11 +540,12 @@ export class Engine {
     if (!p) return;
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
     const at = Math.max(time - PREP_XFADE, this.ctx.now());
-    for (const part of ['chords', 'guitar2'] as const) {
+    for (const part of REAL_PARTS) {
       const buf = p[part];
       if (!buf) continue;
-      // what the live guitar is still ringing is in the prepared lead-in too
-      for (const inst of (part === 'chords' ? this.rhythmInsts : this.g2Insts).values()) inst.releaseAll(time);
+      // what the live part is still ringing is in the prepared lead-in too
+      if (part === 'bass') this.bass.releaseAll(time);
+      else for (const inst of (part === 'chords' ? this.rhythmInsts : this.g2Insts).values()) inst.releaseAll(time);
       const src = raw.createBufferSource();
       src.buffer = buf;
       const gain = raw.createGain();
@@ -569,12 +573,26 @@ export class Engine {
       try { src.stop(Math.max(time, from + 0.005) + 0.01); } catch { /* already */ }
     }
     this.realSrcs = [];
-    this.realNow = { chords: false, guitar2: false };
+    this.realNow = { chords: false, guitar2: false, bass: false };
     this.prepPlaying = '';
   }
 
+  /** Bass sound: Auto (by the bass part's genre), Clean, Driven or the synth. */
   setBass(id: BassId) {
+    this.bassChoice = id;
     this.bass.useSynth = id === 'synth';
+    this.applyBassTone();
+    this.realChanged();
+  }
+
+  private applyBassTone() {
+    this.bass.setTone(this.bassToneFor(this.list[0]));
+  }
+
+  /** The bass sound an item plays with (Auto: by the bass part's genre). */
+  private bassToneFor(idea: Idea | undefined): BassTone {
+    const c = this.bassChoice;
+    return c === 'clean' || c === 'driven' ? c : BASS_TONES[idea?.song.partGenres.bass ?? 'rock'];
   }
 
   setDrums(id: DrumKitId) {
@@ -842,7 +860,7 @@ export class Engine {
       });
     }
 
-    if (others) this.playRhythmSection(idea, g, time, six, dyn, ending, gapUntil);
+    if (others || this.prepBass) this.playRhythmSection(idea, g, time, six, dyn, ending, gapUntil, others);
 
     // the last beat swells toward a louder next section (the drummer's fill builds into it); before a
     // big lift the whole last bar does
@@ -858,22 +876,26 @@ export class Engine {
 
   /** Drums and bass for one step. */
   private playRhythmSection(idea: Idea, g: number, time: number, six: number, dyn: number, ending: boolean,
-    gapUntil: (lane: (i: Idea) => ArrayLike<unknown>, empty: unknown, cap: number) => number) {
+    gapUntil: (lane: (i: Idea) => ArrayLike<unknown>, empty: unknown, cap: number) => number, others: boolean) {
     const { song, drums, bass } = idea;
-    const d = this.drums;
-    // the drummer's feel: snare and cymbals sit a little ahead of or behind the kick
-    const sn = Math.max(0, time + (drums.feel?.snare ?? 0) / 1000), cy = Math.max(0, time + (drums.feel?.cym ?? 0) / 1000);
-    if (drums.kick[g]) d.hit('kick', time, drums.kick[g]);
-    if (drums.snare[g]) d.hit('snare', sn, drums.snare[g]);
-    const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
-    const acc = cymbalAccent(bar.groups, g - bar.start);
-    if (drums.hat[g]) d.hit('hat', cy, Math.min(1, drums.hat[g] * acc));
-    if (drums.hatOpen[g]) d.hit('hatOpen', cy, drums.hatOpen[g]);
-    if (drums.ride[g]) d.hit('ride', cy, Math.min(1, drums.ride[g] * acc));
-    if (drums.crash[g]) d.hit('crash', time, drums.crash[g]);
-    if (drums.tom[g]) d.hit('tom', time, 0.8, drums.tom[g]);
+    // (a render preparing the bass's real amp plays only the bass)
+    if (others) {
+      const d = this.drums;
+      // the drummer's feel: snare and cymbals sit a little ahead of or behind the kick
+      const sn = Math.max(0, time + (drums.feel?.snare ?? 0) / 1000), cy = Math.max(0, time + (drums.feel?.cym ?? 0) / 1000);
+      if (drums.kick[g]) d.hit('kick', time, drums.kick[g]);
+      if (drums.snare[g]) d.hit('snare', sn, drums.snare[g]);
+      const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
+      const acc = cymbalAccent(bar.groups, g - bar.start);
+      if (drums.hat[g]) d.hit('hat', cy, Math.min(1, drums.hat[g] * acc));
+      if (drums.hatOpen[g]) d.hit('hatOpen', cy, drums.hatOpen[g]);
+      if (drums.ride[g]) d.hit('ride', cy, Math.min(1, drums.ride[g] * acc));
+      if (drums.crash[g]) d.hit('crash', time, drums.crash[g]);
+      if (drums.tom[g]) d.hit('tom', time, 0.8, drums.tom[g]);
+    }
 
-    if (bass[g]) {
+    // (the bass playing from a prepared buffer doesn't play live)
+    if (bass[g] && !this.realNow.bass) {
       // a note rings until the next one takes over (legato), unless it's written shorter (a rest after
       // it); a bassist holds it through a short rest (an 8th or less), as on records
       const next = gapUntil((i) => i.bass, 0, 64);
