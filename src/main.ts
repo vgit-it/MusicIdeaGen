@@ -472,6 +472,7 @@ const optSel = {
   interlude: $<HTMLSelectElement>('t-interlude'),
   keyChange: $<HTMLSelectElement>('t-key'),
   outro: $<HTMLSelectElement>('t-outro'),
+  solo: $<HTMLSelectElement>('t-solo'),
   riffVerse: $<HTMLSelectElement>('t-riff'),
   band: $<HTMLSelectElement>('t-band'),
 };
@@ -482,6 +483,7 @@ function syncTrackOptions() {
   optSel.interlude.value = track.opts.interlude;
   optSel.keyChange.value = track.opts.keyChange;
   optSel.outro.value = track.opts.outro ?? 'auto';
+  optSel.solo.value = track.opts.solo ?? 'auto';
   optSel.riffVerse.value = track.opts.riffVerse ?? 'auto';
   optSel.band.value = track.opts.band ?? 'on';
   // only riff genres have a riff to carry through the verses
@@ -502,7 +504,7 @@ for (const [k, sel] of Object.entries(optSel)) {
 
 // tools for the selected section
 const REROLL_LABEL: Record<string, string> = {
-  verse: 'New verse', chorus: 'New chorus', pre: 'New pre-chorus', bridge: 'New bridge', hook: 'New hook', structure: 'New arrangement',
+  verse: 'New verse', chorus: 'New chorus', pre: 'New pre-chorus', bridge: 'New bridge', hook: 'New hook', structure: 'New arrangement', solo: 'New solo',
 };
 function renderSectionTools() {
   if (!track) return;

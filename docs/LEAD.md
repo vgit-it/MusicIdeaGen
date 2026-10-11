@@ -32,7 +32,7 @@ choruses, and takes solos. Who the lead player is (their character) decides how.
 Each also has: how likely they take the verses, how often they change to another part, and how
 likely they climb into the chorus. Picked with the band (rerolling the band can change it).
 
-## 3. Solos (phase 2, next)
+## 3. Solos (phase 2, done: a first version)
 What makes a good solo, as rules for the generator:
 - A story: starts low and sparse, quotes the hook early, repeats and varies it, climbs and gets
   busier, peaks in the last 2-4 bars (highest note, held bend or fast run), resolves on the root as
@@ -48,7 +48,20 @@ The section:
   bridge's).
 - The band: rhythm guitar simplifies, bass on roots, drums a level up, a push in the last 4 bars.
 - In: a drum fill and a pickup run. Out: a landing note held into the next chorus.
-- Track option "Solo: Auto / Off / After 2nd chorus / Outro"; shown as "Solo" in the sections.
+- Track option "Solo: Auto / On / Off"; shown as "Solo" in the sections (and in Add after…), with its own
+  "New solo" reroll.
+
+As built (`generateSolo` in `src/parts/guitar2.ts`, placement in `src/track.ts`):
+- Where: after the 2nd chorus (70%), else after the 1st (taking the interlude's place); 20% of songs
+  also solo over the outro. Hand-edited orders keep what you set.
+- 8 bars over the verse (60%) or chorus (40%) chords; metal and hard rock 16 bars half the time (back
+  to 8 if the song runs long, and the outro solo goes before the pre-choruses do).
+- Four bars at a time, the register climbs from G3 and the playing gets busier (busy only for a
+  shredder); over the chorus chords it starts by quoting the hook (60%); the last two bars peak the
+  player's way (melodic: a long held bend; bluesy: a bend twice; shredder: a 16th run up; raw: one
+  note hammered on the 8ths; funky: stabs) and land on the root of the chord underneath.
+- Mix: Guitar 2 +2.5 dB and the rhythm guitar -2 dB through a solo (eased in); strummed rhythm
+  guitars also play a level softer.
 
 ## 4. Later
 - Revisit each player's style and playing nuances (Paul, 2026-10-11: "keep this for now"). Known: the

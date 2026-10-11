@@ -212,7 +212,7 @@ export interface Idea {
   section?: SectionInfo;
 }
 
-export type SectionKind = 'intro' | 'verse' | 'prechorus' | 'chorus' | 'interlude' | 'bridge' | 'breakdown' | 'outro';
+export type SectionKind = 'intro' | 'verse' | 'prechorus' | 'chorus' | 'interlude' | 'bridge' | 'breakdown' | 'solo' | 'outro';
 
 export interface SectionInfo {
   kind: SectionKind;
@@ -226,6 +226,8 @@ export interface SectionInfo {
   sound?: SectionSound;
   /** Step where the band comes in (intros that start with the guitar alone); layers like the piano wait for it. */
   bandFrom?: number;
+  /** Guitar 2 plays a solo here (the mix lifts it). */
+  solo?: boolean;
   /** How the section ends into the next one, so added layers stop or hit with the band. */
   tail?: { stop: number } | { hits: number[] } | { build: number } | { push: number } | { ring: number };
   /** A reversed cymbal swells up into the next section (a big lift). */
