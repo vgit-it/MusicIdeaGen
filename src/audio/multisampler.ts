@@ -178,6 +178,11 @@ export class MultiSampler {
     return this.start(buf, time, buf.duration, vel, 1, 0.02);
   }
 
+  /** Play any one-shot (e.g. a finger squeak) through this instrument. */
+  shot(buf: AudioBuffer, time: number, gain: number) {
+    this.start(buf, time, buf.duration, gain, 1, 0.02);
+  }
+
   /** String-damping noise when a ringing chord is stopped. */
   releaseNoise(time: number, vel: number) {
     if (!this.set.releases.length) return;
