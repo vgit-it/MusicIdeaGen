@@ -1,5 +1,6 @@
 // The band plays a written track: each player reads the whole song and plays their part their way
-// (drummer first, then the bassist listening to them, then the guitarists). On top, the band shares
+// (drummer first, then the bassist listening to them, then the guitarists; then how the bassist's
+// and Guitar 2's hands play each note). On top, the band shares
 // one groove: straight, or a slight lilt (the in-between 16ths a touch late), and the strummer sits
 // with the drummer (a little behind a laid-back drummer, a little ahead of a pushing one).
 
@@ -9,6 +10,7 @@ import { Rng } from '../rng';
 import { playBass } from './bassist';
 import { type Feel, playDrums } from './drummer';
 import { playGuitars } from './guitarists';
+import { playHands } from './hands';
 
 /** How much the band lilts, as a share of a 16th (genres that already swing don't). */
 const LILT: Record<Genre, [number, number][]> = {
@@ -27,6 +29,8 @@ export function playBand(sections: Idea[], seed: string) {
   const drummer = playDrums(sections, seed);
   playBass(sections, seed, drummer);
   playGuitars(sections, seed);
+  // then how their hands play it: where on the neck, picked or hammered, slid, bent
+  playHands(sections, seed);
   const song = sections[0].song;
   const lilt = song.swing ? 0 : new Rng(`${seed}-groove`).weighted(LILT[song.partGenres.drums]);
   for (const idea of sections) {

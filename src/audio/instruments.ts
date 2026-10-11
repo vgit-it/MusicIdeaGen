@@ -1,9 +1,9 @@
 // Sampled instruments with synth fallbacks.
 
 import * as Tone from 'tone';
-import type { Stroke } from '../idea';
+import type { Stroke, Touch } from '../idea';
 import type { SoundId } from '../sounds';
-import { MultiSampler, type Voice } from './multisampler';
+import { type LegatoMove, MultiSampler, type Voice } from './multisampler';
 import { type DrumPiece, DRUM_PIECES, RoundRobin, loadCab, loadDrums, loadPitched } from './samples';
 import { captureAmp, resample } from './realamp';
 import { inContext } from './context';
@@ -46,6 +46,8 @@ export interface StrumArgs {
   slide?: number;
   /** Fade the note in (volume swell). */
   swell?: boolean;
+  /** How the player's hands play it (single notes and octaves). */
+  touch?: Touch;
 }
 
 export interface ChordInstrument {
@@ -156,10 +158,12 @@ export const AMP: Record<AmpTone, AmpSettings> = {
  * buzz), and the note's body kept. An earlier voicing cut everything under 400 Hz before the drive
  * and pushed 850 Hz by 8 dB: lead notes lost their fundamental (11 dB under the 2nd harmonic on an
  * E4) and came out thin, nasal and buzzy. Now the fundamental leads and the harmonics taper off.
+ * The top is rounded off well below the rhythm sound's: melodies sit high (up to A5), and with the
+ * rhythm sound's top their fizz and 3-5 kHz edge came out sharp and piercing.
  */
 export const LEAD: Partial<Record<AmpTone, AmpSettings>> = {
-  crunch: { ...AMP.crunch, presence: 1.5, drive1: 6, drive2: 3.5, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 3], level: 2.05, lowCut: 100, top: 6500, bite: [3000, -2] },
-  dist: { ...AMP.dist, presence: 2, comp: [-32, 4, 14], tight: 150, push: [800, 3], drive1: 9, drive2: 6, lowShelf: [300, -2], highShelf: [3000, -1], level: 1.98, lowCut: 100, top: 6000, bite: [3000, -3] },
+  crunch: { ...AMP.crunch, presence: 0.5, drive1: 6, drive2: 3.5, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 0], level: 2.05, lowCut: 100, top: 5500, bite: [3000, -2] },
+  dist: { ...AMP.dist, presence: 0, comp: [-32, 4, 14], tight: 150, push: [750, 4], drive1: 7, drive2: 4.5, lowShelf: [300, -2], highShelf: [3000, -4], level: 2.25, lowCut: 100, top: 4500, bite: [3000, -3] },
 };
 
 /**
@@ -452,19 +456,21 @@ export class Guitar implements ChordInstrument {
   }
 
   private strumTake(take: Take, a: StrumArgs, driven: boolean) {
-    const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell } = a;
+    const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell, touch: hands } = a;
     const fadeIn = swell ? Math.min(0.6, dur * 0.4) : 0;
     const str = strings ?? notes.map((_, i) => 6 - notes.length + i);
     // time between strings: faster at quicker tempos, ~25-45 ms across six strings; a hand never
     // strums at exactly the same speed twice
-    const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6);
+    const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6) * (notes.length === 2 && notes[1] - notes[0] === 12 ? 0.25 : 1);
     const detune = this.type === 'electric' ? 1.5 : 1;
     // a held single note gets real vibrato (chords none: a wobbling chord through an amp sounds like a toy)
     const vibrato = this.type !== 'electric' || letRing || notes.length > 1 ? 0 : driven ? 10 : 7;
     // strummed chords: the pick brushes the strings rather than clicking each one (a few ms of fade-in
     // takes the click off), and each string comes out a little louder or softer
     const chord = notes.length > 1 && !letRing && !swell;
-    const brush = () => (chord ? 0.003 + Math.random() * 0.006 : 0);
+    // octaves are one hand shape picked as one: both notes speak together (a strum's spread made a flam)
+    const octave = notes.length === 2 && notes[1] - notes[0] === 12;
+    const brush = () => (chord && !octave ? 0.003 + Math.random() * 0.006 : 0);
     const touch = () => (chord ? 0.85 + Math.random() * 0.25 : 0.9 + Math.random() * 0.1);
 
     // stopping ringing strings makes a little damping noise, like a real hand (but not between the
@@ -478,6 +484,17 @@ export class Guitar implements ChordInstrument {
     // the same chord strummed again: the strings ring on into the new strum (only the ones hit restart)
     const same = chord && take.last.length === notes.length && take.last.every((m, i) => m === notes[i]);
     if (stroke === 'D' || stroke === 'U') take.last = [...notes];
+
+    // the hand moves on along the same string(s) without a new pick: hammer-on, pull-off, slide
+    if (stroke === 'D' && hands && hands.move !== 'pick' && !letRing && !swell) {
+      const t = time + jitter(1);
+      const vs = str.map((s) => take.strings[s]);
+      if (vs.every((v, i) => take.ring.canLegato(v, notes[i], t, dur))) {
+        vs.forEach((v, i) => take.ring.legato(v!, notes[i], t, dur, hands.move as LegatoMove, { vibrato, tied: hands.tied, fall: hands.fall }));
+        return;
+      }
+    }
+    const hand = { tied: hands?.tied, fall: hands?.fall, bend: hands?.bend };
 
     if (stroke === 'D') {
       // fretting hand lifts: anything still ringing stops as the new chord sounds. Driven chords
@@ -493,7 +510,7 @@ export class Guitar implements ChordInstrument {
         const t = time + i * gap + jitter(1.5);
         if (letRing || same) take.ring.choke(take.strings[str[i]], t, same ? 0.02 : undefined);
         const v = vel * touch() * (1 - (notes.length - 1 - i) * 0.015);
-        take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn: fadeIn || brush() });
+        take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn: fadeIn || brush(), ...hand });
       }
     } else if (stroke === 'U') {
       // up-strokes catch the top 2-4 strings, a little lighter; lower strings keep ringing
@@ -646,13 +663,19 @@ export class Bass {
     }
   }
 
-  play(midi: number, time: number, dur: number, vel: number) {
+  /** `touch`: how the bassist's hands play it (tracks). */
+  play(midi: number, time: number, dur: number, vel: number, touch?: Touch) {
     if (this.sampler && !this.useSynth) {
       // a player sits a few milliseconds behind the beat, never exactly on the grid
       const t = time + 0.004 + Math.random() * 0.006;
+      // the string rings on into a hammer-on, pull-off or slide
+      if (touch && touch.move !== 'pick' && this.sampler.canLegato(this.last, midi, t, dur)) {
+        this.sampler.legato(this.last, midi, t, dur, touch.move, { tied: touch.tied, fall: touch.fall });
+        return;
+      }
       // one string at a time: a new note takes over from the last one
       this.sampler.choke(this.last, t, 0.02);
-      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 1 });
+      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 1, slide: touch?.from, tied: touch?.tied, fall: touch?.fall });
     } else this.synth.triggerAttackRelease(midiNote(midi), dur, time, vel);
   }
 

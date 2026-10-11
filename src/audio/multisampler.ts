@@ -10,12 +10,27 @@ export interface Voice {
   src: SampleVoice;
   /** When the note is scheduled to stop (seconds, audio clock). */
   endAt: number;
+  /** For legato notes on the same string: the sample's own note, tuning offset (cents) and length. */
+  root?: number;
+  tune?: number;
+  len?: number;
+  /** When it started, and its playback rate now. */
+  at?: number;
+  rate?: number;
+  /** Its pitch can be moved from here on (a vibrato curve can't be interrupted). */
+  free?: number;
 }
 
 export interface PlayOptions {
   release?: number;
   /** Start this many semitones away and glide onto the note. */
   slide?: number;
+  /** Bend up into the note from this many semitones below. */
+  bend?: number;
+  /** Slide off the end of the note, down this many semitones. */
+  fall?: number;
+  /** The next note comes legato out of this one (keep its pitch free for it). */
+  tied?: boolean;
   /** Vibrato depth in cents on held notes (0 = none). */
   vibrato?: number;
   /** Random tuning spread in cents (strings are never perfectly in tune). */
@@ -23,6 +38,9 @@ export interface PlayOptions {
   /** Fade-in time in seconds (volume swell). */
   fadeIn?: number;
 }
+
+/** How the hand moves to a legato note on the same string. */
+export type LegatoMove = 'hammer' | 'pull' | 'slide';
 
 export class MultiSampler {
   private rr = new RoundRobin();
@@ -58,28 +76,86 @@ export class MultiSampler {
     const tuning = this.set.tuning.get(buf);
     const rate = 2 ** ((midi - notes[ni]) / 12 + (cents - (tuning?.settle ?? 0)) / 1200);
     const v = this.start(buf, time, dur, (0.3 + 0.7 * vel) ** 1.5, rate, opts.release ?? this.release, opts.fadeIn);
+    Object.assign(v, { root: notes[ni], tune: cents - (tuning?.settle ?? 0), len: buf.duration, at: time, rate, free: 0 });
     const pr = v.src.playbackRate;
-    const settle = opts.slide ? time + 0.07 + Math.abs(opts.slide) * 0.03 : time;
+    const bend = opts.bend ?? 0;
+    const settle = opts.slide ? time + 0.07 + Math.abs(opts.slide) * 0.03 : bend ? time + 0.1 + bend * 0.05 : time;
     // vibrato fades in after the note has spoken, like a player's wrist
     const vibStart = Math.max(settle, time + 0.28);
-    const vibLen = time + dur - vibStart;
-    const vibrato = !!opts.vibrato && vibLen > 0.25;
+    const until = this.pitchEnd(time + dur, settle, opts);
+    const vibrato = !!opts.vibrato && Math.min(until, time + dur) - 0.003 - vibStart > 0.25;
     if (opts.slide) {
       pr.setValueAtTime(rate * 2 ** (opts.slide / 12), time);
       pr.linearRampToValueAtTime(rate, settle);
-    } else if (tuning?.curve.length) this.untwang(pr, tuning.curve, time, rate, vibrato ? vibStart : Infinity);
-    if (vibrato) {
+    } else if (bend) {
+      // picked a step or two flat, then pushed up to the note
+      const low = rate * 2 ** (-bend / 12);
+      pr.setValueAtTime(low, time);
+      pr.setValueAtTime(low, time + 0.035);
+      pr.linearRampToValueAtTime(rate, settle);
+    } else if (tuning?.curve.length) this.untwang(pr, tuning.curve, time, rate, Math.min(vibrato ? vibStart : Infinity, until));
+    this.tail(v, rate, vibStart, time + dur, opts);
+    return v;
+  }
+
+  /** Until when the note's own pitch moves may run (a tie or a fall-off takes over after). */
+  private pitchEnd(end: number, from: number, o: PlayOptions) {
+    return o.tied ? end - 0.045 : o.fall ? Math.max(from, end - Math.min(0.18, (end - from) * 0.5)) : Infinity;
+  }
+
+  /** A held note's vibrato (from `from`) and fall-off (at its end, `end`). */
+  private tail(v: Voice, rate: number, from: number, end: number, o: PlayOptions) {
+    const pr = v.src.playbackRate;
+    const until = Math.min(this.pitchEnd(end, from, o), end) - 0.003;
+    const len = until - from;
+    if (o.vibrato && len > 0.25) {
       const hz = 4.8 + Math.random() * 1.2;
-      const n = Math.max(16, Math.ceil(vibLen * 120));
+      const n = Math.max(16, Math.ceil(len * 120));
       const curve: number[] = new Array(n);
       for (let i = 0; i < n; i++) {
-        const t = (i / (n - 1)) * vibLen;
-        const depth = opts.vibrato! * Math.min(1, t / 0.35);
+        const t = (i / (n - 1)) * len;
+        const depth = o.vibrato * Math.min(1, t / 0.35);
         curve[i] = rate * 2 ** ((depth * Math.sin(2 * Math.PI * hz * t)) / 1200);
       }
-      pr.setValueCurveAtTime(curve, vibStart, vibLen);
+      pr.setValueCurveAtTime(curve, from, len);
+      v.free = until + 0.001;
     }
-    return v;
+    if (o.fall && !o.tied) {
+      // the finger slides down the string as the note is let go
+      const f0 = Math.max(v.free ?? 0, until);
+      pr.setValueAtTime(rate, f0);
+      pr.exponentialRampToValueAtTime(rate * 2 ** (-o.fall / 12), end + 0.06);
+    }
+  }
+
+  /** Can `v` (still ringing) move on to `midi` without a new pick, for `dur` more seconds? */
+  canLegato(v: Voice | undefined, midi: number, time: number, dur: number): v is Voice {
+    if (!v || v.root === undefined || v.endAt < time - 0.005 || Math.abs(midi - v.root) > 9) return false;
+    const rate = 2 ** ((midi - v.root) / 12 + v.tune! / 1200);
+    // enough of the sample left to ring through the new note
+    return (time - v.at!) * v.rate! + dur * rate < v.len! - 0.15;
+  }
+
+  /**
+   * A legato note: the same string keeps ringing and changes pitch (hammer-on, pull-off, slide),
+   * instead of a new pick. Call canLegato first.
+   */
+  legato(v: Voice, midi: number, time: number, dur: number, move: LegatoMove, o: PlayOptions = {}) {
+    const rate = 2 ** ((midi - v.root!) / 12 + v.tune! / 1200);
+    const semis = Math.abs(12 * Math.log2(rate / v.rate!));
+    const pr = v.src.playbackRate;
+    // a slide starts a little before the note lands; a hammer-on or pull-off is instant
+    const glide = move === 'slide' ? Math.min(0.12, 0.035 + 0.012 * semis) : 0.005;
+    const from = Math.max(v.free ?? 0, move === 'slide' ? time - glide * 0.6 : time);
+    pr.cancelScheduledValues(from);
+    pr.setValueAtTime(v.rate!, from);
+    pr.exponentialRampToValueAtTime(rate, from + glide);
+    v.rate = rate;
+    v.free = 0;
+    // a hammer-on taps the string, a pull-off plucks it a little
+    v.src.hold(from, time + dur, move === 'pull' ? 1.2 : move === 'hammer' ? 1.08 : 1);
+    v.endAt = time + dur;
+    this.tail(v, rate, Math.max(from + glide, time + 0.28), time + dur, o);
   }
 
   /**

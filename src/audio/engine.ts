@@ -679,14 +679,17 @@ export class Engine {
       notes: h.notes,
       strings: h.strings,
       time,
-      // driven guitars sustain into the next hit (a gap is loud through the drive); others breathe
-      dur: ring ?? (legato ? Math.min(h.len * six + 0.05, 5) : Math.min(h.len * six * 0.97, 4)),
+      // driven guitars sustain into the next hit (a gap is loud through the drive); others breathe.
+      // The player's hands: a note rings right into a legato note after it, or stops as the finger lifts
+      dur: ring ?? (h.touch?.tied ? h.len * six + 0.03
+        : (legato ? Math.min(h.len * six + 0.05, 5) : Math.min(h.len * six * 0.97, 4)) - (h.touch?.lift ?? 0) / 1000),
       vel: h.vel * dyn,
       sixteenth: six,
       clean: h.clean,
       letRing: h.letRing,
       slide: h.slide,
       swell: h.swell,
+      touch: h.touch,
     });
   }
 
@@ -857,8 +860,9 @@ export class Engine {
       // pluck harder on the beat
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
-      const dur = ending ? 5 : Math.min(n >= next ? next * six + 0.03 : n * six * 0.95, 4.5);
-      this.bass.play(bass[g], time + (idea.bassFeel ?? 0) / 1000, dur, (onBeat ? 0.9 : 0.74) * dyn);
+      const touch = idea.bassTouch?.[g];
+      const dur = ending ? 5 : Math.min(n >= next ? next * six + 0.03 : n * six * 0.95, 4.5) - (touch?.lift ?? 0) / 1000;
+      this.bass.play(bass[g], time + (idea.bassFeel ?? 0) / 1000, dur, (onBeat ? 0.9 : 0.74) * dyn, touch);
     }
   }
 }

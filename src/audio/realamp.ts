@@ -19,12 +19,14 @@ export const REAL_RATE = 48000;
  * How each amp is played: the dry guitar's level going in (how hard it's driven), the EQ after the
  * cabinet and the output level (about as loud as the app's own amp). Crunch: the Marshall's crunch
  * channel, pushed. Distortion: its high-gain channel, with the harsh 2.7 kHz and the fizz above
- * 6.5 kHz trimmed. Guitar 2 drives them a little less (clearer single notes).
+ * 6.5 kHz trimmed. Guitar 2 drives them a little less (clearer single notes), with a rounder top
+ * (its melodies sit high, and came out sharp and piercing with the rhythm EQ).
  */
-interface RealAmpSettings { drive: number; leadDrive: number; eq: [BiquadFilterType, number, number, number][]; level: number; leadLevel: number }
+type Eq = [BiquadFilterType, number, number, number][];
+interface RealAmpSettings { drive: number; leadDrive: number; eq: Eq; leadEq: Eq; level: number; leadLevel: number }
 export const REAL_AMP: Record<RealTone, RealAmpSettings> = {
-  crunch: { drive: 0.66, leadDrive: 0.8, eq: [['highpass', 90, 0, 0.7], ['lowpass', 9000, 0, 0.7]], level: 5.6, leadLevel: 7.9 },
-  dist: { drive: 0.33, leadDrive: 0.4, eq: [['highpass', 100, 0, 0.7], ['peaking', 2700, -3, 1.2], ['lowpass', 6500, 0, 0.7]], level: 5.6, leadLevel: 7.9 },
+  crunch: { drive: 0.66, leadDrive: 0.8, eq: [['highpass', 90, 0, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 90, 0, 0.7], ['lowpass', 6000, 0, 0.7]], level: 5.6, leadLevel: 7.9 },
+  dist: { drive: 0.33, leadDrive: 0.4, eq: [['highpass', 100, 0, 0.7], ['peaking', 2700, -3, 1.2], ['lowpass', 6500, 0, 0.7]], leadEq: [['highpass', 100, 0, 0.7], ['peaking', 3200, -4, 1], ['lowpass', 4500, 0, 0.7]], level: 5.6, leadLevel: 8.3 },
 };
 
 /** Can this browser run them at all? */
@@ -177,7 +179,7 @@ export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: 
     let node: AudioNode = conv;
     src.connect(conv);
     const r = REAL_AMP[a.tone];
-    for (const [type, frequency, gain, Q] of r.eq) {
+    for (const [type, frequency, gain, Q] of a.lead ? r.leadEq : r.eq) {
       const f = ctx.createBiquadFilter();
       Object.assign(f, { type });
       f.frequency.value = frequency; f.gain.value = gain; f.Q.value = Q;
