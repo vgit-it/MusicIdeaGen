@@ -57,6 +57,11 @@
     <label class="master">Volume
       <input type="range" id="master" min="0" max="100" value="80" aria-label="Master volume">
     </label>
+    <label class="master">Guitar amps
+      <select id="realamps" title="Real amps: recordings of a real Marshall amp for Crunch and Distortion, prepared while you listen (the first moments play on the simple amp)">
+        <option value="on">Real (Marshall)</option><option value="off">Simple (lighter)</option>
+      </select>
+    </label>
     <div id="status" role="status">Loading sounds…</div>
   </section>
 
@@ -133,6 +138,8 @@
     guitars, bass and drums by <a href="https://github.com/sfzinstruments" target="_blank" rel="noopener">Karoryfer Samples</a> (CC0) ·
     strings and percussion from <a href="https://github.com/sgossner/VSCO-2-CE" target="_blank" rel="noopener">VSCO 2 Community Edition</a> by Versilian Studios (CC0) ·
     guitar cabinet impulse responses from the Dauntless IR pack by resington ·
+    real amps: <a href="https://github.com/sdatkinson/NeuralAmpModelerCore" target="_blank" rel="noopener">Neural Amp Modeler</a> by Steven Atkinson (MIT)
+    with Marshall JCM2000 captures from the <a href="https://github.com/pelennor2170/NAM_models" target="_blank" rel="noopener">NAM community collection</a> (GPL-3.0) ·
     MP3 export uses <a href="https://github.com/breezystack/lamejs" target="_blank" rel="noopener">lamejs</a> (LAME, LGPL-3.0).
   </footer>
 </main>

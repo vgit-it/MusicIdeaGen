@@ -213,10 +213,16 @@ async function buildExport(kind: ExportKind, progress: (msg: string) => void = (
   progress('Rendering audio…');
   let r: Rendered;
   try {
+    // real amps: the driven guitars first (those already prepared while playing are reused)
+    const prepared = await engine.prepareFor(list, (p) => {
+      pct = Math.round(p * 100);
+      progress(`Preparing real amps… ${pct}%`);
+    });
+    pct = -1;
     r = await renderAudio(list, engine.settings(), kind === 'stems', (p) => {
       pct = Math.round(p * 100);
       progress(`Rendering audio… ${pct}%`);
-    });
+    }, prepared);
   } finally {
     clearInterval(tick);
   }
@@ -570,6 +576,15 @@ engine.mixer.setMasterVolume(+master.value);
 master.oninput = () => {
   engine.mixer.setMasterVolume(+master.value);
   try { localStorage.setItem('mig.volume', master.value); } catch { /* storage blocked */ }
+};
+
+// real amps (or the simple one), remembered on this device
+const realAmps = $<HTMLSelectElement>('realamps');
+try { realAmps.value = localStorage.getItem('mig.realamps') ?? 'on'; } catch { /* storage blocked */ }
+engine.setRealAmps(realAmps.value === 'on');
+realAmps.onchange = () => {
+  engine.setRealAmps(realAmps.value === 'on');
+  try { localStorage.setItem('mig.realamps', realAmps.value); } catch { /* storage blocked */ }
 };
 
 $('gen').onclick = async () => {

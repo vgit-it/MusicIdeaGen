@@ -5,6 +5,7 @@ import type { Stroke } from '../idea';
 import type { SoundId } from '../sounds';
 import { MultiSampler, type Voice } from './multisampler';
 import { type DrumPiece, DRUM_PIECES, RoundRobin, loadCab, loadDrums, loadPitched } from './samples';
+import { captureAmp, resample } from './realamp';
 import { inContext } from './context';
 import { SampleVoice } from './voice';
 
@@ -52,7 +53,8 @@ export interface ChordInstrument {
   state: LoadState;
   load(): Promise<void>;
   strum(a: StrumArgs): void;
-  releaseAll(): void;
+  /** Stop everything ringing (at `time`, or now). */
+  releaseAll(time?: number): void;
 }
 
 export class Piano implements ChordInstrument {
@@ -106,9 +108,9 @@ export class Piano implements ChordInstrument {
     });
   }
 
-  releaseAll() {
-    this.sampler?.stopAll();
-    this._fallback?.releaseAll();
+  releaseAll(time?: number) {
+    this.sampler?.stopAll(time);
+    this._fallback?.releaseAll(time);
   }
 }
 
@@ -211,9 +213,14 @@ class Amp {
   private drives = '';
   /** First filter of the stand-in cabinet (disconnected once a real IR is in, so it stops costing CPU). */
   private fallbackCab: Tone.BiquadFilter;
+  private readonly out: Tone.InputNode;
+  private readonly ctx = Tone.getContext();
+  /** Real amps: in a render that prepares them, a driven amp's dry input is recorded instead (see realamp.ts). */
+  private captured = false;
 
   /** `lead`: the lead guitar voicing of driven tones (see LEAD). */
   constructor(out: Tone.InputNode, private readonly lead = false) {
+    this.out = out;
     this.stage1.oversample = '4x';
     this.stage2.oversample = '4x';
     // between the stages: shave fizz going into stage 2, and the lows that make it farty
@@ -250,7 +257,7 @@ class Amp {
   private applyCab() {
     const ir = this.cabs[this.tone];
     if (!ir) return;
-    this.convolver.buffer = new Tone.ToneAudioBuffer(ir);
+    this.convolver.buffer = new Tone.ToneAudioBuffer(resample(ir, this.ctx.sampleRate));
     this.irPath.gain.value = 1;
     this.filterPath.gain.value = 0;
     if (!this.cabOn) {
@@ -262,6 +269,13 @@ class Amp {
   private cabOn = false;
 
   set(tone: AmpTone) {
+    // (an amp keeps its tone, so this happens once)
+    const tap = tone !== 'clean' && !this.captured && captureAmp(this.ctx, tone, this.lead, () => (this.out as Tone.Panner).pan?.value ?? 0);
+    if (tap) {
+      this.input.disconnect();
+      Tone.connect(this.input, tap);
+      this.captured = true;
+    }
     const s = (this.lead && LEAD[tone]) || AMP[tone];
     const changed = tone !== this.tone;
     this.tone = tone;
@@ -514,9 +528,9 @@ export class Guitar implements ChordInstrument {
     order.forEach((m, i) => this.fallback.triggerAttackRelease(midiNote(m), d, time + i * 0.008, stroke === 'x' ? 0.2 : vel));
   }
 
-  releaseAll() {
-    this.takes.forEach((t) => { t.ring.stopAll(); t.muted.stopAll(); t.strings = []; t.last = []; });
-    this._fallback?.releaseAll();
+  releaseAll(time?: number) {
+    this.takes.forEach((t) => { t.ring.stopAll(time); t.muted.stopAll(time); t.strings = []; t.last = []; });
+    this._fallback?.releaseAll(time);
   }
 }
 
