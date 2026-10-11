@@ -40,15 +40,15 @@ export interface LayerSettings {
 
 export type ChordChoice = ChordInstrumentId | 'auto';
 
-/** Bass sound per genre (Auto): a distorted preamp blended in for the heavier styles. */
+/** Bass sound per genre (Auto): Clean for pop and funk, Fuller for rock and the heavier styles. */
 const BASS_TONES: Record<Genre, BassTone> = {
-  rock: 'clean',
+  rock: 'fuller',
   pop: 'clean',
   funk: 'clean',
-  hardrock: 'driven',
-  metal: 'driven',
-  grunge: 'driven',
-  altmetal: 'driven',
+  hardrock: 'fuller',
+  metal: 'fuller',
+  grunge: 'fuller',
+  altmetal: 'fuller',
 };
 
 
@@ -584,7 +584,7 @@ export class Engine {
     this.prepPlaying = '';
   }
 
-  /** Bass sound: Auto (by the bass part's genre), Clean, Driven, Smooth or the synth. */
+  /** Bass sound: Auto (by the bass part's genre), one of the bass tones, or the synth. */
   setBass(id: BassId) {
     this.bassChoice = id;
     this.bass.useSynth = id === 'synth';
@@ -599,7 +599,7 @@ export class Engine {
   /** The bass sound an item plays with (Auto: by the bass part's genre). */
   private bassToneFor(idea: Idea | undefined): BassTone {
     const c = this.bassChoice;
-    return c === 'clean' || c === 'driven' || c === 'smooth' ? c : BASS_TONES[idea?.song.partGenres.bass ?? 'rock'];
+    return c !== 'auto' && c !== 'synth' ? c : BASS_TONES[idea?.song.partGenres.bass ?? 'rock'];
   }
 
   setDrums(id: DrumKitId) {

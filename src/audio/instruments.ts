@@ -579,21 +579,31 @@ export class Guitar implements ChordInstrument {
 
 /* ---------------------------------------------------------------- bass */
 
-export type BassId = 'auto' | 'clean' | 'driven' | 'smooth' | 'synth';
+export type BassId = 'auto' | BassTone | 'synth';
 export const BASS_INSTRUMENTS: { id: BassId; label: string }[] = [
   { id: 'auto', label: 'Auto (by genre)' },
   { id: 'clean', label: 'Electric bass, clean' },
+  { id: 'fuller', label: 'Electric bass, fuller' },
+  { id: 'punchy', label: 'Electric bass, punchy' },
+  { id: 'warm', label: 'Electric bass, warm amp' },
   { id: 'driven', label: 'Electric bass, driven' },
   { id: 'smooth', label: 'Electric bass, smooth (no pluck)' },
   { id: 'synth', label: 'Synth bass' },
 ];
 
 /**
- * Clean: the bass straight into the desk, like most pop, funk and rock records. Driven: with a
- * distorted bass preamp blended in (heavier styles). Smooth: no pluck: each note swells in (played
- * from just past the finger's attack) and blends into the next, compressed harder so it holds.
+ * Clean: the bass straight into the desk, like most pop and funk records. Fuller, Punchy and Warm
+ * amp: for rock and the heavier styles (Paul's picks, in that order, from an A/B test): more weight
+ * with the nasal middle tamed; more mids and string definition; a round tube amp with a little grit.
+ * Driven: with a distorted bass preamp blended in (a real one, with real amps). Smooth: no pluck:
+ * each note swells in (played from just past the attack) and blends into the next, compressed harder
+ * so it holds.
  */
-export type BassTone = 'clean' | 'driven' | 'smooth';
+export type BassTone = 'clean' | 'fuller' | 'punchy' | 'warm' | 'driven' | 'smooth';
+/** The tones played through the DI rig below; the others have their own chain (AMP_TONES). */
+type DiTone = 'clean' | 'driven' | 'smooth';
+type BassAmpTone = Exclude<BassTone, DiTone>;
+const isBassAmpTone = (t: BassTone): t is BassAmpTone => t in AMP_TONES;
 
 /**
  * Bass rig, as bass is usually recorded: the DI (the bass straight in, full range, compressed) and,
@@ -601,12 +611,56 @@ export type BassTone = 'clean' | 'driven' | 'smooth';
  * (The old rig played the lows clean and everything above 320 Hz only through a small distorted
  * path: a pure low tone with a buzz on top, which is how a video-game bass is made.)
  */
-const BASS_RIG: Record<BassTone, { grit: number; level: number; comp: [number, number]; top: number }> = {
-  // grit: the distorted path's level under the DI; level: the same loudness each way; comp: the
-  // compressor's threshold (dB) and ratio; top: the high shelf (dB)
-  clean: { grit: 0, level: 1.27, comp: [-24, 4], top: -9 },
-  driven: { grit: 0.12, level: 0.85, comp: [-24, 4], top: -9 },
-  smooth: { grit: 0, level: 1.52, comp: [-34, 8], top: -12 },
+const BASS_RIG: Record<DiTone, { grit: number; level: number; comp: [number, number]; top: number }> = {
+  // grit: the distorted path's level under the DI; level: the DI as loud each way (Driven's growl
+  // comes on top, so its lows aren't thinned out); comp: the compressor's threshold (dB) and ratio;
+  // top: the high shelf (dB)
+  clean: { grit: 0, level: 0.56, comp: [-24, 4], top: -9 },
+  driven: { grit: 0.11, level: 0.56, comp: [-24, 4], top: -9 },
+  smooth: { grit: 0, level: 0.67, comp: [-34, 8], top: -12 },
+};
+
+const tanh = (k: number) => {
+  const w = new Tone.WaveShaper((x) => Math.tanh(k * x) / Math.tanh(k), 4096);
+  w.oversample = '4x';
+  return w;
+};
+
+/** The other tones' chains (built when first played), and their level: as loud as Clean. */
+const AMP_TONES: Record<BassAmpTone, { level: number; chain: () => Tone.ToneAudioNode[] }> = {
+  fuller: {
+    level: 0.63,
+    chain: () => [
+      new Tone.Filter({ type: 'highpass', frequency: 30, rolloff: -12 }),
+      new Tone.Compressor({ threshold: -22, ratio: 4, attack: 0.012, release: 0.15 }),
+      new Tone.Filter({ type: 'lowshelf', frequency: 110, gain: 5 }),
+      new Tone.Filter({ type: 'peaking', frequency: 1000, Q: 1, gain: -3 }),
+      new Tone.Filter({ type: 'highshelf', frequency: 3000, gain: -3 }),
+    ],
+  },
+  punchy: {
+    level: 0.77,
+    chain: () => [
+      new Tone.Filter({ type: 'highpass', frequency: 35, rolloff: -12 }),
+      new Tone.Compressor({ threshold: -22, ratio: 4, attack: 0.02, release: 0.12 }),
+      new Tone.Filter({ type: 'lowshelf', frequency: 90, gain: 3 }),
+      new Tone.Filter({ type: 'peaking', frequency: 250, Q: 1, gain: -3 }),
+      new Tone.Filter({ type: 'peaking', frequency: 800, Q: 0.9, gain: 4 }),
+      new Tone.Filter({ type: 'peaking', frequency: 2000, Q: 1, gain: 2 }),
+      new Tone.Filter({ type: 'lowpass', frequency: 6000, rolloff: -12 }),
+    ],
+  },
+  warm: {
+    level: 0.275,
+    chain: () => [
+      new Tone.Filter({ type: 'highpass', frequency: 35, rolloff: -12 }),
+      new Tone.Compressor({ threshold: -24, ratio: 4, attack: 0.01, release: 0.15 }),
+      new Tone.Gain(1.5), tanh(2),
+      new Tone.Filter({ type: 'peaking', frequency: 100, Q: 0.8, gain: 4 }),
+      new Tone.Filter({ type: 'peaking', frequency: 500, Q: 0.8, gain: 2 }),
+      new Tone.Filter({ type: 'lowpass', frequency: 2200, rolloff: -24 }),
+    ],
+  },
 };
 
 class BassRig {
@@ -621,11 +675,15 @@ class BassRig {
   /** Real amps: in a render that prepares them, the preamp's input is recorded instead (see realamp.ts). */
   private captured = false;
   tone: BassTone = 'clean';
+  /** Where the input goes: the DI rig, or another tone's chain. */
+  private readonly di = new Tone.Filter({ type: 'highpass', frequency: 28, rolloff: -12 });
+  private route: Tone.ToneAudioNode = this.di;
+  private amps = new Map<BassAmpTone, Tone.ToneAudioNode>();
 
-  constructor(out: Tone.InputNode) {
+  constructor(private readonly out: Tone.InputNode) {
     const comp = this.comp;
     const sum = new Tone.Gain(1);
-    this.input.chain(new Tone.Filter({ type: 'highpass', frequency: 28, rolloff: -12 }), comp);
+    this.input.chain(this.di, comp);
     // the DI: plenty of weight down low (deep and round, not twangy), a touch less 250 Hz mud and
     // 700 Hz honk, the top rolled off, no fizz
     comp.chain(
@@ -651,9 +709,31 @@ class BassRig {
     sum.chain(new Tone.Compressor({ threshold: -18, ratio: 3, attack: 0.01, release: 0.15 }), this.level, out);
   }
 
+  /** Another tone's chain, from the input to the output. */
+  private amp(tone: BassAmpTone) {
+    let first = this.amps.get(tone);
+    if (!first) {
+      first = inContext(this.ctx, () => {
+        const nodes = [...AMP_TONES[tone].chain(), new Tone.Gain(AMP_TONES[tone].level)];
+        Tone.connectSeries(...nodes);
+        Tone.connect(nodes[nodes.length - 1], this.out);
+        return nodes[0];
+      });
+      this.amps.set(tone, first);
+    }
+    return first;
+  }
+
   set(tone: BassTone) {
-    const s = BASS_RIG[tone];
     this.tone = tone;
+    const to = isBassAmpTone(tone) ? this.amp(tone) : this.di;
+    if (to !== this.route) {
+      this.input.disconnect(this.route);
+      this.input.connect(to);
+      this.route = to;
+    }
+    if (isBassAmpTone(tone)) return;
+    const s = BASS_RIG[tone];
     // the real preamp gets the DI as it is (after the compressor) and gives back its distorted path
     const tap = tone === 'driven' && !this.captured && captureAmp(this.ctx, 'bass', false, 'bass', () => 0);
     if (tap) {
@@ -669,6 +749,12 @@ class BassRig {
     this.top.gain.value = s.top;
   }
 }
+
+/**
+ * The bass always plays its firm pluck (f). The hard one (ff) slaps the string on the frets: a loud
+ * click over a thin low end that sounded like a glass hammer, and the velocities picked it for most notes.
+ */
+const BASS_LAYER = 0;
 
 /** Smooth bass: where the samples are played from (past the finger's pluck, s). */
 const SMOOTH_OFFSET = 0.07;
@@ -724,7 +810,7 @@ export class Bass {
         // no pluck: the note swells in from just past the finger's attack, and the last one fades
         // out under it (an even touch: the compressor holds it up)
         this.sampler.choke(this.last, t + 0.04, 0.1);
-        this.last = this.sampler.play(midi, t, dur + 0.06, 0.6 + 0.25 * vel, { detune: 1, slide: touch?.from, offset: SMOOTH_OFFSET, fadeIn: 0.07, release: 0.25 });
+        this.last = this.sampler.play(midi, t, dur + 0.06, 0.6 + 0.25 * vel, { detune: 1, slide: touch?.from, offset: SMOOTH_OFFSET, fadeIn: 0.07, release: 0.25, layer: BASS_LAYER });
         return;
       }
       // the string rings on into a hammer-on, pull-off or slide
@@ -734,7 +820,7 @@ export class Bass {
       }
       // one string at a time: a new note takes over from the last one
       this.sampler.choke(this.last, t, 0.02);
-      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 1, slide: touch?.from, tied: touch?.tied, fall: touch?.fall });
+      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 1, slide: touch?.from, tied: touch?.tied, fall: touch?.fall, layer: BASS_LAYER });
     } else this.synth.triggerAttackRelease(midiNote(midi), dur, time, vel);
   }
 
