@@ -69,8 +69,20 @@ As built (`src/parts/solo.ts`, rules in `docs/SOLO-THEORY.md`; placement in `src
   changes and held notes; no held note rubbing against the chord or the riff; at most two repeats.
 - Scales by player: melodic: pentatonic + mode colour; bluesy: the blues scale, the blue third curled
   up over major chords; shredder: the full mode; raw / funky: pentatonic.
-- Bends written by the solo (a step up into a chord note on held notes; by player 10-50%); slides
-  into ~20% of phrases.
+- Licks: a vocabulary of real pentatonic-box licks per player (`LICKS`): fast (runs down the box with
+  pull-offs, rolling three-note groups, a hammered climb, the blues run with the b5, the shredder's
+  fours, tremolo), mid (bend then down to the root, the 7th bent to the root twice, up the box by
+  slides, climbing thirds, a sweet turn, funky figures), slow (one bent held note, a slide up into a
+  long note, bend-step-hold). Each is moved up or down the box so its last note is a chord note (the
+  root to close), near the last note played, never reaching the solo's top note early.
+- Slow against fast: each build unit pairs a slow slot with a fast one (a sung phrase and a fast lick,
+  a mid lick and a burst: a held note, a quick run, a held note), the mix by player (a shredder more
+  fast, a melodic player more sung).
+- How each note is played, from the solo: quick notes legato (a pick on each beat, hammered up or
+  pulled off down between, by player 10-70%), slower connected notes slid now and then (5-40%), each
+  phrase picked or slid into, held chord notes bent (10-50%), vibrato on held notes (6-22 cents by
+  player, wider on the peak); what a lick says it keeps. The hands follow it (`art` and `vib` on the
+  notes): they finger the line so hammered and slid notes share a string.
 - Mix: Guitar 2 +2.5 dB and the rhythm guitar -2 dB through a solo (eased in); strummed rhythm
   guitars also play a level softer.
 - The drummer under it (`playUnderSolo`, drummer.ts): the ride instead of the hi-hat, a crash with

@@ -42,7 +42,52 @@ const STYLE: Record<LickKind, { busy: number; bend: number; peak: string }> = {
   muted: { busy: 0, bend: 0.1, peak: 'funky stabs on the top note' },
 };
 
-interface Ev { step: number; midi: number; len: number; vel: number; bend?: number; slide?: number }
+/**
+ * Licks, the way guitarists play them out of the pentatonic box: [position (16ths), pentatonic degree
+ * (0 = the root, 5 = an octave up; x.5 = the blue note between two degrees: the b5, or the curl from the
+ * minor toward the major third), length, how it's reached ('.' picked, 'h' hammered or 'p' pulled off
+ * from the last note, 's' slid), bend into it (semitones)]. Moved up or down the box (and the octave)
+ * so its last note lands on a note of the chord under it.
+ */
+type LickNote = [number, number, number, ('.' | 'h' | 'p' | 's')?, number?];
+type Speed = 'slow' | 'mid' | 'fast';
+interface Lick { speed: Speed; who: LickKind[]; notes: LickNote[] }
+const LICKS: Lick[] = [
+  // fast: runs down the box with pull-offs, rolling three-note groups, a hammered climb, the blues run
+  // with the b5, the shredder's fours, tremolo picking
+  { speed: 'fast', who: ['blues', 'run', 'sung'], notes: [[0, 7, 1], [1, 6, 1, 'p'], [2, 5, 1], [3, 4, 1, 'p'], [4, 3, 1], [5, 2, 1, 'p'], [6, 1, 1], [7, 0, 3]] },
+  { speed: 'fast', who: ['blues', 'run', 'sung', 'simple'], notes: [[0, 5, 1], [1, 4, 1, 'p'], [2, 3, 1], [3, 5, 1], [4, 4, 1, 'p'], [5, 3, 1], [6, 5, 1], [7, 4, 1, 'p'], [8, 3, 4]] },
+  { speed: 'fast', who: ['run', 'sung'], notes: [[0, 0, 1], [1, 1, 1, 'h'], [2, 2, 1], [3, 3, 1, 'h'], [4, 4, 1], [5, 5, 1, 'h'], [6, 6, 2], [8, 7, 4, 's']] },
+  { speed: 'fast', who: ['blues'], notes: [[0, 5, 1], [1, 4, 1, 'p'], [2, 3, 1], [3, 2.5, 1, 'p'], [4, 2, 1, 'p'], [5, 1, 1], [6, 0, 4]] },
+  { speed: 'fast', who: ['run'], notes: [[0, 7, 1], [1, 6, 1, 'p'], [2, 5, 1], [3, 4, 1, 'p'], [4, 6, 1], [5, 5, 1, 'p'], [6, 4, 1], [7, 3, 1, 'p'], [8, 5, 1], [9, 4, 1, 'p'], [10, 3, 1], [11, 2, 1, 'p'], [12, 3, 4]] },
+  { speed: 'fast', who: ['run', 'simple'], notes: [[0, 5, 1], [1, 5, 1], [2, 5, 1], [3, 5, 1], [4, 4, 1], [5, 4, 1], [6, 4, 1], [7, 4, 1], [8, 3, 4]] },
+  { speed: 'fast', who: ['muted'], notes: [[0, 3, 1], [2, 3, 1], [3, 4, 1, 'h'], [6, 5, 1], [8, 4, 2]] },
+  // mid: bend, then down to the root; the 7th bent to the root twice; up the box by slides; climbing in
+  // thirds; a sweet major-sounding turn; a funky figure
+  { speed: 'mid', who: ['blues', 'sung', 'simple'], notes: [[0, 3, 4, '.', 2], [4, 2, 2, 'p'], [6, 1, 2], [8, 0, 6]] },
+  { speed: 'mid', who: ['blues', 'simple'], notes: [[0, 5, 2, '.', 2], [2, 5, 2, '.', 2], [4, 4, 2], [6, 3, 4]] },
+  { speed: 'mid', who: ['sung', 'blues', 'run', 'simple'], notes: [[0, 1, 2], [2, 2, 2, 's'], [4, 3, 4, 's'], [8, 2, 2], [10, 3, 4]] },
+  { speed: 'mid', who: ['sung', 'run', 'muted'], notes: [[0, 0, 2], [2, 2, 2], [4, 1, 2], [6, 3, 2], [8, 2, 4]] },
+  { speed: 'mid', who: ['sung', 'blues'], notes: [[0, 4, 1], [1, 3, 1, 'p'], [2, 2, 2], [4, 1, 1], [5, 0, 1, 'p'], [6, 1, 4, 'h']] },
+  { speed: 'mid', who: ['muted'], notes: [[1, 2, 1], [3, 3, 1], [4, 3, 1], [6, 4, 2], [10, 3, 2]] },
+  // slow: one note bent and held; a slide up into a long note; a bend, a step down, a long note
+  { speed: 'slow', who: ['sung', 'blues', 'simple', 'run'], notes: [[0, 3, 8, '.', 2]] },
+  { speed: 'slow', who: ['sung', 'simple', 'muted'], notes: [[0, 2, 4], [4, 3, 8, 's']] },
+  { speed: 'slow', who: ['sung', 'blues', 'simple'], notes: [[0, 5, 6, '.', 2], [6, 4, 2], [8, 3, 8]] },
+  { speed: 'slow', who: ['sung', 'blues'], notes: [[0, 3, 4, '.', 2], [4, 4, 4, '.', 1], [8, 3, 8]] },
+];
+
+/** How each player moves between notes: legato in quick passages, slides between slower ones; vibrato depth (cents). */
+const HANDS_OF: Record<LickKind, { legato: number; slide: number; vib: number; slideIn: number }> = {
+  sung: { legato: 0.6, slide: 0.35, vib: 14, slideIn: 0.25 },
+  blues: { legato: 0.6, slide: 0.25, vib: 18, slideIn: 0.2 },
+  run: { legato: 0.7, slide: 0.15, vib: 16, slideIn: 0.1 },
+  simple: { legato: 0.3, slide: 0.4, vib: 22, slideIn: 0.35 },
+  muted: { legato: 0.1, slide: 0.05, vib: 6, slideIn: 0.05 },
+};
+
+type Art = 'pick' | 'legato' | 'slide';
+interface Ev { step: number; midi: number; len: number; vel: number; bend?: number; slide?: number; art?: Art; vib?: number; peak?: boolean }
 interface Motif { rhythm: number[]; moves: number[] }
 
 /**
@@ -73,6 +118,13 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     return out;
   };
   const changes = new Set(chords.timeline.map((e) => e.step));
+  // the pentatonic box the licks are played in (blues players use the minor box over everything)
+  const box = lick === 'blues' || minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9];
+  const degSemi = (d: number) => {
+    const o = Math.floor(d / 5), k = d - 5 * o;
+    const lo = box[Math.floor(k)], hi = Math.floor(k) + 1 < 5 ? box[Math.floor(k) + 1] : 12;
+    return 12 * o + (k % 1 ? Math.floor((lo + hi) / 2) : lo);
+  };
 
   // the plan: two bars a unit; the peak unit at about 70% of the way, then the release
   const units: Bar[][] = [];
@@ -170,6 +222,66 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     if (!motif) motif = { rhythm, moves };
   };
 
+  /**
+   * A lick from the player's vocabulary in a slot, ending at `end` on a chord note (the root, to close),
+   * moved up or down the box to sit near the last note. False if none fits.
+   */
+  const placeLick = (start: number, end: number, speed: Speed, lo: number, hi: number, close: 'home' | 'open', vel: number) => {
+    const prevM = evs.length ? evs[evs.length - 1].midi : R;
+    const options = rng.shuffle(LICKS.filter((l) => l.speed === speed && l.who.includes(lick)));
+    for (const l of options) {
+      const span = Math.max(...l.notes.map(([p, , len]) => p + len));
+      let at = end - span;
+      at -= mod(at, 2);
+      if (at < start) continue;
+      let best: { ms: number[]; score: number } | null = null;
+      for (let sh = -7; sh <= 12; sh++) {
+        const ms = l.notes.map(([, d]) => R + degSemi(d + sh) - 12);
+        // (never the solo's top note before its peak)
+        if (ms.some((m) => m < lo - 3 || m > Math.min(83, hi + 2) || m >= top)) continue;
+        const lastN = l.notes[l.notes.length - 1], lastG = at + lastN[0], lastM = ms[ms.length - 1];
+        if (!isTone(lastM, lastG) || (close === 'home' ? mod(lastM, 12) !== rootOf(lastG) && rng.chance(0.5) : false)) continue;
+        if (l.notes.some(([p, , len], i) => (len >= 4 && rubs(ms[i], at + p)) || riffClash(ms[i], at + p))) continue;
+        const score = Math.abs(ms[0] - prevM);
+        if (!best || score < best.score) best = { ms, score };
+      }
+      if (!best) continue;
+      l.notes.forEach(([p, , len, how, bend], i) => evs.push({
+        step: at + p, midi: best!.ms[i], len, vel: vel + (i === 0 ? 0.04 : 0),
+        bend: bend ?? 0, art: how === 'h' || how === 'p' ? 'legato' : how === 's' ? 'slide' : how === '.' ? 'pick' : undefined,
+      }));
+      return true;
+    }
+    return false;
+  };
+  /** A fast burst between two long notes: a held note, a quick run, a held note on a strong beat. */
+  const burst = (start: number, finalAt: number, end: number, lo: number, hi: number, close: 'home' | 'open', vel: number) => {
+    const prevM = evs.length ? evs[evs.length - 1].midi : R;
+    let m = Math.max(lo, Math.min(hi, prevM));
+    while (!isTone(m, start) && m > lo) m--;
+    const hold = Math.min(4, finalAt - start - 4);
+    if (hold >= 2) evs.push({ step: start, midi: m, len: hold, vel: vel + 0.04, art: 'pick' });
+    phrase(start + Math.max(0, hold), finalAt, end, 2, lo, hi, rng.chance(0.5) ? 'up' : 'down', close, vel, false);
+  };
+  /** One slot of a solo: a sung phrase, the motif, a lick, or a burst. */
+  type SlotKind = 'sing' | 'motif' | 'lickSlow' | 'lickMid' | 'lickFast' | 'burst';
+  const fill = (k: SlotKind, start: number, finalAt: number, end: number, lo: number, hi: number, close: 'home' | 'open', vel: number, contour: Contour) => {
+    if (k === 'lickSlow' || k === 'lickMid' || k === 'lickFast') {
+      if (placeLick(start, end, k === 'lickSlow' ? 'slow' : k === 'lickMid' ? 'mid' : 'fast', lo, hi, close, vel)) return;
+      k = k === 'lickFast' ? 'burst' : 'sing';
+    }
+    if (k === 'burst') return burst(start, finalAt, end, lo, hi, close, vel);
+    phrase(start, finalAt, end, k === 'sing' ? 0 : level(1), lo, hi, contour, close, vel, k === 'motif' && !!motif);
+  };
+  /** The two slots of a build unit, slow against fast, by player. */
+  const BUILD: Record<LickKind, [[SlotKind, SlotKind], number][]> = {
+    sung: [[['sing', 'lickFast'], 3], [['motif', 'lickMid'], 3], [['lickMid', 'sing'], 2], [['lickFast', 'sing'], 1]],
+    blues: [[['sing', 'lickFast'], 3], [['lickMid', 'lickFast'], 2], [['motif', 'lickMid'], 2], [['lickFast', 'lickSlow'], 2]],
+    run: [[['lickFast', 'sing'], 2], [['lickMid', 'burst'], 3], [['sing', 'lickFast'], 2], [['motif', 'lickFast'], 1]],
+    simple: [[['sing', 'lickMid'], 3], [['motif', 'lickFast'], 2], [['lickSlow', 'motif'], 2]],
+    muted: [[['motif', 'lickFast'], 2], [['lickMid', 'sing'], 2], [['lickFast', 'lickMid'], 1]],
+  };
+
   const vel = (u: number) => 0.8 + 0.12 * Math.min(1, u / Math.max(1, peakU)) - (u > peakU ? 0.06 : 0);
   const level = (base: Level): Level => Math.max(0, Math.min(2, base + st.busy)) as Level;
   const gs = (b: Bar) => groupStarts(b.groups).map((p) => b.start + p);
@@ -212,7 +324,7 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
         for (const o of [0, 3, 6, 8, 11].filter((x) => b.start + x < (gb[3] ?? endOf(b)))) evs.push({ step: b.start + o, midi: top, len: 1, vel: 0.9, bend: 0 });
       } else {
         const hold = gb[2] ?? endOf(b);
-        evs.push({ step: b.start, midi: top, len: hold - b.start, vel: 0.98, bend: lick === 'run' ? 0 : bendFrom });
+        evs.push({ step: b.start, midi: top, len: hold - b.start, vel: 0.98, bend: lick === 'run' ? 0 : bendFrom, peak: true });
       }
       // then a short answer down to a chord note (unless the release follows straight on)
       const from = gb[2] ?? endOf(b);
@@ -235,9 +347,13 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
         let m = R + 7;
         while (!isTone(m, a.start) && m > R) m--;
         evs.push({ step: a.start, midi: m, len: ga[2] - a.start + 4, vel: 0.9, bend: inScale(m - 2) ? 2 : 1 });
-        phrase(gb[0] + 2, gb[2] ?? endOf(b) - 4, endOf(b) - 2, level(0), lo, hi, 'down', 'home', vel(u), false);
+        fill(rng.chance(0.5) ? 'lickMid' : 'sing', gb[0] + 2, gb[2] ?? endOf(b) - 4, endOf(b) - 2, lo, hi, 'home', vel(u), 'down');
         return;
       }
+      // a sung call, a lick in answer
+      fill('sing', off(ga), ga[2] ?? a.start + 8, endOf(a), lo, hi, 'open', vel(u), contour());
+      if (b !== a) fill(rng.chance(0.6) ? 'lickMid' : 'lickSlow', gb[1] ?? b.start + 4, gb[3] ?? endOf(b) - 4, endOf(b), lo, hi, 'home', vel(u), contour());
+      return;
     }
 
     if (lastUnit && ph === 'release') {
@@ -249,43 +365,53 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
       return;
     }
 
-    // a call and an answer; rests between them shrink as the solo builds
-    const lv: Level = ph === 'open' || ph === 'release' ? level(0) : level(u - openN >= buildN / 2 ? 2 : 1);
-    const reuse = !!motif && rng.chance(0.6);
+    // a call and an answer, slow against fast (the player decides the mix); rests between them shrink
+    // as the solo builds
     if (ph === 'build') {
+      const [k1, k2] = rng.weighted(BUILD[lick]);
       // the call runs over the bar line onto beat 1 (held a beat), the answer follows straight on
-      phrase(off(ga), b.start, gb[1] ?? b.start + 4, lv, lo, hi, contour(), 'open', vel(u), reuse);
-      phrase(gb[1] ?? b.start + 4, gb[3] ?? endOf(b) - 4, endOf(b) - 2, lv, lo, hi, contour(), 'home', vel(u), rng.chance(0.5));
+      fill(k1, off(ga), b.start, gb[1] ?? b.start + 4, lo, hi, 'open', vel(u), contour());
+      fill(k2, gb[1] ?? b.start + 4, gb[3] ?? endOf(b) - 4, endOf(b) - 2, lo, hi, 'home', vel(u), contour());
     } else {
-      // opening and release: a short call held to the end of its bar, a breath, a shorter answer
-      phrase(off(ga), ga[2] ?? a.start + 8, endOf(a), lv, lo, hi, contour(), 'open', vel(u), reuse);
-      if (b !== a) phrase(gb[1] ?? b.start + 4, gb[3] ?? endOf(b) - 4, endOf(b), lv, lo, hi, contour(), 'home', vel(u), rng.chance(0.5));
+      // opening and release: a call held to the end of its bar, a breath, an answer
+      fill(ph === 'release' ? (rng.chance(0.6) ? 'lickMid' : 'lickSlow') : 'motif', off(ga), ga[2] ?? a.start + 8, endOf(a), lo, hi, 'open', vel(u), contour());
+      if (b !== a) fill(ph === 'release' ? 'sing' : rng.chance(0.5) ? 'lickMid' : 'motif', gb[1] ?? b.start + 4, gb[3] ?? endOf(b) - 4, endOf(b), lo, hi, 'home', vel(u), contour());
     }
   });
 
-  // expression: bends on held notes (a step up into the note), the blue third curled up, slides into
-  // some phrases; the rest played as written (the hands add no bends of their own)
+  // how each note is played, from where it sits in the solo: quick notes in a run legato (a pick on each
+  // beat, hammered up or pulled off down between), slower connected notes picked or slid, a phrase
+  // started picked or slid into, held chord notes bent now and then, vibrato on held notes (wider on the
+  // peak); what a lick says, it keeps
   evs.sort((x, y) => x.step - y.step);
   const all = evs.filter((e, i) => i === 0 || e.step > evs[i - 1].step);
+  const hd = HANDS_OF[lick];
   all.forEach((e, i) => {
     const prev = all[i - 1];
-    const phraseStart = !prev || e.step - (prev.step + prev.len) >= 2;
+    const connected = !!prev && e.step <= prev.step + prev.len;
     if (e.bend === undefined) {
       e.bend = 0;
       if (e.len >= 4 && isTone(e.midi, e.step) && rng.chance(st.bend)) e.bend = inScale(e.midi - 2) ? 2 : inScale(e.midi - 1) ? 1 : 0;
       // the blue third over a major chord, curled up toward the major third
       if (lick === 'blues' && !minor && mod(e.midi - key, 12) === 3 && e.len >= 2) { e.midi += 1; e.bend = 1; }
     }
-    if (phraseStart && !e.bend && i > 0 && rng.chance(0.2)) e.slide = -rng.pick([2, 3]);
+    if (!e.art) {
+      const iv = prev ? Math.abs(e.midi - prev.midi) : 0;
+      if (!connected || e.bend) e.art = 'pick';
+      else if (e.step - prev.step <= 2) e.art = e.step % 4 !== 0 && iv > 0 && iv <= 4 && rng.chance(hd.legato) ? 'legato' : 'pick';
+      else e.art = iv > 0 && iv <= 7 && rng.chance(hd.slide) ? 'slide' : 'pick';
+    }
+    if (!connected && !e.bend && i > 0 && rng.chance(hd.slideIn)) e.slide = -rng.pick([2, 3]);
+    if (e.len >= 6) e.vib = hd.vib + (e.peak ? 8 : 0);
   });
 
   const pos = rng.int(5, 12);
   const hits: GuitarHit[] = all.map((e, i) => {
     const next = all[i + 1]?.step ?? total;
-    return { step: e.step, ...leadFret(e.midi, t, pos), len: Math.max(1, Math.min(e.len, next - e.step)), vel: Math.min(1, e.vel), bend: e.bend, slide: e.slide };
+    return { step: e.step, ...leadFret(e.midi, t, pos), len: Math.max(1, Math.min(e.len, next - e.step)), vel: Math.min(1, e.vel), bend: e.bend, slide: e.slide, art: e.art, vib: e.vib };
   });
   return {
     hits,
-    notes: [`Guitar 2: a solo: ${quoted ? 'starts by quoting the hook' : 'starts low and sparse'}, phrases in call and answer, builds to its highest note about two-thirds of the way (${st.peak}), lands on the root`],
+    notes: [`Guitar 2: a solo: ${quoted ? 'starts by quoting the hook' : 'starts low and sparse'}, phrases in call and answer (slow sung lines against fast licks), builds to its highest note about two-thirds of the way (${st.peak}), lands on the root`],
   };
 }

@@ -486,7 +486,7 @@ export class Guitar implements ChordInstrument {
     const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6) * (notes.length === 2 && notes[1] - notes[0] === 12 ? 0.25 : 1);
     const detune = this.type === 'electric' ? 1.5 : 1;
     // a held single note gets real vibrato (chords none: a wobbling chord through an amp sounds like a toy)
-    const vibrato = this.type !== 'electric' || letRing || notes.length > 1 ? 0 : driven ? 10 : 7;
+    const vibrato = this.type !== 'electric' || letRing || notes.length > 1 ? 0 : hands?.vib ?? (driven ? 10 : 7);
     // strummed chords: the pick brushes the strings rather than clicking each one (a few ms of fade-in
     // takes the click off), and each string comes out a little louder or softer
     const chord = notes.length > 1 && !letRing && !swell;
