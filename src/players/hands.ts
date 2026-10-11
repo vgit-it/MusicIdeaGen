@@ -163,6 +163,8 @@ function playGuitar2(idea: Idea, hands: Hands, open: number[], seed: string) {
     if (!t) return;
     // a phrase the guitarist already slides into stays that way
     if (h.slide) { t.bend = undefined; t.move = 'pick'; }
+    // a bend the lick was written with is played as written
+    if (h.bend !== undefined) { t.bend = h.bend || undefined; if (h.bend) t.move = 'pick'; }
     h.touch = t;
     h.strings = line[i].offs.map((o) => t.string + o);
   });

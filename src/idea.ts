@@ -166,6 +166,8 @@ export interface GuitarHit {
   letRing?: boolean;
   /** Slide into the note from this many semitones away. */
   slide?: number;
+  /** Bent up into the note from this many semitones below, as written in a lick (0: written without a bend; the hands play it as written). */
+  bend?: number;
   /** Fade the note in (volume swell). */
   swell?: boolean;
   /** The low pedal note of a pedal riff (a harmony part skips it). */

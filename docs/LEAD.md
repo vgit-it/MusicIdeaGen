@@ -13,7 +13,7 @@ choruses, and takes solos. Who the lead player is (their character) decides how.
 ## 1. The lead player around the song (phase 1, done)
 - Verses: a singer is assumed to sing most of each 4-bar phrase. The lead answers in the gaps: the
   end of each phrase (first verse), or every two bars (later verses, and the second time through a
-  doubled first verse). Each lick lands on a chord note; now and then a four-bar run goes to another
+  doubled first verse; the halfway answer only now and then, so verses don't get busy). Each lick lands on a chord note; now and then a four-bar run goes to another
   part for a change.
 - Pre-chorus: some players climb into the chorus (a held chord note a bar, then a scale run a note a
   beat to a top note).
@@ -24,7 +24,7 @@ choruses, and takes solos. Who the lead player is (their character) decides how.
 | Player | Licks | Hands | Mostly in |
 |---|---|---|---|
 | Melodic | two or three sung notes, room around them | legato or slides | pop, rock, alt metal |
-| Bluesy | short figures, bent notes | bends | rock, hard rock |
+| Bluesy | blues licks: 1-4 notes, written bends, the blue third, landing on the root or 5th | bends | rock, hard rock |
 | Shredder | quick 16th runs by step | legato or picked | metal, hard rock |
 | Raw | one or two plain notes | slides or picked | grunge |
 | Funky | short muted 16ths | picked | funk, pop |

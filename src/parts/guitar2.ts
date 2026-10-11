@@ -178,6 +178,32 @@ function answerRhythm(rng: Rng, b: Bar, lick: LickKind): Onset[] {
   return t.filter((p) => from + p < b.len).map((p) => ({ pos: from + p, strong: st.includes(from + p) }));
 }
 
+/**
+ * Blues licks, the way blues players actually phrase them: few notes, bends, the blue third, landing
+ * on the root or the 5th. Notes as [position (16ths), semitones above the key's root, length, bend
+ * (semitones bent up into it)]. `major`: the minor third bent or slid up to the major third (over
+ * major keys); minor keys get their own.
+ */
+type LickNote = [number, number, number, number?];
+const BLUES_LICKS: { notes: LickNote[]; major?: boolean; minor?: boolean }[] = [
+  // the 4th bent up to the 5th, held
+  { notes: [[0, 7, 8, 2]] },
+  // the 7th bent up to the root, back to the 7th, down to the 5th
+  { notes: [[0, 12, 4, 2], [4, 10, 2], [6, 7, 6]] },
+  // the blue third slid up to the major third, home to the root
+  { notes: [[0, 3, 1], [1, 4, 3], [4, 0, 8]], major: true },
+  // the 4th, the minor third, home
+  { notes: [[0, 5, 2], [2, 3, 2], [4, 0, 8]], minor: true },
+  // the same bend twice, then down to the 5th
+  { notes: [[0, 12, 2, 2], [3, 12, 3, 2], [6, 7, 6]] },
+  // the 5th, the 7th, up to the root with a quarter-tone curl
+  { notes: [[0, 7, 3], [3, 10, 3], [6, 12, 6, 1]] },
+  // a bent minor third curled toward the major third (blue), then the root
+  { notes: [[0, 4, 4, 1], [4, 0, 8]], major: true },
+  // the root, the 7th below, the 5th below: a lazy fall
+  { notes: [[0, 12, 2], [2, 10, 2], [4, 7, 8]] },
+];
+
 /** How a lead player answers the singer: at the end of every four bars or every two, with their kind of lick. */
 interface Answer { every: 2 | 4; lick: LickKind }
 
@@ -279,7 +305,8 @@ function melody(
       // singer, only in the gaps between their lines: the end of each phrase, or of every two bars
       if (!answer && rng.chance(0.4)) phrases.push({ at: B[0].start, rhythm: [{ pos: 0, strong: true }], hold: B[0].start + groupAt(B[0], 2), plan: { shift: 0 } });
       B.forEach((b, bi) => {
-        if (n > 1 && (answer?.every === 4 ? bi !== n - 1 : bi % 2 === 0)) return;
+        // (every two bars: the halfway answer only now and then, so the verse doesn't get busy)
+        if (n > 1 && (answer?.every === 4 ? bi !== n - 1 : bi % 2 === 0 || (bi !== n - 1 && !rng.chance(0.5)))) return;
         const rhythm = answer ? answerRhythm(rng, b, answer.lick) : lickRhythm(rng, b);
         if (rhythm.length) phrases.push({ at: b.start, rhythm, hold: endOf(b), plan: { shift: 0, ending: bi === n - 1 ? close : 'open' }, lick: true });
       });
@@ -397,6 +424,7 @@ export function generateGuitar2(
   const runs: number[][] = [];
   for (let r = 0; r < bars.length; r += 4) runs.push([r, r + 1, r + 2, r + 3].filter((i) => i < bars.length));
 
+  let lastLick: (typeof BLUES_LICKS)[number] | null = null;
   runs.forEach((run, ri) => {
     const section = song.sections?.[run[0]] ?? null;
     let style = force?.[ri] ?? pickStyle(rng, genre, section);
@@ -415,7 +443,27 @@ export function generateGuitar2(
     const clean = quietSection(run) || style === 'arp' || style === 'funk';
     const pos = rng.int(5, 12);
 
-    if (style === 'answer' || style === 'answerMore') {
+    if ((style === 'answer' || style === 'answerMore') && lick === 'blues') {
+      // a blues player: a lick from the blues vocabulary at the end of each phrase (and, later in the
+      // song, now and then halfway through it), ending on the bar line
+      const major = !MINORISH.includes(mode);
+      const root = 57 + mod(key - 57, 12); // the key's root between A3 and G#4: licks reach an octave up
+      const licks = BLUES_LICKS.filter((l) => (major ? !l.minor : !l.major));
+      runBars.forEach((b, bi) => {
+        const n = runBars.length;
+        const end = bi === n - 1;
+        if (!end && !(style === 'answerMore' && bi === Math.floor(n / 2) - 1 && rng.chance(0.35))) return;
+        // (not the same lick twice running)
+        const l = rng.pick(licks.filter((x) => x !== lastLick));
+        lastLick = l;
+        const span = Math.max(...l.notes.map(([p, , len]) => p + len));
+        const start = Math.max(0, Math.floor((b.len - span) / 2) * 2);
+        for (const [p, iv, len, bend] of l.notes) {
+          if (start + p >= b.len) continue;
+          hits.push({ step: b.start + start + p, ...leadFret(root + iv, t, pos), len: Math.min(len, b.len - start - p), vel: p === 0 ? 0.86 : 0.8, bend: bend ?? 0, clean });
+        }
+      });
+    } else if (style === 'answer' || style === 'answerMore') {
       // the lead player answering the singer, in the gaps between their lines; muted funk licks are short
       const answer: Answer = { every: style === 'answer' ? 4 : 2, lick };
       for (const n of melody(rng, song, chords, runBars, 'medium', ...LEAD_RANGE, scale, song.tuning ? 0.2 : 0.1, riff, 'fills', answer)) {
