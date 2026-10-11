@@ -115,6 +115,31 @@ export interface DrumPart {
 export type Stroke = 'D' | 'U' | 'x' | 'p' | '.';
 
 /** One thing the guitar plays in a riff: a note, power chord or chord. */
+/** How the fretting hand reaches a note from the one before it on the same string. */
+export type Move = 'pick' | 'hammer' | 'pull' | 'slide';
+
+/**
+ * How a player actually plays a note (tracks, set by the band's hands pass, src/players/hands.ts):
+ * where on the neck, and how the hand gets there. Playback follows it; MIDI export stays as written.
+ */
+export interface Touch {
+  /** String (0 = lowest) and fret (of the lowest note, for an octave shape). */
+  string: number;
+  fret: number;
+  /** Picked, or reached from the last note without picking: hammered on, pulled off, slid. */
+  move: Move;
+  /** The next note comes legato out of this one: it rings right into it. */
+  tied?: boolean;
+  /** The finger lifts this many ms before the next note (moving to a new position). */
+  lift?: number;
+  /** Slides into the note from this many semitones away (bass; Guitar 2 uses GuitarHit.slide). */
+  from?: number;
+  /** Bent up into the note from this many semitones below. */
+  bend?: number;
+  /** Slides off the end of the note, down this many semitones (a fall-off). */
+  fall?: number;
+}
+
 export interface GuitarHit {
   step: number;
   /** MIDI notes, low to high, and the string each is on. */
@@ -135,6 +160,8 @@ export interface GuitarHit {
   swell?: boolean;
   /** The low pedal note of a pedal riff (a harmony part skips it). */
   pedal?: boolean;
+  /** Tracks: how the player's hands play it. */
+  touch?: Touch;
 }
 
 export interface Idea {
@@ -148,6 +175,8 @@ export interface Idea {
   bass: number[];
   /** Optional note length in 16ths per step (otherwise a note lasts until the next one). */
   bassLen?: number[];
+  /** Tracks: how the bassist's hands play each note (per step, with `bass`). */
+  bassTouch?: (Touch | undefined)[];
   /** Tracks, played by the band: how far the bassist sits behind the kick, in ms. */
   bassFeel?: number;
   /** Strummed genres: how the bass plays (locked to the kick, held, flowing or driving). */

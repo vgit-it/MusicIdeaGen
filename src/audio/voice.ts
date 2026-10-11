@@ -16,6 +16,7 @@ export class SampleVoice {
   private src: AudioBufferSourceNode;
   private g: GainNode;
   private fadeIn: number;
+  private level = 0;
 
   constructor(ctx: Tone.BaseContext, buf: AudioBuffer, out: Tone.InputNode, opts: { rate?: number; fadeIn?: number; fadeOut?: number } = {}) {
     const raw = ctx.rawContext as unknown as BaseAudioContext;
@@ -36,6 +37,7 @@ export class SampleVoice {
   }
 
   start(time: number, gain: number) {
+    this.level = gain;
     const p = this.g.gain;
     if (this.fadeIn > 0) {
       p.setValueAtTime(0, time);
@@ -55,6 +57,21 @@ export class SampleVoice {
     } catch {
       /* already finished */
     }
+  }
+
+  /**
+   * Keep sounding from `from` until `until` (a legato note on the same string): `bump` > 1 gives the
+   * string a little more energy, as a hammer-on or pull-off does.
+   */
+  hold(from: number, until: number, bump = 1) {
+    const p = this.g.gain;
+    p.cancelScheduledValues(from);
+    p.setValueAtTime(this.level, from);
+    if (bump !== 1) {
+      p.linearRampToValueAtTime(this.level * bump, from + 0.005);
+      p.setTargetAtTime(this.level, from + 0.005, 0.08);
+    }
+    this.stop(until);
   }
 
   dispose() {

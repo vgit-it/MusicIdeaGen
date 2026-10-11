@@ -1,9 +1,9 @@
 // Sampled instruments with synth fallbacks.
 
 import * as Tone from 'tone';
-import type { Stroke } from '../idea';
+import type { Stroke, Touch } from '../idea';
 import type { SoundId } from '../sounds';
-import { MultiSampler, type Voice } from './multisampler';
+import { type LegatoMove, MultiSampler, type Voice } from './multisampler';
 import { type DrumPiece, DRUM_PIECES, RoundRobin, loadCab, loadDrums, loadPitched } from './samples';
 import { captureAmp, resample } from './realamp';
 import { inContext } from './context';
@@ -46,6 +46,8 @@ export interface StrumArgs {
   slide?: number;
   /** Fade the note in (volume swell). */
   swell?: boolean;
+  /** How the player's hands play it (single notes and octaves). */
+  touch?: Touch;
 }
 
 export interface ChordInstrument {
@@ -454,7 +456,7 @@ export class Guitar implements ChordInstrument {
   }
 
   private strumTake(take: Take, a: StrumArgs, driven: boolean) {
-    const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell } = a;
+    const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell, touch: hands } = a;
     const fadeIn = swell ? Math.min(0.6, dur * 0.4) : 0;
     const str = strings ?? notes.map((_, i) => 6 - notes.length + i);
     // time between strings: faster at quicker tempos, ~25-45 ms across six strings; a hand never
@@ -483,6 +485,17 @@ export class Guitar implements ChordInstrument {
     const same = chord && take.last.length === notes.length && take.last.every((m, i) => m === notes[i]);
     if (stroke === 'D' || stroke === 'U') take.last = [...notes];
 
+    // the hand moves on along the same string(s) without a new pick: hammer-on, pull-off, slide
+    if (stroke === 'D' && hands && hands.move !== 'pick' && !letRing && !swell) {
+      const t = time + jitter(1);
+      const vs = str.map((s) => take.strings[s]);
+      if (vs.every((v, i) => take.ring.canLegato(v, notes[i], t, dur))) {
+        vs.forEach((v, i) => take.ring.legato(v!, notes[i], t, dur, hands.move as LegatoMove, { vibrato, tied: hands.tied, fall: hands.fall }));
+        return;
+      }
+    }
+    const hand = { tied: hands?.tied, fall: hands?.fall, bend: hands?.bend };
+
     if (stroke === 'D') {
       // fretting hand lifts: anything still ringing stops as the new chord sounds. Driven chords
       // hand over smoothly (the old chord fades under the new one), so the wall of sound never drops out
@@ -497,7 +510,7 @@ export class Guitar implements ChordInstrument {
         const t = time + i * gap + jitter(1.5);
         if (letRing || same) take.ring.choke(take.strings[str[i]], t, same ? 0.02 : undefined);
         const v = vel * touch() * (1 - (notes.length - 1 - i) * 0.015);
-        take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn: fadeIn || brush() });
+        take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn: fadeIn || brush(), ...hand });
       }
     } else if (stroke === 'U') {
       // up-strokes catch the top 2-4 strings, a little lighter; lower strings keep ringing
@@ -650,13 +663,19 @@ export class Bass {
     }
   }
 
-  play(midi: number, time: number, dur: number, vel: number) {
+  /** `touch`: how the bassist's hands play it (tracks). */
+  play(midi: number, time: number, dur: number, vel: number, touch?: Touch) {
     if (this.sampler && !this.useSynth) {
       // a player sits a few milliseconds behind the beat, never exactly on the grid
       const t = time + 0.004 + Math.random() * 0.006;
+      // the string rings on into a hammer-on, pull-off or slide
+      if (touch && touch.move !== 'pick' && this.sampler.canLegato(this.last, midi, t, dur)) {
+        this.sampler.legato(this.last, midi, t, dur, touch.move, { tied: touch.tied, fall: touch.fall });
+        return;
+      }
       // one string at a time: a new note takes over from the last one
       this.sampler.choke(this.last, t, 0.02);
-      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 1 });
+      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 1, slide: touch?.from, tied: touch?.tied, fall: touch?.fall });
     } else this.synth.triggerAttackRelease(midiNote(midi), dur, time, vel);
   }
 
