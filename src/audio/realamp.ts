@@ -1,6 +1,6 @@
 // Real amps: recordings of real guitar amps (Neural Amp Modeler, public/amp/) instead of the app's
 // own amp for Crunch and Distortion. Marshall JCM2000: crunch channel for Crunch, high gain for
-// Distortion. They're too heavy to run live on phones, so the guitars are prepared ahead (prep.ts):
+// Distortion. They're too heavy to run live on phones, so the guitars are prepared ahead, on request (prep.ts):
 //   1. an offline render records the dry guitar going into each driven amp (captureAmp)
 //   2. Web Workers run the amp models over those recordings, side by side (one per processor core:
 //      inside an offline render they'd all share one thread)
