@@ -57,11 +57,11 @@
     <label class="master">Volume
       <input type="range" id="master" min="0" max="100" value="80" aria-label="Master volume">
     </label>
-    <label class="master">Guitar amps
-      <select id="realamps" title="Real amps: recordings of a real Marshall amp for Crunch and Distortion, prepared while you listen (the first moments play on the simple amp)">
-        <option value="on">Real (Marshall)</option><option value="off">Simple (lighter)</option>
-      </select>
-    </label>
+    <div class="exportrow">
+      <span class="lt">Amps</span>
+      <button id="realamps" class="small">Prepare real amps</button>
+      <span class="hint" id="realhint">Real Marshall amp sound for crunch and distortion guitars. Takes a moment, then plays smoothly.</span>
+    </div>
     <div id="status" role="status">Loading sounds…</div>
   </section>
 

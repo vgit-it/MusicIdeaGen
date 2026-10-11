@@ -57,8 +57,8 @@ const TAIL_STEPS = 32;
 /** Crossfade into a prepared section (ending on its downbeat). */
 const PREP_XFADE = 0.03;
 /**
- * How far ahead notes are scheduled (s): the usual, and while guitars are being prepared during
- * playback (building each render holds up the page for a moment, which made live notes late).
+ * How far ahead notes are scheduled (s): the usual, and if guitars are being prepared during playback
+ * (building each render holds up the page for a moment, which made live notes late).
  */
 const LOOKAHEAD = 0.1;
 const LOOKAHEAD_PREP = 0.6;
@@ -122,14 +122,12 @@ export class Engine {
 
   /** Offline: play only the guitars (preparing them with real amps). */
   guitarsOnly = false;
-  /** Real amps: driven guitars are prepared ahead (live) and play from those buffers when ready. */
+  /** Real amps: driven guitars play from prepared buffers (see prepareRealAmps) where they're ready. */
   private realAmps = false;
   private prep: GuitarPrep | null = null;
-  private prepTimer = 0;
   /** Prepared guitars playing now, and which parts they cover (those parts don't play live). */
   private realSrcs: { src: AudioBufferSourceNode; gain: GainNode }[] = [];
   private realNow = { chords: false, guitar2: false };
-  private realStatus = false;
   private ids = new WeakMap<Idea, number>();
   private nextId = 1;
 
@@ -190,9 +188,9 @@ export class Engine {
       this.percInst ??= inContext(this.ctx, () => new Percussion(this.mixer.input('perc')));
       if (!this.offline) void this.ensureLoaded(this.percInst, 'perc');
     } else if (part === 'keys') {
-      if (choice === null) { delete this.layers.keys; this.keysInst?.releaseAll(); this.replan(); return; }
+      if (choice === null) { delete this.layers.keys; this.keysInst?.releaseAll(); this.onRealChange(); return; }
       this.layers.keys = choice as KeysChoice;
-      this.replan();
+      this.onRealChange();
       this.keysInst ??= inContext(this.ctx, () => new Piano(this.mixer.input('keys')));
       if (!this.offline) void this.ensureLoaded(this.keysInst, 'piano');
     } else {
@@ -295,7 +293,7 @@ export class Engine {
     this.mixer.setTempo(bpm);
     // prepared guitars are at the old tempo: back to live until they're ready again
     if (changed && this.playing && this.realSrcs.length) this.endPrepared(this.ctx.now() + 0.05);
-    if (changed) this.replan(400);
+    if (changed) this.onRealChange();
   }
 
   /** Play one idea on a loop (`keepPlace`: carry on from the same bar, for rerolls). */
@@ -335,7 +333,7 @@ export class Engine {
     this.applyLevel(this.ctx.now());
     // new music: what's prepared for the item playing now may no longer match it
     if (this.playing && this.realSrcs.length && this.keyNow !== this.prepPlaying) this.endPrepared(this.ctx.now() + 0.05);
-    this.replan();
+    this.onRealChange();
     if (this.playing) this.onSection(start);
   }
 
@@ -389,17 +387,46 @@ export class Engine {
     return this.realAmps;
   }
 
-  /** Turn real amps on or off (off: everything plays live on the app's own amp). */
+  /** What can change whether real amps are ready (a new idea, another sound, the tempo): the UI checks again. */
+  onRealChange: () => void = () => {};
+
+  /** Back to the app's own amp (prepared guitars are kept, for turning them back on). */
   setRealAmps(on: boolean) {
     this.realAmps = on && realAmpsSupported();
     if (!this.realAmps && this.realSrcs.length) this.endPrepared(this.ctx.now() + 0.05);
-    this.realChanged();
+    if (!this.realAmps) this.prep?.cancel();
+    this.onRealChange();
   }
 
-  /** The sound changed under what's playing: back to live for now, and prepare again. */
+  /** The sound changed under what's playing: back to live until it's prepared again. */
   private realChanged() {
     if (this.playing && this.realSrcs.length && this.keyNow !== this.prepPlaying) this.endPrepared(this.ctx.now() + 0.05);
-    this.replan();
+    this.onRealChange();
+  }
+
+  /**
+   * Real amps for a list (a track, or one idea): 'none' (no crunch or distortion in it), 'ready'
+   * (every section with them is prepared), 'failed' (they can't run here) or 'todo'.
+   */
+  realStateFor(list: Idea[]): 'none' | 'ready' | 'failed' | 'todo' {
+    if (!realAmpsSupported()) return 'failed';
+    const items = this.prepItems(list, false, 0);
+    if (!items.length) return 'none';
+    const got = items.map((i) => this.prep?.get(i.key));
+    if (got.every((p) => p)) return 'ready';
+    return got.some((p) => p === null) ? 'failed' : 'todo';
+  }
+
+  /**
+   * Prepare real amps for a list (a track, or one idea), then play with them: every section with
+   * crunch or distortion, up front (nothing is prepared while music plays).
+   */
+  async prepareRealAmps(list: Idea[], onProgress: (p: number) => void = () => {}) {
+    if (!realAmpsSupported()) return 'failed' as const;
+    this.realAmps = true;
+    await this.prepareFor(list, onProgress);
+    this.onRealChange();
+    return this.realStateFor(list);
   }
 
   private idOf(idea: Idea) {
@@ -424,13 +451,18 @@ export class Engine {
     };
   }
 
-  /** Everything a prepared item depends on. */
+  /** What a prepared item's sound depends on: the item itself, its sounds and tempo. */
+  private prepCore(idea: Idea): string {
+    return [this.idOf(idea), this.chordIdFor(idea), this.guitar2IdFor(idea), idea.song.bpm, idea.song.swing].join('|');
+  }
+
+  /** Everything a prepared item depends on: its core, then the items around it (lead-in and ring-over). */
   private prepKey(list: Idea[], loop: boolean, i: number): string {
     const idea = list[i];
     if (!idea) return '';
     const { prev, next } = this.around(list, loop, i);
     const id = (x: Idea | null) => (x ? this.idOf(x) : 0);
-    return [id(prev), id(idea), id(next), this.chordIdFor(idea), this.guitar2IdFor(idea), idea.song.bpm, idea.song.swing].join('|');
+    return `${this.prepCore(idea)}#${id(prev)}|${id(next)}`;
   }
 
   /** Key of the prepared item playing now. */
@@ -460,23 +492,13 @@ export class Engine {
   }
 
   private makePrep() {
-    const prep = new GuitarPrep(() => this.settings(), () => this.playing);
+    const prep = new GuitarPrep(() => this.settings());
     prep.onBusy = () => this.applyLookAhead();
     return prep;
   }
 
   private applyLookAhead() {
     if (!this.offline) this.ctx.lookAhead = this.playing && this.prep?.busy ? LOOKAHEAD_PREP : LOOKAHEAD;
-  }
-
-  /** Prepare the list's driven guitars, from the item playing now onward (`wait`: let quick changes settle first). */
-  private replan(wait = 0) {
-    if (this.offline) return;
-    clearTimeout(this.prepTimer);
-    if (!this.realAmps || !this.list.length) { this.prep?.plan([]); return; }
-    if (wait) { this.prepTimer = window.setTimeout(() => this.replan(), wait); return; }
-    this.prep ??= this.makePrep();
-    this.prep.plan(this.prepItems(this.list, this.loop, this.idx));
   }
 
   /**
@@ -487,9 +509,7 @@ export class Engine {
     if (!this.realAmps || !list.length) return null;
     this.prep ??= this.makePrep();
     const items = this.prepItems(list, false, 0);
-    const keys = new Set(items.map((i) => i.key));
-    // the export's items first, then carry on with what's playing
-    this.prep.plan([...items, ...this.prepItems(this.list, this.loop, this.idx).filter((i) => !keys.has(i.key))]);
+    this.prep.plan(items);
     await this.prep.all(items.map((i) => i.key), onProgress);
     const byIndex = new Map(items.map((i) => [i.index, i.key]));
     const prep = this.prep;
@@ -508,12 +528,9 @@ export class Engine {
       if (!this.realAmps || !this.prep) return;
       const parts = this.realParts(this.list[this.idx]);
       if (!parts.chords && !parts.guitar2) return;
-      p = this.prep.get(this.keyNow);
-      if (!p) {
-        if (p === undefined && !this.realStatus) { this.realStatus = true; this.onStatus('Real amps getting ready…'); }
-        return;
-      }
-      if (this.realStatus) { this.realStatus = false; this.onStatus(''); }
+      // prepared for this spot, or for the same item elsewhere (a section looped on its own was
+      // prepared with the track's sections around it: only its first moment's ring-over differs)
+      p = this.prep.get(this.keyNow) ?? this.prep.find(`${this.prepCore(this.list[this.idx])}#`);
     }
     if (!p) return;
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
@@ -645,7 +662,6 @@ export class Engine {
     this.transport.stop();
     this.playing = false;
     this.endPrepared(this.ctx.now() + 0.03);
-    if (this.realStatus) { this.realStatus = false; this.onStatus(''); }
     this.applyLookAhead();
     // every instrument: the last notes of an earlier section can still be ringing
     for (const inst of [...this.rhythmInsts.values(), ...this.g2Insts.values()]) inst.releaseAll();

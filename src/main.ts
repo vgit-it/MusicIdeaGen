@@ -47,6 +47,10 @@ const locks = new Set<PartKey>();
 let baseStatus = 'Loading sounds…';
 const setStatus = (msg: string) => { status.textContent = msg || baseStatus; };
 engine.onStatus = setStatus;
+// real amps (see showReal)
+const realBtn = $<HTMLButtonElement>('realamps');
+const realHint = $('realhint');
+let preparing = false;
 engine.onBar = highlightBar;
 
 /** The section strip, labelled with the instrument each section's rhythm part plays on. */
@@ -69,6 +73,7 @@ function render() {
     markSection(shown, looping);
     renderSectionTools();
   }
+  showReal();
 }
 
 function setPlaying(on: boolean) {
@@ -578,13 +583,40 @@ master.oninput = () => {
   try { localStorage.setItem('mig.volume', master.value); } catch { /* storage blocked */ }
 };
 
-// real amps (or the simple one), remembered on this device
-const realAmps = $<HTMLSelectElement>('realamps');
-try { realAmps.value = localStorage.getItem('mig.realamps') ?? 'on'; } catch { /* storage blocked */ }
-engine.setRealAmps(realAmps.value === 'on');
-realAmps.onchange = () => {
-  engine.setRealAmps(realAmps.value === 'on');
-  try { localStorage.setItem('mig.realamps', realAmps.value); } catch { /* storage blocked */ }
+// real amps: prepared on request (all at once, so playback stays smooth), then used when playing
+const realList = () => (track ? track.sections : idea ? [idea] : []);
+function showReal() {
+  if (preparing) return;
+  const list = realList();
+  const st = list.length ? engine.realStateFor(list) : 'none';
+  const on = engine.realAmpsOn && st === 'ready';
+  realBtn.disabled = st === 'none' || st === 'failed';
+  realBtn.textContent = on ? 'Real amps on ✓' : st === 'todo' ? 'Prepare real amps' : st === 'ready' ? 'Use real amps' : 'Real amps';
+  realHint.textContent = st === 'failed' ? 'Real amps can\'t run on this device.'
+    : st === 'none' ? 'For crunch and distortion guitars (none in this one).'
+    : on ? 'Guitars through a real Marshall amp. Tap to go back to the simple amp.'
+    : st === 'ready' ? 'Playing the simple amp. The real amp is prepared: tap to use it.'
+    : engine.realAmpsOn ? 'Changed since: prepare again for the real amp sound.'
+    : 'Real Marshall amp sound for crunch and distortion guitars. Takes a moment, then plays smoothly.';
+}
+engine.onRealChange = showReal;
+realBtn.onclick = async () => {
+  // tap while preparing: cancel; tap when on: back to the simple amp
+  if (preparing) { engine.setRealAmps(false); return; }
+  const list = realList();
+  if (!list.length) return;
+  if (engine.realAmpsOn && engine.realStateFor(list) === 'ready') { engine.setRealAmps(false); return; }
+  // preparing takes the computer's full attention: stop playback first
+  if (engine.playing) { engine.stop(); setPlaying(false); }
+  preparing = true;
+  const label = (p: number) => { realBtn.textContent = `Preparing… ${Math.round(p * 100)}% · tap to cancel`; };
+  label(0);
+  realHint.textContent = 'Running the guitars through the amp, section by section.';
+  const st = await engine.prepareRealAmps(list, label);
+  preparing = false;
+  showReal();
+  if (st === 'ready' && engine.realAmpsOn) setStatus('Real amps ready — tap Play.');
+  else if (st === 'failed') setStatus('Real amps didn\'t work here — playing the simple amp.');
 };
 
 $('gen').onclick = async () => {
