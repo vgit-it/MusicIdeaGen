@@ -1,0 +1,54 @@
+// Finger squeaks: the sound of fingers sliding along wound strings as the hand moves to a new
+// position. Made here rather than sampled: a fast-rising (or falling) buzz, the pitch of the winding
+// ridges passing under the finger, rough as the finger sticks and slips, with a little hiss.
+
+/** A few different squeaks for a sample rate (made once). */
+const made = new Map<number, AudioBuffer[]>();
+
+export function squeaks(sampleRate: number): AudioBuffer[] {
+  let out = made.get(sampleRate);
+  if (!out) made.set(sampleRate, (out = Array.from({ length: 6 }, (_, i) => squeak(sampleRate, i))));
+  return out;
+}
+
+function squeak(sr: number, n: number): AudioBuffer {
+  // a fixed little random sequence per squeak, so they're the same every time the app loads
+  let s = 0x9e3779b9 ^ (n * 7919);
+  const rnd = () => {
+    s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
+    return ((s >>> 0) % 100000) / 100000;
+  };
+  const dur = 0.08 + rnd() * 0.09;
+  const len = Math.round(dur * sr);
+  const buf = new AudioBuffer({ length: len, numberOfChannels: 1, sampleRate: sr });
+  const x = buf.getChannelData(0);
+  // up the neck the ridges pass faster (the pitch rises), down it falls
+  const up = n % 2 === 0;
+  const f0 = 650 + rnd() * 600, f1 = f0 * (up ? 1.5 + rnd() * 0.8 : 1 / (1.5 + rnd() * 0.8));
+  const amps = Array.from({ length: 8 }, (_, k) => (1 / (k + 1) ** 0.8) * (0.6 + rnd() * 0.4));
+  const ph = amps.map(() => rnd() * Math.PI * 2);
+  let phase = 0, wob = 0, rough = 1, hiss = 0, lp = 0, hp = 0, prev = 0, peak = 0;
+  for (let i = 0; i < len; i++) {
+    const t = i / len;
+    wob += (rnd() - 0.5 - wob) * 0.002;
+    const f = f0 * (f1 / f0) ** t * (1 + wob * 0.3);
+    phase += (2 * Math.PI * f) / sr;
+    let v = 0;
+    for (let k = 0; k < amps.length; k++) v += amps[k] * Math.sin((k + 1) * phase + ph[k]);
+    // stick and slip
+    rough += (0.55 + rnd() * 0.9 - rough) * 0.01;
+    hiss = rnd() * 2 - 1;
+    v = v * rough + hiss * 0.25;
+    // a quick start, a longer fade
+    const env = t < 0.2 ? Math.sin((t / 0.2) * Math.PI / 2) ** 2 : Math.cos(((t - 0.2) / 0.8) * Math.PI / 2) ** 1.5;
+    v *= env;
+    // keep it in the squeak's range (above the note's body, below the fizz)
+    lp += (v - lp) * 0.45;
+    hp = 0.97 * (hp + lp - prev);
+    prev = lp;
+    x[i] = hp;
+    peak = Math.max(peak, Math.abs(hp));
+  }
+  for (let i = 0; i < len; i++) x[i] /= peak || 1;
+  return buf;
+}

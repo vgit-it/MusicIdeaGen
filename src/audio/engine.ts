@@ -800,7 +800,27 @@ export class Engine {
       if (k >= 0 && strum[k] === 'x' && (g - k) % 2 === 0) { st = 'x'; ghost = true; }
     }
     if (st !== '.' && !idea.guitar && ci) {
-      const { notes, strings } = this.voicingsFor(idea).voicings[chords.chordIdx[g]];
+      const voicings = this.voicingsFor(idea).voicings;
+      let { notes, strings } = voicings[chords.chordIdx[g]];
+      // the player's hands at chord changes (guitars)
+      const hands = idea.changeTouch;
+      let open = false;
+      if (hands && ci.kind === 'guitar' && st !== 'x' && !ghost) {
+        const ci0 = chords.chordIdx[g];
+        // a squeak as the fingers move over the wound strings to the new shape (louder when the hand
+        // shifts along the neck)
+        if (hands[g]?.squeak && ci0 > 0 && chords.timeline[ci0].step === g) {
+          const from = position(voicings[ci0 - 1]), to = position(voicings[ci0]);
+          if (from !== null && to !== null) ci.squeak?.(time - 0.05 - Math.random() * 0.03, (Math.abs(to - from) >= 2 ? 0.8 : 0.5) * dyn, to >= from);
+        }
+        // the last strum before a change: the hand has let go, the open strings ring
+        const c = chords.timeline[ci0 + 1]?.step;
+        if (c !== undefined && c - g <= 2 && hands[c]?.open && this.chordId !== 'electric-dist' && strum.slice(g + 1, c).every((x) => x === '.')) {
+          notes = OPEN_STRINGS.slice(2);
+          strings = [2, 3, 4, 5];
+          open = true;
+        }
+      }
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       // accents on the beat, and a little extra where the kick or snare lands (the band hits together)
       const accent = (groupStarts(bar.groups).includes(g - bar.start) ? 0.12 : 0) + (drums.kick[g] || drums.snare[g] >= 0.5 ? 0.06 : 0);
@@ -815,7 +835,7 @@ export class Engine {
         strings,
         time: Math.max(0, time + (idea.strumFeel ?? 0) / 1000),
         dur: ending ? 6 : Math.min(n * six * (legato ? 1 : 0.97) + (legato ? 0.05 : 0), maxRing),
-        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1) * (ghost ? 0.6 : 1),
+        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1) * (ghost ? 0.6 : 1) * (open ? 0.8 : 1),
         sixteenth: six,
       });
     }
@@ -874,6 +894,16 @@ export class Engine {
  */
 function held(h: GuitarHit, next: number): GuitarHit {
   return !h.mute && next > h.len && next - h.len <= 2 ? { ...h, len: next } : h;
+}
+
+/** Open strings of a standard-tuned guitar (strummed parts are in standard tuning). */
+const OPEN_STRINGS = [40, 45, 50, 55, 59, 64];
+
+/** Where a chord shape sits on the neck: its lowest fretted fret (0: all open; null: not a guitar shape). */
+function position(v: { notes: number[]; strings?: number[] }): number | null {
+  if (!v.strings) return null;
+  const frets = v.notes.map((n, i) => n - OPEN_STRINGS[v.strings![i]]).filter((f) => f > 0);
+  return frets.length ? Math.min(...frets) : 0;
 }
 
 function getOrMake<K, V>(m: Map<K, V>, k: K, make: () => V): V {

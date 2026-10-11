@@ -7,6 +7,7 @@ import { type LegatoMove, MultiSampler, type Voice } from './multisampler';
 import { type DrumPiece, DRUM_PIECES, RoundRobin, loadCab, loadDrums, loadPitched } from './samples';
 import { captureAmp, resample } from './realamp';
 import { inContext } from './context';
+import { squeaks } from './squeak';
 import { SampleVoice } from './voice';
 
 const midiNote = (m: number) => Tone.Frequency(m, 'midi').toNote();
@@ -55,6 +56,8 @@ export interface ChordInstrument {
   state: LoadState;
   load(): Promise<void>;
   strum(a: StrumArgs): void;
+  /** A finger squeak along the wound strings as the hand shifts (`up` the neck, or down). Guitars only. */
+  squeak?(time: number, vel: number, up: boolean): void;
   /** Stop everything ringing (at `time`, or now). */
   releaseAll(time?: number): void;
 }
@@ -321,6 +324,9 @@ interface Take {
   last: number[];
 }
 
+/** How loud a finger squeak goes in (driven amps bring it up a lot). */
+const SQUEAK = { driven: 0.04, clean: 0.06, acoustic: 0.08 };
+
 export class Guitar implements ChordInstrument {
   readonly kind = 'guitar';
   state: LoadState = 'idle';
@@ -455,6 +461,20 @@ export class Guitar implements ChordInstrument {
     });
   }
 
+  squeak(time: number, vel: number, up: boolean) {
+    const takes = this.takes.slice(0, this.doubled ? 2 : 1);
+    takes.forEach((take, i) => {
+      // the double is its own performance: it squeaks too, or not
+      if (i === 0 || Math.random() < 0.6) this.squeakTake(take, time + (i ? 0.01 + Math.random() * 0.03 : 0), vel, up, this.tone !== 'clean');
+    });
+  }
+
+  private squeakTake(take: Take, time: number, vel: number, up: boolean, driven: boolean) {
+    const set = squeaks(this.ctx.sampleRate).filter((_, i) => (i % 2 === 0) === up);
+    // the amp's drive and compression bring a squeak right up: much less goes in
+    take.ring.shot(set[Math.floor(Math.random() * set.length)], Math.max(0, time), vel * (0.5 + Math.random() * 0.5) * (driven ? SQUEAK.driven : this.type === 'acoustic' ? SQUEAK.acoustic : SQUEAK.clean));
+  }
+
   private strumTake(take: Take, a: StrumArgs, driven: boolean) {
     const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell, touch: hands } = a;
     const fadeIn = swell ? Math.min(0.6, dur * 0.4) : 0;
@@ -484,6 +504,8 @@ export class Guitar implements ChordInstrument {
     // the same chord strummed again: the strings ring on into the new strum (only the ones hit restart)
     const same = chord && take.last.length === notes.length && take.last.every((m, i) => m === notes[i]);
     if (stroke === 'D' || stroke === 'U') take.last = [...notes];
+    // the hand jumped along the wound strings to get here
+    if (hands?.squeak) this.squeakTake(take, time - 0.05 - Math.random() * 0.04, vel, Math.random() < 0.5, driven);
 
     // the hand moves on along the same string(s) without a new pick: hammer-on, pull-off, slide
     if (stroke === 'D' && hands && hands.move !== 'pick' && !letRing && !swell) {

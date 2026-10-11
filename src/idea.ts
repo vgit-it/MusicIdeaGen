@@ -138,6 +138,16 @@ export interface Touch {
   bend?: number;
   /** Slides off the end of the note, down this many semitones (a fall-off). */
   fall?: number;
+  /** A finger squeak on the wound strings as the hand shifts to this note. */
+  squeak?: boolean;
+}
+
+/** Strummed rhythm guitar, at a chord change: what the player's hands do (tracks). */
+export interface ChangeTouch {
+  /** The fingers squeak along the wound strings as the hand shifts (when the shapes are far apart). */
+  squeak?: boolean;
+  /** The hand lets go early: the last strum before the change hits the open strings. */
+  open?: boolean;
 }
 
 export interface GuitarHit {
@@ -185,6 +195,8 @@ export interface Idea {
   guitar?: GuitarHit[];
   /** Second guitar: lead, harmony, octaves, arpeggios or swells. */
   guitar2: GuitarHit[];
+  /** Tracks: the strummer's hands at chord changes (by the step of the change). */
+  changeTouch?: Record<number, ChangeTouch>;
   /** Tracks, played by the band: how hard the strummed rhythm guitar plays (1 = as written). */
   strumGain?: number;
   /** Tracks, played by the band: how far Guitar 2 sits behind the beat, in ms. */
