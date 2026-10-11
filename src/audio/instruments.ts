@@ -604,9 +604,9 @@ export type BassTone = 'clean' | 'driven' | 'smooth';
 const BASS_RIG: Record<BassTone, { grit: number; level: number; comp: [number, number]; top: number }> = {
   // grit: the distorted path's level under the DI; level: the same loudness each way; comp: the
   // compressor's threshold (dB) and ratio; top: the high shelf (dB)
-  clean: { grit: 0, level: 1.27, comp: [-24, 4], top: -7 },
-  driven: { grit: 0.2, level: 0.69, comp: [-24, 4], top: -7 },
-  smooth: { grit: 0, level: 1.52, comp: [-34, 8], top: -10 },
+  clean: { grit: 0, level: 1.27, comp: [-24, 4], top: -9 },
+  driven: { grit: 0.12, level: 0.85, comp: [-24, 4], top: -9 },
+  smooth: { grit: 0, level: 1.52, comp: [-34, 8], top: -12 },
 };
 
 class BassRig {
@@ -616,7 +616,7 @@ class BassRig {
   private dist = new Tone.Gain(1);
   private level = new Tone.Gain(1);
   private comp = new Tone.Compressor({ threshold: -24, ratio: 4, attack: 0.008, release: 0.15, knee: 6 });
-  private top = new Tone.Filter({ type: 'highshelf', frequency: 1000, gain: -7 });
+  private top = new Tone.Filter({ type: 'highshelf', frequency: 800, gain: -9 });
   private readonly ctx = Tone.getContext();
   /** Real amps: in a render that prepares them, the preamp's input is recorded instead (see realamp.ts). */
   private captured = false;
@@ -626,12 +626,15 @@ class BassRig {
     const comp = this.comp;
     const sum = new Tone.Gain(1);
     this.input.chain(new Tone.Filter({ type: 'highpass', frequency: 28, rolloff: -12 }), comp);
-    // the DI: weight down low, less 250 Hz mud, a little finger and string definition, no fizz
+    // the DI: plenty of weight down low (deep and round, not twangy), a touch less 250 Hz mud and
+    // 700 Hz honk, the top rolled off, no fizz
     comp.chain(
-      new Tone.Filter({ type: 'lowshelf', frequency: 100, gain: 4 }),
-      new Tone.Filter({ type: 'peaking', frequency: 250, Q: 1, gain: -3 }),
+      new Tone.Filter({ type: 'lowshelf', frequency: 130, gain: 7 }),
+      new Tone.Filter({ type: 'peaking', frequency: 60, Q: 1, gain: 2 }),
+      new Tone.Filter({ type: 'peaking', frequency: 250, Q: 1, gain: -2 }),
+      new Tone.Filter({ type: 'peaking', frequency: 700, Q: 1, gain: -3 }),
       this.top,
-      new Tone.Filter({ type: 'lowpass', frequency: 3500, rolloff: -24 }),
+      new Tone.Filter({ type: 'lowpass', frequency: 2800, rolloff: -24 }),
       sum,
     );
     // the preamp: no lows into the distortion (keeps it tight), growl in the mids, a speaker's top

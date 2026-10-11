@@ -35,7 +35,7 @@ interface RealAmpSettings { drive: number; leadDrive: number; eq: Eq; leadEq: Eq
 export const REAL_AMP: Record<RealTone, RealAmpSettings> = {
   crunch: { drive: 0.66, leadDrive: 0.8, eq: [['highpass', 90, 0, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 90, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 6000, 0, 0.7]], level: 5.6, leadLevel: 9.1 },
   clean: { drive: 0.5, leadDrive: 0.5, eq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 7500, 0, 0.7]], leadEq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 7500, 0, 0.7]], level: 146, leadLevel: 146 },
-  bass: { drive: 1, leadDrive: 1, eq: [['highpass', 300, 0, 0.7], ['peaking', 750, 6, 0.7], ['highshelf', 1800, -8, 0.7], ['lowpass', 3000, 0, 0.7]], leadEq: [], level: 0.95, leadLevel: 0.95 },
+  bass: { drive: 1, leadDrive: 1, eq: [['highpass', 300, 0, 0.7], ['peaking', 750, 6, 0.7], ['highshelf', 1800, -8, 0.7], ['lowpass', 3000, 0, 0.7]], leadEq: [], level: 0.9, leadLevel: 0.9 },
   dist: { drive: 0.33, leadDrive: 0.4, eq: [['highpass', 100, 0, 0.7], ['peaking', 2700, -3, 1.2], ['lowpass', 6500, 0, 0.7]], leadEq: [['highpass', 100, 0, 0.7], ['peaking', 3200, -4, 1], ['lowpass', 4500, 0, 0.7]], level: 5.6, leadLevel: 8.3 },
 };
 
