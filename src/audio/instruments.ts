@@ -156,10 +156,12 @@ export const AMP: Record<AmpTone, AmpSettings> = {
  * buzz), and the note's body kept. An earlier voicing cut everything under 400 Hz before the drive
  * and pushed 850 Hz by 8 dB: lead notes lost their fundamental (11 dB under the 2nd harmonic on an
  * E4) and came out thin, nasal and buzzy. Now the fundamental leads and the harmonics taper off.
+ * The top is rounded off well below the rhythm sound's: melodies sit high (up to A5), and with the
+ * rhythm sound's top their fizz and 3-5 kHz edge came out sharp and piercing.
  */
 export const LEAD: Partial<Record<AmpTone, AmpSettings>> = {
-  crunch: { ...AMP.crunch, presence: 1.5, drive1: 6, drive2: 3.5, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 3], level: 2.05, lowCut: 100, top: 6500, bite: [3000, -2] },
-  dist: { ...AMP.dist, presence: 2, comp: [-32, 4, 14], tight: 150, push: [800, 3], drive1: 9, drive2: 6, lowShelf: [300, -2], highShelf: [3000, -1], level: 1.98, lowCut: 100, top: 6000, bite: [3000, -3] },
+  crunch: { ...AMP.crunch, presence: 0.5, drive1: 6, drive2: 3.5, comp: [-32, 4, 12], tight: 150, push: [850, 3], lowShelf: [300, -2], highShelf: [3000, 0], level: 2.05, lowCut: 100, top: 5500, bite: [3000, -2] },
+  dist: { ...AMP.dist, presence: 0, comp: [-32, 4, 14], tight: 150, push: [750, 4], drive1: 7, drive2: 4.5, lowShelf: [300, -2], highShelf: [3000, -4], level: 2.25, lowCut: 100, top: 4500, bite: [3000, -3] },
 };
 
 /**
@@ -457,14 +459,16 @@ export class Guitar implements ChordInstrument {
     const str = strings ?? notes.map((_, i) => 6 - notes.length + i);
     // time between strings: faster at quicker tempos, ~25-45 ms across six strings; a hand never
     // strums at exactly the same speed twice
-    const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6);
+    const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6) * (notes.length === 2 && notes[1] - notes[0] === 12 ? 0.25 : 1);
     const detune = this.type === 'electric' ? 1.5 : 1;
     // a held single note gets real vibrato (chords none: a wobbling chord through an amp sounds like a toy)
     const vibrato = this.type !== 'electric' || letRing || notes.length > 1 ? 0 : driven ? 10 : 7;
     // strummed chords: the pick brushes the strings rather than clicking each one (a few ms of fade-in
     // takes the click off), and each string comes out a little louder or softer
     const chord = notes.length > 1 && !letRing && !swell;
-    const brush = () => (chord ? 0.003 + Math.random() * 0.006 : 0);
+    // octaves are one hand shape picked as one: both notes speak together (a strum's spread made a flam)
+    const octave = notes.length === 2 && notes[1] - notes[0] === 12;
+    const brush = () => (chord && !octave ? 0.003 + Math.random() * 0.006 : 0);
     const touch = () => (chord ? 0.85 + Math.random() * 0.25 : 0.9 + Math.random() * 0.1);
 
     // stopping ringing strings makes a little damping noise, like a real hand (but not between the
