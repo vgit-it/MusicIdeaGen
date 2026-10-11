@@ -277,7 +277,7 @@ class Amp {
 
   set(tone: AmpTone) {
     // (an amp keeps its tone, so this happens once)
-    const tap = tone !== 'clean' && !this.captured && captureAmp(this.ctx, tone, this.lead, () => (this.out as Tone.Panner).pan?.value ?? 0);
+    const tap = !this.captured && captureAmp(this.ctx, tone, this.lead, () => (this.out as Tone.Panner).pan?.value ?? 0);
     if (tap) {
       this.input.disconnect();
       Tone.connect(this.input, tap);

@@ -1,6 +1,6 @@
 // Real amps: recordings of real guitar amps (Neural Amp Modeler, public/amp/) instead of the app's
-// own amp for Crunch and Distortion. Marshall JCM2000: crunch channel for Crunch, high gain for
-// Distortion. They're too heavy to run live on phones, so the guitars are prepared ahead, on request (prep.ts):
+// own amp. Marshall JCM2000: crunch channel for Crunch, high gain for Distortion; a Fender Twin
+// Reverb for Clean (and the clean channel of the driven guitars). They're too heavy to run live on phones, so the guitars are prepared ahead, on request (prep.ts):
 //   1. an offline render records the dry guitar going into each driven amp (captureAmp)
 //   2. Web Workers run the amp models over those recordings, side by side (one per processor core:
 //      inside an offline render they'd all share one thread)
@@ -8,10 +8,10 @@
 
 import * as Tone from 'tone';
 
-export type RealTone = 'crunch' | 'dist';
+export type RealTone = 'crunch' | 'dist' | 'clean';
 
 const BASE = `${import.meta.env.BASE_URL}amp/`;
-const MODELS: Record<RealTone, string> = { crunch: 'marshall-crunch.nam', dist: 'marshall-high.nam' };
+const MODELS: Record<RealTone, string> = { crunch: 'marshall-crunch.nam', dist: 'marshall-high.nam', clean: 'fender-clean.nam' };
 /** The models' own sample rate. */
 export const REAL_RATE = 48000;
 
@@ -26,6 +26,7 @@ type Eq = [BiquadFilterType, number, number, number][];
 interface RealAmpSettings { drive: number; leadDrive: number; eq: Eq; leadEq: Eq; level: number; leadLevel: number }
 export const REAL_AMP: Record<RealTone, RealAmpSettings> = {
   crunch: { drive: 0.66, leadDrive: 0.8, eq: [['highpass', 90, 0, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 90, 0, 0.7], ['lowpass', 6000, 0, 0.7]], level: 5.6, leadLevel: 7.9 },
+  clean: { drive: 0.5, leadDrive: 0.5, eq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 9000, 0, 0.7]], level: 10, leadLevel: 10 },
   dist: { drive: 0.33, leadDrive: 0.4, eq: [['highpass', 100, 0, 0.7], ['peaking', 2700, -3, 1.2], ['lowpass', 6500, 0, 0.7]], leadEq: [['highpass', 100, 0, 0.7], ['peaking', 3200, -4, 1], ['lowpass', 4500, 0, 0.7]], level: 5.6, leadLevel: 8.3 },
 };
 
@@ -51,16 +52,16 @@ function startLanes(): Promise<Lane[]> {
       if (!r.ok) throw new Error(`${f}: ${r.status}`);
       return r;
     };
-    const [wasm, crunch, dist] = await Promise.all([
-      get('nam.wasm').then((r) => r.arrayBuffer()), get(MODELS.crunch).then((r) => r.text()), get(MODELS.dist).then((r) => r.text()),
-    ]);
+    const [wasm, crunch, dist, clean] = await Promise.all([
+      get('nam.wasm').then((r) => r.arrayBuffer()), ...(['crunch', 'dist', 'clean'] as const).map((t) => get(MODELS[t]).then((r) => r.text())),
+    ]) as [ArrayBuffer, string, string, string];
     return Array.from({ length: LANES }, () => {
       const worker = new Worker(`${BASE}nam-worker.js`);
       const ready = new Promise<void>((res, rej) => {
         worker.onmessage = (e) => (e.data.ready ? res() : rej(new Error(e.data.error)));
         worker.onerror = (e) => rej(new Error(e.message || 'amp worker failed'));
       });
-      worker.postMessage({ init: { wasm, models: { crunch, dist } } });
+      worker.postMessage({ init: { wasm, models: { crunch, dist, clean } } });
       return { worker, ready, busy: false };
     });
   })();
@@ -149,10 +150,10 @@ export function captureAmp(ctx: Tone.BaseContext, tone: RealTone, lead: boolean,
 }
 
 /**
- * The captured amps through the real amps and the cabinet, mixed into the guitars' stereo pairs:
+ * The captured amps through the real amps and their cabinets (the Marshalls a 4x12, the Twin its open-back 2x12), mixed into the guitars' stereo pairs:
  * returns [chords L, chords R, guitar2 L, guitar2 R], added onto `base` (the rest of each part).
  */
-export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: Float32Array[], cab: AudioBuffer): Promise<Float32Array[]> {
+export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: Float32Array[], cabs: Record<RealTone, AudioBuffer>): Promise<Float32Array[]> {
   const length = rendered.length;
   // every amp at once, spread over the workers (silent ones are skipped)
   const outs = await Promise.all(amps.map(async (a) => {
@@ -165,7 +166,7 @@ export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: 
   const ctx = new OfflineAudioContext(4, length, REAL_RATE);
   const merger = ctx.createChannelMerger(4);
   merger.connect(ctx.destination);
-  const cabBuf = cab.sampleRate === REAL_RATE ? cab : resample(cab, REAL_RATE);
+  const cabBufs = Object.fromEntries(Object.entries(cabs).map(([t, c]) => [t, resample(c, REAL_RATE)])) as Record<RealTone, AudioBuffer>;
   amps.forEach((a, i) => {
     const y = outs[i];
     if (!y) return;
@@ -175,7 +176,7 @@ export async function mixAmps(rendered: AudioBuffer, amps: CapturedAmp[], base: 
     src.buffer = buf;
     const conv = ctx.createConvolver();
     conv.normalize = true;
-    conv.buffer = cabBuf;
+    conv.buffer = cabBufs[a.tone];
     let node: AudioNode = conv;
     src.connect(conv);
     const r = REAL_AMP[a.tone];
