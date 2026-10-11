@@ -756,8 +756,25 @@ export class Engine {
 
     // (parts playing from prepared buffers don't play live)
     const ci = this.realNow.chords ? null : this.chordInst;
-    if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined, driven(this.chordId));
-    if (this.g2Inst && !this.realNow.guitar2) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time + (idea.g2Feel ?? 0) / 1000, six);
+    // steps until a part's next hit, looking on into what plays next
+    const nextIdx = this.idx + 1 < this.list.length ? this.idx + 1 : this.loop ? 0 : -1;
+    const toNext = (lanes: (GuitarHit[][] | null)[]) => {
+      for (let n = 1; n < 16; n++) {
+        const k = g + n;
+        if ((k < total ? lanes[this.idx]?.[k] : nextIdx >= 0 ? lanes[nextIdx]?.[k - total] : undefined)?.length) return n;
+      }
+      return 16;
+    };
+    if (ci) {
+      const hits = this.hitsAt[this.idx]?.[g] ?? [];
+      const next = hits.length ? toNext(this.hitsAt) : 0;
+      for (const h of hits) this.playHit(ci, held(h, next), time, six, dyn, ending ? 6 : undefined, driven(this.chordId));
+    }
+    if (this.g2Inst && !this.realNow.guitar2) {
+      const hits = this.hitsAt2[this.idx][g] ?? [];
+      const next = hits.length ? toNext(this.hitsAt2) : 0;
+      for (const h of hits) this.playHit(this.g2Inst, held(h, next), time + (idea.g2Feel ?? 0) / 1000, six);
+    }
     const keys = others && this.keysInst && this.layerAt(idea, 'keys');
     if (keys) for (const n of keys.at[g]) {
       this.keysInst!.strum({ stroke: 'D', notes: n.notes, time, dur: n.len * six * 0.97, vel: n.vel, sixteenth: six });
@@ -770,7 +787,15 @@ export class Engine {
     const perc = others && this.percInst && this.layerAt(idea, 'perc');
     if (perc) for (const n of perc.at[g]) for (const note of n.notes) this.percInst!.play(note, time, n.vel, g % 4 === 2);
 
-    const st = strum[g];
+    let st = strum[g];
+    // after a muted scratch the strumming hand keeps moving: muted scrapes on the 8ths until the next
+    // chord (a scratch and then dead air sounded like a sequencer)
+    let ghost = false;
+    if (st === '.' && g % 2 === 0) {
+      let k = g - 1;
+      while (k >= 0 && g - k <= 6 && strum[k] === '.') k--;
+      if (k >= 0 && strum[k] === 'x' && (g - k) % 2 === 0) { st = 'x'; ghost = true; }
+    }
     if (st !== '.' && !idea.guitar && ci) {
       const { notes, strings } = this.voicingsFor(idea).voicings[chords.chordIdx[g]];
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
@@ -787,7 +812,7 @@ export class Engine {
         strings,
         time: Math.max(0, time + (idea.strumFeel ?? 0) / 1000),
         dur: ending ? 6 : Math.min(n * six * (legato ? 1 : 0.97) + (legato ? 0.05 : 0), maxRing),
-        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1),
+        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1) * (ghost ? 0.6 : 1),
         sixteenth: six,
       });
     }
@@ -824,9 +849,11 @@ export class Engine {
     if (drums.tom[g]) d.hit('tom', time, 0.8, drums.tom[g]);
 
     if (bass[g]) {
-      // a note rings until the next one takes over (legato), unless it's written shorter (a rest after it)
+      // a note rings until the next one takes over (legato), unless it's written shorter (a rest after
+      // it); a bassist holds it through a short rest (an 8th or less), as on records
       const next = gapUntil((i) => i.bass, 0, 64);
-      const n = idea.bassLen?.[g] || next;
+      const written = idea.bassLen?.[g] || next;
+      const n = next - written <= 2 ? next : written;
       // pluck harder on the beat
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
@@ -834,6 +861,15 @@ export class Engine {
       this.bass.play(bass[g], time + (idea.bassFeel ?? 0) / 1000, dur, (onBeat ? 0.9 : 0.74) * dyn);
     }
   }
+}
+
+/**
+ * How a player plays a written note: held through a short rest (an 8th or less) into their next
+ * note, as on records (a riff written with a 16th of air between notes came out choppy, like a
+ * sequencer). Longer rests stay rests; palm mutes and dead notes stay short.
+ */
+function held(h: GuitarHit, next: number): GuitarHit {
+  return !h.mute && next > h.len && next - h.len <= 2 ? { ...h, len: next } : h;
 }
 
 function getOrMake<K, V>(m: Map<K, V>, k: K, make: () => V): V {

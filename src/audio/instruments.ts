@@ -422,7 +422,8 @@ export class Guitar implements ChordInstrument {
         // palm mute: the string is damped, so the highs die almost at once
         const pm = new Tone.BiquadFilter({ type: 'lowpass', frequency: 950, Q: 0.5 }).connect(head);
         return {
-          ring: new MultiSampler(set, head, 0.08, this.ctx),
+          // (a released note fades like a lifted finger, not a cut)
+          ring: new MultiSampler(set, head, 0.15, this.ctx),
           muted: new MultiSampler(set, pm, 0.04, this.ctx),
           strings: [] as (Voice | undefined)[],
           last: [] as number[],
@@ -504,12 +505,13 @@ export class Guitar implements ChordInstrument {
         take.strings[str[i]] = take.ring.play(notes[i], t, dur, vel * 0.8 * (1 - k * 0.06) * touch(), { detune, fadeIn: brush() });
       }
     } else if (stroke === 'x') {
-      // fretting hand mutes the strings: chord stops, pick scrapes dead strings
+      // fretting hand mutes the strings: the chord dies away fast (a hand relaxing, not a cut to
+      // silence) and the pick scrapes the dead strings, a click you hear in the groove
       take.last = [];
-      muteAll(time, 0.01);
+      muteAll(time, 0.05);
       if (take.ring.hasNoises) {
-        take.ring.noise(time, Math.min(1, vel * 0.9));
-        if (Math.random() < 0.5) take.ring.noise(time + gap * 2, vel * 0.6);
+        take.ring.noise(time, Math.min(1, vel * 1.3));
+        if (Math.random() < 0.5) take.ring.noise(time + gap * 2, Math.min(1, vel * 0.9));
       } else {
         notes.forEach((m, i) => take.muted.play(m, time + i * gap * 0.5, 0.03, 0.25));
       }
@@ -637,7 +639,7 @@ export class Bass {
     this.state = 'loading';
     try {
       // a finger mute, not a click, when a note stops
-      this.sampler = new MultiSampler(await loadPitched('bass-electric'), this.rig.input, 0.09, this.ctx);
+      this.sampler = new MultiSampler(await loadPitched('bass-electric'), this.rig.input, 0.15, this.ctx);
       this.state = 'ready';
     } catch {
       this.state = 'failed';
