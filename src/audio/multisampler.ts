@@ -39,6 +39,8 @@ export interface PlayOptions {
   fadeIn?: number;
   /** Start this far (seconds) into the sample, past its attack. */
   offset?: number;
+  /** Always play this velocity layer (0 = softest), whatever the velocity. */
+  layer?: number;
 }
 
 /** How the hand moves to a legato note on the same string. */
@@ -66,7 +68,7 @@ export class MultiSampler {
     let ni = 0;
     for (let i = 1; i < notes.length; i++) if (Math.abs(notes[i] - midi) < Math.abs(notes[ni] - midi)) ni = i;
     const layers = buffers[ni];
-    const li = this.layerFor(vel, layers.length);
+    const li = opts.layer !== undefined ? Math.min(opts.layer, layers.length - 1) : this.layerFor(vel, layers.length);
     const slot = `${ni}:${li}`;
     const taken = this.partner?.lastBuf.get(slot);
     const pool = taken && layers[li].length > 1 ? layers[li].filter((b) => b !== taken) : layers[li];

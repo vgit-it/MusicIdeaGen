@@ -5,7 +5,7 @@
 | Piano | [Salamander Grand Piano V3](https://github.com/sfzinstruments/SalamanderGrandPiano) by Alexander Holm | [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
 | Acoustic guitar | [Shinyguitar](https://github.com/sfzinstruments/karoryfer.shinyguitar) by Karoryfer Samples (D. Smolken) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Electric guitar | [Emilyguitar](https://github.com/sfzinstruments/karoryfer.emilyguitar) by Karoryfer Samples (D. Smolken) | CC0 1.0 |
-| Bass | [Growlybass](https://github.com/sfzinstruments/karoryfer.growlybass) by Karoryfer Samples | CC0 1.0 |
+| Bass | [Black And Blue Basses](https://github.com/sfzinstruments/karoryfer.black-and-blue-basses) by Karoryfer Samples | CC0 1.0 |
 | Drums | [Big Rusty Drums](https://github.com/sfzinstruments/karoryfer.big-rusty-drums) by Karoryfer Samples | CC0 1.0 |
 | Strings (cello, viola and violin sections) and percussion (tambourine, shaker, congas) | [VSCO 2 Community Edition](https://github.com/sgossner/VSCO-2-CE) by Versilian Studios | CC0 1.0 |
 

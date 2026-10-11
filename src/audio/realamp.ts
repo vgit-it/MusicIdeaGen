@@ -28,14 +28,15 @@ export const REAL_RATE = 48000;
  * Reverb (bright channel: 4 dB off the top, the same top as the app's clean amp); the model plays very
  * quietly (about 21 dB under its input), hence its level. Bass: the dUg (a distorted bass preamp,
  * with its own speaker voicing: no cabinet) blended under the bass's DI like the app's own driven
- * path, its lows taken out so the bottom stays the DI's.
+ * path, its lows taken out (steeply) so the bottom stays the DI's. The model comes out upside down
+ * against the DI, which cancelled the lows they share: its level is negative to put it back in phase.
  */
 type Eq = [BiquadFilterType, number, number, number][];
 interface RealAmpSettings { drive: number; leadDrive: number; eq: Eq; leadEq: Eq; level: number; leadLevel: number }
 export const REAL_AMP: Record<RealTone, RealAmpSettings> = {
   crunch: { drive: 0.66, leadDrive: 0.8, eq: [['highpass', 90, 0, 0.7], ['lowpass', 9000, 0, 0.7]], leadEq: [['highpass', 90, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 6000, 0, 0.7]], level: 5.6, leadLevel: 9.1 },
   clean: { drive: 0.5, leadDrive: 0.5, eq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 7500, 0, 0.7]], leadEq: [['highpass', 75, 0, 0.7], ['highshelf', 3000, -4, 0.7], ['lowpass', 7500, 0, 0.7]], level: 146, leadLevel: 146 },
-  bass: { drive: 1, leadDrive: 1, eq: [['highpass', 300, 0, 0.7], ['peaking', 750, 6, 0.7], ['highshelf', 1800, -8, 0.7], ['lowpass', 3000, 0, 0.7]], leadEq: [], level: 0.9, leadLevel: 0.9 },
+  bass: { drive: 1, leadDrive: 1, eq: [['highpass', 300, 0, 0.7], ['highpass', 300, 0, 0.7], ['peaking', 750, 6, 0.7], ['highshelf', 1800, -8, 0.7], ['lowpass', 3000, 0, 0.7]], leadEq: [], level: -0.4, leadLevel: -0.4 },
   dist: { drive: 0.33, leadDrive: 0.4, eq: [['highpass', 100, 0, 0.7], ['peaking', 2700, -3, 1.2], ['lowpass', 6500, 0, 0.7]], leadEq: [['highpass', 100, 0, 0.7], ['peaking', 3200, -4, 1], ['lowpass', 4500, 0, 0.7]], level: 5.6, leadLevel: 8.3 },
 };
 

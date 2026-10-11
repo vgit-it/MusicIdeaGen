@@ -6,7 +6,7 @@
 // - Piano: Salamander Grand Piano V3 by Alexander Holm (CC-BY 3.0)
 // - Acoustic guitar: Shinyguitar by Karoryfer Samples / D. Smolken (CC0)
 // - Electric guitar: Emilyguitar by Karoryfer Samples / D. Smolken (CC0), recorded direct (amp is simulated in the app)
-// - Bass: Growlybass by Karoryfer Samples (CC0), recorded direct (amp is simulated in the app)
+// - Bass: Black And Blue Basses (babyblue) by Karoryfer Samples (CC0), recorded direct (amp is simulated in the app)
 // - Drums: Big Rusty Drums by Karoryfer Samples (CC0)
 // - Strings and percussion: VSCO 2 Community Edition by Versilian Studios (CC0)
 
@@ -84,16 +84,15 @@ const PITCHED = {
     releases: ['e2', 'a2', 'c3', 'gb3'].map((n) => `../release/${n}_release_rr1.wav`),
   },
   'bass-electric': {
-    // a Squier Jazz Bass played with the fingers, recorded direct with both pickups (the amp is the
-    // app's); f/ff are the firmer plucks. (Was Black And Blue's babyblue: picked, bridge pickup,
-    // thin and nasal, it came out like a video-game bass.)
-    base: `${GH}/karoryfer.growlybass/master/sustain`,
+    // "babyblue" is the brighter of the two basses, picked; f/ff are the harder plucks with more attack
+    // (the app plays f). (Growlybass, a fingered Jazz Bass, was tried instead: Paul preferred this one.)
+    base: `${GH}/karoryfer.black-and-blue-basses/main/Samples/babyblue/reg`,
     // this library names notes one octave higher than standard (its "e2" is E1)
     octaveShift: -1,
-    notes: ['db2', 'e2', 'gb2', 'a2', 'c3', 'eb3', 'gb3', 'a3', 'c4', 'eb4', 'gb4', 'a4', 'c5'],
+    notes: ['db2', 'e2', 'g2', 'bb2', 'db3', 'e3', 'g3', 'bb3', 'db4', 'e4', 'g4'],
     // long enough for held notes (a bass note rings for seconds)
     layers: ['f', 'ff'], rr: 2, secs: 5,
-    file: (n, v, r) => `${n}_${v}_rr${r}.wav`,
+    file: (n, v, r) => `babyblue_${n}_${v}_rr${r}.wav`,
   },
   strings: {
     // long: strings hold chords for bars at a time
