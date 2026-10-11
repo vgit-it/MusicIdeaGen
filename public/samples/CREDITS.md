@@ -15,4 +15,4 @@ Changes: a subset of notes, velocity layers and round robins. Each sample was mi
 
 Hand claps are made in the app from shaped noise.
 
-Regenerate with `npm run samples` (see `scripts/prepare-samples.mjs`); `npm run samples -- strings perc` remakes just those sets.
+Regenerate with `npm run samples` (see `scripts/prepare-samples.mjs`); `npm run samples -- strings perc` remakes just those sets. Then `npm run tuning` re-measures the guitar and bass tuning (`scripts/measure-tuning.mjs`).

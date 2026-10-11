@@ -3,6 +3,7 @@
 
 import * as Tone from 'tone';
 import manifest from './sample-manifest.json';
+import tuningData from './sample-tuning.json';
 
 const BASE = `${import.meta.env.BASE_URL}samples/`;
 
@@ -18,7 +19,19 @@ export interface SampleSet {
   noises: AudioBuffer[];
   /** String-damping noises for when notes are stopped. */
   releases: AudioBuffer[];
+  /** How each sample is out of tune (measured by scripts/measure-tuning.mjs), where known. */
+  tuning: Map<AudioBuffer, Tuning>;
 }
+
+/** A sample's pitch against its note, in cents. */
+export interface Tuning {
+  /** Where it settles. */
+  settle: number;
+  /** Early on, relative to `settle`: [seconds into the sample, cents] (a plucked string starts sharp). */
+  curve: [number, number][];
+}
+
+const TUNING = tuningData as unknown as Partial<Record<string, Record<string, Tuning>>>;
 
 const LOAD_TIMEOUT = 20000;
 
@@ -61,12 +74,20 @@ export function loadPitched(set: PitchedSet): Promise<SampleSet> {
 
 async function loadPitchedUncached(set: PitchedSet): Promise<SampleSet> {
   const m = manifest.pitched[set];
+  const tuning = new Map<AudioBuffer, Tuning>();
+  const loadNote = async (name: string) => {
+    const buf = await load(`${set}/${name}.mp3`);
+    const t = TUNING[set]?.[name];
+    if (t) tuning.set(buf, t);
+    return buf;
+  };
   return withTimeout((async () => ({
     notes: m.notes,
     buffers: await Promise.all(m.notes.map((midi) =>
-      Promise.all(range(m.layers).map((l) => Promise.all(range(m.rr).map((r) => load(`${set}/${midi}-${l}-${r}.mp3`))))))),
+      Promise.all(range(m.layers).map((l) => Promise.all(range(m.rr).map((r) => loadNote(`${midi}-${l}-${r}`))))))),
     noises: await Promise.all(range(m.noises).map((i) => load(`${set}/mute-${i}.mp3`))),
     releases: await Promise.all(range(m.releases).map((i) => load(`${set}/rel-${i}.mp3`))),
+    tuning,
   }))(), set);
 }
 

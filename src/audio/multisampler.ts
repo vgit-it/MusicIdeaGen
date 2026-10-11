@@ -1,5 +1,6 @@
 // Plays multi-sampled instruments: velocity layers, round robins and repitching
 // from the nearest sampled note, plus slides, vibrato and tiny tuning differences.
+// Samples that were measured out of tune are corrected as they play (see scripts/measure-tuning.mjs).
 
 import * as Tone from 'tone';
 import { RoundRobin, type SampleSet } from './samples';
@@ -53,30 +54,45 @@ export class MultiSampler {
     this.lastBuf.set(slot, buf);
 
     const cents = opts.detune ? (Math.random() - 0.5) * 2 * opts.detune : 0;
-    const rate = 2 ** ((midi - notes[ni]) / 12 + cents / 1200);
+    // a sample measured out of tune is played back in tune
+    const tuning = this.set.tuning.get(buf);
+    const rate = 2 ** ((midi - notes[ni]) / 12 + (cents - (tuning?.settle ?? 0)) / 1200);
     const v = this.start(buf, time, dur, (0.3 + 0.7 * vel) ** 1.5, rate, opts.release ?? this.release, opts.fadeIn);
     const pr = v.src.playbackRate;
-    let settle = time;
-    if (opts.slide) {
-      settle = time + 0.07 + Math.abs(opts.slide) * 0.03;
-      pr.setValueAtTime(rate * 2 ** (opts.slide / 12), time);
-      pr.linearRampToValueAtTime(rate, settle);
-    }
+    const settle = opts.slide ? time + 0.07 + Math.abs(opts.slide) * 0.03 : time;
     // vibrato fades in after the note has spoken, like a player's wrist
     const vibStart = Math.max(settle, time + 0.28);
     const vibLen = time + dur - vibStart;
-    if (opts.vibrato && vibLen > 0.25) {
+    const vibrato = !!opts.vibrato && vibLen > 0.25;
+    if (opts.slide) {
+      pr.setValueAtTime(rate * 2 ** (opts.slide / 12), time);
+      pr.linearRampToValueAtTime(rate, settle);
+    } else if (tuning?.curve.length) this.untwang(pr, tuning.curve, time, rate, vibrato ? vibStart : Infinity);
+    if (vibrato) {
       const hz = 4.8 + Math.random() * 1.2;
       const n = Math.max(16, Math.ceil(vibLen * 120));
       const curve: number[] = new Array(n);
       for (let i = 0; i < n; i++) {
         const t = (i / (n - 1)) * vibLen;
-        const depth = opts.vibrato * Math.min(1, t / 0.35);
+        const depth = opts.vibrato! * Math.min(1, t / 0.35);
         curve[i] = rate * 2 ** ((depth * Math.sin(2 * Math.PI * hz * t)) / 1200);
       }
       pr.setValueCurveAtTime(curve, vibStart, vibLen);
     }
     return v;
+  }
+
+  /**
+   * A plucked string starts sharp and falls into pitch (distortion turns that into a bend on every
+   * note): follow the sample's measured start with the opposite pitch, back to `rate` by `until`.
+   */
+  private untwang(pr: AudioParam, curve: [number, number][], time: number, rate: number, until: number) {
+    // (the sample's own time runs faster or slower when it's repitched)
+    const at = (t: number) => time + t / rate;
+    const end = Math.min(at(curve[curve.length - 1][0] + 0.3), until - 0.01);
+    pr.setValueAtTime(rate * 2 ** (-curve[0][1] / 1200), time);
+    for (const [t, c] of curve) if (at(t) < end) pr.linearRampToValueAtTime(rate * 2 ** (-c / 1200), at(t));
+    pr.linearRampToValueAtTime(rate, end);
   }
 
   /** Play one of the extra one-shots (e.g. a muted scratch). */

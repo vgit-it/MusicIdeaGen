@@ -31,7 +31,7 @@ export function playGuitars(sections: Idea[], seed: string) {
   const rng = new Rng(`${seed}-guitarists`);
   const end = rng.weighted<PhraseEnd>([['breath', 2], ['scratch', 2], ['push', 1], ['none', 1]]);
   const late = rng.chance(0.5) ? 10 : 0;
-  const slides = rng.chance(0.5);
+  const slides = rng.chance(0.3);
   const kinds = sections.map((s) => s.section!.kind);
   const firstChorus = kinds.indexOf('chorus'), lastChorus = kinds.lastIndexOf('chorus');
   const seen: Partial<Record<SectionKind, number>> = {};
@@ -47,7 +47,7 @@ export function playGuitars(sections: Idea[], seed: string) {
     const gain = last ? 1.06 : first ? 0.94 : 1;
     const notes: string[] = [];
     if (!told) {
-      idea.notes.push(`Band feel: Guitar 2 ${late ? 'lays back behind the beat' : 'plays right on the beat'}${slides ? ', sliding into each phrase' : ''}`);
+      idea.notes.push(`Band feel: Guitar 2 ${late ? 'lays back behind the beat' : 'plays right on the beat'}${slides ? ', sliding up into each phrase' : ''}`);
       told = true;
     }
 
@@ -61,7 +61,7 @@ export function playGuitars(sections: Idea[], seed: string) {
     if (slides) {
       let lastEnd = -99;
       for (const h of [...idea.guitar2].sort((a, b) => a.step - b.step)) {
-        if (h.step - lastEnd >= 4 && slidable(h)) h.slide = 2;
+        if (h.step - lastEnd >= 4 && slidable(h)) h.slide = -2;
         lastEnd = Math.max(lastEnd, h.step + h.len);
       }
     }
