@@ -17,6 +17,7 @@ import { Rng } from '../rng';
 import { groupStarts } from '../rhythm';
 import { SCALES } from '../theory';
 import { TUNINGS } from '../theory/fretboard';
+import { pickLead } from './lead';
 
 interface Hands {
   /** Words for the band notes. */
@@ -87,15 +88,6 @@ const STRUM_HANDS: Record<Genre, [RhythmKind, number][]> = {
   altmetal: [['clean', 2], ['open', 1], ['busy', 1]],
 };
 
-const G2_HANDS: Record<Genre, [HandsKind, number][]> = {
-  rock: [['legato', 2], ['slider', 2], ['picker', 1], ['bluesy', 3]],
-  hardrock: [['legato', 2], ['slider', 1], ['picker', 1], ['bluesy', 3]],
-  grunge: [['legato', 1], ['slider', 3], ['picker', 1], ['bluesy', 2]],
-  pop: [['legato', 3], ['slider', 1], ['picker', 2], ['bluesy', 1]],
-  funk: [['legato', 1], ['slider', 1], ['picker', 3], ['bluesy', 1]],
-  metal: [['legato', 3], ['slider', 1], ['picker', 3], ['bluesy', 0.5]],
-  altmetal: [['legato', 2], ['slider', 2], ['picker', 2], ['bluesy', 1]],
-};
 const BASS_HANDS: Record<Genre, [HandsKind, number][]> = {
   rock: [['fingers', 3], ['tight', 2], ['slidey', 1]],
   hardrock: [['fingers', 2], ['tight', 2], ['slidey', 1]],
@@ -128,7 +120,9 @@ interface Spot { string: number; fret: number }
 /** The hands of the bassist and Guitar 2 play every section of a track (in place). */
 export function playHands(sections: Idea[], seed: string) {
   const song = sections[0].song;
-  const g2 = HANDS[new Rng(`${seed}-g2-hands`).weighted(G2_HANDS[song.partGenres.strum])];
+  // Guitar 2's hands go with the kind of lead player they are (lead.ts)
+  const lead = pickLead(seed, song.partGenres.strum);
+  const g2 = HANDS[new Rng(`${seed}-g2-hands`).weighted(lead.hands)];
   const bass = HANDS[new Rng(`${seed}-bass-hands`).weighted(BASS_HANDS[song.partGenres.bass])];
   const tuning = song.tuning ?? TUNINGS.standard;
   const guitarOpen = tuning.strings;
@@ -137,7 +131,7 @@ export function playHands(sections: Idea[], seed: string) {
   const riffs = sections.some((s) => s.guitar);
   const rg = new Rng(`${seed}-rhythm-hands`);
   const rhythm = RHYTHM_HANDS[rg.weighted(riffs ? RIFF_HANDS[song.partGenres.strum] : STRUM_HANDS[song.partGenres.strum])];
-  sections[0].notes.push(`Band feel: the rhythm guitarist ${rhythm.desc}; Guitar 2 ${g2.desc}; the bassist ${bass.desc}`);
+  sections[0].notes.push(`Band feel: the rhythm guitarist ${rhythm.desc}; Guitar 2 is ${lead.desc}, ${g2.desc}; the bassist ${bass.desc}`);
   sections.forEach((idea) => {
     const kind = idea.section!.kind;
     if (idea.guitar) playRiff(idea, rhythm, guitarOpen, `${seed}-riff-${kind}`);

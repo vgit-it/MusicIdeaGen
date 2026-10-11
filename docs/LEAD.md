@@ -1,0 +1,55 @@
+# Lead guitar and solos (scope)
+
+Guitar 2 becomes the band's lead player: it answers the singer through the verses, builds into
+choruses, and takes solos. Who the lead player is (their character) decides how.
+
+## Decisions (Paul, 2026-10-11)
+- Guitar 2 is the lead, but still plays other parts sometimes (harmonies, arpeggios, swells...).
+- Solos are on by default for rock, hard rock, metal and grunge; off for pop and funk.
+- The usual solo spot is after the 2nd chorus, with a chance of other spots (earlier, the end) and
+  of more than one solo in a song.
+- Verse fills leave gaps for an imagined singer (for now).
+
+## 1. The lead player around the song (phase 1, done)
+- Verses: a singer is assumed to sing most of each 4-bar phrase. The lead answers in the gaps: the
+  end of each phrase (first verse), or every two bars (later verses, and the second time through a
+  doubled first verse). Each lick lands on a chord note; now and then a four-bar run goes to another
+  part for a change.
+- Pre-chorus: some players climb into the chorus (a held chord note a bar, then a scale run a note a
+  beat to a top note).
+- Chorus: as before (the hook, or the idea's part).
+- Riff songs: licks still avoid clashing with the riff.
+
+## 2. The lead player's character (`src/players/lead.ts`)
+| Player | Licks | Hands | Mostly in |
+|---|---|---|---|
+| Melodic | two or three sung notes, room around them | legato or slides | pop, rock, alt metal |
+| Bluesy | short figures, bent notes | bends | rock, hard rock |
+| Shredder | quick 16th runs by step | legato or picked | metal, hard rock |
+| Raw | one or two plain notes | slides or picked | grunge |
+| Funky | short muted 16ths | picked | funk, pop |
+
+Each also has: how likely they take the verses, how often they change to another part, and how
+likely they climb into the chorus. Picked with the band (rerolling the band can change it).
+
+## 3. Solos (phase 2, next)
+What makes a good solo, as rules for the generator:
+- A story: starts low and sparse, quotes the hook early, repeats and varies it, climbs and gets
+  busier, peaks in the last 2-4 bars (highest note, held bend or fast run), resolves on the root as
+  the next section starts.
+- Phrasing: 2-bar question and answer, about a third rests, phrases often start just off the beat
+  and end on chord notes on strong beats.
+- Notes: pentatonic with the odd colour note; chord notes on chord changes; bends from a scale note.
+- Moves: long bends, repeated-note licks, triplet runs, double-stops, fast runs saved for the peak.
+- Sound: a little louder, a bit more echo; the rhythm guitar backs off.
+
+The section:
+- 8 bars (16 for heavier styles and longer songs), over the verse or chorus chords (sometimes the
+  bridge's).
+- The band: rhythm guitar simplifies, bass on roots, drums a level up, a push in the last 4 bars.
+- In: a drum fill and a pickup run. Out: a landing note held into the next chorus.
+- Track option "Solo: Auto / Off / After 2nd chorus / Outro"; shown as "Solo" in the sections.
+
+## 4. Later
+- Richer solos per player: lick library, double-stops, fast runs, the louder solo sound.
+- A "new solo" button, locking a solo, a tab view.

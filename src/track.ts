@@ -16,6 +16,7 @@ import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
 import { applySheet, hasPins } from './parts/sheet';
 import { playBand } from './players/band';
+import { type LickKind, pickLead } from './players/lead';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, describeSounds, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
@@ -943,8 +944,8 @@ function g2Pickup(a: Idea, b: Idea, rng: Rng): boolean {
 const runCount = (idea: Idea) => Math.ceil(idea.song.bars.length / 4);
 
 /** Rewrite guitar 2 for a section: forced roles, or picked like an idea (undefined). Returns its description. */
-function writeGuitar2(idea: Idea, rng: Rng, force?: Guitar2Style[]): string {
-  const g2 = generateGuitar2(rng, idea.song, idea.chords, idea.guitar ?? null, force);
+function writeGuitar2(idea: Idea, rng: Rng, force?: Guitar2Style[], lick?: LickKind): string {
+  const g2 = generateGuitar2(rng, idea.song, idea.chords, idea.guitar ?? null, force, lick);
   idea.guitar2 = g2.hits;
   return g2.notes[0];
 }
@@ -967,7 +968,9 @@ interface Slot {
   energy: number;
   segs: Seg[];
   /** Guitar 2: keep what the block has, drop it, rewrite it, force roles, or play the track's hook. */
-  g2: 'keep' | 'drop' | 'pick' | 'play' | 'lead' | 'swell' | 'hook' | 'build';
+  g2: 'keep' | 'drop' | 'pick' | 'play' | 'lead' | 'swell' | 'hook' | 'build'
+    // the lead player: answering the singer (sparse, or busier in later verses), a climb into the chorus
+    | 'answer' | 'answerMore' | 'climb';
   intro?: 'alone' | 'band' | 'layered' | 'long';
   /** Number for repeated kinds ("Verse 2"). */
   n?: number;
@@ -1223,12 +1226,22 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const tag: Seg = { idea: lastSeg.idea, from: lastSeg.from + lastSeg.n - 2, n: 2 };
   const lastChorus = order.lastIndexOf('chorus');
   const choruses = order.filter((k) => k === 'chorus').length;
+  // the lead player (Guitar 2, picked with the band): answers the singer through the verses and builds
+  // up the pre-chorus, or (some players, some songs) leaves the verses to other parts
+  const bandSeed = S.band ?? `${src.seeds.song}-band`;
+  const lead = pickLead(bandSeed, src.song.partGenres.strum);
+  const leadPlan = new Rng(`${bandSeed}-lead-plan`);
+  const leadVerses = leadPlan.chance(lead.verses);
+  const leadClimbs = leadVerses && leadPlan.chance(lead.climb);
   const seen: Partial<Record<SectionKind, number>> = {};
   const slotFor = (kind: SectionKind, i: number): Slot => {
     const n = (seen[kind] = (seen[kind] ?? 0) + 1);
     if (kind === 'intro') return { ...introSlot, n };
-    if (kind === 'verse') return n === 1 ? { kind, n, energy: verseE, segs: verse, g2: 'drop' } : { kind, n, energy: verse2E, segs: verse, g2: 'play' };
-    if (kind === 'prechorus') return { kind, n, energy: 3, segs: pre ?? take(verse, 4), g2: 'drop' };
+    if (kind === 'verse') {
+      return n === 1 ? { kind, n, energy: verseE, segs: verse, g2: leadVerses ? 'answer' : 'drop' }
+        : { kind, n, energy: verse2E, segs: verse, g2: leadVerses ? 'answerMore' : 'play' };
+    }
+    if (kind === 'prechorus') return { kind, n, energy: 3, segs: pre ?? take(verse, 4), g2: leadClimbs ? 'climb' : 'drop' };
     if (kind === 'interlude') return { kind, n, energy: 4, segs: hookSegs, g2: riff ? 'keep' : 'hook' };
     if (kind === 'bridge' || kind === 'breakdown') return { kind, n, energy: bridgeE, segs: bridge, g2: bridgeE <= 2 ? 'swell' : 'pick' };
     if (kind === 'outro' && jam) return { kind, n, energy: 5, segs: jam.segs, g2: 'lead' };
@@ -1261,7 +1274,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const v1 = slots.findIndex((s) => s.kind === 'verse');
   if (v1 >= 0) {
     const longer = [...slots];
-    longer[v1] = { ...slots[v1], segs: [...slots[v1].segs, ...slots[v1].segs], g2: 'build' };
+    longer[v1] = { ...slots[v1], segs: [...slots[v1].segs, ...slots[v1].segs], g2: 'build' as const };
     if (seconds(longer) <= MAX_SECONDS * 0.85) slots = longer;
   }
   // numbers only for kinds that repeat
@@ -1316,11 +1329,21 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     // guitar 2
     const runs = runCount(idea);
     let g2 = 'Guitar 2: same as the idea';
+    // the lead player's verse: mostly answering the singer, now and then another part for a change
+    const answering = (k: number): Guitar2Style => (r.chance(lead.other) ? playingStyle(r, idea, k) : 'answerMore');
     if (s.g2 === 'drop') { idea.guitar2 = []; g2 = 'Guitar 2: sits out'; }
     else if (s.g2 === 'pick') g2 = writeGuitar2(idea, r);
-    else if (s.g2 === 'build') {
+    else if (s.g2 === 'build' && leadVerses) {
+      g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => (k < runs / 2 ? 'answer' : answering(k))), lead.lick);
+      notes.push('Plays twice through; Guitar 2 answers the singer more the second time');
+    } else if (s.g2 === 'build') {
       g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => (k < runs / 2 ? 'rest' : playingStyle(r, idea, k))));
       notes.push('Plays twice through; Guitar 2 joins the second time');
+    } else if (s.g2 === 'answer') g2 = writeGuitar2(idea, r, new Array<Guitar2Style>(runs).fill('answer'), lead.lick);
+    else if (s.g2 === 'answerMore') g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => answering(k)), lead.lick);
+    else if (s.g2 === 'climb') {
+      // (a long pre-chorus answers first, then climbs in its last four bars)
+      g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => (k === runs - 1 ? 'climb' : 'answer')), lead.lick);
     } else if (s.g2 === 'play') g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));
     else if (s.g2 === 'swell') g2 = writeGuitar2(idea, r, new Array<Guitar2Style>(runs).fill('swell'));
     else if (s.g2 === 'hook') {
@@ -1447,8 +1470,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   // the band plays it: each player reads the whole track and plays the written part their way
   if (opts.band !== 'off') {
-    const band = S.band ?? `${src.seeds.song}-band`;
-    playBand(sections, band);
+    playBand(sections, bandSeed);
   }
 
   // each section knows the shape of its track (added layers plan where they play from it)
