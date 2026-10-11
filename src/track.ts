@@ -61,7 +61,9 @@ export const defaultTrackOptions = (src: Idea): TrackOptions => {
   const s = src.seeds.song;
   return {
     seeds: { structure: `${s}-track`, verse: `${s}-verse`, pre: `${s}-pre`, bridge: `${s}-bridge`, hook: `${s}-hook`, chorus: `${s}-chorus` },
-    intro: 'auto', pre: 'auto', interlude: 'auto', keyChange: 'auto',
+    // (Paul: long intros and outros by default: a 16-bar intro built up a layer at a time, and an
+    // outro whose last line repeats as a tag)
+    intro: 'long', outro: 'long', pre: 'auto', interlude: 'auto', keyChange: 'auto',
   };
 };
 
