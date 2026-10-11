@@ -17,7 +17,7 @@ import { naturalStrokes } from './parts/strum';
 import { applySheet, hasPins } from './parts/sheet';
 import { playBand } from './players/band';
 import { Rng } from './rng';
-import { SOUND_NAME, type SoundId, type SoundSlot, orchestrate } from './sounds';
+import { SOUND_NAME, type SoundId, type SoundSlot, describeSounds, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
 import { type Chord, type Mode, NOTE_NAMES, QUALITIES, SCALES, chordPc, degreeChord } from './theory';
 import { lowestOf, powerChord } from './theory/fretboard';
@@ -1238,9 +1238,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     : opts.keyChange === 'on' || (keyRoll && (genre !== 'hardrock' || rng.chance(0.6))) ? (genre === 'pop' && rng.chance(0.5) ? 1 : 2) : 0;
   const finalAt = slots.findIndex((s) => s.final);
 
-  // instruments per section (each block's pick has its own stream, so a reroll can change it alone)
-  const sounds = orchestrate(src.song.partGenres.strum, riff,
-    slots.map((s) => ({ kind: s.kind, energy: s.energy, final: s.final, intro: s.intro, hook: s.g2 === 'hook' })), {
+  // instruments: one sound per part all song, sometimes one featured section (see orchestrate)
+  const soundList = slots.map((s) => ({ kind: s.kind, energy: s.energy, final: s.final, intro: s.intro, hook: s.g2 === 'hook' }));
+  const sounds = orchestrate(src.song.partGenres.strum, riff, soundList, {
       track: new Rng(`${S.structure}-sound`), verse: new Rng(`${S.verse}-sound`), pre: new Rng(`${S.pre}-sound`),
       bridge: new Rng(`${S.bridge}-sound`), hook: new Rng(`${S.hook}-sound`),
     }, opts.sounds);
@@ -1367,7 +1367,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if (t === 'build') { snareBuild(idea); idea.notes.push('Snare build into the chorus'); }
     else if (t === 'hits') { bandHits(idea, r); idea.notes.push('The band hits accents together into the chorus'); }
     else if (t === 'stop') { bandStop(idea, r.pick([1, 2])); idea.notes.push(next.energy < e ? 'Band stops for a breath before the next section' : 'Band stops right before the chorus'); }
-    else if (t === 'push') idea.notes.push(`The band pushes into ${into}: its first chord comes an 8th early`);
+    // (the drummer fills under a push: a push alone, with the drums just carrying on, came out of nowhere)
+    else if (t === 'push') { ensureFill(idea, r); idea.notes.push(`The band pushes into ${into}: its first chord comes an 8th early, over a drum fill`); }
     else if (t === 'ring') { ringOut(idea); idea.notes.push('The last chord is left ringing into the next section'); }
     else if (t === 'fill') { ensureFill(idea, r); idea.notes.push(`Drum fill into ${into}`); }
     if (lift) { idea.section!.riser = true; idea.notes.push(`A cymbal swells up into ${into}`); }
@@ -1385,6 +1386,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const { chords, guitar2 } = idea.section!.sound!;
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
   }
+  sections[0].notes.push(`Band feel: ${describeSounds(soundList, sounds)}`);
 
   // the band plays it: each player reads the whole track and plays the written part their way
   if (opts.band !== 'off') {

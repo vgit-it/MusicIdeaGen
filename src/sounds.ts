@@ -1,6 +1,5 @@
-// Which instrument plays each part. An idea uses its genre's sound; a track picks one per section,
-// like a band arranging a song: quiet verses on acoustic or clean guitar, choruses driven, a bridge
-// that contrasts with the verse, sometimes more gain for the last chorus.
+// Which instrument plays each part. An idea uses its genre's sound; a track keeps one sound per part
+// all song, like a band, with sometimes one featured section on a contrasting instrument.
 //
 // Pure and deterministic (seeded), like the rest of the generator.
 
@@ -59,8 +58,6 @@ interface Palette {
   mid: W;
   /** Choruses. */
   loud: W;
-  /** Chance the last chorus and outro step up to more gain. */
-  up: number;
   /** Guitar 2 carrying the hook through a strummed track. */
   hook: W;
 }
@@ -70,35 +67,30 @@ const PALETTES: Record<Genre, Palette> = {
     soft: [['acoustic', 3], ['electric-clean', 3], ['piano', 1]],
     mid: [['electric-crunch', 3], ['electric-clean', 1], ['acoustic', 1]],
     loud: [['electric-crunch', 1]],
-    up: 0.35,
     hook: [['electric-dist', 3], ['electric-crunch', 1], ['electric-clean', 1]],
   },
   pop: {
     soft: [['piano', 3], ['acoustic', 2], ['electric-clean', 1]],
     mid: [['acoustic', 3], ['piano', 1], ['electric-clean', 1]],
     loud: [['acoustic', 3], ['electric-crunch', 1], ['electric-clean', 1]],
-    up: 0,
     hook: [['electric-clean', 3], ['piano', 1], ['electric-crunch', 1]],
   },
   funk: {
     soft: [['electric-clean', 2], ['piano', 2]],
     mid: [['electric-clean', 3], ['piano', 1]],
     loud: [['electric-clean', 1]],
-    up: 0,
     hook: [['electric-clean', 1]],
   },
   hardrock: {
     soft: [['electric-clean', 3], ['acoustic', 2]],
     mid: [['electric-crunch', 3], ['electric-clean', 1]],
     loud: [['electric-crunch', 1]],
-    up: 0.3,
     hook: [['electric-dist', 1]],
   },
   metal: {
     soft: [['electric-clean', 3], ['acoustic', 2]],
     mid: [['electric-dist', 3], ['electric-crunch', 1]],
     loud: [['electric-dist', 1]],
-    up: 0,
     hook: [['electric-dist', 1]],
   },
   // the quiet verse, loud chorus of grunge
@@ -106,20 +98,17 @@ const PALETTES: Record<Genre, Palette> = {
     soft: [['electric-clean', 3], ['acoustic', 1]],
     mid: [['electric-crunch', 2], ['electric-clean', 2], ['electric-dist', 1]],
     loud: [['electric-dist', 1]],
-    up: 0,
     hook: [['electric-dist', 1]],
   },
   altmetal: {
     soft: [['electric-clean', 1]],
     mid: [['electric-dist', 2], ['electric-clean', 1], ['electric-crunch', 1]],
     loud: [['electric-dist', 1]],
-    up: 0,
     hook: [['electric-dist', 1]],
   },
 };
 
 const driven = (s: SoundId) => s === 'electric-crunch' || s === 'electric-dist';
-const more = (s: SoundId): SoundId => (s === 'electric-clean' ? 'electric-crunch' : s === 'electric-crunch' ? 'electric-dist' : s);
 
 /** A weighted pick, avoiding the sounds in `not` when anything else is on offer. */
 function pick(rng: Rng, w: W, ...not: SoundId[]): SoundId {
@@ -148,60 +137,40 @@ export interface SoundRngs { track: Rng; verse: Rng; pre: Rng; bridge: Rng; hook
 /**
  * Pick each section's instruments. `riff`: the rhythm part is a riff (riff genres), not strummed chords.
  * `fixed`: sounds chosen by hand for some kinds of section (rhythm part only).
+ *
+ * A band keeps its instruments all song: one rhythm guitar sound and one Guitar 2 sound, start to
+ * finish (quiet sections play them softer, and Guitar 2's quiet parts on its amp's clean channel).
+ * Switching from section to section (a clean verse, a crunchy pre-chorus, an acoustic bridge, Guitar 2
+ * on piano then distortion) made sections jump out of nowhere. The one exception, sometimes: a single
+ * featured section (the bridge, or else a quiet intro) on a contrasting instrument, so it stands out.
  */
 export function orchestrate(
   genre: Genre, riff: boolean, list: SoundSection[], r: SoundRngs, fixed: Partial<Record<SoundSlot, SoundId>> = {},
 ): SectionSound[] {
   const pal = PALETTES[genre];
-  const band = (e: number) => (e <= 2 ? pal.soft : e === 3 ? pal.mid : pal.loud);
-  const at = (k: SectionKind) => list.find((s) => s.kind === k);
+  // the band's guitar: the chorus sound, all song
+  const main = pick(r.track, pal.loud);
+  // Guitar 2's: the hook's sound when it carries a hook, else the genre's lead tone
+  const lead = list.some((s) => s.hook) ? pick(r.hook, pal.hook) : AUTO_GUITAR2[genre];
+  // the featured section: a quiet bridge (or breakdown), else a quiet intro
+  const featured = list.findIndex((s) => (s.kind === 'bridge' || s.kind === 'breakdown') && s.energy <= 3);
+  // (a riff intro stays on the band's sound: the classic riff intro)
+  const quietIntro = riff ? -1 : list.findIndex((s) => s.kind === 'intro' && s.energy <= 2);
+  const fi = featured >= 0 ? (r.bridge.chance(0.4) ? featured : -1) : quietIntro >= 0 && r.track.chance(0.25) ? quietIntro : -1;
+  const feature = fi >= 0 ? pick(fi === featured ? r.bridge : r.track, pal.soft, main) : main;
 
-  // block sounds, picked once so every verse (chorus, bridge...) sounds alike
-  const chorus = pick(r.track, pal.loud);
-  const peak = r.track.chance(pal.up) ? more(chorus) : chorus;
-  const verseE = at('verse')?.energy ?? 3;
-  // half the time the verse avoids the chorus sound, so the chorus arrives with a change of colour
-  const verse = verseE >= 4 ? chorus : r.verse.chance(0.5) ? pick(r.verse, band(verseE), chorus) : pick(r.verse, band(verseE));
-  const pre = r.pre.weighted<SoundId>([[verse, 1], [chorus, 2]]);
-  const b = at('bridge') ?? at('breakdown');
-  const bridge = !b || b.energy >= 4 ? (b?.kind === 'breakdown' ? peak : chorus) : pick(r.bridge, band(b.energy), verse, chorus);
-  const hookSound = pick(r.hook, pal.hook);
-  const intro = (s: SoundSection): SoundId => {
-    if (s.intro === 'band') return riff ? chorus : verse;
-    if (s.intro === 'layered' || s.intro === 'long') return riff ? chorus : r.track.weighted<SoundId>([[chorus, 1], [verse, 1]]);
-    // the riff alone: mostly on the chorus sound (the classic riff intro), sometimes soft first
-    if (riff) return s.energy <= 1 ? verse : r.track.weighted<SoundId>([[chorus, 3], [pick(r.track, pal.soft), 1]]);
-    return r.track.weighted<SoundId>([[verse, 2], [pick(r.track, pal.soft), 1], [chorus, 1]]);
-  };
-  const introSound = at('intro') ? intro(at('intro')!) : verse;
-
-  const chordsFor = (s: SoundSection): SoundId => {
-    const f = fixed[soundSlot(s.kind)];
-    if (f) return f;
-    switch (s.kind) {
-      case 'intro': return introSound;
-      case 'verse': return verse;
-      case 'prechorus': return pre;
-      case 'bridge': case 'breakdown': return bridge;
-      case 'outro': return peak;
-      case 'interlude': return chorus;
-      default: return s.final ? peak : chorus;
-    }
-  };
-
-  // guitar 2: the hook keeps its sound (softer in quiet sections); otherwise a lead tone when the
-  // section is loud, and a clean guitar or piano that stands apart from the rhythm part when it's quiet
-  const lead = AUTO_GUITAR2[genre];
-  const softLead = (c: SoundId, rng: Rng): SoundId =>
-    riff || c === 'piano' ? 'electric-clean' : pick(rng, [['electric-clean', 3], ['piano', 1]], c);
-  const g2Rng = (k: SectionKind) => (k === 'verse' ? r.verse : k === 'prechorus' ? r.pre : k === 'bridge' || k === 'breakdown' ? r.bridge : r.track);
-
-  return list.map((s) => {
-    const chords = chordsFor(s);
-    let guitar2: SoundId;
-    if (s.hook) guitar2 = s.energy <= 2 && driven(hookSound) ? 'electric-clean' : hookSound;
-    else if (s.energy <= 2 || (s.energy === 3 && !driven(chords))) guitar2 = softLead(chords, g2Rng(s.kind));
-    else guitar2 = (s.final || s.kind === 'outro') && peak !== chorus ? more(lead) : lead;
+  return list.map((s, i) => {
+    const chords = fixed[soundSlot(s.kind)] ?? (i === fi ? feature : main);
+    // (a featured acoustic or piano section gets a clean Guitar 2 beside it)
+    const guitar2 = i === fi && driven(lead) && !driven(feature) ? 'electric-clean' : lead;
     return { chords, guitar2 };
   });
+}
+
+/** Words for the track notes: the song's sound, and its featured section if it has one. */
+export function describeSounds(list: SoundSection[], sounds: SectionSound[]): string {
+  const main = sounds.find((_, i) => list[i].kind === 'chorus')?.chords ?? sounds[0].chords;
+  const odd = sounds.findIndex((s) => s.chords !== main);
+  const g2 = sounds.find((_, i) => list[i].kind === 'chorus')?.guitar2 ?? sounds[0].guitar2;
+  return `${SOUND_NAME[main]} and Guitar 2 on ${SOUND_NAME[g2]} all song${odd >= 0 ? `; the ${list[odd].kind === 'prechorus' ? 'pre-chorus' : list[odd].kind} on ${SOUND_NAME[sounds[odd].chords]} to stand out` : ''}`;
 }
