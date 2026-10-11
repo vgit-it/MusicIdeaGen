@@ -61,7 +61,9 @@ export const defaultTrackOptions = (src: Idea): TrackOptions => {
   const s = src.seeds.song;
   return {
     seeds: { structure: `${s}-track`, verse: `${s}-verse`, pre: `${s}-pre`, bridge: `${s}-bridge`, hook: `${s}-hook`, chorus: `${s}-chorus` },
-    intro: 'auto', pre: 'auto', interlude: 'auto', keyChange: 'auto',
+    // (Paul: long intros and outros by default: a 16-bar intro built up a layer at a time, and an
+    // outro whose last line repeats as a tag)
+    intro: 'long', outro: 'long', pre: 'auto', interlude: 'auto', keyChange: 'auto',
   };
 };
 
@@ -808,6 +810,41 @@ function push(a: Idea, b: Idea): boolean {
   return true;
 }
 
+/**
+ * The first bar of a half-time section entered from a full-time one: the band strikes the first chord
+ * and lets it ring (drums: kick and crash, then a snare pickup into the new groove). Dropping straight
+ * from a full groove into half-time felt like the song falling over.
+ */
+function settleIn(idea: Idea) {
+  const bar = idea.song.bars[0], end = bar.len;
+  const d = idea.drums;
+  for (const l of DRUM_LANES) for (let g = 1; g < end; g++) d[l][g] = 0;
+  // (pushed in: the chord, kick and crash already came an 8th early, and ring on)
+  const pushed = !!idea.section!.pushedIn;
+  if (!pushed) {
+    d.kick[0] = Math.max(d.kick[0], 0.9);
+    crashAt(d, 0);
+  }
+  // the pickup: the last beat's 8ths on the snare, getting louder
+  const beats = groupStarts(bar.groups);
+  const last = beats[beats.length - 1];
+  for (let g = last, v = 0.4; g < end; g += 2, v += 0.15) d.snare[g] = Math.min(0.8, v);
+  d.fills = d.fills.filter((f) => f.bar !== 0);
+  if (idea.guitar) {
+    const first = idea.guitar.find((h) => h.step === 0);
+    idea.guitar = idea.guitar.filter((h) => h.step >= end);
+    if (first && !pushed) idea.guitar.unshift({ ...first, len: end, mute: undefined });
+  } else {
+    if (!pushed && (idea.strum[0] === '.' || idea.strum[0] === 'x')) idea.strum[0] = 'D';
+    for (let g = 1; g < end; g++) idea.strum[g] = '.';
+    // and the band comes back in on the next downbeat (a pattern starting later left a hole)
+    if (idea.strum[end] === '.') idea.strum[end] = 'D';
+  }
+  // the bass holds its first note through the bar
+  for (let g = 1; g < end; g++) idea.bass[g] = 0;
+  if (idea.bassLen) { for (let g = 1; g < end; g++) idea.bassLen[g] = 0; if (idea.bass[0]) idea.bassLen[0] = end; }
+}
+
 /** Loud into quiet: the band strikes one chord halfway through the last bar and lets it ring into the next section. */
 function ringOut(a: Idea) {
   const { song } = a;
@@ -1245,9 +1282,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       bridge: new Rng(`${S.bridge}-sound`), hook: new Rng(`${S.hook}-sound`),
     }, opts.sounds);
 
-  // the drummer's way with space, the same all track: quarter notes in half-time sections, and in the verses
+  // the drummer's way with space, the same all track: quarter notes in the verses (some drummers)
   const space = new Rng(`${S.structure}-space`);
-  const halfQuarters = space.chance(0.7);
+  space.chance(0.7); // (was: quarter notes in half-time sections too; kept so the verse pick stays the same)
   const verseQuarters = ['rock', 'pop', 'hardrock', 'altmetal'].includes(src.song.partGenres.drums) && space.chance(0.45);
   const sections = slots.map((s, si) => {
     const r = new Rng(`${S.structure}-${si}-${s.kind}`);
@@ -1268,8 +1305,10 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       // room to breathe: half-time sections, and (for some drummers) every verse, on quarter notes
       const drumGenre = idea.song.partGenres.drums;
       const half = idea.song.forceHalf ?? idea.drums.halfTime;
-      if (drumGenre !== 'funk' && s.energy <= 4 && ((half && halfQuarters) || (s.kind === 'verse' && s.energy === 3 && verseQuarters))) {
-        if (quarterTime(idea)) notes.push(`Drums: ${s.kind === 'verse' && !half ? 'quarter notes on the cymbal, leaving the verse room' : 'quarter notes on the cymbal in the half-time feel'}`);
+      // (half-time sections keep their 8ths on the cymbal: with the snare halved as well, quarter notes
+      // dropped the pulse two to four times over at once and the song seemed to fall over)
+      if (drumGenre !== 'funk' && s.energy === 3 && s.kind === 'verse' && !half && verseQuarters) {
+        if (quarterTime(idea)) notes.push('Drums: quarter notes on the cymbal, leaving the verse room');
       }
     }
     if (!riff) shapeStrum(idea, s.energy);
@@ -1374,6 +1413,24 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if (lift) { idea.section!.riser = true; idea.notes.push(`A cymbal swells up into ${into}`); }
     if ((t === 'fill' || t === 'none') && idea.section!.energy >= 2 && m.chance(lift ? 0.8 : 0.55) && walkUp(idea, b, m)) idea.notes.push(`Bass walks into ${into}`);
     if (t !== 'hits' && t !== 'push' && m.chance(0.6) && g2Pickup(idea, b, m)) idea.notes.push(`Guitar 2 leads into ${into} with pickup notes`);
+  });
+  // into a half-time section from a full-time one: the band lands and lets the first chord ring for a
+  // bar, and the drummer picks up into the new feel
+  sections.forEach((idea, i) => {
+    const prev = sections[i - 1];
+    const half = (x: Idea) => !!(x.song.forceHalf ?? x.drums.halfTime);
+    if (!prev || !half(idea) || half(prev) || idea.song.bars.length < 4) return;
+    settleIn(idea);
+    // pushed in: what was pushed rings on through the bar
+    const tail = prev.section!.tail;
+    const at = tail && 'push' in tail ? tail.push : undefined;
+    if (idea.section!.pushedIn && at !== undefined) {
+      const over = prev.song.total - at + idea.song.bars[0].len;
+      const hit = prev.guitar?.find((h) => h.step === at);
+      if (hit) hit.len = over;
+      if (prev.bassLen && prev.bass[at]) prev.bassLen[at] = over;
+    }
+    idea.notes.push('The band lands on the first chord and lets it ring for a bar, then the drummer picks up into the half-time feel');
   });
   // a long outro's tag repeats the chorus's last bars: its bars don't line up with the chorus's
   if (outroLong || jam) delete edit.outro;
