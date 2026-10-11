@@ -63,7 +63,9 @@ export type MixState = Record<MixPart, { slider: number; mute: boolean; solo: bo
 export class Mixer {
   readonly master: Tone.Gain;
   /** Overall output level (the master volume slider); after everything else. */
-  readonly out = new Tone.Volume(0).toDestination();
+  readonly out = new Tone.Volume(0);
+  /** Silences everything at once when playback stops (notes can be scheduled well ahead). */
+  private gate = new Tone.Gain(1).toDestination();
   private strips = {} as Record<MixPart, Strip>;
   private delay = new Tone.FeedbackDelay({ delayTime: 0.375, feedback: 0.32, wet: 1 });
   /** Resolves when the mixer is ready to render (kept for offline renders; the reverb is ready at once now). */
@@ -78,6 +80,7 @@ export class Mixer {
   readonly sectionLevel = new Tone.Gain(1).connect(this.out);
 
   constructor() {
+    this.out.connect(this.gate);
     const limiter = new Tone.Limiter(-1).connect(this.sectionLevel);
     const comp = new Tone.Compressor({ threshold: -16, ratio: 2.5, attack: 0.02, release: 0.2 }).connect(limiter);
     this.master = new Tone.Gain(0.8).connect(comp);
@@ -162,6 +165,20 @@ export class Mixer {
   setSectionLevel(db: number, time: number, glide = db < this.levelDb - 0.1 ? 0.35 : 0.06) {
     this.levelDb = db;
     for (const g of [this.sectionLevel, ...this.stems]) g.gain.setTargetAtTime(Tone.dbToGain(db), time, glide);
+  }
+
+  /** Cut the sound now (playback stopped: what's already scheduled doesn't play). */
+  silence() {
+    const g = this.gate.gain, t = this.gate.context.rawContext.currentTime;
+    g.cancelScheduledValues(t);
+    g.setTargetAtTime(0, t, 0.015);
+  }
+
+  /** Sound back on from `time` (playback starting). */
+  open(time: number) {
+    const g = this.gate.gain;
+    g.cancelScheduledValues(this.gate.context.rawContext.currentTime);
+    g.setValueAtTime(1, time);
   }
 
   setMasterVolume(slider: number) {

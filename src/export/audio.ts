@@ -9,6 +9,7 @@ import * as Tone from 'tone';
 import { Engine, type EngineSettings } from '../audio/engine';
 import { MIX_PARTS, type MixPart, isLayer } from '../audio/mixer';
 import type { Idea } from '../idea';
+import type { Prepared } from '../audio/prep';
 
 /** Seconds after the last bar, so the final chord rings out. */
 const TAIL = 5;
@@ -37,6 +38,8 @@ interface Piece {
   pre: number;
   /** Seconds of this piece's own music. */
   music: number;
+  /** Index (into the whole list) of the first section played, the pre-roll's when there is one. */
+  first: number;
 }
 
 /** Group sections into at most `n` pieces of similar length. */
@@ -56,14 +59,17 @@ function plan(list: Idea[], n: number, sec: (steps: number) => number): Piece[] 
     const prev = at > 0 ? list[at - 1] : null;
     at += g.length;
     const music = sec(g.reduce((a, i) => a + i.song.total, 0));
-    if (!prev) return { list: g, fromStep: 0, pre: 0, music };
+    if (!prev) return { list: g, fromStep: 0, pre: 0, music, first: at - g.length };
     const preSteps = prev.song.bars.slice(-PRE_BARS).reduce((a, b) => a + b.len, 0);
-    return { list: [prev, ...g], fromStep: prev.song.total - preSteps, pre: sec(preSteps), music };
+    return { list: [prev, ...g], fromStep: prev.song.total - preSteps, pre: sec(preSteps), music, first: at - g.length - 1 };
   });
 }
 
 /** Build one piece's offline context (rendered later, alongside the others). */
-async function buildPiece(p: Piece, seconds: number, channels: number, rate: number, settings: EngineSettings, withStems: boolean, parts: MixPart[]) {
+async function buildPiece(
+  p: Piece, seconds: number, channels: number, rate: number, settings: EngineSettings, withStems: boolean, parts: MixPart[],
+  prepared: ((i: number) => Prepared | null) | null,
+) {
   const live = Tone.getContext();
   const ctx = new Tone.OfflineContext(channels, seconds, rate);
   Tone.setContext(ctx);
@@ -73,6 +79,8 @@ async function buildPiece(p: Piece, seconds: number, channels: number, rate: num
     await engine.mixer.ready;
     engine.setList(p.list, false, 0);
     await engine.loadAll();
+    // real amps: the driven guitars come prepared (by index into the whole list)
+    if (prepared) engine.preparedAt = (i) => prepared(p.first + i);
     if (withStems) {
       const raw = ctx.rawContext;
       const merger = raw.createChannelMerger(channels);
@@ -100,9 +108,13 @@ async function buildPiece(p: Piece, seconds: number, channels: number, rate: num
   return ctx;
 }
 
-/** Render ideas played back to back (one idea, or a track's sections). `onProgress` gets 0–1 as pieces finish. */
+/**
+ * Render ideas played back to back (one idea, or a track's sections). `onProgress` gets 0–1 as pieces
+ * finish. `prepared`: real amps' guitars per item (see Engine.prepareFor).
+ */
 export async function renderAudio(
   list: Idea[], settings: EngineSettings, withStems: boolean, onProgress: (p: number) => void = () => {},
+  prepared: ((i: number) => Prepared | null) | null = null,
 ): Promise<Rendered> {
   const bpm = list[0].song.bpm;
   const sec = (steps: number) => (steps * 15) / bpm;
@@ -110,8 +122,7 @@ export async function renderAudio(
   // stems: one pass (the mix + a stereo pair per part), so the instruments only play once; added layers only
   const parts = MIX_PARTS.filter((p) => !isLayer(p) || settings.layers[p]);
   const channels = withStems ? 2 + parts.length * 2 : 2;
-  // the live context's sample rate: the samples and cabinet impulse responses were decoded at it,
-  // and a convolver only accepts an impulse response at its own rate
+  // the live context's sample rate: the samples and cabinet impulse responses were decoded at it
   const rate = Tone.getContext().sampleRate;
   const cores = Math.max(1, (navigator.hardwareConcurrency || 2) - 1);
   const n = Math.max(1, Math.min(cores, 8, list.length, Math.floor(totalMusic / MIN_PIECE)));
@@ -121,7 +132,7 @@ export async function renderAudio(
   const ctxs: Tone.OfflineContext[] = [];
   for (const [i, p] of pieces.entries()) {
     const last = i === pieces.length - 1;
-    ctxs.push(await buildPiece(p, LEAD + p.pre + p.music + (last ? TAIL : 0.1), channels, rate, settings, withStems, parts));
+    ctxs.push(await buildPiece(p, LEAD + p.pre + p.music + (last ? TAIL : 0.1), channels, rate, settings, withStems, parts, prepared));
   }
   let done = 0;
   // render(false): step the offline clock without timer pauses. With pauses, a hidden or covered

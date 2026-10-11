@@ -17,6 +17,8 @@ import { Strings } from './strings';
 import { AUTO_PAD, Pad, type PadChoice } from './pad';
 import { AUTO_CHORDS, AUTO_GUITAR2 } from '../sounds';
 import { type KeysChoice, type Layer, type LayerNote, type PercChoice, type StringsChoice, byStep, writeLayer } from '../parts/layers';
+import { GuitarPrep, type PrepItem, type Prepared } from './prep';
+import { realAmpsSupported } from './realamp';
 
 export interface EngineSettings {
   chord: ChordChoice;
@@ -25,6 +27,8 @@ export interface EngineSettings {
   drumSynth: boolean;
   mix: MixState;
   layers: LayerSettings;
+  /** Real amps (Neural Amp Modeler) for driven electric guitars: prepared ahead live, and in exports. */
+  realAmps?: boolean;
 }
 
 /** The layers you've added (left out = removed) and their style or tone. */
@@ -50,6 +54,14 @@ const BASS_TONES: Record<Genre, BassTone> = {
 
 /** Silent steps after a track ends, so the last chord can ring out. */
 const TAIL_STEPS = 32;
+/** Crossfade into a prepared section (ending on its downbeat). */
+const PREP_XFADE = 0.03;
+/**
+ * How far ahead notes are scheduled (s): the usual, and while guitars are being prepared during
+ * playback (building each render holds up the page for a moment, which made live notes late).
+ */
+const LOOKAHEAD = 0.1;
+const LOOKAHEAD_PREP = 0.6;
 
 export const INSTRUMENT_NAMES: Record<string, string> = {
   piano: 'piano', pad: 'synth pad', acoustic: 'acoustic guitar', electric: 'electric guitar', bass: 'bass', drums: 'drums',
@@ -108,6 +120,19 @@ export class Engine {
   private ctx = Tone.getContext();
   private transport = Tone.getTransport();
 
+  /** Offline: play only the guitars (preparing them with real amps). */
+  guitarsOnly = false;
+  /** Real amps: driven guitars are prepared ahead (live) and play from those buffers when ready. */
+  private realAmps = false;
+  private prep: GuitarPrep | null = null;
+  private prepTimer = 0;
+  /** Prepared guitars playing now, and which parts they cover (those parts don't play live). */
+  private realSrcs: { src: AudioBufferSourceNode; gain: GainNode }[] = [];
+  private realNow = { chords: false, guitar2: false };
+  private realStatus = false;
+  private ids = new WeakMap<Idea, number>();
+  private nextId = 1;
+
   /** `offline`: built inside Tone.Offline to render audio files. */
   constructor(private readonly offline = false) {
     this.transport.scheduleRepeat((t) => this.tick(t), '16n');
@@ -117,7 +142,7 @@ export class Engine {
   settings(): EngineSettings {
     return {
       chord: this.chordChoice, guitar2: this.g2Choice, bassSynth: this.bass.useSynth, drumSynth: this.drums.useSynth,
-      mix: this.mixer.state(), layers: this.layerSettings,
+      mix: this.mixer.state(), layers: this.layerSettings, realAmps: this.realAmps,
     };
   }
 
@@ -125,6 +150,7 @@ export class Engine {
   applySettings(s: EngineSettings, openAll = false) {
     this.chordChoice = s.chord;
     this.g2Choice = s.guitar2;
+    this.realAmps = !!s.realAmps;
     this.bass.useSynth = s.bassSynth;
     this.drums.useSynth = s.drumSynth;
     const mix = openAll
@@ -164,8 +190,9 @@ export class Engine {
       this.percInst ??= inContext(this.ctx, () => new Percussion(this.mixer.input('perc')));
       if (!this.offline) void this.ensureLoaded(this.percInst, 'perc');
     } else if (part === 'keys') {
-      if (choice === null) { delete this.layers.keys; this.keysInst?.releaseAll(); return; }
+      if (choice === null) { delete this.layers.keys; this.keysInst?.releaseAll(); this.replan(); return; }
       this.layers.keys = choice as KeysChoice;
+      this.replan();
       this.keysInst ??= inContext(this.ctx, () => new Piano(this.mixer.input('keys')));
       if (!this.offline) void this.ensureLoaded(this.keysInst, 'piano');
     } else {
@@ -263,8 +290,12 @@ export class Engine {
 
   /** Change tempo without restarting. */
   setTempo(bpm: number) {
+    const changed = Math.abs(this.transport.bpm.value - bpm) > 1e-6;
     this.transport.bpm.value = bpm;
     this.mixer.setTempo(bpm);
+    // prepared guitars are at the old tempo: back to live until they're ready again
+    if (changed && this.playing && this.realSrcs.length) this.endPrepared(this.ctx.now() + 0.05);
+    if (changed) this.replan(400);
   }
 
   /** Play one idea on a loop (`keepPlace`: carry on from the same bar, for rerolls). */
@@ -302,6 +333,9 @@ export class Engine {
     // start loading the instruments later sections play on
     if (!this.offline) for (const [inst, id] of this.instsNeeded()) void this.ensureLoaded(inst, kindOf(id));
     this.applyLevel(this.ctx.now());
+    // new music: what's prepared for the item playing now may no longer match it
+    if (this.playing && this.realSrcs.length && this.keyNow !== this.prepPlaying) this.endPrepared(this.ctx.now() + 0.05);
+    this.replan();
     if (this.playing) this.onSection(start);
   }
 
@@ -324,6 +358,7 @@ export class Engine {
   setGuitar2Instrument(choice: ChordChoice) {
     this.g2Choice = choice;
     this.applyGuitar2();
+    this.realChanged();
   }
 
   /** Guitar 2's instrument for a sound: its own (a single take, slightly right), so it never shares an amp with the rhythm part. */
@@ -345,6 +380,178 @@ export class Engine {
   setChordInstrument(choice: ChordChoice) {
     this.chordChoice = choice;
     this.applyChordInstrument();
+    this.realChanged();
+  }
+
+  /* ---- real amps: driven guitars prepared ahead */
+
+  get realAmpsOn(): boolean {
+    return this.realAmps;
+  }
+
+  /** Turn real amps on or off (off: everything plays live on the app's own amp). */
+  setRealAmps(on: boolean) {
+    this.realAmps = on && realAmpsSupported();
+    if (!this.realAmps && this.realSrcs.length) this.endPrepared(this.ctx.now() + 0.05);
+    this.realChanged();
+  }
+
+  /** The sound changed under what's playing: back to live for now, and prepare again. */
+  private realChanged() {
+    if (this.playing && this.realSrcs.length && this.keyNow !== this.prepPlaying) this.endPrepared(this.ctx.now() + 0.05);
+    this.replan();
+  }
+
+  private idOf(idea: Idea) {
+    let id = this.ids.get(idea);
+    if (id === undefined) this.ids.set(idea, (id = this.nextId++));
+    return id;
+  }
+
+  /** The items around item i of a list as it plays: the one before (lead-in) and after. */
+  private around(list: Idea[], loop: boolean, i: number) {
+    const n = list.length;
+    const prev = i > 0 ? list[i - 1] : loop ? list[n - 1] : null;
+    const next = i + 1 < n ? list[i + 1] : loop ? list[0] : null;
+    return { prev, next };
+  }
+
+  /** Which parts of an item need real amps. */
+  private realParts(idea: Idea) {
+    return {
+      chords: driven(this.chordIdFor(idea)),
+      guitar2: driven(this.guitar2IdFor(idea)) && idea.guitar2.length > 0,
+    };
+  }
+
+  /** Everything a prepared item depends on. */
+  private prepKey(list: Idea[], loop: boolean, i: number): string {
+    const idea = list[i];
+    if (!idea) return '';
+    const { prev, next } = this.around(list, loop, i);
+    const id = (x: Idea | null) => (x ? this.idOf(x) : 0);
+    return [id(prev), id(idea), id(next), this.chordIdFor(idea), this.guitar2IdFor(idea), idea.song.bpm, idea.song.swing].join('|');
+  }
+
+  /** Key of the prepared item playing now. */
+  private prepPlaying = '';
+  private get keyNow() {
+    return this.prepKey(this.list, this.loop, this.idx);
+  }
+
+  /** What to prepare for a list, from item `from` onward (wrapping round). */
+  private prepItems(list: Idea[], loop: boolean, from: number): (PrepItem & { index: number })[] {
+    const n = list.length, items: (PrepItem & { index: number })[] = [];
+    for (let k = 0; k < n; k++) {
+      const i = (from + k) % n;
+      const parts = this.realParts(list[i]);
+      if (!parts.chords && !parts.guitar2) continue;
+      const { prev, next } = this.around(list, loop, i);
+      const sub = [prev, list[i], next].filter((x): x is Idea => !!x);
+      // a channel per driven amp its render builds: two per rhythm sound (double-tracked), one per Guitar 2 sound
+      const rhythm = new Set(sub.map((x) => this.chordIdFor(x)).filter(driven));
+      const lead = new Set(sub.map((x) => this.guitar2IdFor(x)).filter(driven));
+      items.push({
+        key: this.prepKey(list, loop, i), list: sub, at: prev ? 1 : 0, ...parts, last: !next,
+        amps: rhythm.size * 2 + lead.size + 1, index: i,
+      });
+    }
+    return items;
+  }
+
+  private makePrep() {
+    const prep = new GuitarPrep(() => this.settings(), () => this.playing);
+    prep.onBusy = () => this.applyLookAhead();
+    return prep;
+  }
+
+  private applyLookAhead() {
+    if (!this.offline) this.ctx.lookAhead = this.playing && this.prep?.busy ? LOOKAHEAD_PREP : LOOKAHEAD;
+  }
+
+  /** Prepare the list's driven guitars, from the item playing now onward (`wait`: let quick changes settle first). */
+  private replan(wait = 0) {
+    if (this.offline) return;
+    clearTimeout(this.prepTimer);
+    if (!this.realAmps || !this.list.length) { this.prep?.plan([]); return; }
+    if (wait) { this.prepTimer = window.setTimeout(() => this.replan(), wait); return; }
+    this.prep ??= this.makePrep();
+    this.prep.plan(this.prepItems(this.list, this.loop, this.idx));
+  }
+
+  /**
+   * For an export: prepare a list's driven guitars (played once, start to end) and hand back each
+   * item's, by index (null: real amps are off, or that item plays on the app's own amp).
+   */
+  async prepareFor(list: Idea[], onProgress: (p: number) => void = () => {}): Promise<((i: number) => Prepared | null) | null> {
+    if (!this.realAmps || !list.length) return null;
+    this.prep ??= this.makePrep();
+    const items = this.prepItems(list, false, 0);
+    const keys = new Set(items.map((i) => i.key));
+    // the export's items first, then carry on with what's playing
+    this.prep.plan([...items, ...this.prepItems(this.list, this.loop, this.idx).filter((i) => !keys.has(i.key))]);
+    await this.prep.all(items.map((i) => i.key), onProgress);
+    const byIndex = new Map(items.map((i) => [i.index, i.key]));
+    const prep = this.prep;
+    return (i) => { const k = byIndex.get(i); return (k && prep.get(k)) || null; };
+  }
+
+  /** Offline (an export): the prepared guitars for each item of the list. */
+  preparedAt: ((i: number) => Prepared | null) | null = null;
+
+  /** At an item's first step: play its prepared guitars if they're ready (the parts they cover don't play live). */
+  private enterPrepared(time: number) {
+    this.endPrepared(time);
+    let p: Prepared | null | undefined;
+    if (this.offline) p = this.preparedAt?.(this.idx);
+    else {
+      if (!this.realAmps || !this.prep) return;
+      const parts = this.realParts(this.list[this.idx]);
+      if (!parts.chords && !parts.guitar2) return;
+      p = this.prep.get(this.keyNow);
+      if (!p) {
+        if (p === undefined && !this.realStatus) { this.realStatus = true; this.onStatus('Real amps getting ready…'); }
+        return;
+      }
+      if (this.realStatus) { this.realStatus = false; this.onStatus(''); }
+    }
+    if (!p) return;
+    const raw = this.ctx.rawContext as unknown as BaseAudioContext;
+    const at = Math.max(time - PREP_XFADE, this.ctx.now());
+    for (const part of ['chords', 'guitar2'] as const) {
+      const buf = p[part];
+      if (!buf) continue;
+      // what the live guitar is still ringing is in the prepared lead-in too
+      for (const inst of (part === 'chords' ? this.rhythmInsts : this.g2Insts).values()) inst.releaseAll(time);
+      const src = raw.createBufferSource();
+      src.buffer = buf;
+      const gain = raw.createGain();
+      // (an offline render's clock can already be a moment past `time`: the fade still ends after it starts)
+      gain.gain.setValueAtTime(0, at);
+      gain.gain.linearRampToValueAtTime(1, Math.max(time, at + 0.005));
+      src.connect(gain);
+      Tone.connect(gain, this.mixer.input(part));
+      src.start(at, Math.max(0, p.offset - (time - at)));
+      src.onended = () => { try { gain.disconnect(); } catch { /* already */ } };
+      this.realSrcs.push({ src, gain });
+      this.realNow[part] = true;
+    }
+    if (!this.offline) this.prepPlaying = this.keyNow;
+  }
+
+  /** Fade out the prepared guitars, ending at `time` (from then on everything plays live). */
+  private endPrepared(time: number) {
+    for (const { src, gain } of this.realSrcs) {
+      const g = gain.gain;
+      const from = Math.max(time - PREP_XFADE, this.ctx.now());
+      g.cancelScheduledValues(from);
+      g.setValueAtTime(g.value, from);
+      g.linearRampToValueAtTime(0, Math.max(time, from + 0.005));
+      try { src.stop(Math.max(time, from + 0.005) + 0.01); } catch { /* already */ }
+    }
+    this.realSrcs = [];
+    this.realNow = { chords: false, guitar2: false };
+    this.prepPlaying = '';
   }
 
   setBass(id: BassId) {
@@ -424,14 +631,22 @@ export class Engine {
     this.tail = -1;
     if (this.chordIdFor() !== this.chordId) this.applyChordInstrument();
     if (this.guitar2IdFor() !== this.g2Id) this.applyGuitar2();
-    this.transport.start('+0.1');
+    const at = this.ctx.now() + 0.1;
+    this.mixer.open(at - 0.005);
+    this.transport.start(at);
     this.playing = true;
+    this.applyLookAhead();
     this.onSection(this.idx);
   }
 
   stop() {
+    // at once: notes are scheduled ahead (more so while guitars are being prepared)
+    if (!this.offline) this.mixer.silence();
     this.transport.stop();
     this.playing = false;
+    this.endPrepared(this.ctx.now() + 0.03);
+    if (this.realStatus) { this.realStatus = false; this.onStatus(''); }
+    this.applyLookAhead();
     // every instrument: the last notes of an earlier section can still be ringing
     for (const inst of [...this.rhythmInsts.values(), ...this.g2Insts.values()]) inst.releaseAll();
     this.bass.releaseAll();
@@ -487,9 +702,10 @@ export class Engine {
       if (this.idx !== prev) this.enterItem(time);
     }
     const idea = this.list[this.idx];
-    const { song, chords, drums, strum, bass } = idea;
+    const { song, chords, drums, strum } = idea;
     const total = song.total;
     const g = this.step++;
+    if (g === 0) this.enterPrepared(time);
     const six = 15 / this.transport.bpm.value;
     // the band's lilt: the in-between 16ths come a touch late, for everyone
     if (g % 2 && idea.lilt) time += idea.lilt * six;
@@ -515,24 +731,27 @@ export class Engine {
 
     // a big lift: a reversed cymbal swells up into the next section
     const stepsLeft = total - g;
-    if (idea.section?.riser && after && !ending) {
+    // (guitar-only renders, for real amps, skip everything else)
+    const others = !this.guitarsOnly;
+    if (others && idea.section?.riser && after && !ending) {
       const R = Math.min(2, song.bars[song.bars.length - 1].len * six);
       if (stepsLeft * six <= R && (stepsLeft + 1) * six > R) this.drums.swell(time + stepsLeft * six, stepsLeft * six, 0.9);
     }
 
-    const ci = this.chordInst;
+    // (parts playing from prepared buffers don't play live)
+    const ci = this.realNow.chords ? null : this.chordInst;
     if (ci) for (const h of this.hitsAt[this.idx]?.[g] ?? []) this.playHit(ci, h, time, six, dyn, ending ? 6 : undefined, driven(this.chordId));
-    if (this.g2Inst) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time + (idea.g2Feel ?? 0) / 1000, six);
-    const keys = this.keysInst && this.layerAt(idea, 'keys');
+    if (this.g2Inst && !this.realNow.guitar2) for (const h of this.hitsAt2[this.idx][g] ?? []) this.playHit(this.g2Inst, h, time + (idea.g2Feel ?? 0) / 1000, six);
+    const keys = others && this.keysInst && this.layerAt(idea, 'keys');
     if (keys) for (const n of keys.at[g]) {
       this.keysInst!.strum({ stroke: 'D', notes: n.notes, time, dur: n.len * six * 0.97, vel: n.vel, sixteenth: six });
     }
-    const pad = this.padInst && this.layerAt(idea, 'pad');
+    const pad = others && this.padInst && this.layerAt(idea, 'pad');
     if (pad) for (const n of pad.at[g]) this.padInst!.play(n.notes, time, n.len * six * 0.98, n.vel);
-    const strings = this.stringsInst && this.layerAt(idea, 'strings');
+    const strings = others && this.stringsInst && this.layerAt(idea, 'strings');
     if (strings) for (const n of strings.at[g]) this.stringsInst!.play(n.notes, time, n.len * six, n.vel, n.swell);
     // the tambourine's off-beat 8ths are up strokes
-    const perc = this.percInst && this.layerAt(idea, 'perc');
+    const perc = others && this.percInst && this.layerAt(idea, 'perc');
     if (perc) for (const n of perc.at[g]) for (const note of n.notes) this.percInst!.play(note, time, n.vel, g % 4 === 2);
 
     const st = strum[g];
@@ -557,6 +776,24 @@ export class Engine {
       });
     }
 
+    if (others) this.playRhythmSection(idea, g, time, six, dyn, ending, gapUntil);
+
+    // the last beat swells toward a louder next section (the drummer's fill builds into it); before a
+    // big lift the whole last bar does
+    const rise = idea.section?.riser ? lastBar.len : lastBar.groups[lastBar.groups.length - 1];
+    if (after && after !== idea && g === lastBar.start + lastBar.len - rise) {
+      const now = SECTION_DB[idea.section?.energy ?? 4], then = SECTION_DB[after.section?.energy ?? 4];
+      if (then > now) this.mixer.setSectionLevel((now + then) / 2, time, rise * six / 2);
+    }
+
+    const bi = song.bars.findIndex((b) => b.start === g);
+    if (bi >= 0 && !this.offline) Tone.getDraw().schedule(() => this.onBar(bi), time);
+  }
+
+  /** Drums and bass for one step. */
+  private playRhythmSection(idea: Idea, g: number, time: number, six: number, dyn: number, ending: boolean,
+    gapUntil: (lane: (i: Idea) => ArrayLike<unknown>, empty: unknown, cap: number) => number) {
+    const { song, drums, bass } = idea;
     const d = this.drums;
     // the drummer's feel: snare and cymbals sit a little ahead of or behind the kick
     const sn = Math.max(0, time + (drums.feel?.snare ?? 0) / 1000), cy = Math.max(0, time + (drums.feel?.cym ?? 0) / 1000);
@@ -580,17 +817,6 @@ export class Engine {
       const dur = ending ? 5 : Math.min(n >= next ? next * six + 0.03 : n * six * 0.95, 4.5);
       this.bass.play(bass[g], time + (idea.bassFeel ?? 0) / 1000, dur, (onBeat ? 0.9 : 0.74) * dyn);
     }
-
-    // the last beat swells toward a louder next section (the drummer's fill builds into it); before a
-    // big lift the whole last bar does
-    const rise = idea.section?.riser ? lastBar.len : lastBar.groups[lastBar.groups.length - 1];
-    if (after && after !== idea && g === lastBar.start + lastBar.len - rise) {
-      const now = SECTION_DB[idea.section?.energy ?? 4], then = SECTION_DB[after.section?.energy ?? 4];
-      if (then > now) this.mixer.setSectionLevel((now + then) / 2, time, rise * six / 2);
-    }
-
-    const bi = song.bars.findIndex((b) => b.start === g);
-    if (bi >= 0 && !this.offline) Tone.getDraw().schedule(() => this.onBar(bi), time);
   }
 }
 

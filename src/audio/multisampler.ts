@@ -136,8 +136,8 @@ export class MultiSampler {
     return !!v && v.endAt > time;
   }
 
-  stopAll() {
-    const now = this.ctx.now();
-    for (const v of this.active) this.choke(v, now, 0.05);
+  /** Stop every voice (at `time`, or now). */
+  stopAll(time = this.ctx.now()) {
+    for (const v of this.active) this.choke(v, time, 0.05);
   }
 }
