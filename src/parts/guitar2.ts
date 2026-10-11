@@ -324,7 +324,7 @@ export function generateHook(rng: Rng, song: Song, chords: ChordPart, riff: Guit
   const [lo, hi] = octaves ? OCTAVE_RANGE : LEAD_RANGE;
   const density: Density = rng.pick(['medium', 'medium', 'slow']);
   const shape = pickShape(rng, song.partGenres.strum, octaves);
-  return melody(rng, song, chords, song.bars, density, lo, hi, scale, song.tuning ? 0.4 : 0.2, riff, shape === 'fills' ? 'answer' : shape).map((n) => {
+  return melody(rng, song, chords, song.bars, density, lo, hi, scale, song.tuning ? 0.2 : 0.1, riff, shape === 'fills' ? 'answer' : shape).map((n) => {
     const f = leadFret(n.midi, t, pos);
     if (octaves) { f.notes.push(n.midi + 12); f.strings.push(Math.min(5, f.strings[0] + 2)); }
     return { step: n.step, ...f, len: n.len, vel: n.vel, slide: n.slide };
@@ -379,7 +379,7 @@ export function generateGuitar2(
       const shape = style === 'fills' ? 'fills' : pickShape(rng, genre, style === 'octaves');
       if (style !== 'fills') labels[labels.length - 1] += ` (${SHAPE_DESC[shape]})`;
       if (riff) labels[labels.length - 1] += ' in the gaps of the riff';
-      for (const n of melody(rng, song, chords, runBars, density, lo, hi, scale, song.tuning ? 0.4 : 0.2, riff, shape)) {
+      for (const n of melody(rng, song, chords, runBars, density, lo, hi, scale, song.tuning ? 0.2 : 0.1, riff, shape)) {
         const f = leadFret(n.midi, t, pos);
         if (style === 'octaves') { f.notes.push(n.midi + 12); f.strings.push(Math.min(5, f.strings[0] + 2)); }
         hits.push({ step: n.step, ...f, len: n.len, vel: n.vel, slide: n.slide, clean });

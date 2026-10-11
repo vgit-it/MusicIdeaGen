@@ -443,9 +443,9 @@ export class Guitar implements ChordInstrument {
     // time between strings: faster at quicker tempos, ~25-45 ms across six strings; a hand never
     // strums at exactly the same speed twice
     const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6);
-    const detune = this.type === 'electric' ? 4 : 3;
+    const detune = this.type === 'electric' ? 1.5 : 1;
     // a held single note gets real vibrato (chords none: a wobbling chord through an amp sounds like a toy)
-    const vibrato = this.type !== 'electric' || letRing || notes.length > 1 ? 0 : driven ? 16 : 10;
+    const vibrato = this.type !== 'electric' || letRing || notes.length > 1 ? 0 : driven ? 10 : 7;
     // strummed chords: the pick brushes the strings rather than clicking each one (a few ms of fade-in
     // takes the click off), and each string comes out a little louder or softer
     const chord = notes.length > 1 && !letRing && !swell;
@@ -636,7 +636,7 @@ export class Bass {
       const t = time + 0.004 + Math.random() * 0.006;
       // one string at a time: a new note takes over from the last one
       this.sampler.choke(this.last, t, 0.02);
-      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 3 });
+      this.last = this.sampler.play(midi, t, dur, vel * (0.9 + Math.random() * 0.1), { detune: 1 });
     } else this.synth.triggerAttackRelease(midiNote(midi), dur, time, vel);
   }
 
