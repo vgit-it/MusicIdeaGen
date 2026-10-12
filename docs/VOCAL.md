@@ -240,6 +240,24 @@ voice, unchanged), or any genre's voice; kept in links and exports. The backing 
   voice through the mixer; about 10 ms of rendering per second sung (rock) on a desktop (the clear
   voice: about 4), in the background ahead of playback.
 
+### The FOF singer (2026-10-13)
+Paul: "the voice is not working, let's build it up from scratch". The options weighed: an AI singer,
+recorded syllables, a vocal tract model, measured real singing, and, from the research on building a
+voice by rule, IRCAM's CHANT (FOF: formant wave functions, Rodet 1984). FOF won the first head-to-head
+by ear and is now every genre's voice (`src/audio/fof.ts`; tried in the FOF lab, `npm run fof-lab`).
+- Each pulse of the vocal folds starts one short decaying burst per formant, already at the vowel's
+  pitch, width and level, plus a low glottal one for the body; nothing rings on from sound to sound
+  (the filters of the old voices were the suspect for their "underwater" sound). Breath and
+  consonants are shaped noise.
+- Registers blended by pitch around the singer's break (chest, fuller at the bottom; belt, scream,
+  squeal or falsetto above); edge (Paul's, toned down); a level the singer's ear keeps steady.
+- A real voice's unevenness, measured to stay as clean as a singer (harmonics 13-21 dB over the noise).
+- Pitch from note to note as a spring settles (Saitou et al.'s model, damped more), bends in the same
+  line, smooth; phrase-level loudness arcs.
+- Wider formants and a warmer balance than the first trial (Paul: less ringing, less treble, more bass).
+- About 17 ms of rendering per second sung in the browser, in the background ahead of playback. The
+  backing singer and the clear voice stay on the formant synth.
+
 ### Western (English-language) singing only, for now (2026-10-13)
 Paul: the tunes and runs "sound very much like Chinese vocals"; he wants the melody styles and run
 techniques of Western (English-language) music only, and may add other traditions later. What made

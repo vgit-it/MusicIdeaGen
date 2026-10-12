@@ -14,7 +14,8 @@ import type { Timbre } from '../parts/singers';
 import { type VoiceType, backingVoice } from '../parts/vocal';
 import { inContext } from './context';
 import { lagFor, perform } from './feel';
-import { VOICES, recipeFor } from './voices';
+import { FOF_RATE, renderFof } from './fof';
+import { VOICES, fofFor } from './voices';
 import { SING_RATE, type SungNote, renderLine } from './sing';
 
 export type VocalChoice = 'auto' | VoiceType | 'off';
@@ -173,10 +174,13 @@ export class Singer {
     for (let i = 0; i < job.key.length; i += 7) seed = (seed * 31 + job.key.charCodeAt(i)) >>> 0;
     // (each take its own: another vocal-tract length, vibrato rate and the odd different slide)
     const person = this.role === 'backing' ? BACKING_PERSON : undefined;
-    const recipe = job.timbre === 'clear' ? undefined : recipeFor(job.timbre);
-    const pcm = renderLine(job.notes, { high: job.voice === 'high', slides: job.slides, seed: (seed + job.variant * 13) % 97, person, recipe }, PRE);
+    // (a genre's voice: the FOF singer; the clear voice and the backing singer: the formant synth, as they were)
+    const v = (seed + job.variant * 13) % 97;
+    const fof = job.timbre !== 'clear' && this.role === 'lead';
+    const pcm = fof ? renderFof(job.notes, fofFor(job.timbre as Genre, v, job.voice === 'high'), PRE)
+      : renderLine(job.notes, { high: job.voice === 'high', slides: job.slides, seed: v, person }, PRE);
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
-    const buf = raw.createBuffer(1, pcm.length, recipe?.rate ?? SING_RATE);
+    const buf = raw.createBuffer(1, pcm.length, fof ? FOF_RATE : SING_RATE);
     buf.copyToChannel(pcm as Float32Array<ArrayBuffer>, 0);
     return buf;
   }

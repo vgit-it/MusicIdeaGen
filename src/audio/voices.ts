@@ -1,11 +1,13 @@
-// The singer's voices (docs/VOICES.md): one per genre, made with Paul by ear in the voice lab
-// (voice-lab.html) from the clip he picked (round 7, clip 73: relaxed, on the voice box, breathy, a rock
-// singer and not an opera singer), each with their break, their way up past it (round 9) and their
-// register mix (REGISTER_MIX in sing.ts). The clear voice (the first one) has no recipe.
+// The singer's voices (docs/VOICES.md): one per genre. Each is sung by the FOF singer (fof.ts, made
+// with Paul by ear in the FOF lab, scripts/fof-lab.ts: his rock voice with a little edge, warm, not
+// ringing, a real voice's unevenness), with its break and its way up past it. The recipes below are the
+// earlier voice-box voices (made in the voice lab, voice-lab.html; the app sang them until 2026-10-13,
+// git tag voices-v2-voicebox), kept for the voice lab. The clear voice (the first one) has neither.
 
 import type { Genre } from '../genres';
 import type { Vowel } from '../parts/lyrics';
 import { VOICE_DOWN } from '../parts/singers';
+import type { FofVoice } from './fof';
 import { type VoiceRecipe, autoRegisters } from './sing';
 
 /** Clip 73: the base every voice starts from (Edge: Paul, "excellent", the hollow "ah" filled). */
@@ -26,22 +28,35 @@ export interface GenreVoice {
   up: WayUp;
   /** Three registers mixed by pitch (the rock voices); pop and funk sing a plain chest voice and falsetto. */
   three: boolean;
+  /** The voice as the FOF singer sings it (the app's). */
+  fof: Omit<FofVoice, 'seed' | 'high'>;
 }
 
 export const VOICES: Record<Genre, GenreVoice> = {
-  rock: { label: 'Rock', recipe: { regMix: 'rock' }, brk: 64, up: 'belt', three: true },
-  pop: { label: 'Pop', recipe: { grit: 0.1, drive: 0, airy: -17, air: 4, tilt: -2, speech: 0.6, vib: 0.3, attack: 0.02 }, brk: 65, up: 'falsetto', three: false },
-  funk: { label: 'Funk', recipe: { grit: 0.25, drive: 0.1, pressed: 0.2, tilt: -2, speech: 0.6, attack: 0.01, vib: 0.25 }, brk: 64, up: 'falsetto', three: false },
-  hardrock: { label: 'Hard rock', recipe: { regMix: 'rock', grit: 0.7, drive: 0.35, pressed: 0.3, tilt: -1, vib: 0.5, vibStart: 0.45 }, brk: 65, up: 'squeal', three: true },
-  metal: { label: 'Metal', recipe: { regMix: 'rock', grit: 0.6, drive: 0.4, pressed: 0.4, tilt: -3, vib: 0.6, vibStart: 0.4 }, brk: 65, up: 'belt', three: true },
-  grunge: { label: 'Grunge', recipe: { grit: 0.7, drive: 0.3, formants: 0.97, tilt: 1, vib: 0.25, vibHz: -0.5, drift: 18 }, brk: 63, up: 'belt', three: true },
-  altmetal: { label: 'Alt metal', recipe: { grit: 0.6, drive: 0.35, pressed: 0.2, formants: 0.98, vib: 0.3 }, brk: 64, up: 'scream', three: true },
+  // (rock: the FOF lab's voice Paul signed off; the others leaning off it as their voice-box recipes did)
+  rock: { label: 'Rock', recipe: { regMix: 'rock' }, brk: 64, up: 'belt', three: true,
+    fof: { grit: 0.45, breath: -27, bw: 1.25, tract: 0.96, bright: 0.5, edge: 0.25, brk: 64, up: 'belt' } },
+  pop: { label: 'Pop', recipe: { grit: 0.1, drive: 0, airy: -17, air: 4, tilt: -2, speech: 0.6, vib: 0.3, attack: 0.02 }, brk: 65, up: 'falsetto', three: false,
+    fof: { grit: 0.12, breath: -21, bw: 1.15, bright: 1, brk: 65, up: 'falsetto', vib: 25 } },
+  funk: { label: 'Funk', recipe: { grit: 0.25, drive: 0.1, pressed: 0.2, tilt: -2, speech: 0.6, attack: 0.01, vib: 0.25 }, brk: 64, up: 'falsetto', three: false,
+    fof: { grit: 0.25, breath: -24, bw: 1.15, bright: 1, edge: 0.1, brk: 64, up: 'falsetto', vib: 22 } },
+  hardrock: { label: 'Hard rock', recipe: { regMix: 'rock', grit: 0.7, drive: 0.35, pressed: 0.3, tilt: -1, vib: 0.5, vibStart: 0.45 }, brk: 65, up: 'squeal', three: true,
+    fof: { grit: 0.6, breath: -26, bw: 1.2, tract: 0.97, bright: 1, edge: 0.3, brk: 65, up: 'squeal', vib: 35 } },
+  metal: { label: 'Metal', recipe: { regMix: 'rock', grit: 0.6, drive: 0.4, pressed: 0.4, tilt: -3, vib: 0.6, vibStart: 0.4 }, brk: 65, up: 'belt', three: true,
+    fof: { grit: 0.55, breath: -27, bw: 1.2, tract: 0.96, bright: 0.5, edge: 0.3, brk: 65, up: 'belt', vib: 38 } },
+  grunge: { label: 'Grunge', recipe: { grit: 0.7, drive: 0.3, formants: 0.97, tilt: 1, vib: 0.25, vibHz: -0.5, drift: 18 }, brk: 63, up: 'belt', three: true,
+    fof: { grit: 0.6, breath: -24, bw: 1.3, tract: 0.94, bright: 0, edge: 0.2, brk: 63, up: 'belt', vib: 20, drift: 6 } },
+  altmetal: { label: 'Alt metal', recipe: { grit: 0.6, drive: 0.35, pressed: 0.2, formants: 0.98, vib: 0.3 }, brk: 64, up: 'scream', three: true,
+    fof: { grit: 0.55, breath: -26, bw: 1.25, tract: 0.96, bright: 0.5, edge: 0.25, brk: 64, up: 'scream' } },
 };
 
 /** Semitones lower than the clear voice a voice's tunes are written. */
 export const voiceDown = (g: Genre) => VOICE_DOWN[g];
 
-/** A voice's full recipe (the base, its own changes, its break and way up). */
+/** A genre's voice for the FOF singer (`high`: an octave up, the high voice type). */
+export const fofFor = (g: Genre, seed: number, high: boolean): FofVoice => ({ ...VOICES[g].fof, seed, high });
+
+/** A voice's full recipe for the voice box (the base, its own changes, its break and way up; the voice lab's). */
 export function recipeFor(g: Genre): VoiceRecipe {
   const v = VOICES[g];
   return { ...BASE, ...v.recipe, brk: v.brk, high: v.up, three: v.three };

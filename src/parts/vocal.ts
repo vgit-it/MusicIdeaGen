@@ -42,7 +42,7 @@ export interface VocalNote {
 
 export type VoiceType = 'low' | 'high';
 
-const TIMBRE_DESC = (t: Timbre) => (t === 'clear' ? 'the clear voice' : `the ${GENRE_LABEL[t].toLowerCase()} voice (three registers mixed by pitch, sung lower)`);
+const TIMBRE_DESC = (t: Timbre) => (t === 'clear' ? 'the clear voice' : `the ${GENRE_LABEL[t].toLowerCase()} voice (the FOF singer: registers blended by pitch, a way up past the break, sung lower)`);
 
 /**
  * Which notes carry on the syllable before rather than start a new one: tied notes (a sigh or a turn),
