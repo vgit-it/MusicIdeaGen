@@ -17,6 +17,7 @@ import type { Genre } from '../genres';
 import { Rng } from '../rng';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
+import type { Timbre } from './singers';
 import { PEAK, type Tune, followTension, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
@@ -40,6 +41,8 @@ export interface VocalNote {
 }
 
 export type VoiceType = 'low' | 'high';
+
+const TIMBRE_DESC: Record<Timbre, string> = { clear: 'a clear voice', raspy: 'a raspy voice (grittier the harder they push)', deep: 'a deep voice, sung low' };
 
 /**
  * Words for a tune: rhymes on every other line, the chorus hook at the start of lines 1 and 3. A tied
@@ -108,6 +111,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   sections.forEach((idea, si) => {
     const info = idea.section!;
     idea.vocal = [];
+    idea.vocalTimbre = melody.timbre;
     const kind = info.kind;
     if (!SUNG.includes(kind) || info.solo) return;
     const n = (seen[kind] = (seen[kind] ?? 0) + 1);
@@ -157,7 +161,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     leaveRoom(idea);
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
-      if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}`, `Melody: ${melodyDesc(melody)}`); told = true; }
+      if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC[melody.timbre]}`, `Melody: ${melodyDesc(melody)}`); told = true; }
       idea.notes.push(`Vocal (${VOCAL_DESC[as]}): “${words.length > 140 ? `${words.slice(0, 140)}…` : words}”`);
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
       if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);
@@ -181,6 +185,7 @@ export function singIdea(idea: Idea, seed: string, mood: Mood) {
   singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum }, 0);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum), mood }, -1);
   idea.vocal = fake.vocal;
+  idea.vocalTimbre = fake.vocalTimbre;
   idea.backing = fake.backing;
   idea.vocalDouble = fake.vocalDouble;
 }

@@ -23,7 +23,7 @@ import type { Mood } from '../tension';
 import { SCALES, chordPc } from '../theory';
 import { MINORISH, chordTones } from './guitar2';
 import type { Syllable } from './lyrics';
-import { type RunKind, type Singer, phrasePlan, pickSinger } from './singers';
+import { type RunKind, type Singer, type Timbre, phrasePlan, pickSinger, pickTimbre } from './singers';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -77,6 +77,8 @@ export interface MelodyStyle {
   /** Who sings it (how it's phrased and delivered), and how far above the usual top their wails go. */
   singer: Singer;
   top: number;
+  /** Their voice on Auto (a deep voice sings a little lower). */
+  timbre: Timbre;
 }
 
 type W<T> = [T, number][];
@@ -201,11 +203,13 @@ export function melodyStyle(seed: string, mood: Mood, genre: Genre): MelodyStyle
     sync: clamp01(M.sync + G.sync), verseStart: rng.weighted(M.verseStart), chorusStart: rng.weighted(M.chorusStart),
     blue: clamp01(G.blue * (['happy', 'triumphant', 'angry'].includes(mood) ? 1 : 0.6)), dark: clamp01(M.dark + G.dark),
     hookLeap: rng.weighted(M.hookLeap), ends: rng.chance(0.8) ? M.ends : M.ends === 'fall' ? 'open' : 'fall',
-    twist: null, singer, top: singer.top,
+    twist: null, singer, top: singer.top, timbre: pickTimbre(seed, singer, genre),
   };
   // the singer: their range, register, words per beat, and (about half the time) their own contours
   s.span *= singer.span;
   s.register += singer.register;
+  // (a deep voice: its tunes sit a minor third lower, where it sounds its biggest)
+  if (s.timbre === 'deep') s.register -= 3;
   s.repeat = clamp01(s.repeat + singer.repeat);
   s.leap = clamp01(s.leap + singer.leap);
   s.busyVerse *= singer.density[0];

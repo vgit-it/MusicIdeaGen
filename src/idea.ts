@@ -7,6 +7,7 @@ import type { Bar, Variant } from './rhythm';
 import type { Chord, Mode, Quality } from './theory';
 import type { BassLine } from './parts/bass';
 import type { Tuning } from './theory/fretboard';
+import type { Timbre } from './parts/singers';
 import type { StrumColour } from './theory/guitar';
 
 export type PartName = 'chords' | 'drums' | 'strum' | 'bass';
@@ -221,6 +222,8 @@ export interface Idea {
   vocal?: VocalNote[];
   /** Which voice sings it on Auto (the melody is written for the low one; the high one sings it an octave up). */
   vocalVoice?: VoiceType;
+  /** The singer's voice on Auto (clear, raspy or deep; missing in older ones: clear). */
+  vocalTimbre?: Timbre;
   /** Backing vocals and ad-libs (sung by the same singer, panned around the lead), and whether the lead is double-tracked. */
   backing?: VocalNote[];
   vocalDouble?: boolean;

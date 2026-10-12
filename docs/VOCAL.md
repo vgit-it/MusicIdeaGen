@@ -220,8 +220,31 @@ rhythm cells, runs of at most three notes, the top note around E4. Measured over
 - Measured after, over 70 songs: lines of 1 bar 50%, 2 bars 31%, 3-4 bars 18%; about 200 runs of 3+
   notes; about 270 wails; range about 19 semitones; every song's verse and chorus phrasing different.
 
+### Voices: clear, raspy, deep (2026-10-12)
+Paul: a raspier voice for some singers, deep ones too; keep the first voice as an option. The lead
+singer's voice is a choice next to the Vocal part (Voice: Auto, Clear, Raspy, Deep), kept in links and
+exports; on Auto each song's singer has their own (its own chance, so nothing else in the song moves).
+The backing singer stays clear.
+
+- **Clear**: the first voice, unchanged.
+- **Raspy**: grit that grows with how hard a note is sung (quiet verse lines fairly clean, belts torn),
+  the way raspy rock singers sound: a rough pitch and level from cycle to cycle (jitter about 1%,
+  shimmer about 1 dB), pressed vocal folds (a shorter open phase), noisy air on each pulse, on the
+  hardest notes a growl that comes and goes (every other cycle softer: a rough undertone an octave
+  down), and a little drive. Measured on a held note: harmonics-to-noise about 21 dB (clear) down to
+  about 13 dB (raspy, quiet) and 9 dB (raspy, belted).
+- **Deep**: a longer vocal tract (every formant about 10% lower, the top ones 8%), darker (more tilt),
+  a softer pulse, a slower, wider vibrato, more low end through the vocal EQ; on Auto its tunes are
+  written a minor third lower. Measured: about 15% darker at the same pitch; deep songs' melodies about
+  4 semitones lower on average.
+- Who gets which on Auto: shouters and drawlers rasp, brooders and crooners go deep, pop voices stay
+  clear; leaned by genre. Over 400 songs per genre: pop 82% clear; hard rock 53% raspy; grunge 42%
+  raspy, 36% deep; alt metal 44% raspy, 31% deep; rock about a third each. The voice is in the notes.
+- Levels: a last chorus rendered in each voice sits within about 1 dB of the others.
+
 ## 8. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
-- · Singing behind the beat (the drawl's lag), breathy and raspy tones per singer, falsetto flips.
+- · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the
+  beat (the drawl's lag).
 - · Fillers in the gaps of the lead line itself;
   screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).

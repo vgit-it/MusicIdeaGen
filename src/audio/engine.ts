@@ -1,6 +1,6 @@
 // Plays a list of ideas back to back: one idea on a loop, a whole track once, or one section on a loop.
 
-import { Singer, type VocalChoice } from './singer';
+import { Singer, type TimbreChoice, type VocalChoice } from './singer';
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
@@ -34,6 +34,8 @@ export interface EngineSettings {
   vocal?: VocalChoice;
   /** The backing singer: Auto (a second singer around the lead), a low or high voice, or off (missing: Auto). */
   backing?: VocalChoice;
+  /** The lead singer's voice (missing in older ones: Auto). */
+  timbre?: TimbreChoice;
 }
 
 /** The layers you've added (left out = removed) and their style or tone. */
@@ -154,7 +156,7 @@ export class Engine {
     return {
       chord: this.chordChoice, guitar2: this.g2Choice, bass: this.bassChoice, drumSynth: this.drums.useSynth,
       mix: this.mixer.state(), layers: this.layerSettings, realAmps: this.realAmps, vocal: this.vocalChoice,
-      backing: this.backingChoice,
+      backing: this.backingChoice, timbre: this.timbreChoice,
     };
   }
 
@@ -172,6 +174,7 @@ export class Engine {
     for (const p of LAYER_PARTS) this.setLayer(p, s.layers[p] ?? null);
     this.layers.throughout = [...(s.layers.throughout ?? [])];
     this.backingChoice = s.backing ?? 'auto';
+    this.timbreChoice = s.timbre ?? 'auto';
     this.setVocal(s.vocal ?? 'off');
   }
 
@@ -196,6 +199,17 @@ export class Engine {
     this.syncSingers();
   }
 
+  /** The lead singer's voice: Auto (the song's singer's own), clear, raspy or deep. */
+  private timbreChoice: TimbreChoice = 'auto';
+  get vocalTimbre(): TimbreChoice {
+    return this.timbreChoice;
+  }
+
+  setVocalTimbre(choice: TimbreChoice) {
+    this.timbreChoice = choice;
+    this.syncSingers();
+  }
+
   setBackingVocal(choice: VocalChoice) {
     this.backingChoice = choice;
     this.syncSingers();
@@ -211,6 +225,7 @@ export class Engine {
     else {
       this.singer ??= inContext(this.ctx, () => new Singer(this.mixer.input('vocal')));
       this.singer.choice = this.vocalChoice;
+      this.singer.timbre = this.timbreChoice;
       if (this.list.length) this.singer.prepare(this.list, six);
     }
     if (!this.backingOn) { this.backer?.releaseAll(); if (this.backer) this.backer.choice = 'off'; return; }
