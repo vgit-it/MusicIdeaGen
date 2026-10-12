@@ -29,7 +29,7 @@ turned into a number. ✓ = built, · = later.
 - Sung: verses, pre-choruses, choruses, bridges, the first half of the outro (the chorus hook). Not
   sung: intros, interludes, solos, breakdowns. ✓
 - Genres: grunge lower and narrower, funk busier, metal and hard rock a little higher, pop wider. ✓
-- · Ad-libs over the last chorus, harmonies or doubling in choruses, melisma at line ends.
+- Ad-libs, harmonies and doubling: section 5. How the tune is shaped by mood and genre: section 6. ✓
 
 ## 2. The words (`src/parts/lyrics.ts`)
 What makes nonsense sound English (rather than Italian or Icelandic):
@@ -93,7 +93,64 @@ Paul: ad-libs and harmonies next; vocals off by default.
   Backs lane (h harmony, g gang, o ooh, a ad-lib). ✓
 - The singer is off until you turn it on (Parts: Vocal (demo)); a link remembers it when it's on. ✓
 
-## 6. Later
+## 6. How the tunes are written, by mood and genre (`src/parts/melody.ts`, 2026-10-12)
+Paul: research how vocal melodies are written; build a system that writes them by mood and genre, with
+a bit of chance to keep it fresh. Each song now gets a **melody style** (its mood's ways, leaned by its
+genre, jittered a little, and about a third of the time a twist); the notes say which.
+
+What the research says, and what's built:
+- [P] Melodies are built from motifs, not note by note: a short idea, repeated, varied, answered.
+  Hooks repeat word for word; motifs develop (repeat, sequence a step higher, a new ending). A song
+  uses only a few melodic parts, recycled (pop's "melodic math"). Built: a line is a motif (bar 1) and
+  its answer (bar 2); lines follow a form, e.g. verse A A' B A, chorus A B A B (a letter that comes
+  back sings the same rhythm and shape, a primed one the same start with a new ending). ✓
+- [P] Pre-choruses: energy gain by fragmenting the motif and climbing (Summach; Open Music Theory).
+  Built: the same line a step or two higher each time, the last one breaking off busier. ✓
+- [P] Contrast between verse and chorus in several dimensions at once: range (choruses higher, verses
+  low and comfortable, so there's room to climb), note lengths (verses quicker, choruses longer), and
+  where phrases start (Pattison: on the downbeat feels solid; after it, back-heavy and restless;
+  some writers start verses after the beat and choruses right on it). Built: per style, the chorus
+  lift (2 semitones to about an octave), busy-ness per section, and verse / chorus start (on, after, or a pickup). ✓
+- [M] Phrase contours: arch shapes are the most common, then rising, then falling; phrases settle at
+  the start and fall at the end (Huron's Essen study; folk corpora). Built: a contour per kind of
+  section (recite, arch, rise to a late peak, fall, valley, climb, wave), picked by mood. ✓
+- [M] Expectation: after a leap, a step back the other way (gap-fill, post-skip reversal); mostly
+  steps and repeated notes. Built. ✓
+- [P] Question and answer: lines that end open (on the 3rd or 5th) and lines that come home (the root).
+  Built: settled moods close every second line, open moods only the last one. ✓
+- [M] Emotion and melody (Gabrielsson & Lindström; Juslin & Laukka; Huron & Davis): happy = higher, wider,
+  rising, leaps; sad = lower, narrower, steps, falling, joined, small intervals; anger = angular, rising,
+  short accented notes, unstable notes; tenderness = falling, steps, stable notes. Built per mood:
+
+  | Mood | Verses / choruses | Lift | Leaps | Repeats | Feel |
+  |---|---|---|---|---|---|
+  | Happy | waves / arches, open endings | 4-7 | some | few | on the beat, bouncy |
+  | Triumphant | climbs / rises to a late peak | 5-8 | most | few | a 4th or 5th opening the hook |
+  | Nostalgic | arches, falling home | 3-6 | a 6th now and then | few | sighs, pickups |
+  | Melancholic | falls / arches or falls | 2-5 | rare | some | low, joined, sighs and turns |
+  | Dreamy | waves, open | 3-6 | wide, gentle (5ths) | few | sparse, after the beat, turns |
+  | Tense | recites / climbs | 2-5 | rare | many | narrow, unstable notes, detached, off-beat |
+  | Angry | recites / rises | 4-7 | angular | many | short, hard, on the beat |
+  | Dark | recites or falls / valleys | 2-5 | rare | many | low, a flat 2nd |
+
+- [M] Appoggiaturas (a held note sung a step above first, falling into the chord note) are the
+  device most tied to "tears" in sad songs (Sloboda). Built: "sighs" on held notes (melancholic,
+  nostalgic, dark most), and short turns on one vowel at line ends (pop's melisma: dreamy, melancholic,
+  pop). Sung on one syllable, the word's closing consonant at the end. ✓
+- [M] Rock's melodic language: pentatonic, many songs major in the chords but minor in the melody
+  (Temperley & de Clercq). Built: blue notes (a flat 3rd or 7th in passing) in rock, hard rock, funk,
+  grunge; a dark flat 2nd neighbour in minor keys (metal, alt metal, dark and tense moods). ✓
+- Genres lean it all: pop wider, a bigger lift, some melisma; funk busy, detached, syncopated and
+  chanted; hard rock and metal higher with longer notes (metal none of the turns); grunge low and
+  narrow with a big jump to the chorus. ✓
+- Twists (about a third of songs, picked to suit the mood and genre): quiet low verses then a chorus
+  that jumps way up; verses chanted on nearly one note; a hook opening with a big leap (a 6th or an
+  octave); chorus lines that call high and answer low; every line after the beat; a chorus of long held
+  notes; rapid-fire verses. ✓
+- The Vocal reroll rerolls the style too (a new form, contour, lift, maybe a twist) within the mood
+  and genre.
+
+## 7. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
-- · Fillers in the gaps of the lead line itself; the melody following the tension curve more closely;
+- · Fillers in the gaps of the lead line itself; the melody following the tension curve bar by bar;
   screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).
