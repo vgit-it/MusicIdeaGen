@@ -38,7 +38,8 @@ pop "island strum", "tresillo on 16ths" (3-3-2), "folk 16ths"; funk "chucking 16
   layer)
 - · Reggae / ska skank (no reggae genre yet).
 - Riff genres (metal gallops, chugs, breakdowns, djent cycles, drop D, grunge loud-quiet) are
-  already written as riffs (riff.ts, figures.ts); not changed here.
+  written as riffs (riff.ts, figures.ts); what's carried over to them is how they're played (below,
+  "Riff genres").
 
 ## 3. Voicings
 - [P] Real guitar shapes, not piano voicings: open chords, then E/A barres. ✓ (already)
@@ -47,7 +48,16 @@ pop "island strum", "tresillo on 16ths" (3-3-2), "folk 16ths"; funk "chucking 16
   strummer and indie players sometimes in the verses)
 - [P/R] sus4 / sus2 / add9 put on a held chord and taken off again (D-Dsus4-D), on a weak beat, at
   most one per held chord; don't overdo it. ✓ (`colourVoicing`, theory/guitar.ts)
-- · Capo for pop/folk keys; inversions moving up the neck; open-string drones; octave shapes.
+- [P/R] Capo: open-chord players put one on where it turns more of the song's chords into open
+  shapes (up to fret 5, lower preferred). ✓ (`pickCapo`, theory/guitar.ts; strummer 70%, indie 50%;
+  decided once for the whole track; with the capo the chord shapes, colours, arpeggios and the open
+  strings at chord changes all sit above it)
+- [P/R] Higher up the neck: the biggest section (last chorus, outro) played in a higher position
+  (around fret 7) for lift. ✓ (strummer 40%, rocker and indie 50%)
+- [R] Voice leading: chord shapes chosen so the top note moves smoothly. ✓ (strummer, funky, indie)
+- [P] Open-string drones: a power chord on the low strings with the open B and E strings ringing
+  over it (indie / alt rock), only in keys that have those notes. ✓ (indie and some strummers' verses)
+- · Octave shapes (Guitar 2 plays octaves already).
 
 ## 4. Variation over time
 - [R] The pattern stays about three bars in four; bars 2-3 of a four-bar phrase change a stroke or
@@ -68,14 +78,17 @@ pop "island strum", "tresillo on 16ths" (3-3-2), "folk 16ths"; funk "chucking 16
 - [P] Between chords: a bass walk into the next chord, a pentatonic lick, a double-stop hammer-on
   (Hendrix, Malcolm Young). ✓ (`lick`, rhythm.ts: at the end of a four-bar phrase, only where the
   lead and the drums leave room)
-- · Delay on the ringing arpeggios (a dotted 8th).
+- [P/R] A dotted-8th echo on ringing arpeggios (The Edge: ~30-40% wet, 1-2 repeats). ✓ (the
+  rhythm guitar gets the band's dotted-8th echo for those sections, eased in and out)
 
 ## 6. Feel
 - [M] Groove lives in small timing offsets (10-40 ms); tight but not zero is best; big offsets
   lower groove ratings (Kilchenmann & Senn 2015, Senn et al. 2016). ✓ (already: the band's feel)
 - [M] 16th swing in early funk, 52-60% (Ainsworth). ✓ (already: the band's lilt)
 - [R] Loudness varies stroke to stroke (±3-8% by player). ✓
-- · Slow drift in timing (Räsänen & Hennig 2015: a 2-bar pattern in a drummer's micro-timing).
+- [M/R] Timing isn't white noise: it drifts slowly, each note leaning on the last (Räsänen &
+  Hennig 2015). ✓ (a slow drift per player: about 2 ms for funk and punk, 3-3.5 for strummers, 1.5
+  for metal, 5 for grunge; MIDI export follows)
 
 ## 7. The band
 - [P] Lock to the kick and snare: accents where the kick lands. ✓ (the "kick" accent layer)
@@ -92,6 +105,22 @@ One per track, picked with the band (an idea uses its default band's player).
 | Punk | even; all downstrokes | power chords in the verses | strummed | none | rock |
 | Funky | kick or 3-3-2, strong | small triads up the neck | strummed | the odd double-stop | funk, pop |
 | Indie | backbeat, downbeat or even | triads in the verses; sus/add9 | mostly picked (ringing, broken, rolling) | double-stops | rock, pop |
+
+## Riff genres (`playRiffPart`, rhythm.ts)
+Metal, hard rock, grunge and alt metal play a written riff; the player decides how it's played:
+- Accents by player on every hit (downbeat, backbeat, kick, 3-3-2, even), the open hits standing out
+  of the chugs; each hit a little different in loudness.
+- The riff breathes: in the middle bars of a four-bar phrase one chug is ghosted (a dead note),
+  dropped, or let ring open (25-35% a bar by player); chord changes and downbeats stay as written.
+- Lighter under the lead's verse answers; a pre-chorus build; softer under a solo.
+- Timing drift: tight for metal, loose for grunge.
+
+| Player | Accents | Feel | Mostly in |
+|---|---|---|---|
+| Chugger | downbeat, kick or even | tight, even, downpicked | metal |
+| Heavy | downbeat, backbeat or kick | big accents, a looser hand | hard rock |
+| Grunge | downbeat or backbeat | loose, heavy-handed, never quite on the grid | grunge |
+| Groove | kick or 3-3-2 | locked to the kick, syncopated | alt metal |
 
 Sources (search summaries): guitarworld.com (pendulum strumming, gallops, Bob Marley rhythm, Little
 Wing), premierguitar.com (strumming patterns, funk, Malcolm Young, Hendrix rhythm, Travis picking,
