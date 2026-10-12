@@ -74,9 +74,26 @@ into a number. ✓ = built (phase 1), · = later.
 - ✓ The tension line over the section strip, with the mood and the climax; the section playing is
   shaded.
 
-## 5. Later
-- · Phase 2: harmony and melody follow the curve (the dominant held before a chorus, the home chord
-  delayed, borrowed chords by mood, the lead's register), the solo placed as the peak or the release
-  after it, other climaxes (a bridge that climbs, an outro solo), mood leaning tempo and key.
-- · Phase 3: drag the curve to reshape the song, a mood per section, a tension meter that measures
-  what was generated against the plan.
+## 5. Phase 2 (built)
+- ✓ Chords that carry the mood (`MOOD_PLANS`, track.ts), for verses, pre-choruses and bridges about half
+  the time [P]: melancholic and nostalgic borrow the minor iv in a major key (IV → iv); triumphant goes
+  bVI → bVII into the chorus (the "epic" lift); tense holds the V long before the chorus and uses the
+  Phrygian bII in minor; dark uses bVI, bVII and bII; melancholic minor songs use the major V (a stronger
+  pull home); dreamy avoids a hard V (ends on IV or bVI: no strong arrival).
+- ✓ Building into an arrival (a chorus or the climax): the bass holds the key's 5th in 8ths over the last
+  bar or two (a dominant pedal, only where it sits well under the chords) [P]; the rhythm guitar holds the
+  last chord suspended (sus4), resolving as the new section lands [P]. By mood (pedal: tense 70%,
+  triumphant 60% … dreamy never; sus4: dreamy 60%, melancholic and nostalgic 50% … angry 10%).
+- ✓ Into the climax, a stop or the band hitting together is likelier (a breath, then the arrival;
+  Huron's contrast) [theory].
+- ✓ Solos follow where they sit on the curve: the climax (or a high solo) climbs to an octave and a half
+  above its root, busier and louder; a solo in a calm song or a release stays about an octave up, sung.
+- ✓ Guitar 2 plays an octave up at the climax (moods that peak high) [P].
+- ✓ The climax can be an outro that solos or jams (moods that hold to the end), not only the last
+  chorus [M: the last chorus is the single peak in only about a third of songs].
+
+## 6. Later
+- · The lead's register following the curve everywhere (not only the climax), the verse answers getting
+  busier as it rises; the drums' hi-hat to ride inside sections; mood leaning tempo and key (ideas).
+- · Phase 3: drag the curve to reshape the song, a mood per section, a tension meter that measures what
+  was generated against the plan.
