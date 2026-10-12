@@ -18,7 +18,8 @@ import { Rng } from '../rng';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import type { Timbre } from './singers';
-import { PEAK, type Tune, type TuneNote, followTension, melodyDesc, melodyStyle, writeTune } from './melody';
+import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
+import { LOW, PEAK, type Tune, type TuneNote, followTension, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -242,7 +243,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     let b = blocks.get(as);
     if (!b) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
-      const tune = shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, melody), new Rng(`${ctx.seed}-speak-${as}`), melody.singer.syncop);
+      const tune = shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, melody, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}`), melody.singer.syncop);
       const words = writeWords(new Rng(`${ctx.seed}-words-${as}`), tune, style, as === 'chorus' ? hook : null, base + 6);
       const t = idea.section?.tension ?? [];
       b = { tune, key: src.song.key, bars: src.song.bars.length, words, tag: as, ref: t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0.5 };
@@ -280,6 +281,11 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         if (m <= top) { held.midi = m; held.belt = true; held.vel = 0.95; }
       }
     }
+    // every section's notes fitted to what its band plays (its own chords, its bass), pushed with the
+    // band's pushes, and Guitar 2 out of the way of the words
+    const fit = fitToBand(idea, LOW[0] - 3, PEAK + 1 + melody.top);
+    const pushed = pushWithBand(idea);
+    const cleared = clearForSinger(idea);
     leaveRoom(idea);
     breathe(idea.vocal);
     if (idea.vocal.length) {
@@ -287,6 +293,8 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`); told = true; }
       idea.notes.push(`Vocal (${VOCAL_DESC[as]}): “${words.length > 140 ? `${words.slice(0, 140)}…` : words}”`);
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
+      const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
+      if (fitBits.length) idea.notes.push(`Vocal fits the band: ${fitBits.join(', ')}`);
       if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);
     }
   });

@@ -274,7 +274,39 @@ them sound East Asian, and what changed:
 - More closed syllables in the words (English keeps many; "ly ni ry" all open sounds less like it).
 - Later: other traditions as a choice (a "singing style" per song), not mixed in by chance.
 
-## 8. Later
+## 8. The singer listens to the band (`src/parts/fit.ts`, 2026-10-12)
+Paul: the vocal sounds human but doesn't suit the band. Measured on 140 songs: the tune only knew the
+key and chords, never the bass, drums or guitars. Over borrowed chords (mood chords) it rubbed a semitone
+against the chord 21-46% of the time; 20-33% of held notes ran into a chord they didn't fit; it clashed
+with the bass about 6% of the time. Built:
+- [P] Every chord brings its own notes: over a borrowed chord the voice sings that chord's scale. ✓
+- [P] No semitone or tritone against the bass under a note (unless the voice is on a chord note). ✓
+- [P] Held notes land with chord changes where one is near; a held note running into a new chord moves
+  to a note both share, or slides on its vowel to the new chord's note as it changes. ✓
+- Each line written 6 times and the best fit kept: fewest clashes (chords, bass, riff), stressed
+  syllables with the kick and snare, notes starting on chord changes, out of Guitar 2's range. ✓
+- Every section fitted to its own chords and bass (a verse with new chords no longer sings the old ones). ✓
+- Result (first measured on the two-bar writer): borrowed-chord rubs 21-46% → 0-9%; held notes ending
+  off their chord 20-33% → 5-21% (the rest colour notes, not clashes); bass clashes about 6% → 2%; the
+  tunes' shape (steps, leaps, range) unchanged.
+- [P] Rhythm with the groove: off-beat notes scored by whether the band plays there (kick, snare,
+  bass, strum, riff), so the singer's syncopations match the band's. Off-beat notes landing with the band
+  43-80% → 48-84%. ✓
+- [P] Pushes: when the band pushes a chord change early (kick or bass on it), a held or stressed note
+  on the next beat comes in on the push too. ✓
+- [P] Guitar 2 answers, it doesn't talk over the singer: its melody notes starting under the singer's
+  words, in either voice's range, are left out (arpeggios, swells, chords and muted scratches stay).
+  Guitar 2 notes over the words: about 50% → 22% (what's left: out of range, or ringing parts). ✓
+- [P] Tempo: fewer, longer notes over a fast band, more words over a slow one. ✓
+- Re-measured on top of the singers (section 7), 140 songs, before → after: borrowed-chord rubs 13-35% →
+  0-6% (funk 24%, its 7th and 9th chords); bass clashes 4-8% → 2-4%; held notes ending off their chord
+  8-35% → 3-21%; notes starting on chord changes 41-55% → 63-69%; Guitar 2 notes over the words 25-38%
+  → 22-35%; off-beat notes with the band about the same (61-93%, already good).
+- Checked, already fine: the singer rests through drum fills and stops (about 1% of notes overlap).
+- · Next: riff genres echoing the riff's rhythm and notes; density by section energy; Guitar 2 moving
+  out of the singer's range rather than leaving notes out.
+
+## 9. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the
   beat (the drawl's lag).
