@@ -11,6 +11,7 @@
 //   them, rock's anticipations), the song's highest note saved for its climax
 // The register is written for a low (male) voice; a high voice sings it an octave up.
 
+import { arrangeBacking, pickBacking } from './backing';
 import type { ChordPart, Idea, SectionKind, Song } from '../idea';
 import type { Genre } from '../genres';
 import { Rng } from '../rng';
@@ -31,6 +32,8 @@ export interface VocalNote {
   syl: Syllable;
   /** The first note of a sung line (the singer breathes before it). */
   start?: boolean;
+  /** Backing vocals: a harmony line, the gang in unison, a held "ooh", an ad-lib (the lead has none). */
+  role?: 'harmony' | 'gang' | 'ooh' | 'adlib';
 }
 
 export type VoiceType = 'low' | 'high';
@@ -316,7 +319,10 @@ function leaveRoom(idea: Idea) {
 export function singIdea(idea: Idea, seed: string, mood: Mood) {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
   singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum }, 0);
+  arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum), mood }, -1);
   idea.vocal = fake.vocal;
+  idea.backing = fake.backing;
+  idea.vocalDouble = fake.vocalDouble;
 }
 
 /** The voice for a song on Auto: low for heavier genres, either for pop. */

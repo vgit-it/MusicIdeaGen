@@ -30,7 +30,7 @@ export interface EngineSettings {
   layers: LayerSettings;
   /** Real amps (Neural Amp Modeler) for driven electric guitars: prepared ahead live, and in exports. */
   realAmps?: boolean;
-  /** The demo singer: Auto (the song's own voice), a low or high voice, or off (missing: Auto). */
+  /** The demo singer: Auto (the song's own voice), a low or high voice, or off (missing: off). */
   vocal?: VocalChoice;
 }
 
@@ -168,13 +168,14 @@ export class Engine {
     this.mixer.restore(mix);
     for (const p of LAYER_PARTS) this.setLayer(p, s.layers[p] ?? null);
     this.layers.throughout = [...(s.layers.throughout ?? [])];
-    this.setVocal(s.vocal ?? 'auto');
+    this.setVocal(s.vocal ?? 'off');
   }
 
   /* ---- the demo singer */
 
   private singer: Singer | null = null;
-  private vocalChoice: VocalChoice = 'auto';
+  // (off until you turn it on: Paul)
+  private vocalChoice: VocalChoice = 'off';
   get vocal(): VocalChoice {
     return this.vocalChoice;
   }

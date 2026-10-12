@@ -77,6 +77,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
   const strings = mk('Strings', 5, 48); // GM "String Ensemble 1"
   const perc = mk('Percussion', 9, 0);
   const vocal = mk('Vocal', 6, 53); // GM "Voice Oohs"; the words go in as lyric events
+  const backing = mk('Backing vocals', 7, 52); // GM "Choir Aahs": harmonies, oohs, ad-libs
 
   // played by the band: every note a hair off the grid and a touch louder or softer, the same each export
   let human = false;
@@ -128,7 +129,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
     song.bars.forEach((b, bi) => {
       if (bi > 0 && !idea.section?.db) return;
       const expression = Math.round(127 * 10 ** (levelAt(idea.section, bi) / 20));
-      for (const t of [vocal, rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
+      for (const t of [vocal, backing, rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
     });
 
     const isGuitar = (id: ChordInstrumentId) => id !== 'piano';
@@ -183,6 +184,11 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
           const voice = o.vocal === 'low' || o.vocal === 'high' ? o.vocal : idea.vocalVoice ?? 'low';
           note(vocal, n.midi + (voice === 'high' ? 12 : 0), at(g), Math.max(10, at(n.step + n.len) - at(g) - 10), n.vel);
           midi.header.meta.push({ type: 'lyrics', text: n.syl.wordStart || n === idea.vocal![0] ? n.syl.text : `-${n.syl.text}`, ticks: Math.round(at(g)) });
+        }
+        for (const n of idea.backing ?? []) {
+          if (n.step !== g) continue;
+          const voice = o.vocal === 'low' || o.vocal === 'high' ? o.vocal : idea.vocalVoice ?? 'low';
+          note(backing, n.midi + (voice === 'high' ? 12 : 0), at(g), Math.max(10, at(n.step + n.len) - at(g) - 10), n.vel * 0.85);
         }
       }
 

@@ -99,8 +99,15 @@ export function renderIdea(
     const room = (vocal[i + 1]?.step ?? song.total) - n.step;
     [...n.syl.text].slice(0, Math.max(1, room)).forEach((ch, k) => { if (n.step + k < song.total) words[n.step + k] = ch; });
   });
+  // backing vocals: h = harmony, g = gang, o = ooh, a = ad-lib, - = held
+  const back = new Array<string>(song.total).fill('.');
+  for (const n of idea.backing ?? []) {
+    for (let g = n.step + 1; g < Math.min(song.total, n.step + n.len); g++) if (back[g] === '.') back[g] = '-';
+    back[n.step] = n.role === 'harmony' ? 'h' : n.role === 'gang' ? 'g' : n.role === 'ooh' ? 'o' : 'a';
+  }
   $('lanes').textContent = [
     vocal.length ? `Vocal ${lane(voc, (v) => v)}` : '',
+    vocal.length && idea.backing?.length ? `Backs ${lane(back, (v) => v)}` : '',
     vocal.length ? `Words ${lane(words, (v) => v)}` : '',
     idea.guitar ? `Gtr   ${lane(guitar, (v) => v)}` : `Strum ${lane(strum, (v) => v)}`,
     `Gtr 2 ${lane(guitar2, (v) => v)}`,
