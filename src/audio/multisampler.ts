@@ -29,6 +29,10 @@ export interface PlayOptions {
   bend?: number;
   /** Slide off the end of the note, down this many semitones. */
   fall?: number;
+  /** Let a bend down again partway through the note, this many semitones (no bend: picked already bent). */
+  unbend?: number;
+  /** Trill: hammer on and pull off this many semitones above, fast, through the note. */
+  trill?: number;
   /** The next note comes legato out of this one (keep its pitch free for it). */
   tied?: boolean;
   /** Vibrato depth in cents on held notes (0 = none). */
@@ -99,7 +103,30 @@ export class MultiSampler {
       pr.setValueAtTime(low, time);
       pr.setValueAtTime(low, time + 0.02);
       pr.linearRampToValueAtTime(rate, settle);
-    } else if (tuning?.curve.length && !offset) this.untwang(pr, tuning.curve, time, rate, Math.min(vibrato ? vibStart : Infinity, until));
+    } else if (tuning?.curve.length && !offset && !opts.unbend && !opts.trill) this.untwang(pr, tuning.curve, time, rate, Math.min(vibrato ? vibStart : Infinity, until));
+    const end = Math.min(until, time + dur) - 0.003;
+    if (opts.unbend) {
+      // the bend let down again: held at pitch a while, then eased back down (a pre-bend held a little
+      // less, so the release is heard); vibrato only once it's down
+      const at = Math.max(settle + 0.04, time + Math.min(dur * (bend ? 0.5 : 0.35), 0.6));
+      const down = rate * 2 ** (-opts.unbend / 12);
+      if (!bend && !opts.slide) pr.setValueAtTime(rate, time);
+      if (at + 0.13 < end) {
+        pr.setValueAtTime(rate, at);
+        pr.linearRampToValueAtTime(down, at + 0.12);
+        v.rate = down;
+        this.tail(v, down, Math.max(at + 0.3, time + 0.28), time + dur, opts);
+      }
+      return v;
+    }
+    if (opts.trill) {
+      // the fingers hammer on and pull off as fast as they go (about 14 notes a second)
+      const up = rate * 2 ** (opts.trill / 12);
+      let t = Math.max(settle, time + 0.06), hi = true;
+      for (; t < end - 0.04; t += 0.068 + Math.random() * 0.012, hi = !hi) pr.setValueAtTime(hi ? up : rate, t);
+      pr.setValueAtTime(rate, Math.max(time, Math.min(t, end - 0.002)));
+      return v;
+    }
     this.tail(v, rate, vibStart, time + dur, opts);
     return v;
   }

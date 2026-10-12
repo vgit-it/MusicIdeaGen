@@ -91,8 +91,48 @@ As built (`src/parts/solo.ts`, rules in `docs/SOLO-THEORY.md`; placement in `src
   peak), crashes caught on the guitar's long notes and the peak note (once per two bars at most), no
   ghost notes.
 
-## 4. Later
-- Revisit each player's style and playing nuances (Paul, 2026-10-11: "keep this for now"). Known: the
-  shredder's runs and the melodic, raw and funky licks haven't been reworked like the bluesy ones.
-- Richer solos per player: lick library, double-stops, fast runs, the louder solo sound.
-- A "new solo" button, locking a solo, a tab view.
+## 4. Each player's style (2026-10-12)
+Paul: "resume work on the lead parts". The research, like the rhythm guitar's: lesson summaries
+(guitarworld, premierguitar, licklibrary, musicradar, guitarplayer, fundamental-changes, pmtonline).
+Tags: [M] stated by a source; [P] what teachers agree on; [R] a rule of thumb turned into a number.
+✓ = built, · = not yet.
+
+### Techniques (the sound engine, `multisampler.ts`, `instruments.ts`)
+- ✓ Bend and release: bent up into the note, held, let down again (Gilmour, Slash) [P].
+- ✓ Pre-bend and release: picked already bent, then let down (Slash, Brian May) [M].
+- ✓ Unison bend: the note held on one string, bent up to on the string below (Gilmour, Hendrix,
+  grunge) [P]; oblique bend: a note bent up under a held one (Albert King, Johnny Winter, "November
+  Rain") [M]. (A double-stop's bend is on its lower note.)
+- ✓ Double-stops: sixths sliding down (Knopfler, pop), thirds in harmony (Brian May), fourths (Chuck
+  Berry, Frusciante, Cory Wong), a hammered double-stop (Curtis Mayfield), octaves (grunge, Wes) [M].
+- ✓ Overbends: two tones (Gilmour, Albert King) [M].
+- ✓ Trills: hammered on and pulled off, about 14 notes a second (Cantrell, shredders) [M].
+- ✓ Tremolo picking: 32nds, accents on the beat (metal) [M].
+- ✓ Rakes: the pick dragged across two or three muted strings into a bent note (blues, Gilmour,
+  Prince) [M], by player 5-30% of bent licks [R].
+- ✓ Ghost notes: muted 16ths between the notes of a funk lick [M].
+- · Pinch harmonics, whammy dives, feedback (no samples for them yet).
+
+### What each player plays (`src/parts/licks.ts`)
+Licks written over the chord (so they fit wherever they're put), moved to the chord under them and
+into the register near the last note; they have to fit (in the key or a chord note or a passing note
+the lick means; held notes not rubbing; nothing against the riff; ending on a chord note). Sometimes
+cut down (the first notes left off) to fit a gap.
+| Player | Licks | Peak of a solo |
+|---|---|---|
+| Melodic | a two-tone overbend, a unison bend, a bend under a held note, a sung pickup slid into, a pre-bend let down, a bend let down onto the root, a picked cascade (Knopfler), sixths sliding down, thirds in harmony (May) | a unison bend on the top note (40%), else the long bend |
+| Shredder | the pentatonic in threes (Wylde, Rhoads), a pull-off loop (Hammett), a pedal-tone run, a legato climb in fours (Petrucci), string skipping (Gilbert), a broken chord up, chromatic steps down (Dimebag), tremolo picking, trills climbing, a harmonic-minor turn; the harmonic minor's leading tone over a major V | the run, then the top note trilled (25%) or tremolo picked (20%) |
+| Raw | octaves, a bend into the flat 5th (Cobain), a bend then a trill (Cantrell), a Hendrix flurry (McCready), a slide falling (Jack White), one note again, a unison bend | the top note in octaves, slid into (40%) |
+| Funky | a ghosted 16th hook (Rodgers, Wong), a hammered double-stop (Mayfield), sixths slid into, parallel fourths (Frusciante), stabs, a Dorian 16th line (Prince), a raked scream | a raked overbend (40%, Prince) |
+| Bluesy (added) | an Albert King overbend, a bend under a held note picked again, B.B. King's box, Chuck Berry double-stops (3+3+2), a double-stop bend | a raked overbend (40%) |
+
+- Verses: where the player answers the singer, one of their licks instead of a made-up line, by player
+  (melodic 45%, bluesy 35% on top of the blues licks, shredder 70%, raw 55%, funky 70%), up to three
+  beats long, ending on the bar line, not the same lick twice running; funk licks clipped short.
+- Solos: a lick slot takes one of these about half the time (the box licks the rest).
+- Still made up: the sung lines, the motif and its variations, the climbs, so the vocabulary adds to
+  what's new rather than replacing it.
+
+## 5. Later
+- Pinch harmonics, whammy dives, feedback (need their own sounds).
+- A tab view; locking a solo.

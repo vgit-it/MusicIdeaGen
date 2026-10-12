@@ -49,6 +49,13 @@ export interface StrumArgs {
   swell?: boolean;
   /** How the player's hands play it (single notes and octaves). */
   touch?: Touch;
+  /** As written (lead lines): bent up into it (without hands: a double-stop bends its lower note), the bend
+   * let down again, a trill, tremolo picking, a rake across muted strings into it. */
+  bend?: number;
+  unbend?: number;
+  trill?: number;
+  tremolo?: boolean;
+  rake?: number;
 }
 
 export interface ChordInstrument {
@@ -478,7 +485,7 @@ export class Guitar implements ChordInstrument {
   }
 
   private strumTake(take: Take, a: StrumArgs, driven: boolean) {
-    const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell, touch: hands } = a;
+    const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell, touch: hands, unbend, trill, tremolo, rake } = a;
     const fadeIn = swell ? Math.min(0.6, dur * 0.4) : 0;
     const str = strings ?? notes.map((_, i) => 6 - notes.length + i);
     // time between strings: faster at quicker tempos, ~25-45 ms across six strings; a hand never
@@ -520,7 +527,23 @@ export class Guitar implements ChordInstrument {
         return;
       }
     }
-    const hand = { tied: hands?.tied, fall: hands?.fall, bend: hands?.bend };
+    // a double-stop bend: the lower string pushed up under the held top one (a unison or oblique bend)
+    const dyad = notes.length === 2 && !octave;
+    const bendAll = hands?.bend ?? (dyad ? 0 : a.bend);
+    const hand = { tied: hands?.tied, fall: hands?.fall, bend: bendAll, unbend, trill };
+    // a rake: the pick drags across a few muted strings on its way to the note
+    if (rake && stroke === 'D') {
+      for (let k = rake; k >= 1; k--) take.muted.play(notes[0] - 5 * k, time - k * 0.022 + jitter(1), 0.03, Math.min(1, vel * (0.35 + 0.08 * (rake - k))), { detune });
+    }
+    if (tremolo && stroke === 'D' && notes.length === 1) {
+      // tremolo picking: the same note picked again and again in 32nds (accents on the beat)
+      const step = sixteenth / 2;
+      take.strings.forEach((v) => take.ring.choke(v, time, 0.015));
+      for (let t = 0, k = 0; t < dur - step * 0.5; t += step, k++) {
+        take.strings[str[0]] = take.ring.play(notes[0], time + t + jitter(1.5), step * 1.15, vel * (k % 4 === 0 ? 1 : 0.82) * touch(), { detune });
+      }
+      return;
+    }
 
     if (stroke === 'D') {
       // fretting hand lifts: anything still ringing stops as the new chord sounds. Driven chords
@@ -538,7 +561,7 @@ export class Guitar implements ChordInstrument {
         const t = Math.max(0, time - early + i * gap + jitter(1.5));
         if (letRing || same) take.ring.choke(take.strings[str[i]], t, same ? 0.02 : undefined);
         const v = vel * touch() * (1 - (notes.length - 1 - i) * 0.015);
-        take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn: fadeIn || brush(), ...hand });
+        take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn: fadeIn || brush(), ...hand, bend: dyad && i === 0 && !hands ? a.bend : hand.bend });
       }
     } else if (stroke === 'U') {
       // up-strokes catch the top 2-4 strings, a little lighter; lower strings keep ringing

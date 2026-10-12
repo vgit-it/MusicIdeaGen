@@ -5,6 +5,7 @@
 
 import type { Genre, RiffStyle } from '../genres';
 import type { LickKind } from '../players/lead';
+import { LICK_HABITS, type LibLick, licksFor, lickFit, placeLibLick, placedHit } from './licks';
 import type { ChordPart, GuitarHit, Song } from '../idea';
 import type { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
@@ -425,6 +426,40 @@ export function generateGuitar2(
   for (let r = 0; r < bars.length; r += 4) runs.push([r, r + 1, r + 2, r + 3].filter((i) => i < bars.length));
 
   let lastLick: (typeof BLUES_LICKS)[number] | null = null;
+  // the player's own licks (licks.ts) answering the singer: ending on the bar line, up to three beats long
+  const fit = lickFit(song, chords, riff);
+  let lastLib: LibLick | null = null;
+  const libAnswer = (b: Bar, pos: number, clean: boolean): GuitarHit[] | null => {
+    const st = groupStarts(b.groups);
+    const earliest = b.start + st[Math.max(0, st.length - 3)];
+    const end = b.start + b.len;
+    const before = hits.filter((h) => h.step < earliest);
+    const prev = before.length ? before[before.length - 1].notes[before[before.length - 1].notes.length - 1] : 69;
+    const options = rng.shuffle(licksFor(lick, null, fit.chordAt(Math.max(earliest, end - 8)), end - earliest).filter((l) => l !== lastLib));
+    for (const l of options.slice(0, 8)) {
+      // (now and then cut down: its first notes left off)
+      const from = l.notes.length > 3 && rng.chance(0.3) ? rng.int(1, Math.floor(l.notes.length / 2)) : 0;
+      const placed = placeLibLick(rng, fit, key, l, end, LEAD_RANGE[0], LEAD_RANGE[1], prev, 'any', lick, 0.8, from);
+      if (!placed || placed[0].step < earliest) continue;
+      lastLib = l;
+      // funk licks are clipped short
+      if (lick === 'muted') placed[placed.length - 1].len = Math.min(placed[placed.length - 1].len, 3);
+      return placed.map((e) => placedHit(e, t, pos, clean || lick === 'muted'));
+    }
+    return null;
+  };
+  /** Replace what's in the answer at the end of bar `b` with one of the player's licks (by their habit). */
+  const swapIn = (b: Bar, pos: number, clean: boolean) => {
+    if (!rng.chance(LICK_HABITS[lick].verse)) return false;
+    const l = libAnswer(b, pos, clean);
+    if (!l) return false;
+    const from = l[0].step, to = b.start + b.len;
+    for (let i = hits.length - 1; i >= 0; i--) if (hits[i].step >= from && hits[i].step < to) hits.splice(i, 1);
+    // what came before stops where the lick starts
+    for (const h of hits) if (h.step < from && h.step + h.len > from) h.len = Math.max(1, from - h.step);
+    hits.push(...l);
+    return true;
+  };
   runs.forEach((run, ri) => {
     const section = song.sections?.[run[0]] ?? null;
     let style = force?.[ri] ?? pickStyle(rng, genre, section);
@@ -453,6 +488,7 @@ export function generateGuitar2(
         const n = runBars.length;
         const end = bi === n - 1;
         if (!end && !(style === 'answerMore' && bi === Math.floor(n / 2) - 1 && rng.chance(0.35))) return;
+        if (swapIn(b, pos, clean)) return;
         // (not the same lick twice running)
         const l = rng.pick(licks.filter((x) => x !== lastLick));
         lastLick = l;
@@ -470,6 +506,12 @@ export function generateGuitar2(
         const muted = lick === 'muted';
         hits.push({ step: n.step, ...leadFret(n.midi, t, pos), len: muted ? Math.min(n.len, 2) : n.len, vel: n.vel, slide: n.slide, clean: clean || muted });
       }
+      // where they answered, now and then one of their own licks instead
+      runBars.forEach((b, bi) => {
+        const n = runBars.length;
+        const answered = hits.some((h) => h.step >= b.start + b.len / 2 && h.step < b.start + b.len);
+        if (answered && (bi === n - 1 || (style === 'answerMore' && bi % 2 === 1))) swapIn(b, pos, clean);
+      });
     } else if (style === 'climb') {
       // a line climbing into the chorus: a held chord note each bar, then a scale run up a note a beat
       // in the last bar to its top note. Worked out backwards from that top note, so it always arrives
@@ -607,7 +649,9 @@ export function generateGuitar2(
           const root = center + mod(chordPc(key, ch) - center, 12);
           const tones = [...new Set(QUALITIES[ch.q].map((x) => x % 12))].sort((x, y) => x - y);
           const set = [...tones, ...tones.map((x) => x + 12)];
-          hits.push({ step: g, ...leadFret(root + set[c.deg], t, pos), len: c.dead ? 1 : 2, vel: c.dead ? 0.6 : 0.8, mute: c.dead ? 'dead' : undefined, clean: true });
+          let m = root + set[c.deg % set.length];
+          while (m > 81) m -= 12;
+          hits.push({ step: g, ...leadFret(m, t, pos), len: c.dead ? 1 : 2, vel: c.dead ? 0.6 : 0.8, mute: c.dead ? 'dead' : undefined, clean: true });
         }
       });
     }

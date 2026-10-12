@@ -18,7 +18,8 @@ import type { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
 import { SCALES, chordPc } from '../theory';
 import { TUNINGS } from '../theory/fretboard';
-import { type Guitar2Part, MINORISH, chordTones, leadFret, leadScale } from './guitar2';
+import { type Guitar2Part, MINORISH, chordTones, leadScale } from './guitar2';
+import { type PlacedNote, licksFor, lickFit, placeLibLick, placedHit } from './licks';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -87,7 +88,7 @@ const HANDS_OF: Record<LickKind, { legato: number; slide: number; vib: number; s
 };
 
 type Art = 'pick' | 'legato' | 'slide';
-interface Ev { step: number; midi: number; len: number; vel: number; bend?: number; slide?: number; art?: Art; vib?: number; peak?: boolean }
+interface Ev extends Omit<PlacedNote, 'bend'> { bend?: number; slide?: number; art?: Art; peak?: boolean }
 interface Motif { rhythm: number[]; moves: number[] }
 
 /**
@@ -112,11 +113,13 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     && (chordTones(key, chordAt(g)).some((c) => [1, 11].includes(mod(m - c, 12))) || mod(m - rootOf(g), 12) === 6);
   const riffClash = (m: number, g: number) => (riff ?? []).some((h) => h.step <= g && g < h.step + h.len && h.mute !== 'dead'
     && h.notes.some((n) => [1, 11].includes(mod(m - n, 12))));
-  const pool = (lo: number, hi: number) => {
+  // (a shredder also plays the chord's own notes: the harmonic minor's leading tone over a major V)
+  const pool = (lo: number, hi: number, at?: number) => {
     const out: number[] = [];
-    for (let m = lo; m <= hi; m++) if (inScale(m)) out.push(m);
+    for (let m = lo; m <= hi; m++) if (inScale(m) || (at !== undefined && lick === 'run' && isTone(m, at))) out.push(m);
     return out;
   };
+  const fit = lickFit(song, chords, riff);
   const changes = new Set(chords.timeline.map((e) => e.step));
   // the pentatonic box the licks are played in (blues players use the minor box over everything)
   const box = lick === 'blues' || minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9];
@@ -153,7 +156,7 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
 
   /** One phrase: onsets from `start`, a held last note at `finalAt` until `end`, ending on `close` (home: the root; open: the 3rd or 5th). */
   const phrase = (start: number, finalAt: number, end: number, level: Level, lo: number, hi: number, contour: Contour, close: 'home' | 'open', vel: number, reuse: boolean) => {
-    const P = pool(lo, hi);
+    const P = pool(lo, hi, start);
     if (!P.length || finalAt <= start) return;
     // rhythm: the motif's (or the last phrase's) again, or new cells
     let rhythm: number[];
@@ -228,7 +231,15 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
    */
   const placeLick = (start: number, end: number, speed: Speed, lo: number, hi: number, close: 'home' | 'open', vel: number) => {
     const prevM = evs.length ? evs[evs.length - 1].midi : R;
+    // the player's own licks (licks.ts: bends, double-stops, trills...) alongside the box licks
+    const lib = rng.shuffle(licksFor(lick, speed, chordAt(start), end - start));
     const options = rng.shuffle(LICKS.filter((l) => l.speed === speed && l.who.includes(lick)));
+    if (lib.length && rng.chance(0.55)) {
+      for (const l of lib) {
+        const placed = placeLibLick(rng, fit, key, l, end, Math.max(lo - 3, 48), Math.min(83, hi + 2, top - 1), prevM, close === 'home' ? 'home' : 'open', lick, vel);
+        if (placed && placed[0].step >= start) { evs.push(...placed); return true; }
+      }
+    }
     for (const l of options) {
       const span = Math.max(...l.notes.map(([p, , len]) => p + len));
       let at = end - span;
@@ -318,12 +329,26 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
       }
       // the peak note on the downbeat
       const bendFrom = inScale(top - 2) ? 2 : inScale(top - 1) ? 1 : 0;
-      if (lick === 'simple') {
+      const hold = gb[2] ?? endOf(b);
+      const peakWay = rng.next();
+      if (lick === 'run' && peakWay < 0.45) {
+        // trilled or tremolo picked
+        const tr = inScale(top + 2) ? 2 : inScale(top + 1) ? 1 : 3;
+        evs.push({ step: b.start, midi: top, len: hold - b.start, vel: 0.98, bend: 0, peak: true, ...(peakWay < 0.25 ? { trill: tr } : { tremolo: true }) });
+      } else if (lick === 'sung' && peakWay < 0.4) {
+        // a unison bend: the top note held on one string, bent up to on the next
+        evs.push({ step: b.start, midi: top, len: hold - b.start, vel: 0.98, bend: 2, dyad: 0, peak: true });
+      } else if ((lick === 'blues' || lick === 'muted') && peakWay < 0.4 && (inScale(top - 3) || inScale(top - 4))) {
+        // a raked overbend (Albert King, Prince)
+        evs.push({ step: b.start, midi: top, len: hold - b.start, vel: 0.98, bend: inScale(top - 3) ? 3 : 4, rake: 3, peak: true });
+      } else if (lick === 'simple' && peakWay < 0.4) {
+        // the top note in octaves, held
+        evs.push({ step: b.start, midi: top, len: hold - b.start, vel: 0.98, bend: 0, dyad: 12, slide: -2, peak: true });
+      } else if (lick === 'simple') {
         for (let g = b.start; g < (gb[2] ?? endOf(b)); g += 2) evs.push({ step: g, midi: top, len: 2, vel: g === b.start ? 0.97 : 0.88, bend: 0 });
       } else if (lick === 'muted') {
         for (const o of [0, 3, 6, 8, 11].filter((x) => b.start + x < (gb[3] ?? endOf(b)))) evs.push({ step: b.start + o, midi: top, len: 1, vel: 0.9, bend: 0 });
       } else {
-        const hold = gb[2] ?? endOf(b);
         evs.push({ step: b.start, midi: top, len: hold - b.start, vel: 0.98, bend: lick === 'run' ? 0 : bendFrom, peak: true });
       }
       // then a short answer down to a chord note (unless the release follows straight on)
@@ -346,7 +371,7 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
         // one bold note, bent up into a chord note and held, then an answer
         let m = R + 7;
         while (!isTone(m, a.start) && m > R) m--;
-        evs.push({ step: a.start, midi: m, len: ga[2] - a.start + 4, vel: 0.9, bend: inScale(m - 2) ? 2 : 1 });
+        evs.push({ step: a.start, midi: m, len: (ga[2] ?? endOf(a) - 4) - a.start + 4, vel: 0.9, bend: inScale(m - 2) ? 2 : 1 });
         fill(rng.chance(0.5) ? 'lickMid' : 'sing', gb[0] + 2, gb[2] ?? endOf(b) - 4, endOf(b) - 2, lo, hi, 'home', vel(u), 'down');
         return;
       }
@@ -401,14 +426,15 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
       else if (e.step - prev.step <= 2) e.art = e.step % 4 !== 0 && iv > 0 && iv <= 4 && rng.chance(hd.legato) ? 'legato' : 'pick';
       else e.art = iv > 0 && iv <= 7 && rng.chance(hd.slide) ? 'slide' : 'pick';
     }
-    if (!connected && !e.bend && i > 0 && rng.chance(hd.slideIn)) e.slide = -rng.pick([2, 3]);
-    if (e.len >= 6) e.vib = hd.vib + (e.peak ? 8 : 0);
+    if (!connected && !e.bend && !e.dead && !e.tremolo && !e.unbend && i > 0 && rng.chance(hd.slideIn)) e.slide = -rng.pick([2, 3]);
+    if (e.len >= 6 && !e.trill && !e.tremolo && e.dyad === undefined) e.vib = Math.max(e.vib ?? 0, hd.vib + (e.peak ? 8 : 0));
   });
 
   const pos = rng.int(5, 12);
   const hits: GuitarHit[] = all.map((e, i) => {
     const next = all[i + 1]?.step ?? total;
-    return { step: e.step, ...leadFret(e.midi, t, pos), len: Math.max(1, Math.min(e.len, next - e.step)), vel: Math.min(1, e.vel), bend: e.bend, slide: e.slide, art: e.art, vib: e.vib };
+    const h = placedHit({ ...e, bend: e.bend ?? 0, len: Math.max(1, Math.min(e.len, next - e.step)), vel: Math.min(1, e.vel) }, t, pos);
+    return e.slide ? { ...h, slide: e.slide } : h;
   });
   return {
     hits,
