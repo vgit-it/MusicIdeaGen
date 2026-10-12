@@ -5,7 +5,7 @@ import type { Genre } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
 import { cymbalAccent, groupStarts } from '../rhythm';
 import { pianoVoicing } from '../theory';
-import { type GuitarVoicing, guitarVoicings } from '../theory/guitar';
+import { type GuitarVoicing, guitarVoicings, strokeShape } from '../theory/guitar';
 import {
   Bass, type BassId, type BassTone, type ChordInstrument, type ChordInstrumentId, DrumKit, type DrumKitId, Guitar, Piano,
 } from './instruments';
@@ -89,7 +89,7 @@ export class Engine {
   private hitsAt: (GuitarHit[][] | null)[] = [];
   private hitsAt2: GuitarHit[][][] = [];
   /** Chord voicings per item and instrument, computed when first needed. */
-  private voicingCache = new WeakMap<Idea, Map<ChordInstrumentId, { voicings: Voicing[]; shapes: GuitarVoicing[] | null }>>();
+  private voicingCache = new WeakMap<Idea, Map<ChordInstrumentId, { voicings: Voicing[]; shapes: GuitarVoicing[] | null; coloured: Map<string, Voicing> }>>();
 
   private chordChoice: ChordChoice = 'auto';
   private bassChoice: BassId = 'auto';
@@ -328,7 +328,8 @@ export class Engine {
       for (const h of hits) at[h.step]?.push(h);
       return at;
     };
-    this.hitsAt = list.map((i) => (i.guitar ? index(i.guitar, i.song.total) : null));
+    // (riffs; strummed parts' picked notes, arpeggios and licks, play alongside their strums)
+    this.hitsAt = list.map((i) => (i.guitar || i.rhythmPick ? index([...(i.guitar ?? []), ...(i.rhythmPick ?? [])], i.song.total) : null));
     this.hitsAt2 = list.map((i) => index(i.guitar2, i.song.total));
     this.applyChordInstrument();
     this.applyGuitar2();
@@ -658,10 +659,10 @@ export class Engine {
       const chords = idea.chords.timeline.map((e) => e.chord);
       if (id === 'piano' || idea.guitar) {
         // riff ideas carry their own fingering, so there are no chord shapes to show
-        v = { shapes: null, voicings: chords.map((c) => ({ notes: pianoVoicing(idea.song.key, c) })) };
+        v = { shapes: null, voicings: chords.map((c) => ({ notes: pianoVoicing(idea.song.key, c) })), coloured: new Map() };
       } else {
         const shapes = guitarVoicings(idea.song.key, chords, { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist' });
-        v = { shapes, voicings: shapes.map((s) => ({ notes: s.notes, strings: s.frets.flatMap((f, n) => (f === null ? [] : [n])) })) };
+        v = { shapes, voicings: shapes.map((s) => ({ notes: s.notes, strings: s.frets.flatMap((f, n) => (f === null ? [] : [n])) })), coloured: new Map() };
       }
       byId.set(id, v);
     }
@@ -827,8 +828,21 @@ export class Engine {
       if (k >= 0 && strum[k] === 'x' && (g - k) % 2 === 0) { st = 'x'; ghost = true; }
     }
     if (st !== '.' && !idea.guitar && ci) {
-      const voicings = this.voicingsFor(idea).voicings;
+      const vs = this.voicingsFor(idea);
+      const voicings = vs.voicings;
       let { notes, strings } = voicings[chords.chordIdx[g]];
+      // the player's colour on this stroke (a sus, a triad up the neck, a power chord), and an
+      // electric's palm mutes on the power chord
+      const colour = idea.strumColour?.[g];
+      if (vs.shapes && (colour || st === 'p') && this.chordId !== 'electric-dist') {
+        const ix = chords.chordIdx[g], palm = st === 'p', key = `${ix}|${colour}|${palm}`;
+        let v = vs.coloured.get(key);
+        if (!v) {
+          const sh = strokeShape(vs.shapes[ix], idea.song.key, chords.timeline[ix].chord, colour, { electric: electric(this.chordId), palm });
+          vs.coloured.set(key, (v = { notes: sh.notes, strings: sh.frets.flatMap((f, n) => (f === null ? [] : [n])) }));
+        }
+        ({ notes, strings } = v);
+      }
       // the player's hands at chord changes (guitars)
       const hands = idea.changeTouch;
       let open = false;
@@ -862,7 +876,7 @@ export class Engine {
         strings,
         time: Math.max(0, time + (idea.strumFeel ?? 0) / 1000),
         dur: ending ? 6 : Math.min(n * six * (legato ? 1 : 0.97) + (legato ? 0.05 : 0), maxRing),
-        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1) * (ghost ? 0.6 : 1) * (open ? 0.8 : 1),
+        vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1) * (ghost ? 0.6 : (idea.strumVel?.[g] ?? 1)) * (open ? 0.8 : 1),
         sixteenth: six,
       });
     }

@@ -18,6 +18,7 @@ import { naturalStrokes } from './parts/strum';
 import { applySheet, hasPins } from './parts/sheet';
 import { playBand } from './players/band';
 import { type LickKind, pickLead } from './players/lead';
+import { pickRhythm, playRhythm } from './players/rhythm';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, describeSounds, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
@@ -1503,12 +1504,21 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   // (a jam ends in its own key)
   makeEnding(sections[sections.length - 1], jam && slots[slots.length - 1].kind === 'outro' ? jam.home : home);
   sections[sections.length - 1].notes.push('Ends on a held chord');
-  for (const idea of sections) {
+  // the rhythm guitarist (strummed genres, picked with the band) plays each section their way
+  const rhythmPlayer = riff ? null : pickRhythm(bandSeed, src.song.partGenres.strum);
+  sections.forEach((idea, i) => {
     // reshaping and transitions can leave downstrokes between 8ths: strum them as a hand would
     naturalStrokes(idea.song, idea.strum);
+    if (rhythmPlayer) {
+      const info = idea.section!, g2 = slots[i].g2;
+      idea.notes.push(...playRhythm(idea, rhythmPlayer, bandSeed, new Rng(`${idea.seeds.strum}-rhythm-${i}`), {
+        kind: info.kind, energy: info.energy, solo: !!info.solo, tail: !!info.tail,
+        answering: g2 === 'answer' || g2 === 'answerMore' || g2 === 'climb' || (g2 === 'build' && leadVerses),
+      }));
+    }
     const { chords, guitar2 } = idea.section!.sound!;
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
-  }
+  });
   sections[0].notes.push(`Band feel: ${describeSounds(soundList, sounds)}`);
 
   // the band plays it: each player reads the whole track and plays the written part their way

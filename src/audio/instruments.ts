@@ -483,7 +483,9 @@ export class Guitar implements ChordInstrument {
     const str = strings ?? notes.map((_, i) => 6 - notes.length + i);
     // time between strings: faster at quicker tempos, ~25-45 ms across six strings; a hand never
     // strums at exactly the same speed twice
-    const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6) * (notes.length === 2 && notes[1] - notes[0] === 12 ? 0.25 : 1);
+    // (and a hard strum is a quick one: the hand moves faster through the strings)
+    const hard = Math.max(0, Math.min(1, (vel - 0.5) / 0.4));
+    const gap = Math.min(0.009, Math.max(0.005, sixteenth * 0.06)) * (0.75 + Math.random() * 0.6) * (1.2 - 0.4 * hard) * (notes.length === 2 && notes[1] - notes[0] === 12 ? 0.25 : 1);
     const detune = this.type === 'electric' ? 1.5 : 1;
     // a held single note gets real vibrato (chords none: a wobbling chord through an amp sounds like a toy)
     const vibrato = this.type !== 'electric' || letRing || notes.length > 1 ? 0 : hands?.vib ?? (driven ? 10 : 7);
@@ -527,18 +529,22 @@ export class Guitar implements ChordInstrument {
         if (driven && notes.length > 1) take.strings.forEach((v) => take.ring.choke(v, time + gap * 2, 0.06));
         else muteAll(time + 0.002, chord ? 0.03 : 0.015, chord ? 0.2 : 0.6);
       }
-      // sometimes the pick misses the top string
-      const n = chord && notes.length > 4 && Math.random() < 0.2 ? notes.length - 1 : notes.length;
+      // sometimes a lighter strum misses the top string
+      const n = chord && notes.length > 4 && vel < 0.8 && Math.random() < 0.25 ? notes.length - 1 : notes.length;
+      // a down-strum starts a little early, so the middle of the chord lands on the beat
+      const early = chord && !octave ? (n - 1) * gap * 0.4 : 0;
       for (let i = 0; i < n; i++) {
         const m = notes[i];
-        const t = time + i * gap + jitter(1.5);
+        const t = Math.max(0, time - early + i * gap + jitter(1.5));
         if (letRing || same) take.ring.choke(take.strings[str[i]], t, same ? 0.02 : undefined);
         const v = vel * touch() * (1 - (notes.length - 1 - i) * 0.015);
         take.strings[str[i]] = take.ring.play(m, t, dur, v, { slide, vibrato, detune, fadeIn: fadeIn || brush(), ...hand });
       }
     } else if (stroke === 'U') {
       // up-strokes catch the top 2-4 strings, a little lighter; lower strings keep ringing
-      const n = Math.min(notes.length, 2 + Math.floor(Math.random() * 3));
+      // (three strings half the time, two or four the rest; a hard one digs deeper)
+      const r = Math.random();
+      const n = Math.min(notes.length, (r < 0.25 ? 2 : r < 0.75 ? 3 : 4) + (vel > 0.75 ? 1 : 0));
       for (let k = 0; k < n; k++) {
         const i = notes.length - 1 - k;
         const t = time + k * gap * 0.8 + jitter(1.5);

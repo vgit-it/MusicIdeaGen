@@ -14,6 +14,7 @@ import type { GuitarHit, Idea, SectionKind } from '../idea';
 import { Rng } from '../rng';
 import { groupStarts } from '../rhythm';
 import { fillSteps } from './drummer';
+import { naturalStrokes } from '../parts/strum';
 
 type PhraseEnd = 'breath' | 'scratch' | 'push' | 'none';
 
@@ -54,6 +55,7 @@ export function playGuitars(sections: Idea[], seed: string) {
     // how hard they play
     if (idea.guitar) idea.guitar = idea.guitar.map((h) => ({ ...h, vel: Math.min(1, h.vel * gain) }));
     else idea.strumGain = gain;
+    if (idea.rhythmPick) idea.rhythmPick = idea.rhythmPick.map((h) => ({ ...h, vel: Math.min(1, h.vel * gain) }));
     idea.guitar2 = idea.guitar2.map((h) => ({ ...h, vel: Math.min(1, h.vel * gain) }));
     idea.g2Feel = late;
 
@@ -103,6 +105,8 @@ export function playGuitars(sections: Idea[], seed: string) {
         if (n) notes.push(`Rhythm guitar: ${END_DESC[end]}`);
       }
     }
+    // (strummed as a hand would: the strums added in 8ths go down where the hand is moving in 16ths)
+    if (!idea.guitar) naturalStrokes(song, strum);
     idea.notes.push(...notes);
   });
 }
