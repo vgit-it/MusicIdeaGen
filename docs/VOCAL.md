@@ -163,7 +163,24 @@ song lets go; the tune stays recognisable (word for word, same shape). Built (`f
 - Every note louder (and so brighter) with its bar's tension. ✓
 - The notes say it: "Vocal follows the tension: reaching up (notes moved 5 up, a turn)". ✓
 
-## 7. Later
+## 7. The singer listens to the band (`src/parts/fit.ts`, 2026-10-12)
+Paul: the vocal sounds human but doesn't suit the band. Measured on 140 songs: the tune only knew the
+key and chords, never the bass, drums or guitars. Over borrowed chords (mood chords) it rubbed a semitone
+against the chord 21-46% of the time; 20-33% of held notes ran into a chord they didn't fit; it clashed
+with the bass about 6% of the time. Built:
+- [P] Every chord brings its own notes: over a borrowed chord the voice sings that chord's scale. ✓
+- [P] No semitone or tritone against the bass under a note (unless the voice is on a chord note). ✓
+- [P] Held notes land with chord changes where one is near; a held note running into a new chord moves
+  to a note both share, or slides on its vowel to the new chord's note as it changes. ✓
+- Each line written 6 times and the best fit kept: fewest clashes (chords, bass, riff), stressed
+  syllables with the kick and snare, notes starting on chord changes, out of Guitar 2's range. ✓
+- Every section fitted to its own chords and bass (a verse with new chords no longer sings the old ones). ✓
+- Result: borrowed-chord rubs 21-46% → 0-9%; held notes ending off their chord 20-33% → 5-21% (the rest
+  colour notes, not clashes); bass clashes about 6% → 2%; the tunes' shape (steps, leaps, range) unchanged.
+- · Next: rhythm from the band (accents from the groove, pushes with the band, resting in fills, singing
+  into stops); Guitar 2 answering in the singer's gaps; riff genres echoing the riff; tempo and energy.
+
+## 8. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · Fillers in the gaps of the lead line itself;
   screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).

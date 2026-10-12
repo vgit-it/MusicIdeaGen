@@ -20,6 +20,7 @@ import { type Bar, groupStarts } from '../rhythm';
 import type { Mood } from '../tension';
 import { SCALES, chordPc } from '../theory';
 import { MINORISH, chordTones } from './guitar2';
+import { type Band, bandScore, harmonyOf } from './fit';
 import type { Syllable } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -173,6 +174,9 @@ const TWIST_FIT: Record<Twist, (m: Mood, g: Genre) => number> = {
   rapid: (m, g) => (['happy', 'angry', 'tense'].includes(m) ? 1 : 0.3) * (['funk', 'pop', 'rock'].includes(g) ? 1.5 : 0.6),
 };
 
+/** How many times each line is written, the best fit with the band kept. */
+const TRIES = 6;
+
 /** A leap of so many scale steps, in semitones. */
 const LEAP_SEMIS: Record<number, number> = { 2: 4, 3: 5, 4: 7, 5: 9, 6: 10, 7: 12 };
 
@@ -274,7 +278,7 @@ function scaleFor(song: Song, kind: SectionKind): number[] {
 /** A two-bar line's rhythm: onsets (absolute steps) with stress, and where its last (held) note ends. */
 interface LineRhythm { onsets: { g: number; stress: boolean }[]; end: number }
 
-function lineRhythm(rng: Rng, bars: Bar[], busy: number, start: Start, sync: number): LineRhythm {
+function lineRhythm(rng: Rng, bars: Bar[], busy: number, start: Start, sync: number, changes: number[] = []): LineRhythm {
   const onsets: { g: number; stress: boolean }[] = [];
   const level = (x: number) => Math.max(0, Math.min(2, Math.round(x + (rng.next() - 0.5) * 0.8)));
   const [b1, b2] = bars;
@@ -316,6 +320,12 @@ function lineRhythm(rng: Rng, bars: Bar[], busy: number, start: Start, sync: num
     for (const p of cell) onsets.push({ g: b2.start + g2[gi] + p, stress: p === 0 });
   }
   let hold = b2.start + g2[sungGroups];
+  // (the held note lands with a chord change nearby: the voice moves with the band)
+  const near = changes.filter((c) => c >= b2.start && c <= b2.start + b2.len - 4 && c !== hold && Math.abs(c - hold) <= 4);
+  if (near.length && !changes.includes(hold) && rng.chance(0.75)) {
+    hold = near.reduce((a, c) => (Math.abs(c - hold) < Math.abs(a - hold) ? c : a));
+    for (let k = onsets.length - 1; k >= 0; k--) if (onsets[k].g >= hold) onsets.splice(k, 1);
+  }
   // (rock's anticipation: the held note lands an 8th early)
   if (rng.chance(0.1 + sync * 0.5) && hold - 2 > Math.max(...onsets.map((o) => o.g))) hold -= 2;
   onsets.push({ g: hold, stress: true });
@@ -353,7 +363,8 @@ interface Motif { rh: LineRhythm; start: number; b2: number; lens: number[]; sha
  * The tune of a block: lines of two bars written by the style's form and contour for `kind`; `base`:
  * the verse's centre pitch (the song's anchor). Steps are relative to the block's start.
  */
-export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: SectionKind, base: number, genre: Genre, style: MelodyStyle): Tune {
+export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: SectionKind, base: number, genre: Genre, style: MelodyStyle, band?: Band): Tune {
+  const H = harmonyOf(song, chords);
   const P = PLANS[kind] ?? PLANS.verse!;
   const G = GENRE_LEAN[genre];
   const { key, bars, total, mode } = song;
@@ -405,91 +416,106 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const name = letter.toUpperCase();
     const prev = motifs.get(name);
     const b2 = L[1]?.start ?? L[0].start + L[0].len;
-    // the rhythm: a letter that comes back sings the same rhythm; a primed one keeps its first bar
-    let rh: LineRhythm;
-    let keep = 0;
     const lineStart = L[0].start;
-    const fits = prev && L.length === prev.lens.length && L.every((b, k) => b.len === prev.lens[k]);
-    if (prev && fits) {
-      const off = lineStart - prev.start;
-      if (letter === name) {
-        rh = { onsets: prev.rh.onsets.map((o) => ({ ...o, g: o.g + off })), end: prev.rh.end + off };
-        keep = rh.onsets.length;
-      } else {
-        const head = firstBar(prev.rh, prev.b2).map((o) => ({ ...o, g: o.g + off }));
-        const fresh = lineRhythm(rng, L, busy, 'down', style.sync);
-        rh = { onsets: [...head, ...fresh.onsets.filter((o) => o.g >= b2)], end: fresh.end };
-        keep = head.length;
-      }
-    } else rh = lineRhythm(rng, L, busy * (kind === 'prechorus' && li === last ? 1.25 : 1), li === 0 && start === 'pickup' ? 'down' : start, style.sync);
-
-    // the line's anchor: the centre (answer lines a step lower in verses; a call-and-response chorus
-    // answers well below), climbing by sequence through a pre-chorus
-    const call = style.twist === 'call' && big && li % 2 === 1 ? -4 : 0;
-    const anchor = clampIdx(nearestIdx(center + (kind === 'verse' && li % 2 === 1 ? -1 : 0)) + seq * li + call);
-    const n = rh.onsets.length;
-    const shape: number[] = [];
-    const alt: number[] = [];
-    let prevIdx = anchor;
-    let leapDir = 0;
-    const closed = li === last || (style.ends === 'fall' && li % 2 === 1);
-    rh.onsets.forEach((o, oi) => {
-      const isLast = oi === n - 1;
-      const len = (isLast ? rh.end : rh.onsets[oi + 1].g) - o.g;
-      const g = o.g;
-      let idx: number;
-      let a = 0;
-      const copied = !!prev && oi < keep && oi < prev.shape.length;
-      let hookNote = false;
-      if (copied) {
-        idx = anchor + prev.shape[oi];
-        a = prev.alt[oi];
-      } else {
-        const x = n > 1 ? oi / (n - 1) : 1;
-        const target = anchor + contourAt(contour, x, height, peak);
-        hookNote = big && li === 0 && oi === 1 && style.hookLeap > 0;
-        if (oi === 0 && !prev) {
-          idx = Math.round(target);
-          // (the hook's first note low enough for its leap to fit)
-          if (big && li === 0 && style.hookLeap) idx = Math.min(idx, nearestIdx(pool[pool.length - 1] - (LEAP_SEMIS[style.hookLeap] ?? 12)));
+    // a few tries at the line, the one that sits best with the band kept
+    const attempt = (rng: Rng) => {
+      const lineNotes: TuneNote[] = [];
+      // the rhythm: a letter that comes back sings the same rhythm; a primed one keeps its first bar
+      let rh: LineRhythm;
+      let keep = 0;
+      const fits = prev && L.length === prev.lens.length && L.every((b, k) => b.len === prev.lens[k]);
+      if (prev && fits) {
+        const off = lineStart - prev.start;
+        if (letter === name) {
+          rh = { onsets: prev.rh.onsets.map((o) => ({ ...o, g: o.g + off })), end: prev.rh.end + off };
+          keep = rh.onsets.length;
+        } else {
+          const head = firstBar(prev.rh, prev.b2).map((o) => ({ ...o, g: o.g + off }));
+          const fresh = lineRhythm(rng, L, busy, 'down', style.sync, H.changes);
+          rh = { onsets: [...head, ...fresh.onsets.filter((o) => o.g >= b2)], end: fresh.end };
+          keep = head.length;
         }
-        else {
-          let move: number;
-          const dir = Math.sign(target - prevIdx) || (rng.chance(0.5) ? 1 : -1);
-          if (leapDir) { move = -leapDir; leapDir = 0; } // after a leap, a step back (gap-fill)
-          else if (rng.chance(style.repeat)) move = 0;
-          else if (rng.chance(style.leap * (contour === 'recite' ? 0.4 : 1))) { move = leapTo(prevIdx, dir * rng.pick(style.leaps)) - prevIdx; leapDir = Math.sign(move); }
-          else move = (rng.chance(0.8) ? dir : -dir) * (Math.abs(target - prevIdx) >= 3 && rng.chance(0.4) ? 2 : 1);
-          idx = prevIdx + move;
+      } else rh = lineRhythm(rng, L, busy * (kind === 'prechorus' && li === last ? 1.25 : 1), li === 0 && start === 'pickup' ? 'down' : start, style.sync, H.changes);
+      // the line's anchor: the centre (answer lines a step lower in verses; a call-and-response chorus
+      // answers well below), climbing by sequence through a pre-chorus
+      const call = style.twist === 'call' && big && li % 2 === 1 ? -4 : 0;
+      const anchor = clampIdx(nearestIdx(center + (kind === 'verse' && li % 2 === 1 ? -1 : 0)) + seq * li + call);
+      const n = rh.onsets.length;
+      const shape: number[] = [];
+      const alt: number[] = [];
+      let prevIdx = anchor;
+      let leapDir = 0;
+      const closed = li === last || (style.ends === 'fall' && li % 2 === 1);
+      rh.onsets.forEach((o, oi) => {
+        const isLast = oi === n - 1;
+        const len = (isLast ? rh.end : rh.onsets[oi + 1].g) - o.g;
+        const g = o.g;
+        let idx: number;
+        let a = 0;
+        const copied = !!prev && oi < keep && oi < prev.shape.length;
+        let hookNote = false;
+        if (copied) {
+          idx = anchor + prev.shape[oi];
+          a = prev.alt[oi];
+        } else {
+          const x = n > 1 ? oi / (n - 1) : 1;
+          const target = anchor + contourAt(contour, x, height, peak);
+          hookNote = big && li === 0 && oi === 1 && style.hookLeap > 0;
+          if (oi === 0 && !prev) {
+            idx = Math.round(target);
+            // (the hook's first note low enough for its leap to fit)
+            if (big && li === 0 && style.hookLeap) idx = Math.min(idx, nearestIdx(pool[pool.length - 1] - (LEAP_SEMIS[style.hookLeap] ?? 12)));
+          }
+          else {
+            let move: number;
+            const dir = Math.sign(target - prevIdx) || (rng.chance(0.5) ? 1 : -1);
+            if (leapDir) { move = -leapDir; leapDir = 0; } // after a leap, a step back (gap-fill)
+            else if (rng.chance(style.repeat)) move = 0;
+            else if (rng.chance(style.leap * (contour === 'recite' ? 0.4 : 1))) { move = leapTo(prevIdx, dir * rng.pick(style.leaps)) - prevIdx; leapDir = Math.sign(move); }
+            else move = (rng.chance(0.8) ? dir : -dir) * (Math.abs(target - prevIdx) >= 3 && rng.chance(0.4) ? 2 : 1);
+            idx = prevIdx + move;
+          }
+          // the hook: the chorus's first line opens with a leap up
+          if (hookNote) { idx = leapTo(clampIdx(shape[0] + anchor), style.hookLeap); leapDir = 1; }
+          // colour on short weak notes: a blue 3rd or 7th in passing, a dark flat 2nd
+          if (!o.stress && len <= 2) {
+            const pc = mod(pool[clampIdx(idx)] - key, 12);
+            if (!minorish && (pc === 4 || pc === 11) && rng.chance(style.blue)) a = -1;
+            else if (minorish && pc === 2 && rng.chance(style.dark)) a = -1;
+          }
         }
-        // the hook: the chorus's first line opens with a leap up
-        if (hookNote) { idx = leapTo(clampIdx(shape[0] + anchor), style.hookLeap); leapDir = 1; }
-        // colour on short weak notes: a blue 3rd or 7th in passing, a dark flat 2nd
-        if (!o.stress && len <= 2) {
-          const pc = mod(pool[clampIdx(idx)] - key, 12);
-          if (!minorish && (pc === 4 || pc === 11) && rng.chance(style.blue)) a = -1;
-          else if (minorish && pc === 2 && rng.chance(style.dark)) a = -1;
+        idx = clampIdx(idx);
+        // strong beats on chord notes (by the style: tense songs leave more of them rubbing)
+        const want = isLast || len >= 6 || (!copied && o.stress && rng.chance((P.toneStrong + style.stable) / 2));
+        // (snapping back toward the last note: no bigger jump than written)
+        if (want) { idx = nearTone(idx, g, undefined, idx > prevIdx && !hookNote); a = 0; }
+        // the line's ending: closed on the root (the key's, if the chord has it), open on the 3rd or 5th
+        if (isLast) {
+          const tones = tonesAt(g);
+          const home = tones.includes(key) ? key : tones[0];
+          const fallIn = style.ends === 'fall' || contour === 'fall';
+          idx = closed ? nearTone(idx, g, (m) => mod(m, 12) === home, fallIn) : nearTone(idx, g, (m) => mod(m, 12) !== key || tones.length < 3, fallIn);
+          a = 0;
         }
-      }
-      idx = clampIdx(idx);
-      // strong beats on chord notes (by the style: tense songs leave more of them rubbing)
-      const want = isLast || len >= 6 || (!copied && o.stress && rng.chance((P.toneStrong + style.stable) / 2));
-      // (snapping back toward the last note: no bigger jump than written)
-      if (want) { idx = nearTone(idx, g, undefined, idx > prevIdx && !hookNote); a = 0; }
-      // the line's ending: closed on the root (the key's, if the chord has it), open on the 3rd or 5th
-      if (isLast) {
-        const tones = tonesAt(g);
-        const home = tones.includes(key) ? key : tones[0];
-        const fallIn = style.ends === 'fall' || contour === 'fall';
-        idx = closed ? nearTone(idx, g, (m) => mod(m, 12) === home, fallIn) : nearTone(idx, g, (m) => mod(m, 12) !== key || tones.length < 3, fallIn);
-        a = 0;
-      }
-      if (len >= 4 && rubs(pool[idx], g)) idx = Math.max(0, idx - 1);
-      prevIdx = idx;
-      shape.push(idx - anchor);
-      alt.push(a);
-      notes.push({ step: g, len: Math.max(1, len), midi: pool[idx] + a, stress: o.stress, start: oi === 0, line: li });
-    });
+        if (len >= 4 && rubs(pool[idx], g)) idx = Math.max(0, idx - 1);
+        prevIdx = idx;
+        shape.push(idx - anchor);
+        alt.push(a);
+        lineNotes.push({ step: g, len: Math.max(1, len), midi: pool[idx] + a, stress: o.stress, start: oi === 0, line: li });
+      });
+      return { rh, shape, alt, lineNotes };
+    };
+    const tries = band ? TRIES : 1;
+    const seed = rng.next();
+    let best = attempt(tries > 1 ? new Rng(`${seed}-0`) : rng);
+    let bestScore = band ? bandScore(best.lineNotes, H, band, total) : 0;
+    for (let c = 1; c < tries; c++) {
+      const t = attempt(new Rng(`${seed}-${c}`));
+      const sc = bandScore(t.lineNotes, H, band!, total);
+      if (sc > bestScore) { best = t; bestScore = sc; }
+    }
+    const { rh, shape, alt } = best;
+    notes.push(...best.lineNotes);
     if (!prev) motifs.set(name, { rh, start: lineStart, b2, lens: L.map((b) => b.len), shape, alt });
   });
 
