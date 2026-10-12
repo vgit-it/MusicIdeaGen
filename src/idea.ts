@@ -176,6 +176,15 @@ export interface GuitarHit {
   art?: 'pick' | 'legato' | 'slide';
   /** Vibrato depth on a held note (cents), as written; otherwise the instrument's own. */
   vib?: number;
+  /** A bend let down again partway through the note, this many semitones (with `bend`: bent up and
+   * released; without: picked already bent, then released). The note is the bent-up pitch. */
+  unbend?: number;
+  /** Trilled: hammered on and pulled off this many semitones above, fast, for the whole note. */
+  trill?: number;
+  /** Tremolo picked: the note picked again and again, as fast as the hand goes (32nds). */
+  tremolo?: boolean;
+  /** Raked into: the pick drags across this many muted strings just before the note. */
+  rake?: number;
   /** Fade the note in (volume swell). */
   swell?: boolean;
   /** The low pedal note of a pedal riff (a harmony part skips it). */
