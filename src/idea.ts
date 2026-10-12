@@ -218,6 +218,14 @@ export interface Idea {
   /** Rhythm guitar (strummed genres): picked notes as well as the strums (arpeggiated sections, a fill
    * between chords). */
   rhythmPick?: GuitarHit[];
+  /** Rhythm guitar (strummed genres): how the player shapes its chords: a capo, higher up the neck, a smooth top line. */
+  shapes?: { capo?: number; near?: number; smooth?: boolean };
+  /** Rhythm guitar: a dotted-8th echo on it (ringing arpeggios). */
+  rhythmEcho?: boolean;
+  /** An idea on its own: its rhythm guitar as written, before the player played it (tracks start from this). */
+  written?: { strum: Stroke[]; guitar?: GuitarHit[] };
+  /** Rhythm guitar (strums and riffs): the player's timing, per step, in ms (+ late): a slow drift, never quite on the grid. */
+  rhythmTime?: number[];
   /** Tracks, played by the band: how far Guitar 2 sits behind the beat, in ms. */
   g2Feel?: number;
   /** Tracks, played by the band: how far the strummed rhythm guitar sits behind the beat, in ms (- ahead). */

@@ -18,7 +18,7 @@ import { naturalStrokes } from './parts/strum';
 import { applySheet, hasPins } from './parts/sheet';
 import { playBand } from './players/band';
 import { type LickKind, pickLead } from './players/lead';
-import { pickRhythm, playRhythm } from './players/rhythm';
+import { pickRhythm, pickRiffPlayer, playRhythm, playRiffPart } from './players/rhythm';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, describeSounds, orchestrate } from './sounds';
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
@@ -177,6 +177,14 @@ function join(segs: Seg[], info: SectionInfo): Idea {
     notes: [],
     section: info,
   };
+}
+
+/** An idea as written, before its rhythm player played it (generate() keeps the written parts). */
+function asWritten(idea: Idea): Idea {
+  const w = idea.written;
+  if (!w) return idea;
+  return { ...idea, strum: [...w.strum], guitar: w.guitar?.map((h) => ({ ...h })), strumVel: undefined, strumColour: undefined,
+    rhythmPick: undefined, shapes: undefined, rhythmEcho: undefined, rhythmTime: undefined, written: undefined };
 }
 
 /* ------------------------------------------------------------ blocks */
@@ -1024,7 +1032,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const P = plansFor(mode);
   // the idea again, but the drums never wait out its first bars (it gets sliced and repeated)
   const baseSong = { ...src.song, noTacet: true };
-  const base = riff ? buildIdea(src.opts, src.seeds, baseSong, withSheet(src.opts, src.seeds, baseSong)) : src;
+  // (the idea as written: the rhythm player's performance of it is redone section by section)
+  const written = asWritten(src);
+  const base = riff ? buildIdea(src.opts, src.seeds, baseSong, withSheet(src.opts, src.seeds, baseSong)) : written;
   const preRoll = rng.chance(PRE_CHANCE[genre]);
   const withPre = opts.order ? opts.order.includes('prechorus') : opts.pre === 'on' || (opts.pre === 'auto' && preRoll);
   const vTag = `v-${S.verse}`, pTag = `p-${S.pre}`, bTag = `b-${S.bridge}`;
@@ -1108,7 +1118,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     }
     home = { root: 0, q: '5' };
   } else {
-    chorus = [seg(src)];
+    chorus = [seg(written)];
     // verse chords from a plan that ends on V (leading into the chorus), different from the chorus
     const vPlans = genre === 'funk' ? FUNK_VERSE : P.verse;
     let vb: Idea | null = null;
@@ -1240,7 +1250,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const style: RiffStyle | undefined = R ? (loud.length ? jr.weighted(loud) : 'chug') : undefined;
     const plan = jr.pick(JAM_PLANS[isMinor(jamMode) ? 'minor' : 'major']);
     const over = { key: (src.song.key + shift) % 12, mode: jamMode, ...(style ? { sections: fill8(style) } : {}) };
-    const from = riff ? base : src;
+    const from = riff ? base : written;
     const write = (half: boolean) => block(from, `j-${jamSeed}`, ['chords', 'strum', 'drums', 'bass'], { ...over, forceHalf: half },
       planned({ ...from.song, ...over }, plan, new Rng(`${jamSeed}-jamchords`), !!style && !chordal(style)));
     const a = write(true), b = write(false);
@@ -1506,16 +1516,20 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   sections[sections.length - 1].notes.push('Ends on a held chord');
   // the rhythm guitarist (strummed genres, picked with the band) plays each section their way
   const rhythmPlayer = riff ? null : pickRhythm(bandSeed, src.song.partGenres.strum);
+  const riffPlayer = riff ? pickRiffPlayer(bandSeed, src.song.genre) : null;
+  // (a capo is for the whole song: decided on all its chords)
+  const allChords = sections.flatMap((x) => x.chords.timeline.map((e) => e.chord));
   sections.forEach((idea, i) => {
     // reshaping and transitions can leave downstrokes between 8ths: strum them as a hand would
     naturalStrokes(idea.song, idea.strum);
-    if (rhythmPlayer) {
-      const info = idea.section!, g2 = slots[i].g2;
-      idea.notes.push(...playRhythm(idea, rhythmPlayer, bandSeed, new Rng(`${idea.seeds.strum}-rhythm-${i}`), {
-        kind: info.kind, energy: info.energy, solo: !!info.solo, tail: !!info.tail,
-        answering: g2 === 'answer' || g2 === 'answerMore' || g2 === 'climb' || (g2 === 'build' && leadVerses),
-      }));
-    }
+    const info = idea.section!, g2 = slots[i].g2;
+    const ctx = {
+      kind: info.kind, energy: info.energy, solo: !!info.solo, tail: !!info.tail, allChords,
+      answering: g2 === 'answer' || g2 === 'answerMore' || g2 === 'climb' || (g2 === 'build' && leadVerses),
+    };
+    const rng = new Rng(`${idea.seeds.strum}-rhythm-${i}`);
+    if (rhythmPlayer) idea.notes.push(...playRhythm(idea, rhythmPlayer, bandSeed, rng, ctx));
+    if (riffPlayer) idea.notes.push(...playRiffPart(idea, riffPlayer, bandSeed, rng, ctx));
     const { chords, guitar2 } = idea.section!.sound!;
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
   });

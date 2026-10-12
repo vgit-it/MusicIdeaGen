@@ -10,7 +10,7 @@ import { generateGuitar2 } from './parts/guitar2';
 import { generateHeavyDrums } from './parts/heavyDrums';
 import { generateRiff } from './parts/riff';
 import { applySheet, hasPins } from './parts/sheet';
-import { pickRhythm, playRhythm } from './players/rhythm';
+import { pickRhythm, pickRiffPlayer, playRhythm, playRiffPart } from './players/rhythm';
 import { carryOver, developStrum, generateStrum, naturalStrokes } from './parts/strum';
 import { Rng, newSeed } from './rng';
 import { type Bar, METERS, lcm, phrasePlan, pickMeters } from './rhythm';
@@ -91,7 +91,10 @@ export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
   // the rhythm guitarist plays it (strummed genres; picked with the strumming)
   // (the same player the idea's track starts with: picked with its band)
   const band = `${seeds.song}-band`;
-  const notes = playRhythm(idea, pickRhythm(band, song.partGenres.strum), band, new Rng(`${seeds.strum}-rhythm`));
+  idea.written = { strum: [...idea.strum], guitar: idea.guitar?.map((h) => ({ ...h })) };
+  const rng = new Rng(`${seeds.strum}-rhythm`);
+  const notes = idea.guitar ? playRiffPart(idea, pickRiffPlayer(band, song.genre), band, rng)
+    : playRhythm(idea, pickRhythm(band, song.partGenres.strum), band, rng);
   const at = idea.notes.map((n) => n.startsWith('Strumming')).lastIndexOf(true) + 1 || 1;
   idea.notes.splice(at, 0, ...notes);
   return idea;

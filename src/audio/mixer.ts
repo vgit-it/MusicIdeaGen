@@ -70,6 +70,7 @@ export class Mixer {
   private gate = new Tone.Gain(1).toDestination();
   private strips = {} as Record<MixPart, Strip>;
   private delay = new Tone.FeedbackDelay({ delayTime: 0.375, feedback: 0.32, wet: 1 });
+  private rhythmEcho = new Tone.Gain(0);
   /** Resolves when the mixer is ready to render (kept for offline renders; the reverb is ready at once now). */
   readonly ready: Promise<void>;
   /** Per-part taps for stems, which follow the section level too. */
@@ -108,6 +109,9 @@ export class Mixer {
       if (DELAY_SEND[p] > -Infinity) gate.connect(new Tone.Volume(DELAY_SEND[p]).connect(this.delay));
       this.strips[p] = { volume, feature, gate, reverb, mute: false, solo: false, slider: 80 };
     }
+    // the rhythm guitar's echo, for sections that ask for it (ringing arpeggios): off until then
+    this.rhythmEcho.connect(this.delay);
+    this.strips.chords.gate.connect(this.rhythmEcho);
   }
 
   state(): MixState {
@@ -141,6 +145,15 @@ export class Mixer {
     g.cancelScheduledValues(from);
     g.setValueAtTime(g.getValueAtTime(from), from);
     g.linearRampToValueAtTime(Tone.dbToGain(db), time + 0.1);
+  }
+
+  /** The rhythm guitar's dotted-8th echo on (picked, ringing sections) or off, eased in around `time`. */
+  setRhythmEcho(on: boolean, time: number) {
+    const g = this.rhythmEcho.gain;
+    const from = Math.max(0, time - 0.05);
+    g.cancelScheduledValues(from);
+    g.setValueAtTime(g.getValueAtTime(from), from);
+    g.linearRampToValueAtTime(on ? Tone.dbToGain(-10) : 0, time + 0.1);
   }
 
   /** Where a part's instrument should connect. */
