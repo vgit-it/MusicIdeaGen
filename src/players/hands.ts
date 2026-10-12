@@ -17,6 +17,7 @@ import { Rng } from '../rng';
 import { groupStarts } from '../rhythm';
 import { SCALES } from '../theory';
 import { TUNINGS } from '../theory/fretboard';
+import { pickLead } from './lead';
 
 interface Hands {
   /** Words for the band notes. */
@@ -87,15 +88,6 @@ const STRUM_HANDS: Record<Genre, [RhythmKind, number][]> = {
   altmetal: [['clean', 2], ['open', 1], ['busy', 1]],
 };
 
-const G2_HANDS: Record<Genre, [HandsKind, number][]> = {
-  rock: [['legato', 2], ['slider', 2], ['picker', 1], ['bluesy', 3]],
-  hardrock: [['legato', 2], ['slider', 1], ['picker', 1], ['bluesy', 3]],
-  grunge: [['legato', 1], ['slider', 3], ['picker', 1], ['bluesy', 2]],
-  pop: [['legato', 3], ['slider', 1], ['picker', 2], ['bluesy', 1]],
-  funk: [['legato', 1], ['slider', 1], ['picker', 3], ['bluesy', 1]],
-  metal: [['legato', 3], ['slider', 1], ['picker', 3], ['bluesy', 0.5]],
-  altmetal: [['legato', 2], ['slider', 2], ['picker', 2], ['bluesy', 1]],
-};
 const BASS_HANDS: Record<Genre, [HandsKind, number][]> = {
   rock: [['fingers', 3], ['tight', 2], ['slidey', 1]],
   hardrock: [['fingers', 2], ['tight', 2], ['slidey', 1]],
@@ -121,6 +113,8 @@ interface LineNote {
   joined: boolean;
   /** Notes we can't place (or shouldn't touch): picked as written. */
   skip: boolean;
+  /** How the part asks for it to be reached (a solo): picked, legato or slid. */
+  art?: 'pick' | 'legato' | 'slide';
 }
 
 interface Spot { string: number; fret: number }
@@ -128,7 +122,9 @@ interface Spot { string: number; fret: number }
 /** The hands of the bassist and Guitar 2 play every section of a track (in place). */
 export function playHands(sections: Idea[], seed: string) {
   const song = sections[0].song;
-  const g2 = HANDS[new Rng(`${seed}-g2-hands`).weighted(G2_HANDS[song.partGenres.strum])];
+  // Guitar 2's hands go with the kind of lead player they are (lead.ts)
+  const lead = pickLead(seed, song.partGenres.strum);
+  const g2 = HANDS[new Rng(`${seed}-g2-hands`).weighted(lead.hands)];
   const bass = HANDS[new Rng(`${seed}-bass-hands`).weighted(BASS_HANDS[song.partGenres.bass])];
   const tuning = song.tuning ?? TUNINGS.standard;
   const guitarOpen = tuning.strings;
@@ -137,7 +133,7 @@ export function playHands(sections: Idea[], seed: string) {
   const riffs = sections.some((s) => s.guitar);
   const rg = new Rng(`${seed}-rhythm-hands`);
   const rhythm = RHYTHM_HANDS[rg.weighted(riffs ? RIFF_HANDS[song.partGenres.strum] : STRUM_HANDS[song.partGenres.strum])];
-  sections[0].notes.push(`Band feel: the rhythm guitarist ${rhythm.desc}; Guitar 2 ${g2.desc}; the bassist ${bass.desc}`);
+  sections[0].notes.push(`Band feel: the rhythm guitarist ${rhythm.desc}; Guitar 2 is ${lead.desc}, ${g2.desc}; the bassist ${bass.desc}`);
   sections.forEach((idea) => {
     const kind = idea.section!.kind;
     if (idea.guitar) playRiff(idea, rhythm, guitarOpen, `${seed}-riff-${kind}`);
@@ -160,6 +156,7 @@ function playGuitar2(idea: Idea, hands: Hands, open: number[], seed: string) {
       step: h.step, notes: octave ? h.notes : [h.notes[0]], offs: octave ? [0, 2] : [0], len,
       joined: !!next && len >= gap && next.step > h.step,
       skip: !(h.notes.length === 1 || octave) || !!h.mute || !!h.letRing || !!h.swell,
+      art: h.art,
     };
   });
   const spots = finger(line, open, 19, hands, (s) => (s.fret === 0 ? 1 : 0.04 * Math.abs(s.fret - 8)));
@@ -169,6 +166,9 @@ function playGuitar2(idea: Idea, hands: Hands, open: number[], seed: string) {
     if (!t) return;
     // a phrase the guitarist already slides into stays that way
     if (h.slide) { t.bend = undefined; t.move = 'pick'; }
+    // a bend the lick was written with is played as written
+    if (h.bend !== undefined) { t.bend = h.bend || undefined; if (h.bend) t.move = 'pick'; }
+    if (h.vib !== undefined) t.vib = h.vib;
     h.touch = t;
     h.strings = line[i].offs.map((o) => t.string + o);
   });
@@ -300,8 +300,10 @@ function finger(line: LineNote[], open: number[], maxFret: number, hands: Hands,
     }
     return out;
   });
-  const trans = (a: Spot, b: Spot, rest: boolean) => {
+  const trans = (a: Spot, b: Spot, rest: boolean, art?: LineNote['art']) => {
     const d = a.fret === 0 || b.fret === 0 ? 0 : Math.abs(b.fret - a.fret);
+    // a note the part wants hammered, pulled off or slid has to be on the same string
+    if (art && art !== 'pick' && a.string === b.string && d > 0 && d <= (art === 'legato' ? 4 : 9)) return -1;
     // after a rest the hand has had time to move
     let c = (d <= 3 ? d * 0.25 : hands.shift + d * 0.3) * (rest ? 0.4 : 1);
     c += Math.abs(b.string - a.string) * 0.35;
@@ -326,7 +328,7 @@ function finger(line: LineNote[], open: number[], maxFret: number, hands: Hands,
       for (const b of c) {
         let best = Infinity, bi = 0;
         pc.forEach((a, ai) => {
-          const v = prev[ai] + trans(a, b, rest);
+          const v = prev[ai] + trans(a, b, rest, line[k].art);
           if (v < best) { best = v; bi = ai; }
         });
         row.push(best + prefer(b));
@@ -360,8 +362,15 @@ function moves(idea: Idea, line: LineNote[], spots: (Spot | null)[], hands: Hand
     const t = out[i];
     if (!t) return;
     const pn = line[i - 1], pt = out[i - 1];
-    // reached from the last note without picking?
-    if (pn && pt && pn.joined && pt.string === t.string && pt.fret !== t.fret && sameShape(pn, n)) {
+    // a solo says how each note is reached (where the fingering allows it)
+    if (n.art && pt) {
+      const d = t.fret - pt.fret;
+      if (n.art !== 'pick' && pt.string === t.string && d !== 0 && t.fret > 0 && pt.fret > 0) {
+        t.move = n.art === 'slide' || Math.abs(d) > 4 ? 'slide' : d > 0 ? 'hammer' : 'pull';
+        pt.tied = true;
+        chain++;
+      } else if (pn?.joined && pt.fret > 0 && t.fret > 0 && Math.abs(d) > 4) pt.lift = 20;
+    } else if (pn && pt && pn.joined && pt.string === t.string && pt.fret !== t.fret && sameShape(pn, n)) {
       const d = t.fret - pt.fret;
       const ok = chain < CHAIN_NOTES - 1 && (n.step - picked) * six < CHAIN_SEC;
       // players tend to pick the beat

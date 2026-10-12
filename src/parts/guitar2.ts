@@ -4,6 +4,7 @@
 // It's a melodic guitar part, not a stand-in for a singer: its phrases leave room.
 
 import type { Genre, RiffStyle } from '../genres';
+import type { LickKind } from '../players/lead';
 import type { ChordPart, GuitarHit, Song } from '../idea';
 import type { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
@@ -11,7 +12,10 @@ import { type Chord, type Mode, QUALITIES, SCALES, chordPc } from '../theory';
 import { TUNINGS, type Tuning, powerChord, voicingsInTuning } from '../theory/fretboard';
 import { type BarPlan, developCell, pitchCell } from './motif';
 
-export type Guitar2Style = 'lead' | 'harmony' | 'octaves' | 'arp' | 'swell' | 'funk' | 'rhythm' | 'fills' | 'rest';
+export type Guitar2Style = 'lead' | 'harmony' | 'octaves' | 'arp' | 'swell' | 'funk' | 'rhythm' | 'fills' | 'rest'
+  // tracks, the lead player: answering the singer at the end of each phrase (or every two bars), and
+  // a line climbing through the pre-chorus into the chorus
+  | 'answer' | 'answerMore' | 'climb';
 
 export const GUITAR2_LABEL: Record<Guitar2Style, string> = {
   lead: 'melody',
@@ -23,6 +27,9 @@ export const GUITAR2_LABEL: Record<Guitar2Style, string> = {
   rhythm: 'rhythm chords under the riff',
   fills: 'short licks answering the band',
   rest: 'sits out',
+  answer: 'answers the singer at the end of each phrase',
+  answerMore: 'answers the singer every two bars',
+  climb: 'a line climbing into the chorus',
 };
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -44,7 +51,7 @@ export function pickStyle(rng: Rng, genre: Genre, section: RiffStyle | null): Gu
   return rng.weighted([['funk', 3], ['fills', 1]]);
 }
 
-const MINORISH: Mode[] = ['minor', 'dorian', 'phrygian'];
+export const MINORISH: Mode[] = ['minor', 'dorian', 'phrygian'];
 
 /**
  * Where melodies sit (MIDI notes), above the rhythm guitars and bass: a melody from D4 to A5;
@@ -57,7 +64,7 @@ const OCTAVE_RANGE: [number, number] = [55, 69];
  * Pentatonic core plus the odd colour note from the mode (semitones above the key). Guitar riffs
  * and leads live in the pentatonic; a lot of modal colour made lines wander.
  */
-function leadScale(rng: Rng, mode: Mode, w: number): number[] {
+export function leadScale(rng: Rng, mode: Mode, w: number): number[] {
   const minor = MINORISH.includes(mode);
   const s = new Set(minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9]);
   for (const n of SCALES[mode]) if (rng.chance(0.1 + w * 0.3)) s.add(n);
@@ -66,7 +73,7 @@ function leadScale(rng: Rng, mode: Mode, w: number): number[] {
 }
 
 /** Lead notes sit around one hand position on the middle/high strings. */
-function leadFret(midi: number, t: Tuning, pos: number): { notes: number[]; strings: number[] } {
+export function leadFret(midi: number, t: Tuning, pos: number): { notes: number[]; strings: number[] } {
   let best = 5, bestCost = Infinity;
   for (let s = 1; s < 6; s++) {
     const fret = midi - t.strings[s];
@@ -77,7 +84,7 @@ function leadFret(midi: number, t: Tuning, pos: number): { notes: number[]; stri
   return { notes: [midi], strings: [best] };
 }
 
-const chordTones = (key: number, c: Chord) => QUALITIES[c.q].map((i) => mod(chordPc(key, c) + i, 12));
+export const chordTones = (key: number, c: Chord) => QUALITIES[c.q].map((i) => mod(chordPc(key, c) + i, 12));
 
 type Density = 'slow' | 'medium' | 'busy';
 
@@ -149,12 +156,64 @@ function lickRhythm(rng: Rng, b: Bar): Onset[] {
 }
 
 /**
+ * A lead player's lick answering the singer, over the end of a bar (positions in the bar), by the
+ * kind of licks they play: a couple of sung notes, a bluesy figure, a quick 16th run, one or two
+ * plain notes, or short muted funk notes.
+ */
+function answerRhythm(rng: Rng, b: Bar, lick: LickKind): Onset[] {
+  const st = groupStarts(b.groups);
+  const n = st.length;
+  // most licks live in the bar's last two beats; a run or a sung phrase sometimes starts a beat earlier
+  const early = (lick === 'run' || lick === 'sung') && n >= 3 && rng.chance(0.35);
+  const from = st[Math.max(0, n - (early ? 3 : 2))];
+  let t: number[];
+  if (lick === 'sung') t = rng.pick([[0, 4], [0, 2, 4], [2, 4], [0, 3, 4], [0, 6]]);
+  else if (lick === 'blues') t = rng.pick([[0, 2, 3, 4], [0, 1, 2, 4], [0, 3, 4, 6], [2, 3, 4, 5, 6], [0, 2, 4, 5]]);
+  else if (lick === 'run') {
+    const len = rng.int(5, early ? 10 : 8);
+    const at = rng.pick([0, 0, 1, 2]);
+    t = Array.from({ length: len }, (_, i) => at + i);
+  } else if (lick === 'simple') t = rng.pick([[0, 4], [0], [0, 2], [2]]);
+  else t = rng.pick([[1, 3, 4, 6], [0, 3, 6], [0, 2, 3, 6], [1, 2, 4, 7]]);
+  return t.filter((p) => from + p < b.len).map((p) => ({ pos: from + p, strong: st.includes(from + p) }));
+}
+
+/**
+ * Blues licks, the way blues players actually phrase them: few notes, bends, the blue third, landing
+ * on the root or the 5th. Notes as [position (16ths), semitones above the key's root, length, bend
+ * (semitones bent up into it)]. `major`: the minor third bent or slid up to the major third (over
+ * major keys); minor keys get their own.
+ */
+type LickNote = [number, number, number, number?];
+const BLUES_LICKS: { notes: LickNote[]; major?: boolean; minor?: boolean }[] = [
+  // the 4th bent up to the 5th, held
+  { notes: [[0, 7, 8, 2]] },
+  // the 7th bent up to the root, back to the 7th, down to the 5th
+  { notes: [[0, 12, 4, 2], [4, 10, 2], [6, 7, 6]] },
+  // the blue third slid up to the major third, home to the root
+  { notes: [[0, 3, 1], [1, 4, 3], [4, 0, 8]], major: true },
+  // the 4th, the minor third, home
+  { notes: [[0, 5, 2], [2, 3, 2], [4, 0, 8]], minor: true },
+  // the same bend twice, then down to the 5th
+  { notes: [[0, 12, 2, 2], [3, 12, 3, 2], [6, 7, 6]] },
+  // the 5th, the 7th, up to the root with a quarter-tone curl
+  { notes: [[0, 7, 3], [3, 10, 3], [6, 12, 6, 1]] },
+  // a bent minor third curled toward the major third (blue), then the root
+  { notes: [[0, 4, 4, 1], [4, 0, 8]], major: true },
+  // the root, the 7th below, the 5th below: a lazy fall
+  { notes: [[0, 12, 2], [2, 10, 2], [4, 7, 8]] },
+];
+
+/** How a lead player answers the singer: at the end of every four bars or every two, with their kind of lick. */
+interface Answer { every: 2 | 4; lick: LickKind }
+
+/**
  * A melody over a run of bars (one or more four-bar runs share one motif, like a hook played twice).
  * Strong beats land on chord tones; every phrase ends on a held note followed by a breath.
  */
 function melody(
   rng: Rng, song: Song, chords: ChordPart, bars: Bar[], density: Density,
-  lo: number, hi: number, scale: number[], slide: number, riff: GuitarHit[] | null, shape: Shape,
+  lo: number, hi: number, scale: number[], slide: number, riff: GuitarHit[] | null, shape: Shape, answer?: Answer,
 ): NoteEv[] {
   const { key, total } = song;
   // riff notes sounding at each step: the melody fills the riff's gaps and avoids clashing with it
@@ -196,7 +255,14 @@ function melody(
   const motifUntil = shape === 'riff' ? groupAt(b0, Math.ceil(b0.groups.length / 2)) : shape === 'line' ? b0.len : groupAt(b0, b0.groups.length - 1);
   const call = motifRhythm(rng, b0, density, motifUntil, busyAt(b0));
   const cell = pitchCell(rng, call.length, 6);
-  const lickCells = [pitchCell(rng, 4, 5), pitchCell(rng, 4, 5)];
+  // a run goes by step, up from below or down from above (with a turn at the end now and then)
+  const run = () => {
+    const up = rng.chance(0.5);
+    const c = Array.from({ length: 10 }, (_, i) => (up ? i - 4 : 4 - i));
+    if (rng.chance(0.4)) c[rng.int(5, 9)] += up ? -2 : 2;
+    return c;
+  };
+  const lickCells = answer?.lick === 'run' ? [run(), run()] : [pitchCell(rng, 4, 5), pitchCell(rng, 4, 5)];
   const shift = rng.pick([1, -1, 2]);
   const runs: Bar[][] = [];
   for (let i = 0; i < bars.length; i += 4) runs.push(bars.slice(i, i + 4));
@@ -235,11 +301,14 @@ function melody(
         phrases.push({ at: b.start, rhythm: fit(b).filter((o) => b.start + o.pos < hold), hold, plan });
       });
     } else {
-      // answers at the ends of bars 2 and 4 (and sometimes a single held note to start)
-      if (rng.chance(0.4)) phrases.push({ at: B[0].start, rhythm: [{ pos: 0, strong: true }], hold: B[0].start + groupAt(B[0], 2), plan: { shift: 0 } });
+      // answers at the ends of bars 2 and 4 (and sometimes a single held note to start); answering a
+      // singer, only in the gaps between their lines: the end of each phrase, or of every two bars
+      if (!answer && rng.chance(0.4)) phrases.push({ at: B[0].start, rhythm: [{ pos: 0, strong: true }], hold: B[0].start + groupAt(B[0], 2), plan: { shift: 0 } });
       B.forEach((b, bi) => {
-        if (bi % 2 === 0 && n > 1) return;
-        phrases.push({ at: b.start, rhythm: lickRhythm(rng, b), hold: endOf(b), plan: { shift: 0, ending: bi === n - 1 ? close : 'open' }, lick: true });
+        // (every two bars: the halfway answer only now and then, so the verse doesn't get busy)
+        if (n > 1 && (answer?.every === 4 ? bi !== n - 1 : bi % 2 === 0 || (bi !== n - 1 && !rng.chance(0.5)))) return;
+        const rhythm = answer ? answerRhythm(rng, b, answer.lick) : lickRhythm(rng, b);
+        if (rhythm.length) phrases.push({ at: b.start, rhythm, hold: endOf(b), plan: { shift: 0, ending: bi === n - 1 ? close : 'open' }, lick: true });
       });
     }
   });
@@ -341,7 +410,7 @@ export interface Guitar2Part {
  * (used by tracks, where the section's energy decides).
  */
 export function generateGuitar2(
-  rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, force?: Guitar2Style[],
+  rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, force?: Guitar2Style[], lick: LickKind = 'sung',
 ): Guitar2Part {
   const { key, w, bars, mode } = song;
   const t = song.tuning ?? TUNINGS.standard;
@@ -355,6 +424,7 @@ export function generateGuitar2(
   const runs: number[][] = [];
   for (let r = 0; r < bars.length; r += 4) runs.push([r, r + 1, r + 2, r + 3].filter((i) => i < bars.length));
 
+  let lastLick: (typeof BLUES_LICKS)[number] | null = null;
   runs.forEach((run, ri) => {
     const section = song.sections?.[run[0]] ?? null;
     let style = force?.[ri] ?? pickStyle(rng, genre, section);
@@ -373,7 +443,64 @@ export function generateGuitar2(
     const clean = quietSection(run) || style === 'arp' || style === 'funk';
     const pos = rng.int(5, 12);
 
-    if (style === 'lead' || style === 'octaves' || style === 'fills') {
+    if ((style === 'answer' || style === 'answerMore') && lick === 'blues') {
+      // a blues player: a lick from the blues vocabulary at the end of each phrase (and, later in the
+      // song, now and then halfway through it), ending on the bar line
+      const major = !MINORISH.includes(mode);
+      const root = 57 + mod(key - 57, 12); // the key's root between A3 and G#4: licks reach an octave up
+      const licks = BLUES_LICKS.filter((l) => (major ? !l.minor : !l.major));
+      runBars.forEach((b, bi) => {
+        const n = runBars.length;
+        const end = bi === n - 1;
+        if (!end && !(style === 'answerMore' && bi === Math.floor(n / 2) - 1 && rng.chance(0.35))) return;
+        // (not the same lick twice running)
+        const l = rng.pick(licks.filter((x) => x !== lastLick));
+        lastLick = l;
+        const span = Math.max(...l.notes.map(([p, , len]) => p + len));
+        const start = Math.max(0, Math.floor((b.len - span) / 2) * 2);
+        for (const [p, iv, len, bend] of l.notes) {
+          if (start + p >= b.len) continue;
+          hits.push({ step: b.start + start + p, ...leadFret(root + iv, t, pos), len: Math.min(len, b.len - start - p), vel: p === 0 ? 0.86 : 0.8, bend: bend ?? 0, clean });
+        }
+      });
+    } else if (style === 'answer' || style === 'answerMore') {
+      // the lead player answering the singer, in the gaps between their lines; muted funk licks are short
+      const answer: Answer = { every: style === 'answer' ? 4 : 2, lick };
+      for (const n of melody(rng, song, chords, runBars, 'medium', ...LEAD_RANGE, scale, song.tuning ? 0.2 : 0.1, riff, 'fills', answer)) {
+        const muted = lick === 'muted';
+        hits.push({ step: n.step, ...leadFret(n.midi, t, pos), len: muted ? Math.min(n.len, 2) : n.len, vel: n.vel, slide: n.slide, clean: clean || muted });
+      }
+    } else if (style === 'climb') {
+      // a line climbing into the chorus: a held chord note each bar, then a scale run up a note a beat
+      // in the last bar to its top note. Worked out backwards from that top note, so it always arrives
+      const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(g, song.total - 1)]].chord;
+      const onsets: { g: number; end: number; run: boolean }[] = [];
+      runBars.forEach((b, bi) => {
+        const lastBar = bi === runBars.length - 1;
+        const at = lastBar ? groupStarts(b.groups) : [0];
+        at.forEach((p, i) => onsets.push({ g: b.start + p, end: i + 1 < at.length ? b.start + at[i + 1] : b.start + b.len, run: lastBar }));
+      });
+      const isTone = (m: number, g: number) => chordTones(key, chordAt(g)).includes(mod(m, 12));
+      // a scale note that doesn't rub (a semitone) against the chord
+      const smooth = (m: number, g: number) => scale.includes(mod(m - key, 12))
+        && !chordTones(key, chordAt(g)).some((c) => [1, 11].includes(mod(m - c, 12)));
+      const below = (m: number, ok: (x: number) => boolean, gap: number) => {
+        for (let x = m - gap; x > m - 13; x--) if (ok(x)) return x;
+        return m - gap;
+      };
+      const ms: number[] = new Array(onsets.length);
+      const lastG = onsets[onsets.length - 1].g;
+      ms[ms.length - 1] = below(LEAD_RANGE[1] - 1, (x) => isTone(x, lastG), 0);
+      for (let i = onsets.length - 2; i >= 0; i--) {
+        const o = onsets[i];
+        // the run: the scale note below; a held note: a chord note at least a couple of semitones below
+        ms[i] = o.run ? below(ms[i + 1], (x) => smooth(x, o.g), 1)
+          : below(ms[i + 1], (x) => isTone(x, o.g), 2);
+      }
+      onsets.forEach((o, i) => {
+        hits.push({ step: o.g, ...leadFret(ms[i], t, pos), len: o.end - o.g, vel: 0.72 + 0.14 * (i / Math.max(1, onsets.length - 1)), clean });
+      });
+    } else if (style === 'lead' || style === 'octaves' || style === 'fills') {
       const density: Density = section === 'big' || style === 'octaves' ? rng.pick(['slow', 'medium']) : rng.pick(['medium', 'medium', 'slow']);
       const [lo, hi] = style === 'octaves' ? OCTAVE_RANGE : LEAD_RANGE;
       const shape = style === 'fills' ? 'fills' : pickShape(rng, genre, style === 'octaves');

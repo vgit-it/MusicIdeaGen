@@ -136,6 +136,8 @@ export interface Touch {
   from?: number;
   /** Bent up into the note from this many semitones below. */
   bend?: number;
+  /** Vibrato depth (cents) on a held note, when the part asks for one. */
+  vib?: number;
   /** Slides off the end of the note, down this many semitones (a fall-off). */
   fall?: number;
   /** A finger squeak on the wound strings as the hand shifts to this note. */
@@ -166,6 +168,13 @@ export interface GuitarHit {
   letRing?: boolean;
   /** Slide into the note from this many semitones away. */
   slide?: number;
+  /** Bent up into the note from this many semitones below, as written in a lick (0: written without a bend; the hands play it as written). */
+  bend?: number;
+  /** How the line gets to this note, as written (a solo): picked, legato from the last note (hammered or
+   * pulled off, by direction), or slid; the hands play it that way where the fingering allows. */
+  art?: 'pick' | 'legato' | 'slide';
+  /** Vibrato depth on a held note (cents), as written; otherwise the instrument's own. */
+  vib?: number;
   /** Fade the note in (volume swell). */
   swell?: boolean;
   /** The low pedal note of a pedal riff (a harmony part skips it). */
@@ -210,7 +219,7 @@ export interface Idea {
   section?: SectionInfo;
 }
 
-export type SectionKind = 'intro' | 'verse' | 'prechorus' | 'chorus' | 'interlude' | 'bridge' | 'breakdown' | 'outro';
+export type SectionKind = 'intro' | 'verse' | 'prechorus' | 'chorus' | 'interlude' | 'bridge' | 'breakdown' | 'solo' | 'outro';
 
 export interface SectionInfo {
   kind: SectionKind;
@@ -224,6 +233,8 @@ export interface SectionInfo {
   sound?: SectionSound;
   /** Step where the band comes in (intros that start with the guitar alone); layers like the piano wait for it. */
   bandFrom?: number;
+  /** Guitar 2 plays a solo here (the mix lifts it). */
+  solo?: boolean;
   /** How the section ends into the next one, so added layers stop or hit with the band. */
   tail?: { stop: number } | { hits: number[] } | { build: number } | { push: number } | { ring: number };
   /** A reversed cymbal swells up into the next section (a big lift). */

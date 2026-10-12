@@ -47,6 +47,8 @@ export const sliderToDb = (v: number) => (v <= 0 ? -Infinity : 20 * Math.log10((
 
 interface Strip {
   volume: Tone.Volume;
+  /** A section's own lift or dip for the part (a guitar solo: Guitar 2 up, the rhythm guitar down). */
+  feature: Tone.Gain;
   /** 0 or 1: mute/solo switch, after the fader so it also silences the reverb send. */
   gate: Tone.Gain;
   /** Send into the shared reverb. */
@@ -98,12 +100,13 @@ export class Mixer {
     for (const p of MIX_PARTS) {
       const volume = new Tone.Volume(0);
       const gate = new Tone.Gain(1);
-      volume.chain(new Tone.Volume(TRIM[p]), gate);
+      const feature = new Tone.Gain(1);
+      volume.chain(new Tone.Volume(TRIM[p]), feature, gate);
       gate.connect(this.master);
       const reverb = new Tone.Volume(REVERB_SEND[p]).connect(fx);
       gate.connect(reverb);
       if (DELAY_SEND[p] > -Infinity) gate.connect(new Tone.Volume(DELAY_SEND[p]).connect(this.delay));
-      this.strips[p] = { volume, gate, reverb, mute: false, solo: false, slider: 80 };
+      this.strips[p] = { volume, feature, gate, reverb, mute: false, solo: false, slider: 80 };
     }
   }
 
@@ -129,6 +132,15 @@ export class Mixer {
     this.strips[part].gate.connect(g);
     this.stems.push(g);
     return g;
+  }
+
+  /** A section's lift or dip for a part (dB, 0 = none), eased in around `time`. */
+  setFeature(part: MixPart, db: number, time: number) {
+    const g = this.strips[part].feature.gain;
+    const from = Math.max(0, time - 0.05);
+    g.cancelScheduledValues(from);
+    g.setValueAtTime(g.getValueAtTime(from), from);
+    g.linearRampToValueAtTime(Tone.dbToGain(db), time + 0.1);
   }
 
   /** Where a part's instrument should connect. */

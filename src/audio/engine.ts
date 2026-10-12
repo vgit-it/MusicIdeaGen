@@ -52,6 +52,9 @@ const BASS_TONES: Record<Genre, BassTone> = {
 };
 
 
+/** A guitar solo's mix (dB): Guitar 2 lifted, the rhythm guitar lowered (measured: the solo sat 2-3 dB under the rhythm guitar). */
+const SOLO_DB = { lead: 2.5, rhythm: -2 };
+
 /** Silent steps after a track ends, so the last chord can ring out. */
 const TAIL_STEPS = 32;
 /** Crossfade into a prepared section (ending on its downbeat). */
@@ -347,6 +350,10 @@ export class Engine {
   private applyLevel(time: number) {
     const e = this.idea?.section?.energy ?? 4;
     this.mixer.setSectionLevel(SECTION_DB[e], time);
+    // a guitar solo stands out: Guitar 2 up, the rhythm guitar down
+    const solo = !!this.idea?.section?.solo;
+    this.mixer.setFeature('guitar2', solo ? SOLO_DB.lead : 0, time);
+    this.mixer.setFeature('chords', solo ? SOLO_DB.rhythm : 0, time);
     this.padInst?.setEnergy(e, time);
     this.stringsInst?.setEnergy(e, time);
   }

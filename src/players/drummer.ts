@@ -139,8 +139,15 @@ export function playDrums(sections: Idea[], seed: string): Feel {
     }
     const inFill = fillSteps(idea);
 
-    // ghost notes around the backbeat: from the second time round (always, for a ghost-note player)
-    if (dr.ghosts && e >= 3 && (round >= 1 || dr.ghosts >= 0.8)) {
+    // under a guitar solo: the drummer follows the guitarist (see playUnderSolo)
+    if (info.solo) {
+      playUnderSolo(idea, dr, fixed, endAt);
+      notes.push('Drummer: rides the cymbal under the solo, builds with it, fills into its peak and crashes with the guitar\'s big notes');
+    }
+
+    // ghost notes around the backbeat: from the second time round (always, for a ghost-note player);
+    // none under a solo (the drummer stays out of the guitar's way)
+    if (dr.ghosts && !info.solo && e >= 3 && (round >= 1 || dr.ghosts >= 0.8)) {
       let n = 0;
       const free = (g: number) => g >= from && g < endAt && !inFill.has(g) && !d.snare[g] && !d.kick[g] && !d.tom[g];
       for (let g = from; g < endAt; g++) {
@@ -191,4 +198,69 @@ export function playDrums(sections: Idea[], seed: string): Feel {
     idea.notes.push(...notes);
   });
   return dr.feel;
+}
+
+/**
+ * The drummer under a guitar solo (docs/SOLO-THEORY.md): over to the ride, a crash with the kick at
+ * the top of every four bars, building bar by bar up to the solo's peak (then easing off a little),
+ * a short fill at the end of each four-bar phrase where the guitar isn't busy, their big fill into
+ * the peak bar, and a crash with the kick on the guitar's long held notes and its peak note (at most
+ * once every two bars). The kick and snare pattern stays as it is.
+ */
+function playUnderSolo(idea: Idea, dr: Drummer, rng: Rng, endAt: number) {
+  const d = idea.drums, { song } = idea, bars = song.bars, n = bars.length;
+  const g2 = idea.guitar2;
+  if (!g2.length) return;
+  const barAt = (g: number) => bars.findIndex((b) => g >= b.start && g < b.start + b.len);
+  const top = Math.max(...g2.map((h) => h.notes[0]));
+  const peakHit = g2.find((h) => h.notes[0] === top)!;
+  const peakBar = Math.max(0, barAt(peakHit.step));
+  const filled = new Set(d.fills.map((f) => f.bar));
+  const busy = (bi: number) => g2.filter((h) => h.step >= bars[bi].start && h.step < bars[bi].start + bars[bi].len).length > 8;
+
+  // fills: the end of each four-bar phrase (not where the guitar is busy), and the big one into the peak
+  bars.forEach((bar, bi) => {
+    if (filled.has(bi) || bi === n - 1) return;
+    const intoPeak = bi === peakBar - 1;
+    if (!intoPeak && (bi % 4 !== 3 || busy(bi))) return;
+    const b = barOf(d, bar);
+    const groups = bar.groups;
+    const len = intoPeak ? (dr.bigLong && groups.length > 1 ? groups[groups.length - 1] + groups[groups.length - 2] : groups[groups.length - 1]) : groups[groups.length - 1];
+    const used = addFill(rng, b, bar.len, groups, song.w, song.partGenres.drums, { len, type: intoPeak ? dr.big : dr.small });
+    putBar(d, bar, b);
+    d.fills.push({ bar: bi, len: used });
+  });
+  const inFill = fillSteps(idea);
+
+  // the ride instead of the hi-hat
+  for (let g = 0; g < endAt; g++) {
+    if (inFill.has(g) || !d.hat[g]) continue;
+    if (g % 2 === 0) d.ride[g] = Math.min(0.85, d.hat[g] + 0.08);
+    d.hat[g] = 0;
+  }
+  const crash = (g: number) => {
+    if (g >= endAt || inFill.has(g)) return;
+    d.crash[g] = 0.85;
+    d.kick[g] = Math.max(d.kick[g], 0.9);
+    d.ride[g] = 0; d.hat[g] = 0; d.hatOpen[g] = 0;
+  };
+  // a crash at the top of every four bars, and landing on the peak
+  for (let bi = 0; bi < n; bi += 4) crash(bars[bi].start);
+  crash(bars[peakBar].start);
+  // catching the guitar: its peak note and long held notes (on an 8th), once every two bars at most
+  let caught = -Infinity;
+  for (const h of g2) {
+    if (h.step % 2 || h.step - caught < 32 || !(h === peakHit || h.len >= 8)) continue;
+    crash(h.step);
+    caught = h.step;
+  }
+
+  // the build: a little softer at the start, up to the peak bar, easing off after it
+  bars.forEach((bar, bi) => {
+    const k = bi <= peakBar ? 0.92 + 0.16 * (bi / Math.max(1, peakBar)) : 0.98;
+    for (let g = bar.start; g < bar.start + bar.len; g++) {
+      for (const l of ['kick', 'hat', 'hatOpen', 'ride', 'crash', 'tom'] as const) if (d[l][g]) d[l][g] = Math.min(1, d[l][g] * k);
+      if (d.snare[g] >= 0.3) d.snare[g] = Math.min(1, d.snare[g] * k);
+    }
+  });
 }
