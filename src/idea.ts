@@ -6,6 +6,7 @@ import type { Bar, Variant } from './rhythm';
 import type { Chord, Mode, Quality } from './theory';
 import type { BassLine } from './parts/bass';
 import type { Tuning } from './theory/fretboard';
+import type { StrumColour } from './theory/guitar';
 
 export type PartName = 'chords' | 'drums' | 'strum' | 'bass';
 
@@ -208,6 +209,15 @@ export interface Idea {
   changeTouch?: Record<number, ChangeTouch>;
   /** Tracks, played by the band: how hard the strummed rhythm guitar plays (1 = as written). */
   strumGain?: number;
+  /** Rhythm guitar (strummed genres), as its player plays it (src/players/rhythm.ts): how hard each
+   * stroke is, per step (1 = as usual): accents, softer up-strums, a build. */
+  strumVel?: number[];
+  /** Rhythm guitar: how a stroke voices its chord, per step (a sus or add9 on a held chord, a high
+   * triad, a power chord); otherwise the usual shape. */
+  strumColour?: (StrumColour | undefined)[];
+  /** Rhythm guitar (strummed genres): picked notes as well as the strums (arpeggiated sections, a fill
+   * between chords). */
+  rhythmPick?: GuitarHit[];
   /** Tracks, played by the band: how far Guitar 2 sits behind the beat, in ms. */
   g2Feel?: number;
   /** Tracks, played by the band: how far the strummed rhythm guitar sits behind the beat, in ms (- ahead). */

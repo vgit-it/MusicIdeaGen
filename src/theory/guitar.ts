@@ -120,3 +120,86 @@ export function guitarVoicings(key: number, chords: Chord[], opts: VoicingOption
     return best;
   });
 }
+
+/**
+ * How a strum voices its chord, besides the usual shape (rhythm guitar, src/players/rhythm.ts):
+ * - sus4 / sus2 / add9: the shape with one finger moved (the 3rd up to the 4th or down to the 2nd,
+ *   or a root up to the 9th), the embellishment players add on a held chord and take off again
+ * - top: a three-string triad on the top strings, up the neck (small funk and pop voicings)
+ * - power: root and 5th (and octave) on the low strings
+ */
+export type StrumColour = 'sus4' | 'sus2' | 'add9' | 'top' | 'power';
+
+const span = (frets: Frets) => { const f = frets.filter((x): x is number => x !== null && x > 0); return f.length ? Math.max(...f) - Math.min(...f) : 0; };
+
+/** The shape `base` (of `chord`) played with a colour; null when the hand can't (it then plays the shape). */
+export function colourVoicing(base: GuitarVoicing, key: number, chord: Chord, colour: StrumColour): GuitarVoicing | null {
+  const pc = chordPc(key, chord);
+  const minor = chord.q === 'min' || chord.q === 'm7';
+  const plain = chord.q === 'maj' || chord.q === 'min' || chord.q === '5';
+  if (colour === 'power') {
+    const pos = position(base);
+    const c = guitarCandidates(pc, '5').sort((a, b) => Math.abs(position(a) - pos) - Math.abs(position(b) - pos))[0];
+    return c ?? null;
+  }
+  if (colour === 'top') return topTriad(pc, chord, position(base));
+  if (!plain || chord.q === '5') return null;
+  const third = (pc + (minor ? 3 : 4)) % 12;
+  const frets = [...base.frets];
+  let moved = false;
+  if (colour === 'add9') {
+    // a root above the bass note goes up a whole step (the highest one: it's what the ear hears)
+    for (let s = 5; s >= 1 && !moved; s--) {
+      const f = frets[s];
+      if (f === null || (TUNING[s] + f) % 12 !== pc || base.notes[0] === TUNING[s] + f) continue;
+      frets[s] = f + 2;
+      moved = true;
+    }
+  } else {
+    const shift = colour === 'sus4' ? (minor ? 2 : 1) : (minor ? -1 : -2);
+    for (let s = 0; s < 6; s++) {
+      const f = frets[s];
+      if (f === null || (TUNING[s] + f) % 12 !== third) continue;
+      if (f + shift < 0) return null;
+      frets[s] = f + shift;
+      moved = true;
+    }
+  }
+  if (!moved || span(frets) > 4) return null;
+  return toVoicing(frets);
+}
+
+/** A triad on the G, B and high E strings (or D, G, B), between frets 2 and 14, near fret 7 (or the chord's position + 5). */
+function topTriad(pc: number, chord: Chord, near: number): GuitarVoicing | null {
+  const tones = [0, chord.q === 'min' || chord.q === 'm7' || chord.q === 'm9' || chord.q === 'dim' || chord.q === 'm7b5' ? 3 : 4, chord.q === 'dim' || chord.q === 'm7b5' ? 6 : chord.q === 'aug' ? 8 : 7]
+    .map((i) => (pc + i) % 12);
+  const want = Math.max(5, Math.min(9, near + 5));
+  let best: GuitarVoicing | null = null, bestCost = Infinity;
+  for (const set of [[3, 4, 5], [2, 3, 4]]) {
+    const opts = set.map((s) => Array.from({ length: 13 }, (_, i) => i + 2).filter((f) => tones.includes((TUNING[s] + f) % 12)));
+    for (const a of opts[0]) for (const b of opts[1]) for (const c of opts[2]) {
+      const fs = [a, b, c];
+      const pcs = new Set(fs.map((f, i) => (TUNING[set[i]] + f) % 12));
+      if (pcs.size < 3 || Math.max(...fs) - Math.min(...fs) > 3) continue;
+      const k = Math.abs((a + b + c) / 3 - want) + (set[0] === 2 ? 1.5 : 0);
+      if (k < bestCost) {
+        bestCost = k;
+        const frets: Frets = [x, x, x, x, x, x];
+        set.forEach((s, i) => { frets[s] = fs[i]; });
+        best = toVoicing(frets);
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * The shape a stroke plays (playback and MIDI export alike): the chord's shape, or its colour.
+ * Power chords only on an electric guitar; an electric's palm mutes chug on the power chord (the low
+ * strings of an open shape, muted, were mud).
+ */
+export function strokeShape(shape: GuitarVoicing, key: number, chord: Chord, colour: StrumColour | undefined,
+  o: { electric: boolean; palm: boolean }): GuitarVoicing {
+  const c = o.palm && o.electric ? 'power' : colour === 'power' && !o.electric ? undefined : colour;
+  return (c && colourVoicing(shape, key, chord, c)) || shape;
+}

@@ -74,6 +74,9 @@ export function renderIdea(
   const guitar = new Array<string>(song.total).fill('.');
   const sym = (h: GuitarHit) => (h.clean ? 'a' : h.mute === 'palm' ? 'p' : h.mute === 'dead' ? 'x' : h.notes.length > 1 ? 'C' : 'n');
   for (const h of idea.guitar ?? []) guitar[h.step] = sym(h);
+  // strummed parts: picked notes (an arpeggio, a lick between chords) show in the strum lane
+  const strum = [...idea.strum] as string[];
+  for (const h of idea.rhythmPick ?? []) strum[h.step] = sym(h);
   const guitar2 = new Array<string>(song.total).fill('.');
   for (const h of idea.guitar2) guitar2[h.step] = h.swell ? '~' : sym(h);
   // layers: c = chord, n = single note, - = held
@@ -86,7 +89,7 @@ export function renderIdea(
     return out;
   };
   $('lanes').textContent = [
-    idea.guitar ? `Gtr   ${lane(guitar, (v) => v)}` : `Strum ${lane(idea.strum, (v) => v)}`,
+    idea.guitar ? `Gtr   ${lane(guitar, (v) => v)}` : `Strum ${lane(strum, (v) => v)}`,
     `Gtr 2 ${lane(guitar2, (v) => v)}`,
     `Kick  ${lane(drums.kick, (v) => (v ? 'x' : '.'))}`,
     `Snare ${lane(drums.snare, (v) => (!v ? '.' : v < 0.3 ? 'g' : 'x'))}`,

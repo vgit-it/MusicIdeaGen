@@ -11,7 +11,7 @@ import type { GuitarHit, Idea } from '../idea';
 import type { Layer } from '../parts/layers';
 import { cymbalAccent, groupStarts } from '../rhythm';
 import { NOTE_NAMES, pianoVoicing } from '../theory';
-import { guitarVoicings } from '../theory/guitar';
+import { guitarVoicings, strokeShape } from '../theory/guitar';
 
 const PPQ = 480;
 
@@ -127,9 +127,15 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
     const isGuitar = (id: ChordInstrumentId) => id !== 'piano';
     const id = o.chordIdFor(idea);
     // chord voicings for strummed parts: the same shapes playback uses
-    const voicings = idea.guitar ? [] : isGuitar(id)
-      ? guitarVoicings(song.key, chords.timeline.map((e) => e.chord), { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist' }).map((v) => v.notes)
-      : chords.timeline.map((e) => pianoVoicing(song.key, e.chord));
+    const shapes = idea.guitar || !isGuitar(id) ? null
+      : guitarVoicings(song.key, chords.timeline.map((e) => e.chord), { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist' });
+    const voicings = idea.guitar ? [] : shapes ? shapes.map((v) => v.notes) : chords.timeline.map((e) => pianoVoicing(song.key, e.chord));
+    // the player's colour on a stroke (a sus, a triad up the neck, a power chord), as playback has it
+    const strokeNotes = (g: number, st: string) => {
+      const ix = chords.chordIdx[g], colour = idea.strumColour?.[g];
+      if (!shapes || id === 'electric-dist' || (!colour && st !== 'p')) return voicings[ix];
+      return strokeShape(shapes[ix], song.key, chords.timeline[ix].chord, colour, { electric: id.startsWith('electric'), palm: st === 'p' }).notes;
+    };
 
     /** A guitar hit (riff or guitar 2) as notes, strummed low to high. */
     const hit = (t: MidiTrack, h: GuitarHit, v: number, ending: boolean, late = 0) => {
@@ -147,14 +153,14 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
 
       // rhythm guitar: riff hits, or strums of the chord voicing
-      for (const h of idea.guitar ?? []) if (h.step === g) hit(rhythm, h, h.vel * dyn, ending);
+      for (const h of [...(idea.guitar ?? []), ...(idea.rhythmPick ?? [])]) if (h.step === g) hit(rhythm, h, h.vel * dyn, ending);
       const st = strum[g];
       if (!idea.guitar && st !== '.') {
-        const notes = voicings[chords.chordIdx[g]];
+        const notes = strokeNotes(g, st);
         const accent = (onBeat ? 0.12 : 0) + (d.kick[g] || d.snare[g] >= 0.5 ? 0.06 : 0);
         const n = gapUntil(strum, '.', g, 16);
         const ring = ending ? 6 : Math.min(n * sixSec * 0.97, isGuitar(id) ? 2.4 : 1.6);
-        const v = ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1);
+        const v = ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1) * (idea.strumVel?.[g] ?? 1);
         const t0 = at(g) + secToTicks((idea.strumFeel ?? 0) / 1000);
         if (st === 'x') notes.slice(-3).forEach((m, i) => note(rhythm, m, t0 + i * 3, 30, 0.3));
         else if (st === 'p') notes.slice(0, 3).forEach((m, i) => note(rhythm, m, t0 + i * 4, secToTicks(Math.min(ring, 0.14)), v * 0.8));

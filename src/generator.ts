@@ -10,7 +10,8 @@ import { generateGuitar2 } from './parts/guitar2';
 import { generateHeavyDrums } from './parts/heavyDrums';
 import { generateRiff } from './parts/riff';
 import { applySheet, hasPins } from './parts/sheet';
-import { carryOver, generateStrum, naturalStrokes } from './parts/strum';
+import { pickRhythm, playRhythm } from './players/rhythm';
+import { carryOver, developStrum, generateStrum, naturalStrokes } from './parts/strum';
 import { Rng, newSeed } from './rng';
 import { type Bar, METERS, lcm, phrasePlan, pickMeters } from './rhythm';
 import { TUNINGS, type Tuning } from './theory/fretboard';
@@ -86,7 +87,14 @@ function planSong(rng: Rng, opts: GenOptions): Song {
 
 export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
   const song = planSong(new Rng(seeds.song), opts);
-  return buildIdea(opts, seeds, song, withSheet(opts, seeds, song));
+  const idea = buildIdea(opts, seeds, song, withSheet(opts, seeds, song));
+  // the rhythm guitarist plays it (strummed genres; picked with the strumming)
+  // (the same player the idea's track starts with: picked with its band)
+  const band = `${seeds.song}-band`;
+  const notes = playRhythm(idea, pickRhythm(band, song.partGenres.strum), band, new Rng(`${seeds.strum}-rhythm`));
+  const at = idea.notes.map((n) => n.startsWith('Strumming')).lastIndexOf(true) + 1 || 1;
+  idea.notes.splice(at, 0, ...notes);
+  return idea;
 }
 
 /**
@@ -110,6 +118,8 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
   if (song.sections) return generateRiffIdea(opts, seeds, song, chords);
   const drums = generateDrums(new Rng(seeds.drums), song);
   const { strum, name: pattern } = generateStrum(new Rng(seeds.strum), song, chords);
+  // a player, not a loop: small changes from bar to bar, and a turn at the end of each phrase
+  const developed = developStrum(new Rng(`${seeds.strum}-develop`), song, chords, strum);
   // where a chord carries on into the next bar, the strumming can too
   const carried = carryOver(new Rng(`${seeds.strum}-carry`), song, chords, strum);
   // the bass: locked to the kick (short notes), or a held, flowing or driving line (notes held into each other)
@@ -131,6 +141,7 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
       (drums.halfTime ? ' · half-time' : '') +
       (drums.fourFloor ? ' · four-on-the-floor' : ''),
     ...(pattern ? [`Strumming: ${pattern}`] : []),
+    ...(developed ? [developed] : []),
     ...(carried ? [carried] : []),
     `Bass: ${BASS_LINE_DESC[bassLine]}`,
     ...chords.notes,
