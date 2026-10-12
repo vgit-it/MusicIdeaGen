@@ -87,7 +87,15 @@ Every voice then shares the same formants (the same tract) from bottom to top. O
 - But no ready browser version turned up ([DDSP in the browser: Tone Transfer](https://magenta.tensorflow.org/tone-transfer)), and the models are large.
 - Voicebank licences vary; some forbid redistribution ([NoLyui terms](https://nolyui.carrd.co/)).
 
-## 5. Proposed plan
+## 5. Done so far
+- Step 1 (2026-10-12), option A only (no VocalSet download, Paul): the voice box
+  (`src/audio/voicebox.ts`: the LF pulse with Rd, period by period, jitter, shimmer, false folds, breath
+  on each pulse; Klatt's vocal tract ported from klatt-syn) and the register rules in
+  `src/audio/sing.ts` (`PEOPLE`: raspy and deep, each with a break, chest, belt and head pulses, rasp,
+  fry). Clear stays on klatt-syn. Measurements: docs/VOCAL.md, section 7, "Voices".
+- Checked: the LF pulse's H1-H2 follows Rd as published (Rd 0.4: about -4 dB, 1.0: +3, 2.2: +14).
+
+## 6. The plan
 1. **Engine A for raspy and deep, each its own person with its own range:**
    - **Deep:** a bass-baritone; break around C4-D4; its wails are belts near the top of its range.
    - **Raspy:** a rock tenor-baritone; break around E4-F4; belts above; rasp tied to effort and to the top of the range.

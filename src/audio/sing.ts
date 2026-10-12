@@ -9,14 +9,17 @@
 //   pole and zero), liquids and glides (formant targets), with formant transitions into the vowel
 // - pitch: glides between legato notes (quicker in fast runs), scoops up into the notes the singer slides
 //   into, vibrato that grows on long notes, falls off the ends of lines; a breath of aspiration at phrase ends
-// - three voices: clear (the first voice, as it was), deep (a longer vocal tract: every resonance lower,
-//   darker, a slower, wider vibrato) and raspy (grit that grows with how hard a note is sung: a rough,
-//   uneven pitch and level, pressed vocal folds, noisy breath on each pulse, a growl one cycle in two on
-//   the loudest notes, and a little drive)
+// - three voices: clear (the first voice, as it was, on klatt-syn's own pulse); raspy and deep on the
+//   voice box (voicebox.ts: the LF model of the vocal folds), each a person with their own range who
+//   changes gear across it as singers do (docs/VOICES.md): chest below their break, blending over a few
+//   notes into a belt (pressed folds, the vowel opened so F1 rides the 2nd harmonic, a "twang", the
+//   larynx up) when they push, or into head voice (lax, airy, darker) when they don't; the raspy one's
+//   false folds growling as they push, the deep one's vocal fry at the bottom of a line
 
 import { type FrameParms, Generator } from 'klatt-syn';
 import type { Cons, Syllable, Vowel } from '../parts/lyrics';
 import type { Timbre } from '../parts/singers';
+import { type VoiceFrame, VoiceBox } from './voicebox';
 
 export const SING_RATE = 22050;
 const FRAME = 0.004;
@@ -66,21 +69,48 @@ export interface VoiceShape {
   timbre?: Timbre;
 }
 
-/** A deep voice (a longer vocal tract): formants (x, all lower), upper formants (x), darker (dB of tilt), a softer pulse (open phase), vibrato rate (Hz) and depth (x). */
-const DEEP = { tract: 0.9, f45: 0.92, tilt: 3, vibHz: -0.6, vib: 1.2, open: 0.66 };
+/** A voice-box singer: their own range and how they sing across it (docs/VOICES.md, section 3). */
+interface Person {
+  /** Formants (x: the size of their vocal tract), the upper formants (x). */
+  formants: number;
+  f45: number;
+  /** Their break (MIDI, low voice): chest voice below, belt or head voice above (the high voice's is 9 notes up). */
+  brk: number;
+  /** The pulse (Rd): chest voice soft to loud, a belt, head voice. */
+  chest: [number, number];
+  belt: number;
+  head: number;
+  /** Rasp (their false folds, 0-1), the chance of vocal fry at the bottom of a line's end. */
+  rasp: number;
+  fry: number;
+  /** Darker (dB of tilt); vibrato rate (Hz, added) and depth (x). */
+  tilt: number;
+  vibHz: number;
+  vib: number;
+}
+const PEOPLE: Record<'raspy' | 'deep', Person> = {
+  // a bass-baritone: a big, dark voice breaking around D4, belting near the top, fry at the bottom
+  deep: { formants: 0.9, f45: 0.92, brk: 62, chest: [1.5, 0.9], belt: 0.65, head: 2.3, rasp: 0.12, fry: 0.5, tilt: 2, vibHz: -0.6, vib: 1.2 },
+  // a rock tenor-baritone: pressed, breaking around F4, belting above it, the rasp growing as they push
+  raspy: { formants: 1, f45: 1, brk: 65, chest: [1.3, 0.7], belt: 0.45, head: 1.8, rasp: 1, fry: 0.15, tilt: 0, vibHz: 0, vib: 0.9 },
+};
 
-/** A small seeded random source (the rasp's roughness is the same each time a line is sung). */
-function noiseOf(seed: number) {
+/** 0 below `a`, 1 above `b`, smoothly between. */
+const smooth = (a: number, b: number, x: number) => {
+  const k = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return k * k * (3 - 2 * k);
+};
+
+/** A small seeded random source (a voice-box line's rasp comes and goes the same way each time). */
+function seededRnd(seed: number) {
   let a = (seed * 2654435761 + 1) >>> 0;
-  const next = () => {
+  return () => {
     a = (a + 0x6d2b79f5) >>> 0;
     let t = a;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-  // (roughly bell-shaped, -1.5 to 1.5)
-  return { next, gauss: () => next() + next() + next() - 1.5 };
 }
 
 /** A segment of the line's timeline: a consonant, or a vowel (with an optional glide target at its end). */
@@ -148,23 +178,24 @@ function noiseShape(fr: FrameParms, shape: NonNullable<ConsSpec['shape']>, vowel
 export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): Float32Array {
   const segs = layout(notes.map((n) => ({ ...n, t: n.t + pre, end: n.end + pre })));
   const endT = segs[segs.length - 1].t1 + 0.25;
-  const gen = new Generator({ sampleRate: SING_RATE, glottalSourceType: 1 });
+  // (the raspy and deep voices: a person on the voice box; clear: klatt-syn's pulse, as it was)
+  const P = voice.timbre === 'raspy' || voice.timbre === 'deep' ? PEOPLE[voice.timbre] : null;
+  const gen = P ? new VoiceBox(SING_RATE, voice.seed * 31 + notes.length) : new Generator({ sampleRate: SING_RATE, glottalSourceType: 1 });
   const frameLen = Math.round(FRAME * SING_RATE);
   const nFrames = Math.ceil(endT / FRAME);
   const out = new Float32Array(nFrames * frameLen);
   const buf = new Float64Array(frameLen);
   const fscale = voice.high ? 1.17 : 1;
-  const deep = voice.timbre === 'deep', raspy = voice.timbre === 'raspy';
-  const tract = (0.97 + (voice.seed % 7) * 0.01) * (voice.person?.tract ?? 1) * (deep ? DEEP.tract : 1);
-  const vibDepth = (voice.person?.vibrato ?? 1) * (deep ? DEEP.vib : 1);
-  const F45 = (voice.high ? [4100, 4800, 5700] : [3300, 3750, 4900]).map((f) => f * (deep ? DEEP.f45 : 1));
-  const vibHz = 5.2 + (voice.seed % 5) * 0.15 + (deep ? DEEP.vibHz : 0);
-  // the rasp, frame by frame: its pitch (for the growl), how much growl, how much drive
-  const rough = noiseOf(voice.seed);
-  const f0s = raspy ? new Float32Array(nFrames) : null;
-  const growl = raspy ? new Float32Array(nFrames) : null;
-  const drive = raspy ? new Float32Array(nFrames) : null;
-  let crackle = 0, crackleTo = 0, driveNow = 0;
+  const tract = (0.97 + (voice.seed % 7) * 0.01) * (voice.person?.tract ?? 1) * (P?.formants ?? 1);
+  const vibDepth = (voice.person?.vibrato ?? 1) * (P?.vib ?? 1);
+  const F45 = (voice.high ? [4100, 4800, 5700] : [3300, 3750, 4900]).map((f) => f * (P?.f45 ?? 1));
+  const vibHz = 5.2 + (voice.seed % 5) * 0.15 + (P?.vibHz ?? 0);
+  // a voice-box singer: where their break is, their rasp coming and going, fry at the end of this line?
+  const brk = P ? P.brk + (voice.high ? 9 : 0) : 0;
+  const rnd = seededRnd(voice.seed * 7 + notes.length);
+  let crackle = 0.6, crackleTo = 0.6;
+  const fryLine = !!P && rnd() < P.fry;
+  const lineEffort = Math.max(0, Math.min(1, (Math.max(...notes.map((n) => n.vel)) - 0.7) / 0.25));
   const scale = (f: F3): F3 => [f[0] * fscale * tract, f[1] * fscale * tract, f[2] * fscale * tract];
   const firstVowelT = segs.find((s) => s.vowel)?.t0 ?? pre;
   // which notes slide in or fall off (deterministic per line)
@@ -177,7 +208,7 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     const t = fi * FRAME;
     while (si + 1 < segs.length && segs[si + 1].t0 <= t) { lastF = currentF(segs[si], segs[si].t1); si++; }
     const s = segs[si];
-    const fr = blankFrame();
+    const fr: FrameParms = P ? ({ ...blankFrame(), rd: 1, jitter: 0.003, shimmer: 0.02, sub: 0, harsh: 0 } as VoiceFrame) : blankFrame();
     // pitch: the note sounding (or about to), a glide over the change, vibrato on long notes
     let ni = 0;
     for (let k = 0; k < vowelNotes.length; k++) if (vowelNotes[k].t - 0.03 <= t) ni = k;
@@ -204,40 +235,66 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     midi -= fallBy * (note.fall ? fx * fx : fx);
     fr.f0 = mtof(midi);
     // loud notes brighter (less tilt), soft ones breathier
-    fr.tiltDb = lerp(9, 2, note.vel) + (deep ? DEEP.tilt : 0);
+    fr.tiltDb = lerp(9, 2, note.vel);
     fr.breathinessDb = lerp(-22, -32, note.vel) + (voice.person?.breath ?? 0);
-    if (deep) fr.openPhaseRatio = DEEP.open;
-    // the rasp: from a little on quiet lines to torn on the belts
-    const r = raspy ? lerp(0.35, 1, (note.vel - 0.72) / 0.23) : 0;
-    if (raspy) {
-      fr.f0 *= 1 + r * 0.012 * rough.gauss();
-      fr.flutterLevel = 0.25 + 0.35 * r;
-      fr.openPhaseRatio = 0.6 - 0.15 * r;
-      fr.breathinessDb += 5 * r;
-      // the growl comes and goes (a new crackle every 40 ms or so), only on the hardest notes
-      if (fi % 10 === 0) crackleTo = rough.next() < 0.6 ? 0.5 + rough.next() * 0.5 : 0;
-      crackle += (crackleTo - crackle) * 0.25;
-      driveNow += (r - driveNow) * 0.15;
-      f0s![fi] = fr.f0;
-      growl![fi] = r > 0.6 ? ((r - 0.6) / 0.4) * 0.55 * crackle : 0;
-      drive![fi] = driveNow;
-    }
     const F = currentF(s, t);
+    // a voice-box singer changes gear across their range (docs/VOICES.md, section 3)
+    let belt = 0, headW = 0, rasp = 0, fry = 0;
+    if (P) {
+      // how hard they sing it, where it sits against their break, and which way they go above it
+      const effort = Math.max(0, Math.min(1, (note.vel - 0.7) / 0.25));
+      const x = note.midi + (voice.high ? 12 : 0) - brk;
+      // (above the break a singer keeps to one gear through a line: belting it, mixing, or in head voice)
+      const above = smooth(-1, 3, x), push = smooth(0.3, 0.9, 0.7 * lineEffort + 0.3 * effort);
+      belt = above * push;
+      headW = above * (1 - push);
+      let rd = lerp(lerp(P.chest[0], P.chest[1], effort), lerp(P.head, P.belt, push), above);
+      // (the bottom of the range: laxer, darker)
+      if (x < -9) rd += 0.25 * Math.min(1, (-9 - x) / 4);
+      // the rasp: a little on quiet lines, most as they push near the top; it comes and goes
+      if (fi % 12 === 0) crackleTo = rnd() < 0.7 ? 0.6 + 0.4 * rnd() : 0.25;
+      crackle += (crackleTo - crackle) * 0.2;
+      rasp = P.rasp * (0.15 + 0.85 * effort ** 1.3) * (0.6 + 0.4 * smooth(-6, 3, x)) * Math.max(crackle, effort > 0.85 ? 0.6 : 0);
+      // vocal fry: the line's last low note creaking down at its end (not where it falls away)
+      if (fryLine && lastNote && !note.fall && x < -5 && held > 0.3) fry = smooth(note.end - 0.22, note.end - 0.04, t);
+      const vf = fr as VoiceFrame;
+      vf.rd = lerp(rd - 0.25 * rasp, 0.35, fry);
+      vf.jitter = 0.003 + 0.012 * rasp + 0.05 * fry;
+      vf.shimmer = 0.02 + 0.12 * rasp;
+      vf.sub = Math.max(rasp > 0.4 ? ((rasp - 0.4) / 0.6) * 0.8 : 0, fry);
+      vf.harsh = Math.max(0.5 * rasp, 0.7 * fry);
+      fr.f0 *= 1 - 0.35 * fry;
+      // the LF pulse brings its own brightness: less tilt than klatt-syn's; head voice darker and airier
+      fr.tiltDb = lerp(5, 1, effort) + P.tilt + 3 * headW;
+      fr.breathinessDb = lerp(-26, -36, effort) + 8 * headW;
+      // the vowel: a belt opens it (F1 up toward the 2nd harmonic, the larynx up a little), head voice
+      // drops F1 and F2 a little (Henrich et al.)
+      if (belt > 0) {
+        F[0] = lerp(F[0], Math.max(F[0], Math.min(1.9 * fr.f0, 1150)), belt * 0.85);
+        for (let k = 0; k < 3; k++) F[k] *= 1 + 0.04 * belt;
+      }
+      F[0] -= 65 * headW;
+      F[1] = Math.max(F[1] - 90 * headW, F[0] + 250);
+    }
     // F1 never under the pitch (it would go silent), F2 clear of it too
     F[0] = Math.max(F[0], fr.f0 * 1.05);
     if (F[1] < fr.f0 * 1.9) F[1] = fr.f0 * 1.9;
     fr.oralFormantFreq = [F[0], F[1], F[2], F45[0], F45[1], F45[2]];
-    const amp = lerp(-8, 0, note.vel) - (note.fall ? 9 * fx : 0);
+    // (a belt's "twang": the 3rd and 4th formants sharper and closer together, a ring around 3 kHz)
+    if (belt > 0) {
+      fr.oralFormantFreq[3] = lerp(F45[0], F[2] + 550, 0.5 * belt);
+      fr.oralFormantBw = [70, 90, 130 * (1 - 0.45 * belt), 200 * (1 - 0.45 * belt), 250, 1000];
+    }
+    const amp = lerp(-8, 0, note.vel) - (note.fall ? 9 * fx : 0) - 6 * fry;
     if (t < s.t0) fr.cascadeVoicingDb = -99;
     else if (s.vowel && t <= s.t1) {
       fr.cascadeVoicingDb = amp;
       // a breath of air as the line ends
       if (lastNote && t > s.t1 - 0.12) fr.cascadeAspirationDb = -30;
-      if (raspy) {
-        // an uneven level, and noisy air on each pulse of the vocal folds
-        fr.cascadeVoicingDb += r * 1.2 * rough.gauss();
-        fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, amp - 30 + 12 * r);
-        fr.cascadeAspirationMod = 0.8;
+      // a voice-box singer's breath on each pulse: more in head voice, more as the rasp grows
+      if (P) {
+        fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, amp - 34 + 10 * headW + 10 * rasp);
+        fr.cascadeAspirationMod = 0.7;
       }
     } else if (s.cons && t <= s.t1) consonant(fr, s, t, amp, voice.high);
     else {
@@ -246,24 +303,11 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     }
     // the very start of the line: a soft attack
     if (t < firstVowelT + 0.03 && s.vowel) fr.cascadeVoicingDb += lerp(-18, 0, (t - firstVowelT + 0.0) / 0.03);
-    gen.generateFrame(fr, buf);
+    if (gen instanceof VoiceBox) gen.generateFrame(fr as VoiceFrame, buf);
+    else gen.generateFrame(fr, buf);
     for (let k = 0; k < frameLen; k++) out[fi * frameLen + k] = buf[k];
   }
   normalize(out);
-  if (raspy) {
-    // the growl (every other cycle softer: a rough undertone an octave down), then the drive
-    let ph = 0;
-    for (let fi = 0; fi < nFrames; fi++) {
-      const g = growl![fi], k = 1 + 2.5 * drive![fi];
-      for (let j = 0; j < frameLen; j++) {
-        const i = fi * frameLen + j;
-        ph = (ph + f0s![fi] / 2 / SING_RATE) % 1;
-        const x = out[i] * (1 - g * (0.5 + 0.5 * Math.cos(2 * Math.PI * ph)));
-        out[i] = Math.tanh(k * x) / k;
-      }
-    }
-    normalize(out);
-  }
   return out;
 
   // formants at time t: a consonant's own target (its transition into the next vowel), a vowel's (with
