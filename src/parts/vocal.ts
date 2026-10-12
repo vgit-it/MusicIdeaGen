@@ -13,7 +13,7 @@
 
 import { arrangeBacking, pickBacking } from './backing';
 import type { Idea, SectionKind } from '../idea';
-import type { Genre } from '../genres';
+import { GENRE_LABEL, type Genre } from '../genres';
 import { Rng } from '../rng';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
@@ -42,7 +42,7 @@ export interface VocalNote {
 
 export type VoiceType = 'low' | 'high';
 
-const TIMBRE_DESC: Record<Timbre, string> = { clear: 'a clear voice', raspy: 'a raspy voice (grittier the harder they push)', deep: 'a deep voice, sung low' };
+const TIMBRE_DESC = (t: Timbre) => (t === 'clear' ? 'the clear voice' : `the ${GENRE_LABEL[t].toLowerCase()} voice (three registers mixed by pitch, sung lower)`);
 
 /**
  * Words for a tune: rhymes on every other line, the chorus hook at the start of lines 1 and 3. A tied
@@ -161,7 +161,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     leaveRoom(idea);
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
-      if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC[melody.timbre]}`, `Melody: ${melodyDesc(melody)}`); told = true; }
+      if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`); told = true; }
       idea.notes.push(`Vocal (${VOCAL_DESC[as]}): “${words.length > 140 ? `${words.slice(0, 140)}…` : words}”`);
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
       if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);

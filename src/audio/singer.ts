@@ -4,7 +4,8 @@
 // for all of them. Through a vocal chain: rumble cut, a little presence, gentle compression.
 // Two of them: the lead singer (the lead, its double, the ad-libs) and the backing singer (harmonies,
 // the gang, oohs), another person with their own voice, on their own mixer strip.
-// The lead's voice: clear, raspy or deep (on Auto, the song's singer's own); the backing singer stays clear.
+// The lead's voice: clear (the first one) or a genre's voice (voices.ts; on Auto, the song's genre's);
+// the backing singer stays clear.
 
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
@@ -12,6 +13,7 @@ import type { Idea } from '../idea';
 import type { Timbre } from '../parts/singers';
 import { type VoiceType, backingVoice } from '../parts/vocal';
 import { inContext } from './context';
+import { VOICES, recipeFor } from './voices';
 import { SING_RATE, type SungNote, renderLine } from './sing';
 
 export type VocalChoice = 'auto' | VoiceType | 'off';
@@ -30,10 +32,9 @@ export const BACKING_CHOICES: { id: VocalChoice; label: string }[] = [
 
 export type TimbreChoice = 'auto' | Timbre;
 export const TIMBRE_CHOICES: { id: TimbreChoice; label: string }[] = [
-  { id: 'auto', label: 'Auto (the singer’s own)' },
-  { id: 'clear', label: 'Clear' },
-  { id: 'raspy', label: 'Raspy' },
-  { id: 'deep', label: 'Deep' },
+  { id: 'auto', label: 'Auto (the genre’s voice)' },
+  { id: 'clear', label: 'Clear (the first voice)' },
+  ...(Object.keys(VOICES) as Genre[]).map((g) => ({ id: g, label: `${VOICES[g].label} voice` })),
 ];
 
 export type SingerRole = 'lead' | 'backing';
@@ -169,9 +170,10 @@ export class Singer {
     for (let i = 0; i < job.key.length; i += 7) seed = (seed * 31 + job.key.charCodeAt(i)) >>> 0;
     // (each take its own: another vocal-tract length, vibrato rate and the odd different slide)
     const person = this.role === 'backing' ? BACKING_PERSON : undefined;
-    const pcm = renderLine(job.notes, { high: job.voice === 'high', slides: job.slides, seed: (seed + job.variant * 13) % 97, person, timbre: job.timbre }, PRE);
+    const recipe = job.timbre === 'clear' ? undefined : recipeFor(job.timbre);
+    const pcm = renderLine(job.notes, { high: job.voice === 'high', slides: job.slides, seed: (seed + job.variant * 13) % 97, person, recipe }, PRE);
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
-    const buf = raw.createBuffer(1, pcm.length, SING_RATE);
+    const buf = raw.createBuffer(1, pcm.length, recipe?.rate ?? SING_RATE);
     buf.copyToChannel(pcm as Float32Array<ArrayBuffer>, 0);
     return buf;
   }
@@ -182,8 +184,8 @@ export class Singer {
     const entry = this.linesFor(idea, six);
     const lines = entry.byStep.get(g);
     if (!lines) return;
-    // (a deep voice keeps more of its low end)
-    if (this.role === 'lead') this.hp.frequency.value = entry.timbre === 'deep' ? 75 : 110;
+    // (a genre's voice sings lower: it keeps more of its low end)
+    if (this.role === 'lead') this.hp.frequency.value = entry.timbre === 'clear' ? 110 : 75;
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
     const at = (s: number) => s * six + (s % 2 ? (idea.song.swing * (2 / 3) + (idea.lilt ?? 0)) * six : 0);
     for (const line of lines) {

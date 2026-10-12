@@ -9,16 +9,14 @@
 //   pole and zero), liquids and glides (formant targets), with formant transitions into the vowel
 // - pitch: glides between legato notes (quicker in fast runs), scoops up into the notes the singer slides
 //   into, vibrato that grows on long notes, falls off the ends of lines; a breath of aspiration at phrase ends
-// - three voices: clear (the first voice, as it was, on klatt-syn's own pulse); raspy and deep on the
-//   voice box (voicebox.ts: the LF model of the vocal folds), each a person with their own range who
-//   changes gear across it as singers do (docs/VOICES.md): chest below their break, blending over a few
-//   notes into a belt (pressed folds, the vowel opened so F1 rides the 2nd harmonic, a "twang", the
-//   larynx up) when they push, or into head voice (lax, airy, darker) when they don't; the raspy one's
-//   false folds growling as they push, the deep one's vocal fry at the bottom of a line
+// - the voices: clear (the first voice, as it was, on klatt-syn's own pulse), or a voice recipe
+//   (voices.ts: one per genre, made with Paul in the voice lab, docs/VOICES.md) on the voice box
+//   (voicebox.ts: the LF model of the vocal folds): a rock singer, not an opera singer; three registers
+//   (deep, mid, high) sounding together and mixed by pitch, vowel and loudness; their way up past the
+//   break (a belt, a scream, a squeal or falsetto); grit, breath and drive growing on the loud notes
 
 import { type FrameParms, Generator } from 'klatt-syn';
 import type { Cons, Syllable, Vowel } from '../parts/lyrics';
-import type { Timbre } from '../parts/singers';
 import { type VoiceFrame, VoiceBox } from './voicebox';
 
 export const SING_RATE = 22050;
@@ -65,8 +63,98 @@ export interface VoiceShape {
   seed: number;
   /** Another person (the backing singer): vocal tract length (x), more breath (dB), vibrato depth (x). */
   person?: { tract: number; breath: number; vibrato: number };
-  /** The voice (left out: clear). */
-  timbre?: Timbre;
+  /** The voice's recipe (voices.ts; the voice lab tries them out); left out: the clear voice. */
+  recipe?: VoiceRecipe;
+}
+
+/** A voice: how it's made, aspect by aspect (each left out: as the clear voice). */
+export interface VoiceRecipe {
+  /** The clear voice on the voice box (the LF pulse), with registers like the raspy and deep voices'. */
+  lf?: boolean;
+  /** A natural, slow wander in pitch (cents), and a vibrato a little uneven from note to note. */
+  drift?: number;
+  /** Vibrato depth (x) and rate (Hz, added). */
+  vib?: number;
+  vibHz?: number;
+  /** Formant bandwidths (x): wider is softer and warmer, narrower buzzier. */
+  bw?: number;
+  /** The vocal tract (formants x: below 1 a bigger, darker person). */
+  formants?: number;
+  /** More breath (dB). */
+  breath?: number;
+  /** The singer's ring (0-1): the 3rd-5th formants drawn together near 3 kHz. */
+  ring?: number;
+  /** Samples a second (more room up top: 44100); Klatt's output low-pass off (the clear voice then on the voice box, with Klatt's own pulse). */
+  rate?: number;
+  crisp?: boolean;
+  /** The formants above 5 kHz (Klatt's design stops at 5 kHz: everything above it falls away steeply). */
+  top?: boolean;
+  /** Brightness (dB of tilt, added: below 0 brighter); presence (dB at 3.5 kHz); air (dB, a shelf above 8 kHz). */
+  tilt?: number;
+  presence?: number;
+  air?: number;
+  /** A rock singer, not an opera singer (docs/VOICES.md, section 7): vowels as spoken, the mouth open
+   * (0-1: F1 up, front vowels' F2 up); folds pressed (0-1: closed longer); vibrato starting late (s)
+   * and uneven (0-1); a harder start to a line (s: how long it fades in); grit (0-1: rough cycles, an
+   * undertone, a harsh edge as they push); drive (0-1: saturated, as rock vocals are recorded). */
+  speech?: number;
+  /** Body: dB around 250 Hz (warmth, chest); low: dB of a shelf below 180 Hz (the voice's weight). */
+  body?: number;
+  low?: number;
+  /** The upper formants' bandwidths only (x, F3-F5): softer edge without blurring F1 and F2 (a wide F1 sounds nasal). */
+  bwUpper?: number;
+  /**
+   * How they go up past their break (the same person, higher; docs/VOICES.md): a power belt (chest
+   * carried up, vowels opened, grit growing with height, wide vibrato on the held notes), a squeal
+   * (lighter and twangy up top, the rasp growing fast, quick narrow vibrato), a scream (a clean belt
+   * that tears into distortion on the hardest top notes), or falsetto (light, airy, clean).
+   */
+  high?: 'belt' | 'squeal' | 'scream' | 'falsetto';
+  /**
+   * Depth in the belt and the middle (0-1): the larynx raised less, the vowel opened less, the folds
+   * less pressed, the throat a little wider, and chest voice kept a couple of notes longer before mixing.
+   */
+  depth?: number;
+  /**
+   * Registers mixed (0-1): chest voice (the singer's natural vowel and pulse) sounding under the
+   * register they're in, most around the break and the middle, giving way at the top.
+   */
+  mix?: number;
+  /**
+   * Three registers (deep, mid, high), each its own pulse and vocal tract, all sounding at once in
+   * step and mixed by the pitch: the deep one (a bigger, darker throat, a relaxed chest pulse) most on
+   * low notes, the mid one (the natural vowel, gently opened) through the middle, the high one (by
+   * their way up: belt, scream, squeal or falsetto) at the top.
+   */
+  three?: boolean;
+  /**
+   * Edge (0-1): the folds closing faster (a lower Rd) and less tilt, so the upper range (1.5-4 kHz)
+   * comes through: what an open vowel ("ah", "oh") lacks when it sounds hollow.
+   */
+  edge?: number;
+  /**
+   * The three registers' shares set by hand (the voice lab, voice-rc.html): [MIDI, deep, mid, high]
+   * points, interpolated between by the pitch sung; left out: by where the pitch sits against the break.
+   */
+  regPoints?: [number, number, number, number][];
+  /** The voice's own register mix on Auto (REGISTER_MIX; default the grunge one). */
+  regMix?: 'grunge' | 'rock';
+  /** How far a chest or belt vowel opens on higher notes (x, default 1; less: less of a small, cartoon voice). */
+  open?: number;
+  /** Their break (MIDI), if not the person's own. */
+  brk?: number;
+  /** No nasal resonance anywhere (m, n, ng by the mouth alone). */
+  noNasal?: boolean;
+  /** "s" and "sh" (dB, added: below 0 softer). */
+  ess?: number;
+  /** Breathy (dB): air through every vowel (against the voice's level, e.g. -22), not only a breath at a line's end. */
+  airy?: number;
+  pressed?: number;
+  vibStart?: number;
+  vibVary?: number;
+  attack?: number;
+  grit?: number;
+  drive?: number;
 }
 
 /** A voice-box singer: their own range and how they sing across it (docs/VOICES.md, section 3). */
@@ -88,12 +176,76 @@ interface Person {
   vibHz: number;
   vib: number;
 }
-const PEOPLE: Record<'raspy' | 'deep', Person> = {
-  // a bass-baritone: a big, dark voice breaking around D4, belting near the top, fry at the bottom
-  deep: { formants: 0.9, f45: 0.92, brk: 62, chest: [1.5, 0.9], belt: 0.65, head: 2.3, rasp: 0.12, fry: 0.5, tilt: 2, vibHz: -0.6, vib: 1.2 },
-  // a rock tenor-baritone: pressed, breaking around F4, belting above it, the rasp growing as they push
-  raspy: { formants: 1, f45: 1, brk: 65, chest: [1.3, 0.7], belt: 0.45, head: 1.8, rasp: 1, fry: 0.15, tilt: 0, vibHz: 0, vib: 0.9 },
+/** The voice-box singer every recipe starts from: a tenor-baritone (each recipe sets their break, grit and so on). */
+const PERSON: Person = { formants: 1, f45: 1, brk: 65, chest: [1.4, 0.85], belt: 0.6, head: 1.9, rasp: 0, fry: 0, tilt: 0, vibHz: 0, vib: 1 };
+
+/**
+ * Edge by vowel (x the recipe's): full on the open and back vowels, where the 1.5-4 kHz range is
+ * otherwise empty ("ah" sounded hollow to Paul; edge fixed it), half on the front ones, which have a
+ * resonance up there already (edge brought them up much more: harsh).
+ */
+const EDGE_VOWEL: Record<Vowel, number> = {
+  AA: 1, AO: 1, AW: 1, AY: 0.9, OY: 0.9, OW: 1, UH: 0.9, UW: 0.9, AH: 0.9, AX: 0.8, AE: 0.7, EH: 0.5, EY: 0.5, IH: 0.5, IY: 0.45,
 };
+
+/**
+ * The three registers' shares by where a note sits against the singer's break (semitones): [place,
+ * deep, mid, high], from Paul's mixes in the voice lab (2026-10-12). In all of them the mid register
+ * is the backbone (a third to a half); deep and high share the rest, and the balance between them is
+ * the voice's brightness.
+ * - Grunge (soft, "uh"): darker; deep never leaves (more at the bottom, at the break and at the very
+ *   top), high only seasons it (a third at most), least at the break.
+ * - Rock ("ah", normal): brighter; high leads (about half), deep kept in (a quarter to 40%), mid low
+ *   on "ah" (it sounds hollow there; other vowels bring it back, MID_FIT).
+ */
+export const REGISTER_MIX: Record<'grunge' | 'rock', [number, number, number, number][]> = {
+  grunge: [[-23, 0.59, 0.41, 0], [-4, 0.16, 0.5, 0.34], [1, 0.27, 0.56, 0.18], [9, 0.15, 0.51, 0.34], [13, 0.41, 0.41, 0.18]],
+  // (Paul's later rock mix kept: deep stays in around the break, G4 "ah" 39/11/50; the bottom from the first)
+  rock: [[-12, 0.26, 0.35, 0.38], [-6, 0.25, 0.25, 0.5], [3, 0.39, 0.11, 0.5], [8, 0.37, 0.13, 0.5], [12, 0.35, 0.15, 0.5]],
+};
+
+/**
+ * How much the mid register suits a vowel (0: "ah", where it doesn't; up to "ee"): Paul's G4 rock mixes
+ * at the same loudness: "eh" 17/50/33, "ah" 39/11/50: on "ah" the mid register all but replaced by deep
+ * and high, on "eh" carrying the voice. (Measured: "ah", "eh"; the others placed between, by how close
+ * and front the vowel is, until tried.)
+ */
+const MID_FIT: Record<Vowel, number> = {
+  AA: 0, AY: 0.1, AW: 0.1, AO: 0.2, OY: 0.2, OW: 0.3, UH: 0.3, UW: 0.35, AH: 0.3, AX: 0.3, AE: 0.35, EH: 0.44, EY: 0.44, IH: 0.44, IY: 0.5,
+};
+/** The vowel each voice's mix was made on (REGISTER_MIX). */
+const MIX_VOWEL: Record<keyof typeof REGISTER_MIX, Vowel> = { grunge: 'AH', rock: 'AA' };
+
+/**
+ * The registers' shares on Auto: the voice's own mix at that place, the mid register's share moved by
+ * how well it suits the vowel (against the vowel the mix was made on), and a little less of the high
+ * one on the hardest notes (Paul's "ah" at G4: normal 39/11/50, belted 37/22/41: louder wanted more grit,
+ * breath and drive far more than another mix).
+ */
+export function autoRegisters(mix: keyof typeof REGISTER_MIX, place: number, vowel: Vowel, vel: number): [number, number, number] {
+  let [d, m, h] = regAt(REGISTER_MIX[mix], place);
+  const fit = MID_FIT[vowel] - MID_FIT[MIX_VOWEL[mix]];
+  const m2 = fit >= 0 ? m + fit * (1 - m) : m * (1 + fit / Math.max(0.01, MID_FIT[MIX_VOWEL[mix]]));
+  // (deep and high fill the rest in the same proportion as before)
+  const rest = d + h || 1;
+  d = ((1 - m2) * d) / rest;
+  h = ((1 - m2) * h) / rest;
+  m = m2;
+  const harder = Math.max(0, Math.min(1, (vel - 0.85) / 0.1));
+  const move = Math.min(h, 0.09 * harder);
+  return [d, m + move, h - move];
+}
+
+/** The hand-set register shares at a pitch: [deep, mid, high], straight between the points around it. */
+export function regAt(points: [number, number, number, number][], midi: number): [number, number, number] {
+  const ps = [...points].sort((a, b) => a[0] - b[0]);
+  if (midi <= ps[0][0]) return [ps[0][1], ps[0][2], ps[0][3]];
+  const last = ps[ps.length - 1];
+  if (midi >= last[0]) return [last[1], last[2], last[3]];
+  const i = ps.findIndex((p) => p[0] > midi);
+  const a = ps[i - 1], b = ps[i], k = (midi - a[0]) / (b[0] - a[0]);
+  return [lerp(a[1], b[1], k), lerp(a[2], b[2], k), lerp(a[3], b[3], k)];
+}
 
 /** 0 below `a`, 1 above `b`, smoothly between. */
 const smooth = (a: number, b: number, x: number) => {
@@ -179,19 +331,27 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
   const segs = layout(notes.map((n) => ({ ...n, t: n.t + pre, end: n.end + pre })));
   const endT = segs[segs.length - 1].t1 + 0.25;
   // (the raspy and deep voices: a person on the voice box; clear: klatt-syn's pulse, as it was)
-  const P = voice.timbre === 'raspy' || voice.timbre === 'deep' ? PEOPLE[voice.timbre] : null;
-  const gen = P ? new VoiceBox(SING_RATE, voice.seed * 31 + notes.length) : new Generator({ sampleRate: SING_RATE, glottalSourceType: 1 });
-  const frameLen = Math.round(FRAME * SING_RATE);
+  const rc = voice.recipe ?? {};
+  const P = rc.lf ? PERSON : null;
+  const rate = rc.rate ?? SING_RATE;
+  const gen = P ? new VoiceBox(rate, voice.seed * 31 + notes.length, { outLp: !rc.crisp, noNasal: rc.noNasal })
+    : rc.crisp ? new VoiceBox(rate, voice.seed * 31 + notes.length, { pulse: 'klatt', outLp: false, noNasal: rc.noNasal })
+      : new Generator({ sampleRate: rate, glottalSourceType: 1 });
+  const frameLen = Math.round(FRAME * rate);
   const nFrames = Math.ceil(endT / FRAME);
   const out = new Float32Array(nFrames * frameLen);
   const buf = new Float64Array(frameLen);
   const fscale = voice.high ? 1.17 : 1;
-  const tract = (0.97 + (voice.seed % 7) * 0.01) * (voice.person?.tract ?? 1) * (P?.formants ?? 1);
-  const vibDepth = (voice.person?.vibrato ?? 1) * (P?.vib ?? 1);
-  const F45 = (voice.high ? [4100, 4800, 5700] : [3300, 3750, 4900]).map((f) => f * (P?.f45 ?? 1));
-  const vibHz = 5.2 + (voice.seed % 5) * 0.15 + (P?.vibHz ?? 0);
+  const tract = (0.97 + (voice.seed % 7) * 0.01) * (voice.person?.tract ?? 1) * (P?.formants ?? 1) * (rc.formants ?? 1);
+  const vibDepth = (voice.person?.vibrato ?? 1) * (P?.vib ?? 1) * (rc.vib ?? 1);
+  const F45 = (voice.high ? [4100, 4800, 5700] : [3300, 3750, 4900]).map((f) => f * (P?.f45 ?? 1) * (rc.formants ?? 1));
+  const vibHz = 5.2 + (voice.seed % 5) * 0.15 + (P?.vibHz ?? 0) + (rc.vibHz ?? 0);
+  // (the recipe's drift: a slow wander in pitch)
+  let drift = 0, driftTo = 0;
   // a voice-box singer: where their break is, their rasp coming and going, fry at the end of this line?
-  const brk = P ? P.brk + (voice.high ? 9 : 0) : 0;
+  const brk = P ? (rc.brk ?? P.brk) + (voice.high ? 9 : 0) : 0;
+  const hs = P ? rc.high : undefined;
+  const dp = P ? rc.depth ?? 0 : 0;
   const rnd = seededRnd(voice.seed * 7 + notes.length);
   let crackle = 0.6, crackleTo = 0.6;
   const fryLine = !!P && rnd() < P.fry;
@@ -208,7 +368,8 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     const t = fi * FRAME;
     while (si + 1 < segs.length && segs[si + 1].t0 <= t) { lastF = currentF(segs[si], segs[si].t1); si++; }
     const s = segs[si];
-    const fr: FrameParms = P ? ({ ...blankFrame(), rd: 1, jitter: 0.003, shimmer: 0.02, sub: 0, harsh: 0 } as VoiceFrame) : blankFrame();
+    const fr: FrameParms = P ? ({ ...blankFrame(), rd: 1, jitter: 0.003, shimmer: 0.02, sub: 0, harsh: 0 } as VoiceFrame)
+      : gen instanceof VoiceBox ? ({ ...blankFrame(), rd: 1, jitter: 0, shimmer: 0, sub: 0, harsh: 0 } as VoiceFrame) : blankFrame();
     // pitch: the note sounding (or about to), a glide over the change, vibrato on long notes
     let ni = 0;
     for (let k = 0; k < vowelNotes.length; k++) if (vowelNotes[k].t - 0.03 <= t) ni = k;
@@ -226,7 +387,21 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       if (t < note.t + gl * 0.67) midi = lerp(prevN.midi + (voice.high ? 12 : 0), midi, (t - (note.t - gl / 3)) / gl);
     }
     if (ni === 0 && note.slide === undefined && scoop && t < note.t + 0.1) midi -= lerp(1, 0, (t - note.t + 0.02) / 0.12);
-    if (held > 0.45 && into > 0.3) midi += (Math.min(1, (into - 0.3) / 0.25) * (0.28 + 0.1 * note.vel) * vibDepth) * Math.sin(2 * Math.PI * vibHz * into);
+    // (with the recipe's drift, each note's vibrato a little faster or slower, deeper or shallower)
+    const vibVary = rc.vibVary ? 1 + rc.vibVary * Math.sin(ni * 2.3 + voice.seed) : rc.drift ? 1 + 0.08 * Math.sin(ni * 2.3 + voice.seed) : 1;
+    const vs = rc.vibStart ?? 0.3;
+    // (an uneven vibrato also wavers in depth within the note)
+    const vibWaver = rc.vibVary ? 1 + 0.5 * rc.vibVary * Math.sin(2 * Math.PI * 0.7 * into + ni) : 1;
+    // (how far above their break this note is, for the recipe's ways up; and their vibrato up there)
+    const upW = hs ? smooth(-1 + 2 * dp, 3 + 2 * dp, note.midi + (voice.high ? 12 : 0) - brk) : 0;
+    const vD = vibDepth * (hs === 'belt' ? 1 + 0.6 * upW : hs === 'squeal' ? 1 - 0.3 * upW : hs === 'scream' ? 1 - 0.5 * upW : hs === 'falsetto' ? 1 + 0.2 * upW : 1);
+    const vH = vibHz + (hs === 'squeal' ? 0.8 * upW : 0);
+    if (held > vs + 0.15 && into > vs) midi += (Math.min(1, (into - vs) / 0.25) * (0.28 + 0.1 * note.vel) * vD * vibVary * vibWaver) * Math.sin(2 * Math.PI * vH * vibVary * into);
+    if (rc.drift) {
+      if (fi % 15 === 0) driftTo = (rnd() * 2 - 1) * rc.drift;
+      drift += (driftTo - drift) * 0.06;
+      midi += drift / 100;
+    }
     const lastNote = ni === vowelNotes.length - 1;
     // a fall off the note's end (accelerating, fading), or the line's own little fall
     const fallBy = note.fall ?? (lastNote && fall ? 2 : 0);
@@ -238,17 +413,46 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     fr.tiltDb = lerp(9, 2, note.vel);
     fr.breathinessDb = lerp(-22, -32, note.vel) + (voice.person?.breath ?? 0);
     const F = currentF(s, t);
+    const labRing = rc.ring ?? 0;
+    // (the recipe's spoken vowels: the mouth more open, front vowels brighter)
+    if (rc.speech && s.vowel) {
+      F[0] *= 1 + 0.12 * rc.speech;
+      if (F[1] > 1500 * tract) F[1] *= 1 + 0.08 * rc.speech;
+    }
+    if (rc.pressed) fr.openPhaseRatio = 0.6 - 0.22 * rc.pressed;
     // a voice-box singer changes gear across their range (docs/VOICES.md, section 3)
-    let belt = 0, headW = 0, rasp = 0, fry = 0;
+    let belt = 0, headW = 0, rasp = 0, fry = 0, scream = 0;
+    // (the recipe's mixed registers: the natural vowel, the chest pulse and how much of them)
+    const Fnat: F3 = [F[0], F[1], F[2]];
+    let chestRdNow = 1, chestShare = 0;
+    // (the recipe's three registers this frame: deep and high as layers, with their shares, vowels and pulses)
+    let three: { wD: number; wH: number; deep: F3; high: F3; deepRd: number; highRd: number; highTilt: number; twang: number } | null = null;
     if (P) {
       // how hard they sing it, where it sits against their break, and which way they go above it
       const effort = Math.max(0, Math.min(1, (note.vel - 0.7) / 0.25));
       const x = note.midi + (voice.high ? 12 : 0) - brk;
       // (above the break a singer keeps to one gear through a line: belting it, mixing, or in head voice)
-      const above = smooth(-1, 3, x), push = smooth(0.3, 0.9, 0.7 * lineEffort + 0.3 * effort);
+      const above = smooth(-1 + 2 * dp, 3 + 2 * dp, x), push = smooth(0.3, 0.9, 0.7 * lineEffort + 0.3 * effort);
       belt = above * push;
       headW = above * (1 - push);
       let rd = lerp(lerp(P.chest[0], P.chest[1], effort), lerp(P.head, P.belt, push), above);
+      // (the recipe's ways up: the gear they take above the break, whatever the line)
+      const chestRd = lerp(P.chest[0], P.chest[1], effort);
+      chestRdNow = Math.max(0.35, chestRd - 0.45 * (rc.pressed ?? 0));
+      chestShare = (rc.mix ?? 0) * (1 - smooth(3, 7, x));
+      if (hs === 'belt' || hs === 'scream') {
+        const p2 = Math.max(push, 0.85);
+        belt = above * p2; headW = above * (1 - p2);
+        rd = lerp(chestRd, 0.55 + 0.3 * dp, above);
+      } else if (hs === 'falsetto') {
+        belt = 0; headW = above;
+        rd = lerp(chestRd, 1.6, above);
+      } else if (hs === 'squeal') {
+        belt = above * 0.5; headW = above * 0.15;
+        rd = lerp(chestRd, 1.1, above);
+      }
+      // (a scream: the hardest notes at the top tear into distortion, coming and going)
+      if (hs === 'scream') scream = above * smooth(2, 4, x) * smooth(0.8, 0.95, effort) * Math.max(0.5, crackle);
       // (the bottom of the range: laxer, darker)
       if (x < -9) rd += 0.25 * Math.min(1, (-9 - x) / 4);
       // the rasp: a little on quiet lines, most as they push near the top; it comes and goes
@@ -263,18 +467,72 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       vf.shimmer = 0.02 + 0.12 * rasp;
       vf.sub = Math.max(rasp > 0.4 ? ((rasp - 0.4) / 0.6) * 0.8 : 0, fry);
       vf.harsh = Math.max(0.5 * rasp, 0.7 * fry);
+      if (rc.pressed) vf.rd = Math.max(0.35, vf.rd - 0.45 * rc.pressed);
+      if (rc.edge) vf.rd = Math.max(0.35, vf.rd - 0.5 * rc.edge * EDGE_VOWEL[note.syl.vowel]);
+      if (scream) {
+        vf.rd = lerp(vf.rd, 0.4, scream);
+        vf.sub = Math.max(vf.sub, 0.85 * scream);
+        vf.harsh = Math.max(vf.harsh, 0.9 * scream);
+        vf.jitter += 0.03 * scream;
+        vf.shimmer += 0.15 * scream;
+      }
       fr.f0 *= 1 - 0.35 * fry;
+      if (rc.three) {
+        // each register's share by the pitch: deep below, mid through the middle, high at the top
+        let [d0, m0, h0] = autoRegisters(rc.regMix ?? 'grunge', x, note.syl.vowel, note.vel);
+        if (rc.regPoints?.length) [d0, m0, h0] = regAt(rc.regPoints, note.midi + (voice.high ? 12 : 0));
+        const sum = d0 + h0 + m0 || 1, f0 = fr.f0;
+        // (a vowel opens on higher notes so F1 sits above the note, never on it: no hoot)
+        const opened = (v: F3, k: number, cap: number): F3 => { const o: F3 = [...v]; if (o[0] < k * f0) o[0] = Math.min(k * f0, cap); o[1] = Math.max(o[1], o[0] + 250); return o; };
+        // (the source's roughness, fry and scream, the same for every register)
+        const src = (r: number) => {
+          let v = lerp(r - 0.25 * rasp, 0.35, fry);
+          if (rc.pressed) v = Math.max(0.35, v - 0.45 * rc.pressed);
+          if (rc.edge) v = Math.max(0.35, v - 0.5 * rc.edge * EDGE_VOWEL[note.syl.vowel]);
+          return scream ? lerp(v, 0.4, scream) : v;
+        };
+        const mid = opened(Fnat, 1.45, 1000);
+        let high: F3, highRd: number, highTilt: number, twang: number;
+        if (hs === 'falsetto') { high = [Math.max(Fnat[0] - 65, f0 * 1.05), Fnat[1] - 90, Fnat[2]]; highRd = 1.7; highTilt = 3; twang = 0; }
+        else if (hs === 'squeal') { high = opened([Fnat[0] * 1.06, Fnat[1] * 1.06, Fnat[2] * 1.06], 1.7, 1050); highRd = 1; highTilt = -3; twang = 1; }
+        else { high = opened([Fnat[0] * 1.02, Fnat[1] * 1.02, Fnat[2] * 1.02], 1.75, 1050); highRd = 0.6; highTilt = -1; twang = 0.5; }
+        three = {
+          wD: d0 / sum, wH: h0 / sum,
+          deep: opened([Fnat[0] * 0.92, Fnat[1] * 0.92, Fnat[2] * 0.93], 1.2, 900), high,
+          deepRd: src(Math.min(2.2, chestRd + 0.2)), highRd: src(highRd), highTilt, twang,
+        };
+        // the frame's own register is the mid one
+        (fr as VoiceFrame).rd = src(chestRd);
+        F[0] = mid[0]; F[1] = mid[1]; F[2] = mid[2];
+        belt = 0; headW = 0;
+        fr.tiltDb = lerp(5, 1, effort) + P.tilt;
+      }
       // the LF pulse brings its own brightness: less tilt than klatt-syn's; head voice darker and airier
-      fr.tiltDb = lerp(5, 1, effort) + P.tilt + 3 * headW;
+      fr.tiltDb = lerp(5, 1, effort) + P.tilt + 3 * headW - 6 * (rc.edge ?? 0) * EDGE_VOWEL[note.syl.vowel];
       fr.breathinessDb = lerp(-26, -36, effort) + 8 * headW;
       // the vowel: a belt opens it (F1 up toward the 2nd harmonic, the larynx up a little), head voice
       // drops F1 and F2 a little (Henrich et al.)
+      const op = rc.open ?? 1;
       if (belt > 0) {
-        F[0] = lerp(F[0], Math.max(F[0], Math.min(1.9 * fr.f0, 1150)), belt * 0.85);
-        for (let k = 0; k < 3; k++) F[k] *= 1 + 0.04 * belt;
+        F[0] = lerp(F[0], Math.max(F[0], Math.min(1.9 * fr.f0, 1150)), belt * 0.85 * (1 - 0.6 * dp) * op);
+        for (let k = 0; k < 3; k++) F[k] *= 1 + (0.04 - 0.06 * dp) * belt * op;
       }
-      F[0] -= 65 * headW;
-      F[1] = Math.max(F[1] - 90 * headW, F[0] + 250);
+      if (!three) F[0] -= 65 * headW;
+      // (in chest and mixed voice the vowel's F1 never sits on the note itself: that makes a hoot,
+      // falsetto-like, the fundamental alone; it opens toward the 2nd harmonic as chest and belt singers
+      // do, so the note has its lows and highs together; head voice and falsetto keep F1 on the note)
+      if (!three && F[0] < 1.6 * fr.f0) F[0] = lerp(F[0], Math.min(lerp(1.05, 1.9, op) * fr.f0, 1150), 1 - headW);
+      if (!three) F[1] = Math.max(F[1] - 90 * headW, F[0] + 250);
+      // (a squeal: the larynx high and the throat narrowed, a bright twang; falsetto airy and darker)
+      if (three) { /* (the registers carry their own vowels) */ } else if (hs === 'squeal') {
+        for (let k = 0; k < 3; k++) F[k] *= 1 + 0.07 * above;
+        fr.tiltDb -= 3 * above;
+        fr.breathinessDb += 3 * above;
+      } else if (hs === 'falsetto') {
+        // (airy, but not dull: it keeps the voice's brightness)
+        fr.breathinessDb += 6 * above;
+        fr.tiltDb -= 5 * above;
+      }
     }
     // F1 never under the pitch (it would go silent), F2 clear of it too
     F[0] = Math.max(F[0], fr.f0 * 1.05);
@@ -282,8 +540,65 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     fr.oralFormantFreq = [F[0], F[1], F[2], F45[0], F45[1], F45[2]];
     // (a belt's "twang": the 3rd and 4th formants sharper and closer together, a ring around 3 kHz)
     if (belt > 0) {
-      fr.oralFormantFreq[3] = lerp(F45[0], F[2] + 550, 0.5 * belt);
-      fr.oralFormantBw = [70, 90, 130 * (1 - 0.45 * belt), 200 * (1 - 0.45 * belt), 250, 1000];
+      // (the recipe's ways up: a squeal all twang; a power belt or scream only half, so it doesn't go nasal)
+      const tw = hs === 'squeal' ? Math.min(1, belt * 2) : hs ? belt * 0.5 : belt;
+      fr.oralFormantFreq[3] = lerp(F45[0], F[2] + 550, 0.5 * tw);
+      fr.oralFormantBw = [70, 90, 130 * (1 - 0.45 * tw), 200 * (1 - 0.45 * tw), 250, 1000];
+    }
+    // the recipe: the singer's ring, wider or narrower formants, more breath
+    if (labRing) {
+      fr.oralFormantFreq[2] = Math.max(F[2], lerp(F[2], 2500 * tract, labRing));
+      fr.oralFormantFreq[3] = lerp(fr.oralFormantFreq[3], fr.oralFormantFreq[2] + 400, labRing);
+      fr.oralFormantFreq[4] = lerp(F45[1], fr.oralFormantFreq[2] + 850, labRing);
+      fr.oralFormantBw = fr.oralFormantBw.map((b, k) => (k === 2 || k === 3 ? b * (1 - 0.35 * labRing) : b));
+    }
+    if (rc.top && gen instanceof VoiceBox) {
+      const up = (voice.high ? 1.12 : 1) * tract;
+      fr.oralFormantFreq = [...fr.oralFormantFreq, 5600 * up, 6800 * up, 8000 * up];
+      fr.oralFormantBw = [...fr.oralFormantBw, 500, 700, 900];
+    }
+    // (the recipe's mixed registers: the chest voice's natural vowel as a second register)
+    if (chestShare > 0 && !three && s.vowel && gen instanceof VoiceBox) {
+      const n0 = Math.max(Fnat[0], fr.f0 * 1.05), n1 = Math.max(Fnat[1], n0 + 250, fr.f0 * 1.9);
+      (fr as VoiceFrame).layers = [{ w: chestShare, rd: chestRdNow, tilt: fr.tiltDb, formants: [n0, n1, Fnat[2], ...fr.oralFormantFreq.slice(3)], bws: [...fr.oralFormantBw] }];
+    }
+    // (the recipe's three registers: deep and high as layers, the mid one the frame's own)
+    if (three && s.vowel && gen instanceof VoiceBox) {
+      const up = fr.oralFormantFreq.slice(3);
+      const floor = (v: F3): F3 => { const a = Math.max(v[0], fr.f0 * 1.05); return [a, Math.max(v[1], a + 250, fr.f0 * 1.9), v[2]]; };
+      const hi = floor(three.high), tw = three.twang;
+      (fr as VoiceFrame).layers = [
+        { w: three.wD, rd: three.deepRd, tilt: fr.tiltDb + 2, formants: [...floor(three.deep), ...up.map((f, k) => f * (k < 3 ? 0.95 : 1))], bws: [...fr.oralFormantBw] },
+        {
+          w: three.wH, rd: three.highRd, tilt: fr.tiltDb + three.highTilt,
+          formants: [...hi, lerp(up[0], hi[2] + 550, 0.5 * tw), ...up.slice(1)],
+          bws: fr.oralFormantBw.map((b, k) => (k === 2 || k === 3 ? b * (1 - 0.45 * tw) : b)),
+        },
+      ];
+    }
+    if (rc.bw) fr.oralFormantBw = fr.oralFormantBw.map((b, k) => (k < 5 ? b * rc.bw! : b));
+    if (rc.bwUpper) fr.oralFormantBw = fr.oralFormantBw.map((b, k) => (k >= 2 && k < 5 ? b * rc.bwUpper! : b));
+    if (rc.breath) fr.breathinessDb += rc.breath;
+    if (rc.tilt) fr.tiltDb = Math.max(0, fr.tiltDb + rc.tilt);
+    // the recipe's grit: rough cycles, an undertone and a harsh edge, growing as they push, coming and going
+    if (rc.grit && gen instanceof VoiceBox) {
+      const effort = Math.max(0, Math.min(1, (note.vel - 0.7) / 0.25));
+      if (fi % 12 === 0) crackleTo = rnd() < 0.7 ? 0.6 + 0.4 * rnd() : 0.25;
+      crackle += (crackleTo - crackle) * 0.2;
+      // (not on the line's first moments, nor on consonants: grit lives on the held vowels)
+      const settle = smooth(firstVowelT, firstVowelT + 0.15, t) * (s.vowel ? 1 : 0.3);
+      // (the ways up: grit growing with height in a belt, fast in a squeal; a scream's clean below the
+      // break; falsetto clean)
+      const up = hs === 'belt' ? 1 + 0.6 * upW : hs === 'squeal' ? 1 + 1.2 * upW : hs === 'scream' ? 0.6 + 0.4 * upW : hs === 'falsetto' ? 1 - 0.85 * upW : 1;
+      // (louder, grittier: Paul's belted settings had about four times the grit of his normal ones)
+      const harder = Math.max(0, Math.min(1, (note.vel - 0.85) / 0.1));
+      const g = Math.min(1, rc.grit * (0.3 + 0.7 * effort) * (1 + 2 * harder) * crackle * settle * up);
+      const vf = fr as VoiceFrame;
+      vf.jitter += 0.01 * g;
+      vf.shimmer += 0.1 * g;
+      vf.sub = Math.max(vf.sub, g > 0.35 ? (g - 0.35) * 1.1 : 0);
+      vf.harsh = Math.max(vf.harsh, 0.5 * g);
+      if (s.vowel) fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, lerp(-8, 0, note.vel) - 34 + 12 * g);
     }
     const amp = lerp(-8, 0, note.vel) - (note.fall ? 9 * fx : 0) - 6 * fry;
     if (t < s.t0) fr.cascadeVoicingDb = -99;
@@ -293,20 +608,47 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       if (lastNote && t > s.t1 - 0.12) fr.cascadeAspirationDb = -30;
       // a voice-box singer's breath on each pulse: more in head voice, more as the rasp grows
       if (P) {
-        fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, amp - 34 + 10 * headW + 10 * rasp);
+        fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, amp - 34 + 10 * headW + 10 * rasp + 20 * scream);
         fr.cascadeAspirationMod = 0.7;
       }
-    } else if (s.cons && t <= s.t1) consonant(fr, s, t, amp, voice.high);
+    } else if (s.cons && t <= s.t1) {
+      consonant(fr, s, t, amp, voice.high);
+      // (on the voice box, a voiceless consonant's hiss isn't chopped by the vocal folds' cycles: it crackles)
+      if (gen instanceof VoiceBox && !s.cons.voiced) { fr.fricationMod = 0; fr.parallelAspirationMod = 0; fr.cascadeAspirationMod = 0; }
+      if (rc.ess && (s.cons.shape === 's' || s.cons.shape === 'sh')) fr.fricationDb += rc.ess;
+    }
     else {
       // silence after the line (the last vowel's ring decays in the filters)
       fr.cascadeVoicingDb = -99;
     }
     // the very start of the line: a soft attack
-    if (t < firstVowelT + 0.03 && s.vowel) fr.cascadeVoicingDb += lerp(-18, 0, (t - firstVowelT + 0.0) / 0.03);
+    // the recipe's breathiness: air on every vowel, with the folds' pulses
+    if (rc.airy && s.vowel && t >= s.t0 && t <= s.t1) {
+      // (less air in a belt: the folds close firmly)
+      // (louder, airier: about 14 dB more breath belted than normal, as Paul set them)
+      const harder = Math.max(0, Math.min(1, (note.vel - 0.85) / 0.1));
+      fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, fr.cascadeVoicingDb + rc.airy - 8 * belt + 14 * harder);
+      fr.cascadeAspirationMod = 0.5;
+    }
+    const att = rc.attack ?? 0.03;
+    if (t < firstVowelT + att && s.vowel) fr.cascadeVoicingDb += lerp(-18, 0, (t - firstVowelT + 0.0) / att);
     if (gen instanceof VoiceBox) gen.generateFrame(fr as VoiceFrame, buf);
     else gen.generateFrame(fr, buf);
     for (let k = 0; k < frameLen; k++) out[fi * frameLen + k] = buf[k];
   }
+  // (the recipe's presence and air: a peak at 3.5 kHz, a shelf above 8 kHz)
+  if (rc.presence) biquad(out, peaking(rate, 3500, 1, rc.presence));
+  if (rc.body) biquad(out, peaking(rate, 250, 0.8, rc.body));
+  if (rc.low) biquad(out, lowShelf(rate, 180, rc.low));
+  // (the recipe's drive: saturated as a rock vocal is recorded, the louder the more)
+  if (rc.drive) {
+    normalize(out);
+    // (gently: a soft curve, so consonants' bursts don't crack)
+    // (a belted line driven harder: half as much again)
+    const k = 1 + 2.5 * rc.drive * (1 + 0.5 * Math.max(0, Math.min(1, (lineEffort - 0.6) / 0.4)));
+    for (let i = 0; i < out.length; i++) out[i] = Math.tanh(k * out[i] * 1.5) / k;
+  }
+  if (rc.air) biquad(out, highShelf(rate, 8000, rc.air));
   normalize(out);
   return out;
 
@@ -367,6 +709,33 @@ function consonant(fr: FrameParms, s: Seg, t: number, amp: number, high: boolean
       else fr.cascadeVoicingDb = amp - 4;
       break;
     }
+  }
+}
+
+type Biquad = [number, number, number, number, number];
+/** A peaking EQ (RBJ cookbook): [b0, b1, b2, a1, a2], normalized. */
+function peaking(rate: number, f: number, q: number, db: number): Biquad {
+  const A = 10 ** (db / 40), w = (2 * Math.PI * f) / rate, al = Math.sin(w) / (2 * q), a0 = 1 + al / A;
+  return [(1 + al * A) / a0, (-2 * Math.cos(w)) / a0, (1 - al * A) / a0, (-2 * Math.cos(w)) / a0, (1 - al / A) / a0];
+}
+/** A low shelf (RBJ cookbook, slope 1). */
+function lowShelf(rate: number, f: number, db: number): Biquad {
+  const A = 10 ** (db / 40), w = (2 * Math.PI * f) / rate, c = Math.cos(w), al = Math.sin(w) / Math.SQRT2, sq = 2 * Math.sqrt(A) * al;
+  const a0 = A + 1 + (A - 1) * c + sq;
+  return [(A * (A + 1 - (A - 1) * c + sq)) / a0, (2 * A * (A - 1 - (A + 1) * c)) / a0, (A * (A + 1 - (A - 1) * c - sq)) / a0, (-2 * (A - 1 + (A + 1) * c)) / a0, (A + 1 + (A - 1) * c - sq) / a0];
+}
+/** A high shelf (RBJ cookbook, slope 1). */
+function highShelf(rate: number, f: number, db: number): Biquad {
+  const A = 10 ** (db / 40), w = (2 * Math.PI * f) / rate, c = Math.cos(w), al = Math.sin(w) / Math.SQRT2, sq = 2 * Math.sqrt(A) * al;
+  const a0 = A + 1 - (A - 1) * c + sq;
+  return [(A * (A + 1 + (A - 1) * c + sq)) / a0, (-2 * A * (A - 1 + (A + 1) * c)) / a0, (A * (A + 1 + (A - 1) * c - sq)) / a0, (2 * (A - 1 - (A + 1) * c)) / a0, (A + 1 - (A - 1) * c - sq) / a0];
+}
+function biquad(a: Float32Array, [b0, b1, b2, a1, a2]: Biquad) {
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i], y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = x; y2 = y1; y1 = y;
+    a[i] = y;
   }
 }
 

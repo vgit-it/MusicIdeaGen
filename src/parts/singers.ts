@@ -191,35 +191,15 @@ export function phrasePlan(rng: Rng, singer: Singer, kind: SectionKind, bars: nu
 }
 
 /**
- * The voice itself: clear (the first voice, kept as it was), raspy (grit that grows as they push: quiet
- * lines fairly clean, belts torn) or deep (a bigger, darker voice, sung lower).
+ * The voice itself: clear (the first voice, kept as it was) or a genre's voice (src/audio/voices.ts:
+ * made with Paul in the voice lab; on Auto, the song's genre's).
  */
-export type Timbre = 'clear' | 'raspy' | 'deep';
-export const TIMBRES: Timbre[] = ['clear', 'raspy', 'deep'];
+export type Timbre = 'clear' | Genre;
 
-/** Which voices go with which singers: shouters and drawlers rasp, brooders and crooners go deep. */
-const TIMBRE_BY_SINGER: Record<SingerKind, Record<Timbre, number>> = {
-  wailer: { clear: 3, raspy: 2, deep: 0.2 },
-  storyteller: { clear: 3, raspy: 1.2, deep: 1 },
-  drawler: { clear: 1, raspy: 2, deep: 2 },
-  brooder: { clear: 1, raspy: 1, deep: 3 },
-  popvoice: { clear: 6, raspy: 0.3, deep: 0.3 },
-  chanter: { clear: 2, raspy: 2, deep: 1 },
-  crooner: { clear: 2, raspy: 0.1, deep: 3 },
-  shouter: { clear: 1, raspy: 4, deep: 0.5 },
-};
-/** ...leaned by the genre: grit in hard rock and grunge, deep voices in the darker heavy genres, pop mostly clear. */
-const TIMBRE_BY_GENRE: Record<Genre, Record<Timbre, number>> = {
-  rock: { clear: 1, raspy: 1.3, deep: 1 },
-  hardrock: { clear: 1, raspy: 1.6, deep: 0.7 },
-  metal: { clear: 1, raspy: 1.2, deep: 1.2 },
-  altmetal: { clear: 1, raspy: 1.4, deep: 1.3 },
-  grunge: { clear: 1, raspy: 1.6, deep: 1.3 },
-  pop: { clear: 1.5, raspy: 0.4, deep: 0.6 },
-  funk: { clear: 1, raspy: 0.8, deep: 0.7 },
-};
+/** Semitones lower than the clear voice each genre's voice has its tunes written (where it sits best, by ear in the voice lab). */
+export const VOICE_DOWN: Record<Genre, number> = { rock: 6, pop: 3, funk: 4, hardrock: 3, metal: 2, grunge: 8, altmetal: 6 };
 
-/** The singer's voice on Auto, by who they are and the genre (its own chance, so nothing else moves). */
-export function pickTimbre(seed: string, singer: Singer, genre: Genre): Timbre {
-  return new Rng(`${seed}-timbre`).weighted(TIMBRES.map((t) => [t, TIMBRE_BY_SINGER[singer.kind][t] * TIMBRE_BY_GENRE[genre][t]] as [Timbre, number]));
+/** The singer's voice on Auto: the song's genre's. */
+export function pickTimbre(genre: Genre): Timbre {
+  return genre;
 }

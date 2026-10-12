@@ -220,39 +220,25 @@ rhythm cells, runs of at most three notes, the top note around E4. Measured over
 - Measured after, over 70 songs: lines of 1 bar 50%, 2 bars 31%, 3-4 bars 18%; about 200 runs of 3+
   notes; about 270 wails; range about 19 semitones; every song's verse and chorus phrasing different.
 
-### Voices: clear, raspy, deep (2026-10-12)
-Paul: a raspier voice for some singers, deep ones too; keep the first voice as an option. The lead
-singer's voice is a choice next to the Vocal part (Voice: Auto, Clear, Raspy, Deep), kept in links and
-exports; on Auto each song's singer has their own (its own chance, so nothing else in the song moves).
-The backing singer stays clear.
+### Voices: a voice per genre (2026-10-12)
+Paul: a raspier voice for some singers, deep ones too; keep the first voice as an option. Worked out
+with him by ear over a day of clips and then a voice lab (the whole path: docs/VOICES.md). The lead
+singer's voice is a choice next to the Vocal part: Auto (the song's genre's voice), Clear (the first
+voice, unchanged), or any genre's voice; kept in links and exports. The backing singer stays clear.
 
-- **Clear**: the first voice, unchanged (klatt-syn's own pulse).
-- **Raspy and Deep** (second version, the same day; Paul: build them from a different sound source,
-  and sing low and high like one voice, not just a shifted pitch): on the voice box
-  (`src/audio/voicebox.ts`), a new source, the vocal folds' pulse by the LF model, through the same
-  vocal tract, each a person with their own range who changes gear across it. The study, the rules and
-  the sources: docs/VOICES.md. The first version (rasp and depth added on klatt-syn) is kept in git
-  (tag `voices-v1-klatt`).
-  - **Raspy**: a rock tenor-baritone, break around F4: pressed chest voice below; above it, a belt when
-    the line pushes (the folds pressed, the vowel opened so F1 rides the 2nd harmonic, a "twang", the
-    larynx up a little) or head voice when it doesn't (lax, airy, a little darker). One gear per line,
-    as singers keep to (not flipping syllable by syllable). The rasp is their false folds: rough
-    cycles (jitter, shimmer), an undertone (every other cycle softer and longer) and a harsh edge,
-    a little on quiet lines, most on the pushed notes near the top, coming and going.
-  - **Deep**: a bass-baritone, break around D4: formants about 10% lower, darker, slower and wider
-    vibrato, laxer at the bottom, belting near its top; now and then vocal fry creaking at the end of a
-    line's last low note; on Auto its tunes are written a minor third lower.
-  - Measured (held notes, three takes each; H1-H2: the fundamental against the 2nd harmonic, the
-    register's fingerprint): clear's brightness stays about the same from bottom to top, soft or loud
-    (about 520-650 Hz) - the "only the pitch moves" Paul heard. Raspy, loud: brightness from about 520
-    Hz low to about 1000 Hz on the top belts, the 2nd harmonic taking over (H1-H2 to -25 dB: the belt's
-    mark), the undertone from -36 to about -9 dB against the note. Raspy, soft: above the break the
-    fundamental takes over (H1-H2 up to about +20 dB: head voice), darker. A line climbing across the
-    break with a belted end stays in one gear from the break up. A line renders in about 6 ms.
-- Who gets which on Auto: shouters and drawlers rasp, brooders and crooners go deep, pop voices stay
-  clear; leaned by genre. Over 400 songs per genre: pop 82% clear; hard rock 53% raspy; grunge 42%
-  raspy, 36% deep; alt metal 44% raspy, 31% deep; rock about a third each. The voice is in the notes.
-- Levels: a last chorus rendered in each voice sits within about 1 dB of the others.
+- Each genre's voice (`src/audio/voices.ts`) is a recipe on the voice box (`src/audio/voicebox.ts`, the
+  LF model of the vocal folds), rendered at 44.1 kHz: a rock singer, not an opera singer (the larynx
+  not lowered, vowels as spoken, little and uneven vibrato), relaxed, breathy all through, edge on the
+  open vowels, a softer "s"; three registers (deep, mid, high) sounding together, mixed by pitch,
+  vowel and loudness (Paul's own mixes); a break and a way up past it (Rock, Metal, Grunge: a power
+  belt; Hard rock: a squeal; Alt metal: a scream; Pop, Funk: falsetto); grit, breath and drive
+  growing on the loud notes; tunes written lower than the clear voice's (2 to 8 semitones: Metal the
+  highest, Grunge the lowest).
+- The earlier Raspy and Deep (on klatt-syn, then on the voice box) are gone from the app; the first is
+  kept in git (tag `voices-v1-klatt`).
+- Measured over songs in every genre: no glitches or clipping; levels within about 1 dB of the clear
+  voice through the mixer; about 10 ms of rendering per second sung (rock) on a desktop (the clear
+  voice: about 4), in the background ahead of playback.
 
 ## 8. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.

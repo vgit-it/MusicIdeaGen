@@ -83,7 +83,7 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       <span class="name">${d.label}</span>
       <span class="picks">
         <select aria-label="${d.label} ${d.layer ? 'style' : 'instrument'}">${d.options.map((o) => `<option value="${o.id}">${o.label}</option>`).join('')}</select>
-        ${d.part === 'vocal' ? `<select class="timbre" aria-label="Vocal voice" title="The singer's voice: clear, raspy (grittier the harder they sing) or deep. Auto: the voice that suits the song's singer.">${TIMBRE_CHOICES.map((o) => `<option value="${o.id}">${o.id === 'auto' ? 'Voice: Auto' : o.label}</option>`).join('')}</select>` : ''}
+        ${d.part === 'vocal' ? `<select class="timbre" aria-label="Vocal voice" title="The singer's voice: each genre has its own (made by ear in the voice lab: three registers mixed by pitch, grittier and airier the harder they sing), or the clear first voice. Auto: the song's genre's voice.">${TIMBRE_CHOICES.map((o) => `<option value="${o.id}">${o.id === 'auto' ? 'Voice: Auto' : o.label}</option>`).join('')}</select>` : ''}
         ${d.layer ? `<select class="use" aria-label="Where the ${d.label.toLowerCase()} plays" title="Comes and goes: the ${d.label.toLowerCase()} plays some sections and moments, not others, to suit the song. Throughout: every bar."><option value="auto">Comes and goes</option><option value="all">Throughout</option></select>` : ''}
       </span>
       <input type="range" min="0" max="100" value="${d.volume}" aria-label="${d.label} volume">

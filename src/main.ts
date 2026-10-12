@@ -1,5 +1,5 @@
 import './style.css';
-import type { TimbreChoice, VocalChoice } from './audio/singer';
+import { TIMBRE_CHOICES, type TimbreChoice, type VocalChoice } from './audio/singer';
 import { MOOD_LABEL, type MoodChoice } from './tension';
 import * as Tone from 'tone';
 import { Engine, type LayerSettings } from './audio/engine';
@@ -656,7 +656,8 @@ if (shared) {
   if (shared.o.bpm) tempo.value = String(shared.o.bpm);
   for (const p of LAYER_PARTS) if (shared.l?.[p]) engine.setLayer(p, shared.l[p]!);
   if (shared.b) engine.setBackingVocal(shared.b);
-  if (shared.w) engine.setVocalTimbre(shared.w);
+  // (older links may name voices that are gone: left on Auto)
+  if (shared.w && TIMBRE_CHOICES.some((c) => c.id === shared.w)) engine.setVocalTimbre(shared.w);
   if (shared.v) engine.setVocal(shared.v);
   for (const p of shared.l?.throughout ?? []) engine.setLayerThroughout(p, true);
   partsPanel.sync();

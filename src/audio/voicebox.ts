@@ -20,6 +20,13 @@ export interface VoiceFrame extends FrameParms {
   sub: number;
   /** 0-1: an uneven, harsh edge (the false folds vibrating irregularly). */
   harsh: number;
+  /**
+   * Other registers mixed in (up to two): the same folds' cycles, in step, each through its own
+   * vocal-tract setting with its own pulse shape and brightness, at its share (0-1; the frame's own
+   * register gets what's left). One voice carrying several registers' sound at once: e.g. a deep chest
+   * register under a mid one, or a belt's ringing vowel over them near the top.
+   */
+  layers?: { w: number; rd: number; tilt: number; formants: number[]; bws: number[] }[];
 }
 
 /* ---- the LF pulse: one period's shape per Rd, made once */
@@ -180,6 +187,14 @@ class Noise {
 
 /* ---- the generator */
 
+/** How the voice box runs: its pulse (the LF model, or Klatt's own, as klatt-syn's), and Klatt's output low-pass on or off. */
+export interface VoiceBoxOptions {
+  pulse?: 'lf' | 'klatt';
+  outLp?: boolean;
+  /** No nasal pole and zero at all (m, n, ng made by the mouth's formants alone). */
+  noNasal?: boolean;
+}
+
 export class VoiceBox {
   private rnd: () => number;
   private fr!: VoiceFrame;
@@ -191,16 +206,30 @@ export class VoiceBox {
   private nasalP: Resonator; private oralP: Resonator[];
   private diffX1 = 0;
   private lin = { breath: 0, gain: 1, voiceC: 0, aspC: 0, voiceP: 0, aspP: 0, fric: 0, bypass: 0 };
+  /** Where the levels are heading: they glide there over a few milliseconds (a step in level clicks). */
+  private to = { voiceC: 0, aspC: 0, voiceP: 0, aspP: 0, fric: 0, bypass: 0 };
+  private glide: number;
+  /** The noise branch is still sounding (it fades out through its last formants). */
+  private parOn = false;
   // the period now sounding
   private pos = 0; private len = 0; private open = 0; private amp = 1; private rd = 1;
   private odd = false; private abs = 0; private flutterT: number;
   /** The false folds' irregular wobble (smoothed noise, period by period). */
   private wobble = 0;
+  /** The other registers: each its tract, its pulse's brightness filter, its pulse shape and its share (eased). */
+  private lay: { oral: Resonator[]; tilt: LpFilter1; rd: number; w: number; to: number }[];
+  /** The nasal pole and zero now (eased toward each frame's, so a nasal consonant doesn't click in and out). */
+  private nasF = 0; private antiF = 0;
 
-  constructor(private rate: number, seed: number) {
+  // (Klatt's pulse: its slope and curve this period)
+  private ka = 0; private kb = 0; private kx = 0;
+
+  constructor(private rate: number, seed: number, private opts: VoiceBoxOptions = {}) {
     this.rnd = seeded(seed);
+    this.glide = 1 - Math.exp(-1 / (0.003 * rate));
     this.flutterT = this.rnd() * 1000;
     this.tilt = new LpFilter1(rate);
+    this.lay = [0, 1].map(() => ({ oral: Array.from({ length: 9 }, () => new Resonator(rate)), tilt: new LpFilter1(rate), rd: 1, w: 0, to: 0 }));
     this.outLp = new Resonator(rate);
     this.outLp.set(0, rate / 2);
     this.aspC = new Noise(rate, this.rnd);
@@ -208,7 +237,8 @@ export class VoiceBox {
     this.fric = new Noise(rate, this.rnd);
     this.nasalC = new Resonator(rate);
     this.antiC = new AntiResonator(rate);
-    this.oralC = Array.from({ length: 6 }, () => new Resonator(rate));
+    // (up to 9 in the cascade: Klatt's 6, and up to 3 more above 5 kHz at the higher sample rate, so the top isn't cut off)
+    this.oralC = Array.from({ length: 9 }, () => new Resonator(rate));
     this.nasalP = new Resonator(rate);
     this.oralP = Array.from({ length: 6 }, () => new Resonator(rate));
     lfShapes();
@@ -244,11 +274,19 @@ export class VoiceBox {
     }
     if (fr.harsh > 0) {
       this.wobble += (this.gauss() - this.wobble) * 0.5;
-      amp *= Math.max(0.15, 1 + 0.6 * fr.harsh * this.wobble);
+      // (rough, not cracking: the level never dips too far)
+      amp *= Math.max(0.45, 1 + 0.4 * fr.harsh * this.wobble);
     }
     this.rd = Math.max(RD_MIN, Math.min(RD_MAX, fr.rd + (fr.harsh > 0 ? 0.25 * fr.harsh * this.gauss() : 0)));
+    this.lay.forEach((l, i) => { l.rd = Math.max(RD_MIN, Math.min(RD_MAX, fr.layers?.[i]?.rd ?? fr.rd)); });
     this.len = Math.max(2, Math.round(this.rate / f0));
-    this.open = Math.round(this.len * openPart(this.rd));
+    if (this.opts.pulse === 'klatt') {
+      // klatt-syn's natural pulse (KLGLOTT88): a falling slope over the open phase
+      this.open = Math.round(this.len * fr.openPhaseRatio);
+      this.kb = -5 / this.open ** 2;
+      this.ka = (-this.kb * this.open) / 3;
+      this.kx = 0;
+    } else this.open = Math.round(this.len * openPart(this.rd));
     this.amp = amp;
     this.pos = 0;
   }
@@ -256,8 +294,20 @@ export class VoiceBox {
   /** This period's pulse at its current position (the two nearest Rd shapes, blended). */
   private pulse(): number {
     if (!this.amp) return 0;
+    if (this.opts.pulse === 'klatt') {
+      if (this.pos >= this.open) return 0;
+      this.ka += this.kb;
+      this.kx += this.ka;
+      return this.amp * this.kx;
+    }
+    return this.shapeAt(this.rd);
+  }
+
+  /** The LF pulse for an Rd at this period's position. */
+  private shapeAt(rd: number): number {
+    if (!this.amp) return 0;
     const S = shapes!;
-    const k = (this.rd - RD_MIN) / RD_STEP;
+    const k = (rd - RD_MIN) / RD_STEP;
     const i0 = Math.min(S.length - 2, Math.floor(k)), fk = k - i0;
     const x = (this.pos / this.len) * SHAPE_N;
     const j = Math.min(SHAPE_N - 1, Math.floor(x)), fx = x - j;
@@ -268,17 +318,41 @@ export class VoiceBox {
   }
 
   private sample(): number {
-    const fr = this.fr, L = this.lin;
+    const fr = this.fr, L = this.lin, T = this.to, g = this.glide;
+    L.voiceC += (T.voiceC - L.voiceC) * g;
+    L.aspC += (T.aspC - L.aspC) * g;
+    L.voiceP += (T.voiceP - L.voiceP) * g;
+    L.aspP += (T.aspP - L.aspP) * g;
+    L.fric += (T.fric - L.fric) * g;
+    L.bypass += (T.bypass - L.bypass) * g;
     let voice = this.tilt.step(this.pulse());
     if (this.pos < this.open) voice += (this.rnd() * 2 - 1) * L.breath;
     const late = this.pos >= this.len / 2;
     // cascade: voice and breath through the tract
     let v = voice * L.voiceC + this.aspC.next() * L.aspC * (1 - (late ? fr.cascadeAspirationMod : 0));
     v = this.nasalC.step(this.antiC.step(v));
-    for (const r of this.oralC) v = r.step(v);
+    const oc = this.oralC;
+    for (let k = 0; k < oc.length; k++) v = oc[k].step(v);
+    // the other registers, in step with this one, mixed in at their shares
+    // (plain loops: this runs for every sample)
+    let others = 0, share = 0;
+    for (let i = 0; i < this.lay.length; i++) {
+      const l = this.lay[i];
+      l.w += (l.to - l.w) * g;
+      if (l.w < 1e-4 && !l.to) continue;
+      const p2 = this.opts.pulse === 'klatt' ? voice : l.tilt.step(this.shapeAt(l.rd));
+      let v2 = p2 * L.voiceC;
+      const lo = l.oral;
+      for (let k = 0; k < lo.length; k++) v2 = lo[k].step(v2);
+      others += l.w * v2;
+      share += l.w;
+    }
+    if (share) v = (1 - share) * v + others;
     let out = fr.cascadeEnabled ? v : 0;
     // parallel: the noise of consonants through their own formants
-    if (fr.parallelEnabled) {
+    if (fr.parallelEnabled) this.parOn = true;
+    else if (this.parOn && L.fric + L.aspP + L.bypass + L.voiceP < 1e-6) this.parOn = false;
+    if (this.parOn) {
       const src = voice * L.voiceP + this.aspP.next() * L.aspP * (1 - (late ? fr.parallelAspirationMod : 0));
       const diff = src - this.diffX1;
       this.diffX1 = src;
@@ -287,26 +361,44 @@ export class VoiceBox {
       for (let i = 1; i < 6; i++) p += (i % 2 === 0 ? 1 : -1) * this.oralP[i].step(src2);
       out += p + L.bypass * src2;
     }
-    return this.outLp.step(out) * L.gain;
+    return (this.opts.outLp === false ? out : this.outLp.step(out)) * L.gain;
   }
 
   private useFrame() {
     const fr = this.fr, L = this.lin, rate = this.rate;
     L.breath = dbToLin(fr.breathinessDb);
     L.gain = dbToLin(fr.gainDb || 0);
-    if (!fr.tiltDb) this.tilt.setPassthrough(); else this.tilt.set(3000, dbToLin(-fr.tiltDb));
-    L.voiceC = dbToLin(fr.cascadeVoicingDb);
-    L.aspC = dbToLin(fr.cascadeAspirationDb);
-    if (fr.nasalFormantFreq && fr.nasalFormantBw) this.nasalC.set(fr.nasalFormantFreq, fr.nasalFormantBw); else this.nasalC.setPassthrough();
-    if (fr.nasalAntiformantFreq && fr.nasalAntiformantBw) this.antiC.set(fr.nasalAntiformantFreq, fr.nasalAntiformantBw); else this.antiC.setPassthrough();
+    // (no filter is ever switched off and back on mid-line: that resets it, and it clicks)
+    this.tilt.set(3000, dbToLin(-Math.max(0.05, fr.tiltDb || 0)));
+    this.lay.forEach((l, i) => { l.to = fr.layers?.[i]?.w ?? 0; });
+    fr.layers?.forEach((ly, i) => {
+      const l = this.lay[i];
+      if (!l) return;
+      l.tilt.set(3000, dbToLin(-Math.max(0.05, ly.tilt)));
+      l.oral.forEach((r, k) => { const f = ly.formants[k], bw = ly.bws[k]; if (f && bw) r.set(f, bw); });
+    });
+    const T = this.to;
+    T.voiceC = dbToLin(fr.cascadeVoicingDb);
+    T.aspC = dbToLin(fr.cascadeAspirationDb);
+    if (this.opts.noNasal) { /* left as passthrough */ } else if (fr.nasalFormantFreq && fr.nasalFormantBw) {
+      this.nasF = this.nasF ? this.nasF + (fr.nasalFormantFreq - this.nasF) * 0.5 : fr.nasalFormantFreq;
+      this.nasalC.set(this.nasF, fr.nasalFormantBw);
+    }
+    if (this.opts.noNasal) { /* left as passthrough */ } else if (fr.nasalAntiformantFreq && fr.nasalAntiformantBw) {
+      this.antiF = this.antiF ? this.antiF + (fr.nasalAntiformantFreq - this.antiF) * 0.5 : fr.nasalAntiformantFreq;
+      this.antiC.set(this.antiF, fr.nasalAntiformantBw);
+    }
     this.oralC.forEach((r, i) => {
       const f = fr.oralFormantFreq[i], bw = fr.oralFormantBw[i];
-      if (f && bw) r.set(f, bw); else r.setPassthrough();
+      // (a formant a frame leaves out keeps its last setting)
+      if (f && bw) r.set(f, bw);
     });
-    L.voiceP = dbToLin(fr.parallelVoicingDb);
-    L.aspP = dbToLin(fr.parallelAspirationDb);
-    L.fric = dbToLin(fr.fricationDb);
-    L.bypass = dbToLin(fr.parallelBypassDb);
+    T.voiceP = dbToLin(fr.parallelVoicingDb);
+    T.aspP = dbToLin(fr.parallelAspirationDb);
+    T.fric = dbToLin(fr.fricationDb);
+    T.bypass = dbToLin(fr.parallelBypassDb);
+    // (frames without consonant noise leave the noise formants as they were, to fade out through)
+    if (!fr.parallelEnabled) return;
     if (fr.nasalFormantFreq && fr.nasalFormantBw && dbToLin(fr.nasalFormantDb)) {
       this.nasalP.set(fr.nasalFormantFreq, fr.nasalFormantBw);
       this.nasalP.peakGain(dbToLin(fr.nasalFormantDb));

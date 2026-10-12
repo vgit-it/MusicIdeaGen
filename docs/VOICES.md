@@ -87,7 +87,7 @@ Every voice then shares the same formants (the same tract) from bottom to top. O
 - But no ready browser version turned up ([DDSP in the browser: Tone Transfer](https://magenta.tensorflow.org/tone-transfer)), and the models are large.
 - Voicebank licences vary; some forbid redistribution ([NoLyui terms](https://nolyui.carrd.co/)).
 
-## 5. Done so far
+## 5. Step 1
 - Step 1 (2026-10-12), option A only (no VocalSet download, Paul): the voice box
   (`src/audio/voicebox.ts`: the LF pulse with Rd, period by period, jitter, shimmer, false folds, breath
   on each pulse; Klatt's vocal tract ported from klatt-syn) and the register rules in
@@ -95,14 +95,36 @@ Every voice then shares the same formants (the same tract) from bottom to top. O
   fry). Clear stays on klatt-syn. Measurements: docs/VOCAL.md, section 7, "Voices".
 - Checked: the LF pulse's H1-H2 follows Rd as published (Rd 0.4: about -4 dB, 1.0: +3, 2.2: +14).
 
-## 6. The plan
-1. **Engine A for raspy and deep, each its own person with its own range:**
-   - **Deep:** a bass-baritone; break around C4-D4; its wails are belts near the top of its range.
-   - **Raspy:** a rock tenor-baritone; break around E4-F4; belts above; rasp tied to effort and to the top of the range.
-   - Clear stays on today's engine, untouched.
-2. **Rethink "high voice" as its own person, not the low voice shifted.** An alto (or tenor) with its own break points, singing the melody where it sits well for them.
-3. **Measure it silently, as before:**
-   - Brightness and noise per register.
-   - That a note just above the break sounds closer to one just below than it does today, with no jumps.
-   - Levels against the clear voice.
-4. **If A isn't real enough, add B:** a measured VocalSet singer for deep first.
+## 6. Round by round with Paul (clips, 2026-10-12)
+What he heard, what it turned out to be, what changed (clips made by `npm run voice-lab`):
+1. Everything muffled: Klatt's design stops at 5 kHz, and the voice rendered at 22 kHz. Rendered at
+   44.1 kHz, Klatt's output low-pass off, formants added above 5 kHz.
+2. All of it sounded like an opera singer: a lowered larynx (dark), covered vowels, wide steady vibrato
+   (classical, per the research). A rock recipe: vowels as spoken, little uneven vibrato, harder starts.
+3. Nasal, clicks, deeper: too much 2-4 kHz; filters switched off and on between sounds (clicks); sung
+   lower. Less twang, filters never reset, levels gliding over 3 ms, nasal resonance eased in and out.
+4. More low end and breath all through; crackle on "s": the hiss was chopped by the folds' cycles.
+   A low shelf, breath on every vowel, voiceless hiss left unchopped.
+5. Still nasal: a wide F1 and a bump near 250 Hz are what nasal vowels have. Removed; picked clip 73
+   (relaxed folds, the voice-box source).
+6. Genre versions of 73, then the same person singing higher: a power belt, a squeal, a scream,
+   falsetto. The middle sounded falsetto-like: F1 sitting on the note (a hoot); then like Mickey Mouse
+   when the vowel was opened too far.
+7. Paul asked for three registers (deep, mid, high) mixed by pitch: three vocal tracts, each with its
+   own pulse, sounding in step.
+
+## 7. The voice lab (`voice-lab.html`, dev only)
+Pick a voice, a pitch (a note at a time), a vowel, how hard; mix the three registers with sliders;
+solo each; save mixes at a few pitches and hear a scale or the phrase move between them; copy the
+settings back. What Paul's mixes showed:
+- The mid register is the backbone (a third to a half), except on "ah", where it sounds hollow.
+- Deep and high share the rest, and their balance is the voice's brightness: grunge darker (deep
+  never leaves), rock brighter (high leads, deep kept in around the break).
+- The vowel moves the mid share far more than loudness does; louder wants more grit, breath and drive.
+- "Ah" sounded hollow: almost nothing at 1.5-4 kHz. Edge (the folds closing faster, less tilt)
+  filled it: "excellent". Half as much on the front vowels, which have a resonance up there already.
+
+## 8. Next
+- The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
+- Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
+- More of Paul's lab mixes (other voices, vowels) to refine REGISTER_MIX and MID_FIT.
