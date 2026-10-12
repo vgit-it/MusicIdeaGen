@@ -74,7 +74,7 @@ Typical energy: Intro 1–2 · Verse 2–3 · Chorus 4–5 · Bridge contrast (1
 - **Comes later as extras:**
   - Pre-chorus, solo section, key change, tempo or time-signature changes between sections, fades.
 - **Comes in M5:** MIDI export of the track. WAV export is a v2 idea.
-- **Comes with a melody part:** a melody or vocal line. Until then, Guitar 2 carries the hooks.
+- **Comes with a melody part:** a melody or vocal line. (Now: the demo singer, `docs/VOCAL.md`.)
 
 ## Done when
 - **Every genre works.** Make track gives a 2–2.5 minute structure for every genre, including Random.

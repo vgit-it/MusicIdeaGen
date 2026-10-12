@@ -40,3 +40,4 @@ Samples were trimmed, mixed to mono and re-encoded. Details are in `public/sampl
 - [@tonejs/midi](https://github.com/Tonejs/Midi) (MIT): MIDI export.
 - [@breezystack/lamejs](https://github.com/breezystack/lamejs) (LGPL-3.0): MP3 encoding, a JavaScript port of [LAME](https://lame.sourceforge.io/). It's loaded unmodified as its own file (only when you export an MP3), so it can be swapped for another build.
 - [fflate](https://github.com/101arrowz/fflate) (MIT): zipping stems.
+- [klatt-syn](https://github.com/chdh/klatt-syn) by Christian d'Heureuse (MIT), with [dsp-collection](https://github.com/chdh/dsp-collection) (MIT): the Klatt formant synthesizer behind the demo singer.

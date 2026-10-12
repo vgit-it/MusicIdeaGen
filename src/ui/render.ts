@@ -89,7 +89,19 @@ export function renderIdea(
     for (const n of l.notes) if (n.step < song.total && out[n.step] !== 'c') out[n.step] = n.notes.length > 1 ? 'c' : 'n';
     return out;
   };
+  // the singer: o = a note, - = held; under it the words, a syllable from each note (cut short before the next)
+  const vocal = idea.vocal ?? [];
+  const voc = new Array<string>(song.total).fill('.');
+  const words = new Array<string>(song.total).fill(' ');
+  vocal.forEach((n, i) => {
+    for (let g = n.step + 1; g < Math.min(song.total, n.step + n.len); g++) voc[g] = '-';
+    voc[n.step] = 'o';
+    const room = (vocal[i + 1]?.step ?? song.total) - n.step;
+    [...n.syl.text].slice(0, Math.max(1, room)).forEach((ch, k) => { if (n.step + k < song.total) words[n.step + k] = ch; });
+  });
   $('lanes').textContent = [
+    vocal.length ? `Vocal ${lane(voc, (v) => v)}` : '',
+    vocal.length ? `Words ${lane(words, (v) => v)}` : '',
     idea.guitar ? `Gtr   ${lane(guitar, (v) => v)}` : `Strum ${lane(strum, (v) => v)}`,
     `Gtr 2 ${lane(guitar2, (v) => v)}`,
     `Kick  ${lane(drums.kick, (v) => (v ? 'x' : '.'))}`,

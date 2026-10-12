@@ -1,3 +1,4 @@
+import type { VocalNote, VoiceType } from './parts/vocal';
 // Shared types for a generated idea.
 
 import type { Genre, GenreSel, RiffStyle } from './genres';
@@ -19,6 +20,8 @@ export interface Seeds {
   bass: string;
   /** Optional so older seed sets still work. */
   guitar2?: string;
+  /** The singer's melody and words (optional, like guitar2). */
+  vocal?: string;
   /** Piano, pad, strings and percussion layers (optional, like guitar2). */
   keys?: string;
   pad?: string;
@@ -214,6 +217,10 @@ export interface Idea {
   guitar?: GuitarHit[];
   /** Second guitar: lead, harmony, octaves, arpeggios or swells. */
   guitar2: GuitarHit[];
+  /** The singer: a melody with a syllable on each note (tracks and ideas; missing in older ones). */
+  vocal?: VocalNote[];
+  /** Which voice sings it on Auto (the melody is written for the low one; the high one sings it an octave up). */
+  vocalVoice?: VoiceType;
   /** Tracks: the strummer's hands at chord changes (by the step of the change). */
   changeTouch?: Record<number, ChangeTouch>;
   /** Tracks, played by the band: how hard the strummed rhythm guitar plays (1 = as written). */

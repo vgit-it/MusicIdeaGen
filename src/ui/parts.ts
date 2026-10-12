@@ -4,6 +4,7 @@ import type { ChordChoice, Engine } from '../audio/engine';
 import { BASS_INSTRUMENTS, type BassId, CHORD_INSTRUMENTS, DRUM_KITS, type DrumKitId } from '../audio/instruments';
 import type { LayerPart, MixPart } from '../audio/mixer';
 import { PAD_TONES } from '../audio/pad';
+import { VOCAL_CHOICES, type VocalChoice } from '../audio/singer';
 import { KEYS_STYLES, PERC_STYLES, STRINGS_STYLES } from '../parts/layers';
 
 interface PartDef {
@@ -24,6 +25,10 @@ export interface PartsPanel {
 /** `onChange`: something changed what plays or what's shown (instrument, a layer added or removed). */
 export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () => void): PartsPanel {
   const defs: PartDef[] = [
+    {
+      part: 'vocal', label: 'Vocal (demo)', volume: 75, options: VOCAL_CHOICES,
+      onInstrument: (id) => { engine.setVocal(id as VocalChoice); onChange(); },
+    },
     {
       part: 'chords', label: 'Rhythm', volume: 80,
       options: [{ id: 'auto', label: 'Auto (by genre and section)' }, ...CHORD_INSTRUMENTS],
@@ -122,6 +127,7 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       });
     }
 
+    if (d.part === 'vocal') syncs.push(() => { select.value = engine.vocal; });
     engine.setVolume(d.part, d.volume);
     root.appendChild(row);
   }

@@ -1,5 +1,7 @@
 // Pure, deterministic idea generator: same options + seeds = same idea.
 
+import { autoVoice, singIdea } from './parts/vocal';
+import { autoMood } from './tension';
 import { GENRES, GENRE_LIST, type Genre, type RiffStyle } from './genres';
 import type { ChordPart, Cycle, GenOptions, Idea, Seeds, Song, Stroke } from './idea';
 import { BASS_LINE_DESC, bassLengths, generateBass, generateRiffBass, pickBassLine, writeBassLine } from './parts/bass';
@@ -18,7 +20,7 @@ import { TUNINGS, type Tuning } from './theory/fretboard';
 
 
 export function randomSeeds(): Seeds {
-  return { song: newSeed(), chords: newSeed(), drums: newSeed(), strum: newSeed(), bass: newSeed(), guitar2: newSeed(), keys: newSeed(), pad: newSeed(), strings: newSeed(), perc: newSeed() };
+  return { song: newSeed(), chords: newSeed(), drums: newSeed(), strum: newSeed(), bass: newSeed(), guitar2: newSeed(), keys: newSeed(), pad: newSeed(), strings: newSeed(), perc: newSeed(), vocal: newSeed() };
 }
 
 /** Genres whose parts mix well with a strummed genre (Random only). */
@@ -97,6 +99,10 @@ export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
     : playRhythm(idea, pickRhythm(band, song.partGenres.strum), band, rng);
   const at = idea.notes.map((n) => n.startsWith('Strumming')).lastIndexOf(true) + 1 || 1;
   idea.notes.splice(at, 0, ...notes);
+  // the singer: the idea is a chorus, so it sings the chorus tune and its hook
+  const vs = seeds.vocal ?? `${seeds.chords}-vocal`;
+  singIdea(idea, vs, autoMood(song, seeds.song));
+  idea.vocalVoice = autoVoice(vs, song.partGenres.strum);
   return idea;
 }
 

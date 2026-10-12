@@ -43,6 +43,8 @@ export interface MidiOptions {
   stringsFor?: (idea: Idea) => Layer | null;
   /** Percussion notes are General MIDI percussion numbers (written on the drum channel). */
   percFor?: (idea: Idea) => Layer | null;
+  /** The singer: off, or which voice (the high one sings an octave up). */
+  vocal?: 'off' | 'low' | 'high' | 'auto';
 }
 
 const vel = (v: number) => Math.max(0.05, Math.min(1, v));
@@ -74,6 +76,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
   const pad = mk('Pad', 4, 89); // GM "Pad 2 (warm)"
   const strings = mk('Strings', 5, 48); // GM "String Ensemble 1"
   const perc = mk('Percussion', 9, 0);
+  const vocal = mk('Vocal', 6, 53); // GM "Voice Oohs"; the words go in as lyric events
 
   // played by the band: every note a hair off the grid and a touch louder or softer, the same each export
   let human = false;
@@ -125,7 +128,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
     song.bars.forEach((b, bi) => {
       if (bi > 0 && !idea.section?.db) return;
       const expression = Math.round(127 * 10 ** (levelAt(idea.section, bi) / 20));
-      for (const t of [rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
+      for (const t of [vocal, rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
     });
 
     const isGuitar = (id: ChordInstrumentId) => id !== 'piano';
@@ -174,6 +177,14 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       }
 
       for (const h of idea.guitar2) if (h.step === g) hit(g2, h, h.vel, false, idea.g2Feel ?? 0);
+      if (o.vocal !== 'off') {
+        for (const n of idea.vocal ?? []) {
+          if (n.step !== g) continue;
+          const voice = o.vocal === 'low' || o.vocal === 'high' ? o.vocal : idea.vocalVoice ?? 'low';
+          note(vocal, n.midi + (voice === 'high' ? 12 : 0), at(g), Math.max(10, at(n.step + n.len) - at(g) - 10), n.vel);
+          midi.header.meta.push({ type: 'lyrics', text: n.syl.wordStart || n === idea.vocal![0] ? n.syl.text : `-${n.syl.text}`, ticks: Math.round(at(g)) });
+        }
+      }
 
       if (bl[g]) {
         // as played: legato into the next note, unless written shorter

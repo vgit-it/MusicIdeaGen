@@ -1,4 +1,5 @@
 import './style.css';
+import type { VocalChoice } from './audio/singer';
 import { MOOD_LABEL, type MoodChoice } from './tension';
 import * as Tone from 'tone';
 import { Engine, type LayerSettings } from './audio/engine';
@@ -153,12 +154,12 @@ chordReset.onclick = () => {
 
 /* ---- shareable link: the address always holds the current idea (and track) */
 
-interface Shared { o: GenOptions; s: Seeds; t?: TrackOptions; l?: LayerSettings }
+interface Shared { o: GenOptions; s: Seeds; t?: TrackOptions; l?: LayerSettings; v?: VocalChoice }
 
 function updateLink() {
   if (!idea) return;
   const layers = engine.layerSettings;
-  const data: Shared = { o: idea.opts, s: idea.seeds, ...(track ? { t: track.opts } : {}), ...(Object.keys(layers).length ? { l: layers } : {}) };
+  const data: Shared = { o: idea.opts, s: idea.seeds, ...(track ? { t: track.opts } : {}), ...(Object.keys(layers).length ? { l: layers } : {}), ...(engine.vocal !== 'auto' ? { v: engine.vocal } : {}) };
   try {
     history.replaceState(null, '', `#${btoa(encodeURIComponent(JSON.stringify(data)))}`);
   } catch { /* history blocked: no link */ }
@@ -192,7 +193,7 @@ type ExportKind = 'midi' | 'mp3' | 'wav' | 'stems';
 interface ExportFile { bytes: Uint8Array; name: string; type: string }
 
 const STEM_NAMES: Record<MixPart, string> = {
-  chords: 'rhythm-guitar', guitar2: 'guitar-2', bass: 'bass', drums: 'drums', keys: 'piano', pad: 'pad', strings: 'strings', perc: 'percussion',
+  vocal: 'vocal', chords: 'rhythm-guitar', guitar2: 'guitar-2', bass: 'bass', drums: 'drums', keys: 'piano', pad: 'pad', strings: 'strings', perc: 'percussion',
 };
 const exportButtons = ['ex-mp3', 'ex-wav', 'ex-stems', 'ex-midi'].map((id) => $<HTMLButtonElement>(id));
 let exporting = false;
@@ -207,6 +208,7 @@ async function buildExport(kind: ExportKind, progress: (msg: string) => void = (
       chordIdFor: (i) => engine.chordIdFor(i), guitar2IdFor: (i) => engine.guitar2IdFor(i),
       keysFor: (i) => engine.layerFor(i, 'keys'), padFor: (i) => engine.layerFor(i, 'pad'),
       stringsFor: (i) => engine.layerFor(i, 'strings'), percFor: (i) => engine.layerFor(i, 'perc'),
+      vocal: engine.vocal,
     });
     return { bytes, name: `${base}.mid`, type: 'audio/midi' };
   }
@@ -651,6 +653,7 @@ if (shared) {
   $('wv').textContent = weird.value;
   if (shared.o.bpm) tempo.value = String(shared.o.bpm);
   for (const p of LAYER_PARTS) if (shared.l?.[p]) engine.setLayer(p, shared.l[p]!);
+  if (shared.v) engine.setVocal(shared.v);
   for (const p of shared.l?.throughout ?? []) engine.setLayerThroughout(p, true);
   partsPanel.sync();
   showIdea(generate(shared.o, shared.s));
