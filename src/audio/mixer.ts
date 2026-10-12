@@ -2,19 +2,19 @@
 
 import * as Tone from 'tone';
 
-export type MixPart = 'chords' | 'guitar2' | 'drums' | 'bass' | 'keys' | 'pad' | 'strings' | 'perc';
-export const MIX_PARTS: MixPart[] = ['chords', 'guitar2', 'drums', 'bass', 'keys', 'pad', 'strings', 'perc'];
+export type MixPart = 'vocal' | 'chords' | 'guitar2' | 'drums' | 'bass' | 'keys' | 'pad' | 'strings' | 'perc';
+export const MIX_PARTS: MixPart[] = ['vocal', 'chords', 'guitar2', 'drums', 'bass', 'keys', 'pad', 'strings', 'perc'];
 /** Parts you add and remove (the rest always play). */
 export type LayerPart = 'keys' | 'pad' | 'strings' | 'perc';
 export const LAYER_PARTS: LayerPart[] = ['keys', 'pad', 'strings', 'perc'];
 export const isLayer = (p: MixPart): p is LayerPart => (LAYER_PARTS as MixPart[]).includes(p);
 
-const REVERB_SEND: Record<MixPart, number> = { chords: -12, guitar2: -9, drums: -16, bass: -40, keys: -11, pad: -7, strings: -6, perc: -13 };
+const REVERB_SEND: Record<MixPart, number> = { vocal: -9, chords: -12, guitar2: -9, drums: -16, bass: -40, keys: -11, pad: -7, strings: -6, perc: -13 };
 /** Fixed level per part, before the fader: Guitar 2's melodies sit just forward of the rhythm part (a band member, not a lead vocal). */
-const TRIM: Record<MixPart, number> = { chords: 0, guitar2: 1.5, drums: 0, bass: 0, keys: 5, pad: 5, strings: -6.5, perc: 6 };
-/** Tempo-synced echo (dotted 8th), only on the second guitar. */
+const TRIM: Record<MixPart, number> = { vocal: 12, chords: 0, guitar2: 1.5, drums: 0, bass: 0, keys: 5, pad: 5, strings: -6.5, perc: 6 };
+/** Tempo-synced echo (dotted 8th): the second guitar, and a touch on the singer. */
 const DELAY_SEND: Record<MixPart, number> = {
-  chords: -Infinity, guitar2: -9, drums: -Infinity, bass: -Infinity, keys: -Infinity, pad: -Infinity, strings: -Infinity, perc: -Infinity,
+  vocal: -18, chords: -Infinity, guitar2: -9, drums: -Infinity, bass: -Infinity, keys: -Infinity, pad: -Infinity, strings: -Infinity, perc: -Infinity,
 };
 
 const irCache = new Map<number, AudioBuffer>();

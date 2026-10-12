@@ -11,6 +11,7 @@ export const LOCK_PARTS: { key: PartKey; label: string; title: string }[] = [
   { key: 'guitar2', label: 'Guitar 2', title: 'The second guitar part' },
   { key: 'drums', label: 'Drums', title: 'The drum groove and fills' },
   { key: 'bass', label: 'Bass', title: 'The bass line' },
+  { key: 'vocal', label: 'Vocal', title: 'The singer\'s melody and words' },
   { key: 'keys', label: 'Piano', title: 'The piano part' },
   { key: 'pad', label: 'Pad', title: 'The pad voicing' },
   { key: 'strings', label: 'Strings', title: 'The string part' },

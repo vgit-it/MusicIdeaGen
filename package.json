@@ -15,6 +15,7 @@
     "@breezystack/lamejs": "^1.2.7",
     "@tonejs/midi": "^2.0.28",
     "fflate": "^0.8.3",
+    "klatt-syn": "^1.0.9",
     "tone": "^15.1.22"
   },
   "devDependencies": {

@@ -4,6 +4,7 @@
 //
 // Pure and deterministic: the same idea always grows into the same track.
 
+import { autoVoice, singTrack } from './parts/vocal';
 import { type Mood, type MoodChoice, PROFILES, arcNote, autoMood, planTension } from './tension';
 import { type BuildOptions, buildIdea, withSheet } from './generator';
 import { GENRES, type Genre, QUIET_STYLES, type RiffStyle } from './genres';
@@ -1662,6 +1663,12 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   if (opts.band !== 'off') {
     playBand(sections, bandSeed);
   }
+
+  // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
+  const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
+  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum }, arc.climax);
+  const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
+  for (const x of sections) x.vocalVoice = voice;
 
   // each section knows the shape of its track (added layers plan where they play from it)
   const all = sections.map((s) => ({ kind: s.section!.kind, energy: s.section!.energy }));

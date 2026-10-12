@@ -1,5 +1,6 @@
 // Plays a list of ideas back to back: one idea on a loop, a whole track once, or one section on a loop.
 
+import { Singer, type VocalChoice } from './singer';
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
@@ -29,6 +30,8 @@ export interface EngineSettings {
   layers: LayerSettings;
   /** Real amps (Neural Amp Modeler) for driven electric guitars: prepared ahead live, and in exports. */
   realAmps?: boolean;
+  /** The demo singer: Auto (the song's own voice), a low or high voice, or off (missing: Auto). */
+  vocal?: VocalChoice;
 }
 
 /** The layers you've added (left out = removed) and their style or tone. */
@@ -54,6 +57,9 @@ const BASS_TONES: Record<Genre, BassTone> = {
 
 /** A guitar solo's mix (dB): Guitar 2 lifted, the rhythm guitar lowered (measured: the solo sat 2-3 dB under the rhythm guitar). */
 const SOLO_DB = { lead: 2.5, rhythm: -2 };
+
+/** Guitar 2 under the singer (dB): its melodies step back for the voice. */
+const VOCAL_DUCK = -3;
 
 /** Silent steps after a track ends, so the last chord can ring out. */
 const TAIL_STEPS = 32;
@@ -145,7 +151,7 @@ export class Engine {
   settings(): EngineSettings {
     return {
       chord: this.chordChoice, guitar2: this.g2Choice, bass: this.bassChoice, drumSynth: this.drums.useSynth,
-      mix: this.mixer.state(), layers: this.layerSettings, realAmps: this.realAmps,
+      mix: this.mixer.state(), layers: this.layerSettings, realAmps: this.realAmps, vocal: this.vocalChoice,
     };
   }
 
@@ -162,6 +168,23 @@ export class Engine {
     this.mixer.restore(mix);
     for (const p of LAYER_PARTS) this.setLayer(p, s.layers[p] ?? null);
     this.layers.throughout = [...(s.layers.throughout ?? [])];
+    this.setVocal(s.vocal ?? 'auto');
+  }
+
+  /* ---- the demo singer */
+
+  private singer: Singer | null = null;
+  private vocalChoice: VocalChoice = 'auto';
+  get vocal(): VocalChoice {
+    return this.vocalChoice;
+  }
+
+  setVocal(choice: VocalChoice) {
+    this.vocalChoice = choice;
+    if (choice === 'off') { this.singer?.releaseAll(); if (this.singer) this.singer.choice = 'off'; return; }
+    this.singer ??= inContext(this.ctx, () => new Singer(this.mixer.input('vocal')));
+    this.singer.choice = choice;
+    if (this.list.length) this.singer.prepare(this.list, () => 15 / this.transport.bpm.value);
   }
 
   /* ---- layers you can add and remove */
@@ -243,7 +266,7 @@ export class Engine {
 
   /** Offline: wait until every instrument the list needs has its samples. */
   async loadAll() {
-    const insts = [this.drums, this.bass, this.g2Inst, this.keysInst, this.stringsInst, this.percInst, ...this.instsNeeded().map(([inst]) => inst)]
+    const insts = [this.drums, this.bass, this.g2Inst, this.keysInst, this.stringsInst, this.percInst, this.singer, ...this.instsNeeded().map(([inst]) => inst)]
       .filter((x): x is NonNullable<typeof x> => !!x);
     // load() hands back the same promise while loading, so this waits for loads already under way
     await Promise.all(insts.map((inst) => inst.load()));
@@ -299,6 +322,7 @@ export class Engine {
     // prepared guitars are at the old tempo: back to live until they're ready again
     if (changed && this.playing && this.realSrcs.length) this.endPrepared(this.ctx.now() + 0.05);
     if (changed) this.onRealChange();
+    if (changed && this.list.length) this.singer?.prepare(this.list, () => 15 / bpm);
   }
 
   /** Play one idea on a loop (`keepPlace`: carry on from the same bar, for rerolls). */
@@ -334,6 +358,8 @@ export class Engine {
     this.applyChordInstrument();
     this.applyGuitar2();
     this.applyPadTone();
+    // the singer renders its lines ahead
+    if (this.vocalChoice !== 'off') this.setVocal(this.vocalChoice);
     // start loading the instruments later sections play on
     if (!this.offline) for (const [inst, id] of this.instsNeeded()) void this.ensureLoaded(inst, kindOf(id));
     this.applyLevel(this.ctx.now());
@@ -353,7 +379,9 @@ export class Engine {
     this.mixer.setSectionLevel(levelAt(this.idea?.section, 0), time);
     // a guitar solo stands out: Guitar 2 up, the rhythm guitar down
     const solo = !!this.idea?.section?.solo;
-    this.mixer.setFeature('guitar2', solo ? SOLO_DB.lead : 0, time);
+    // (and steps back a little where the singer sings)
+    const sung = !!this.idea?.vocal?.length && this.vocalChoice !== 'off';
+    this.mixer.setFeature('guitar2', solo ? SOLO_DB.lead : sung ? VOCAL_DUCK : 0, time);
     this.mixer.setFeature('chords', solo ? SOLO_DB.rhythm : 0, time);
     this.mixer.setRhythmEcho(!!this.idea?.rhythmEcho, time);
     this.padInst?.setEnergy(e, time);
@@ -695,6 +723,7 @@ export class Engine {
     this.applyLookAhead();
     // every instrument: the last notes of an earlier section can still be ringing
     for (const inst of [...this.rhythmInsts.values(), ...this.g2Insts.values()]) inst.releaseAll();
+    this.singer?.releaseAll();
     this.bass.releaseAll();
     this.keysInst?.releaseAll();
     this.padInst?.releaseAll();
@@ -817,6 +846,8 @@ export class Engine {
       const next = hits.length ? toNext(this.hitsAt2) : 0;
       for (const h of hits) this.playHit(this.g2Inst, held(h, next), time + (idea.g2Feel ?? 0) / 1000, six);
     }
+    // the singer: its lines start a little ahead of their first notes
+    if (others && this.singer && this.vocalChoice !== 'off') this.singer.playStep(idea, g, time, six);
     const keys = others && this.keysInst && this.layerAt(idea, 'keys');
     if (keys) for (const n of keys.at[g]) {
       this.keysInst!.strum({ stroke: 'D', notes: n.notes, time, dur: n.len * six * 0.97, vel: n.vel, sixteenth: six });
