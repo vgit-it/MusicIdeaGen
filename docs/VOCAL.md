@@ -150,7 +150,20 @@ What the research says, and what's built:
 - The Vocal reroll rerolls the style too (a new form, contour, lift, maybe a twist) within the mood
   and genre.
 
+### Following the tension curve (2026-10-12)
+Paul: next step. [P] Producers and vocal coaches: the same chorus is sung with more each time (the
+last one reaching higher, held notes pushed, a run where it peaks), and quieter, settled lines as the
+song lets go; the tune stays recognisable (word for word, same shape). Built (`followTension`):
+- Each sung line is compared with the tension where its tune was first sung (the first verse, the first
+  chorus). Above it, its held notes and top note reach up to the next chord note (up to a 4th); at a big
+  lift its last held note turns (up a step and back, on one vowel). Below it, held notes settle to the
+  chord note under them. Line by line, so a build inside a section climbs too. ✓
+- How much by mood: triumphant and angry push hardest, then tense and happy; melancholic and dreamy
+  barely move. The song's top notes stay kept for the climax. ✓
+- Every note louder (and so brighter) with its bar's tension. ✓
+- The notes say it: "Vocal follows the tension: reaching up (notes moved 5 up, a turn)". ✓
+
 ## 7. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
-- · Fillers in the gaps of the lead line itself; the melody following the tension curve bar by bar;
+- · Fillers in the gaps of the lead line itself;
   screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).

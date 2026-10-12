@@ -13,13 +13,14 @@
 //   step above (the sigh of sad songs) or turning through a few notes on one vowel (pop's melisma)
 // - blue notes (a flat 3rd or 7th in passing) in rock, a flat 2nd's dark colour in minor keys
 
-import type { ChordPart, SectionKind, Song } from '../idea';
+import type { ChordPart, Idea, SectionKind, Song } from '../idea';
 import type { Genre } from '../genres';
 import { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
 import type { Mood } from '../tension';
 import { SCALES, chordPc } from '../theory';
 import { MINORISH, chordTones } from './guitar2';
+import type { Syllable } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -532,5 +533,71 @@ function ornament(rng: Rng, notes: TuneNote[], style: MelodyStyle, pool: number[
     }
     out.push(n);
   });
+  return out;
+}
+
+/**
+ * How closely each mood's tune follows the tension curve: a triumphant or angry singer pushes up as
+ * the song builds; a melancholic or dreamy one barely moves.
+ */
+const FOLLOW: Record<Mood, number> = { happy: 1, triumphant: 1.3, nostalgic: 0.8, melancholic: 0.6, dreamy: 0.6, tense: 1.1, angry: 1.2, dark: 0.7 };
+
+/**
+ * The tune follows the tension curve, line by line (docs/VOCAL.md, section 6): the same tune, sung with
+ * more (or less) push than where it first came. A line above the tension the tune was written at lifts
+ * its held notes and its top note to the next chord note up (the singer reaching), and at a big lift
+ * turns its last held note; a calmer line lets its held notes down to the chord note below. Every note
+ * gets louder (and brighter) with its bar's tension. `ref`: the tension where the tune was first sung.
+ */
+export function followTension(idea: Idea, ref: number, mood: Mood, style: MelodyStyle, rng: Rng): { up: number; down: number; turns: number } {
+  const out = { up: 0, down: 0, turns: 0 };
+  const t = idea.section?.tension;
+  const v = idea.vocal;
+  if (!t?.length || !v?.length) return out;
+  const { key, mode, bars, total } = idea.song;
+  const barAt = (g: number) => Math.min(t.length - 1, bars.reduce((b, x, i) => (x.start <= g ? i : b), 0));
+  const tonesAt = (g: number) => chordTones(key, idea.chords.timeline[idea.chords.chordIdx[Math.min(total - 1, Math.max(0, g))]].chord);
+  const scale = (SCALES[mode] as readonly number[]).map((x) => (key + x) % 12);
+  const tied = (i: number) => v[i + 1]?.syl.text === '~';
+  // the sung lines (each starts with a `start` note)
+  const lines: number[][] = [];
+  v.forEach((n, i) => { if (n.start || !lines.length) lines.push([]); lines[lines.length - 1].push(i); });
+  for (const L of lines) {
+    for (const i of L) v[i].vel = Math.max(0.45, Math.min(1, v[i].vel * (0.86 + 0.3 * t[barAt(v[i].step)])));
+    const bs = [...new Set(L.map((i) => barAt(v[i].step)))];
+    const d = (bs.reduce((a, b) => a + t[b], 0) / bs.length - ref) * FOLLOW[mood];
+    const p = clamp01((Math.abs(d) - 0.04) / 0.18);
+    if (!p) continue;
+    // which notes move: the held ones, and (going up) the line's top note
+    const free = L.filter((i) => v[i].syl.text !== '~' && !tied(i));
+    const held = free.filter((i) => v[i].len >= 4);
+    const top = free.reduce((b, i) => (b < 0 || v[i].midi > v[b].midi ? i : b), -1);
+    const moving = new Set(d > 0 && top >= 0 && v[top].len >= 2 ? [...held, top] : held);
+    for (const i of moving) {
+      if (!rng.chance(p)) continue;
+      const n = v[i];
+      const tones = tonesAt(n.step);
+      for (let s = 2; s <= 5; s++) {
+        const m = n.midi + (d > 0 ? s : -s);
+        // (the song's top notes kept for its climax)
+        if (!tones.includes(mod(m, 12)) || m > PEAK - 2 || m < LOW[0] - 3) continue;
+        n.midi = m;
+        if (d > 0) out.up++; else out.down++;
+        break;
+      }
+    }
+    // a big lift: the line's last held note turns (up a step and back) on its vowel
+    const last = L[L.length - 1];
+    if (d > 0.15 && style.melisma > 0.05 && v[last].len >= 6 && v[last].syl.text !== '~' && rng.chance(p * 0.6)) {
+      const n = v[last];
+      const up = n.midi + (mod(n.midi + 1, 12) === scale.find((x) => x === mod(n.midi + 1, 12)) ? 1 : 2);
+      const cont = (coda: Syllable['coda']): Syllable => ({ onset: [], vowel: n.syl.vowel, coda, stress: false, text: '~', wordStart: false });
+      v.splice(last, 1,
+        { ...n, len: 2, syl: { ...n.syl, coda: [] } },
+        { ...n, step: n.step + 2, len: 1, midi: Math.min(up, PEAK), start: false, syl: cont([]) },
+        { ...n, step: n.step + 3, len: n.len - 3, start: false, syl: cont(n.syl.coda) });
+      out.turns++;
+    }
+  }
   return out;
 }

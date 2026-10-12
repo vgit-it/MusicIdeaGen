@@ -17,7 +17,7 @@ import type { Genre } from '../genres';
 import { Rng } from '../rng';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
-import { PEAK, type Tune, melodyDesc, melodyStyle, writeTune } from './melody';
+import { PEAK, type Tune, followTension, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -96,7 +96,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   // the song's anchor: the verse centre, the key's root nearest G3 (the low voice's comfortable middle)
   const key = first.song.key;
   const base = 55 + mod(key - 55 + 6, 12) - 6;
-  const blocks = new Map<SectionKind, { tune: Tune; key: number; bars: number; words: Syllable[]; tag: string }>();
+  const blocks = new Map<SectionKind, { tune: Tune; key: number; bars: number; words: Syllable[]; tag: string; ref: number }>();
   const hookStress = rng.pick([[true, false, true], [true, true], [true, false, true, false], [true, false]]);
   const hook = makeHook(new Rng(`${ctx.seed}-hook-words`), hookStress, style);
   const seen: Partial<Record<SectionKind, number>> = {};
@@ -114,7 +114,8 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
       const tune = writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, melody);
       const words = writeWords(new Rng(`${ctx.seed}-words-${as}`), tune, style, as === 'chorus' ? hook : null, base + 6);
-      b = { tune, key: src.song.key, bars: src.song.bars.length, words, tag: as };
+      const t = idea.section?.tension ?? [];
+      b = { tune, key: src.song.key, bars: src.song.bars.length, words, tag: as, ref: t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0.5 };
       blocks.set(as, b);
     }
     // later verses: the same tune with new words; choruses: word for word
@@ -135,9 +136,12 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start });
       });
     }
+    // the tune follows the tension curve, line by line: reaching up as the song builds, settling as it lets go
+    const moved = followTension(idea, b.ref, ctx.mood, melody, new Rng(`${ctx.seed}-follow-${si}`));
     // the climax: its last held note lifted to the song's top
     if (si === climax && idea.vocal.length) {
-      const held = [...idea.vocal].reverse().find((v) => v.len >= 4);
+      const v = idea.vocal;
+      const held = [...v].reverse().find((x, k) => x.len >= 4 && x.syl.text !== '~' && v[v.length - k]?.syl.text !== '~');
       if (held) {
         const tones = chordTones(idea.song.key, idea.chords.timeline[idea.chords.chordIdx[held.step]].chord);
         let m = held.midi + 3;
@@ -150,6 +154,8 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const words = lyricText(idea.vocal);
       if (!told) { idea.notes.push(`Melody: ${melodyDesc(melody)}`); told = true; }
       idea.notes.push(`Vocal (${VOCAL_DESC[as]}): “${words.length > 140 ? `${words.slice(0, 140)}…` : words}”`);
+      const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
+      if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);
     }
   });
 }
