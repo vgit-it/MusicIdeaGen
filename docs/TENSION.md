@@ -91,6 +91,9 @@ into a number. ✓ = built (phase 1), · = later.
 - ✓ Guitar 2 plays an octave up at the climax (moods that peak high) [P].
 - ✓ The climax can be an outro that solos or jams (moods that hold to the end), not only the last
   chorus [M: the last chorus is the single peak in only about a third of songs].
+- ✓ The singer follows the curve line by line: reaching up as it builds (held notes and the top note to
+  the next chord note, a turn at a big lift), settling as it lets go, louder with each bar's tension; by
+  mood (`docs/VOCAL.md` section 6).
 
 ## 6. Later
 - · The lead's register following the curve everywhere (not only the climax), the verse answers getting
