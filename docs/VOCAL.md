@@ -177,8 +177,18 @@ with the bass about 6% of the time. Built:
 - Every section fitted to its own chords and bass (a verse with new chords no longer sings the old ones). ✓
 - Result: borrowed-chord rubs 21-46% → 0-9%; held notes ending off their chord 20-33% → 5-21% (the rest
   colour notes, not clashes); bass clashes about 6% → 2%; the tunes' shape (steps, leaps, range) unchanged.
-- · Next: rhythm from the band (accents from the groove, pushes with the band, resting in fills, singing
-  into stops); Guitar 2 answering in the singer's gaps; riff genres echoing the riff; tempo and energy.
+- [P] Rhythm with the groove: off-beat notes scored by whether the band plays there (kick, snare,
+  bass, strum, riff), so the singer's syncopations match the band's. Off-beat notes landing with the band
+  43-80% → 48-84%. ✓
+- [P] Pushes: when the band pushes a chord change early (kick or bass on it), a held or stressed note
+  on the next beat comes in on the push too. ✓
+- [P] Guitar 2 answers, it doesn't talk over the singer: its melody notes starting under the singer's
+  words, in either voice's range, are left out (arpeggios, swells, chords and muted scratches stay).
+  Guitar 2 notes over the words: about 50% → 22% (what's left: out of range, or ringing parts). ✓
+- [P] Tempo: fewer, longer notes over a fast band, more words over a slow one. ✓
+- Checked, already fine: the singer rests through drum fills and stops (about 1% of notes overlap).
+- · Next: riff genres echoing the riff's rhythm and notes; density by section energy; Guitar 2 moving
+  out of the singer's range rather than leaving notes out.
 
 ## 8. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.

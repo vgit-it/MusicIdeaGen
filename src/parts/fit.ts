@@ -7,9 +7,14 @@
 //   (one vowel) to the new chord's nearest note as the chord changes
 // - each line is written a few times and the one that sits best with the band is kept: fewest clashes
 //   (chords, bass, riff), stressed syllables with the kick and snare, notes starting with the chord
-//   changes, out of Guitar 2's way
+//   changes, out of Guitar 2's way, its off-beat notes where the groove syncopates (the kick, the bass,
+//   the strum or the riff), not where the band is silent
+// - when the band pushes a chord change an 8th early, the singer pushes with it
+// - Guitar 2 doesn't play over the singer's words: its melody notes under a sung line (in the singer's
+//   range) are left out, so it answers in the gaps and under held notes
 
 import type { ChordPart, GuitarHit, Idea, Song } from '../idea';
+import { groupStarts } from '../rhythm';
 import { SCALES, chordPc } from '../theory';
 import { chordTones } from './guitar2';
 import { chordScale } from './motif';
@@ -18,11 +23,22 @@ import type { VocalNote } from './vocal';
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
 /** What the band plays, as the singer hears it. */
-export interface Band { bass: number[]; kick: number[]; snare: number[]; riff: GuitarHit[]; lead: GuitarHit[] }
+export interface Band {
+  bass: number[]; kick: number[]; snare: number[]; riff: GuitarHit[]; lead: GuitarHit[];
+  /** Steps where the rhythm section plays something (kick, snare, a bass note, a strum, a riff hit). */
+  hits: Set<number>;
+  /** The beats. */
+  beats: Set<number>;
+}
 
-export const bandOf = (idea: Idea): Band => ({
-  bass: idea.bass, kick: idea.drums.kick, snare: idea.drums.snare, riff: idea.guitar ?? [], lead: idea.guitar2 ?? [],
-});
+export function bandOf(idea: Idea): Band {
+  const hits = new Set<number>();
+  const { kick, snare } = idea.drums;
+  for (let g = 0; g < idea.song.total; g++) if (kick[g] || snare[g] || idea.bass[g] || (!idea.guitar && idea.strum[g] && idea.strum[g] !== '.')) hits.add(g);
+  for (const h of idea.guitar ?? []) hits.add(h.step);
+  const beats = new Set(idea.song.bars.flatMap((b) => groupStarts(b.groups).map((p) => b.start + p)));
+  return { bass: idea.bass, kick, snare, riff: idea.guitar ?? [], lead: idea.guitar2 ?? [], hits, beats };
+}
 
 /** The chords as the singer hears them: each step's chord notes and scale, and whether the chord is borrowed. */
 export interface Harmony {
@@ -83,6 +99,8 @@ export function bandScore(notes: { step: number; len: number; midi: number; stre
     }
     if (n.stress && (band.kick[n.step] || band.snare[n.step])) s += 0.5;
     if (changes.has(n.step)) s += 0.6;
+    // off the beat: with the groove's syncopations, not against silence
+    if (!band.beats.has(n.step)) s += band.hits.has(n.step) ? 0.3 : n.step % 2 ? -0.3 : 0;
     // a held note ending on a note of the chord under its end
     if (n.len >= 4 && H.tones(Math.min(total - 1, n.step + n.len - 1)).includes(mod(n.midi, 12))) s += 0.5;
   }
@@ -144,4 +162,63 @@ export function fitToBand(idea: Idea, lo: number, hi: number): { moved: number; 
     out.slides++;
   }
   return out;
+}
+
+/**
+ * When the band pushes a chord change (an 8th or a 16th before the beat, with the kick or the bass on
+ * it), the singer pushes with it: a held or stressed note starting on that beat comes in on the push.
+ */
+export function pushWithBand(idea: Idea): number {
+  const v = idea.vocal;
+  if (!v?.length) return 0;
+  const band = bandOf(idea);
+  const H = harmonyOf(idea.song, idea.chords);
+  let pushed = 0;
+  for (const c of H.changes) {
+    if (band.beats.has(c) || !(band.kick[c] || band.bass[c])) continue;
+    const beat = [c + 1, c + 2].find((g) => band.beats.has(g));
+    if (beat === undefined) continue;
+    const i = v.findIndex((n) => n.step === beat && n.syl.text !== '~');
+    if (i < 0 || !(v[i].len >= 4 || v[i].syl.stress)) continue;
+    const before = v[i - 1];
+    if (before && before.step >= c) continue;
+    if (before && before.step + before.len > c) before.len = c - before.step;
+    v[i].len += v[i].step - c;
+    v[i].step = c;
+    pushed++;
+  }
+  return pushed;
+}
+
+/**
+ * Guitar 2 doesn't play over the singer's words: its melody notes (single notes and double-stops, not
+ * ringing arpeggios, swells or muted scratches) starting under a sung line, in the singer's range (the
+ * low voice's or the high voice's), are left out. Under the singer's held notes and in the gaps it
+ * still plays: it answers. Returns how many notes it left out.
+ */
+export function clearForSinger(idea: Idea): number {
+  const v = idea.vocal;
+  if (!v?.length || !idea.guitar2.length) return 0;
+  // the busy part of each line: from its first note to the start of its held note
+  const words: { from: number; to: number; lo: number; hi: number }[] = [];
+  let cur: VocalNote[] = [];
+  const close = () => {
+    if (!cur.length) return;
+    const held = cur.findIndex((n, k) => k > 0 && n.len >= 4);
+    const busy = held > 0 ? cur.slice(0, held) : cur;
+    const last = busy[busy.length - 1];
+    words.push({ from: busy[0].step, to: last.step + last.len, lo: Math.min(...busy.map((n) => n.midi)), hi: Math.max(...busy.map((n) => n.midi)) });
+    cur = [];
+  };
+  for (const n of v) { if (n.start) close(); cur.push(n); }
+  close();
+  const before = idea.guitar2.length;
+  idea.guitar2 = idea.guitar2.filter((h) => {
+    if (h.letRing || h.swell || h.mute || h.notes.length > 2) return true;
+    const w = words.find((x) => h.step >= x.from && h.step < x.to);
+    if (!w) return true;
+    // (in range of either voice: as written, or an octave up)
+    return !h.notes.some((m) => (m >= w.lo - 7 && m <= w.hi + 7) || (m >= w.lo + 5 && m <= w.hi + 19));
+  });
+  return before - idea.guitar2.length;
 }

@@ -17,7 +17,7 @@ import type { Genre } from '../genres';
 import { Rng } from '../rng';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
-import { bandOf, fitToBand } from './fit';
+import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
 import { LOW, PEAK, type Tune, followTension, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
@@ -152,13 +152,16 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     }
     // every section's notes fitted to what its band plays (its own chords, its bass)
     const fit = fitToBand(idea, LOW[0] - 3, PEAK + 1);
+    const pushed = pushWithBand(idea);
+    const cleared = clearForSinger(idea);
     leaveRoom(idea);
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
       if (!told) { idea.notes.push(`Melody: ${melodyDesc(melody)}`); told = true; }
       idea.notes.push(`Vocal (${VOCAL_DESC[as]}): “${words.length > 140 ? `${words.slice(0, 140)}…` : words}”`);
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
-      if (fit.moved || fit.slides) idea.notes.push(`Vocal fits the band: ${[fit.moved && `${fit.moved} notes moved off clashes`, fit.slides && `${fit.slides} held notes slide with the chord`].filter(Boolean).join(', ')}`);
+      const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
+      if (fitBits.length) idea.notes.push(`Vocal fits the band: ${fitBits.join(', ')}`);
       if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);
     }
   });

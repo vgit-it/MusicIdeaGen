@@ -395,7 +395,10 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   };
 
   const contour: Contour = kind === 'verse' ? style.verse : kind === 'prechorus' ? 'climb' : kind === 'bridge' ? style.bridge : style.chorus;
-  const busy = P.busy * G.busy * (kind === 'verse' || kind === 'prechorus' ? style.busyVerse : style.busyChorus) * (kind === 'prechorus' ? 1.1 : 1);
+  // (by tempo: singers phrase in longer notes over a fast band and fill a slow one with words, so the
+  // syllables per second stay singable)
+  const pace = Math.max(0.7, Math.min(1.2, (110 / song.bpm) ** 0.6));
+  const busy = P.busy * G.busy * (kind === 'verse' || kind === 'prechorus' ? style.busyVerse : style.busyChorus) * (kind === 'prechorus' ? 1.1 : 1) * pace;
   const start: Start = kind === 'verse' ? style.verseStart : big ? style.chorusStart : rng.pick<Start>(['down', 'pickup']);
   const height = Math.max(2, Math.round((kind === 'verse' ? (contour === 'recite' ? 1 : 2.5) : kind === 'prechorus' ? 3 : rng.pick([3, 4, 4, 5])) * Math.min(1.25, style.span)));
   const peak = rng.pick([0.35, 0.5, 0.6]);
