@@ -355,6 +355,7 @@ export class Engine {
     const solo = !!this.idea?.section?.solo;
     this.mixer.setFeature('guitar2', solo ? SOLO_DB.lead : 0, time);
     this.mixer.setFeature('chords', solo ? SOLO_DB.rhythm : 0, time);
+    this.mixer.setRhythmEcho(!!this.idea?.rhythmEcho, time);
     this.padInst?.setEnergy(e, time);
     this.stringsInst?.setEnergy(e, time);
   }
@@ -661,7 +662,8 @@ export class Engine {
         // riff ideas carry their own fingering, so there are no chord shapes to show
         v = { shapes: null, voicings: chords.map((c) => ({ notes: pianoVoicing(idea.song.key, c) })), coloured: new Map() };
       } else {
-        const shapes = guitarVoicings(idea.song.key, chords, { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist' });
+        // (the player's shapes: a capo, higher up the neck, a smooth top line; a distorted guitar plays power chords)
+        const shapes = guitarVoicings(idea.song.key, chords, { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist', ...(id === 'electric-dist' ? {} : idea.shapes) });
         v = { shapes, voicings: shapes.map((s) => ({ notes: s.notes, strings: s.frets.flatMap((f, n) => (f === null ? [] : [n])) })), coloured: new Map() };
       }
       byId.set(id, v);
@@ -799,7 +801,8 @@ export class Engine {
     if (ci) {
       const hits = this.hitsAt[this.idx]?.[g] ?? [];
       const next = hits.length ? toNext(this.hitsAt) : 0;
-      for (const h of hits) this.playHit(ci, held(h, next), time, six, dyn, ending ? 6 : undefined, driven(this.chordId));
+      const late = (idea.rhythmTime?.[g] ?? 0) / 1000;
+      for (const h of hits) this.playHit(ci, held(h, next), Math.max(0, time + late), six, dyn, ending ? 6 : undefined, driven(this.chordId));
     }
     if (this.g2Inst && !this.realNow.guitar2) {
       const hits = this.hitsAt2[this.idx][g] ?? [];
@@ -838,7 +841,7 @@ export class Engine {
         const ix = chords.chordIdx[g], palm = st === 'p', key = `${ix}|${colour}|${palm}`;
         let v = vs.coloured.get(key);
         if (!v) {
-          const sh = strokeShape(vs.shapes[ix], idea.song.key, chords.timeline[ix].chord, colour, { electric: electric(this.chordId), palm });
+          const sh = strokeShape(vs.shapes[ix], idea.song.key, chords.timeline[ix].chord, colour, { electric: electric(this.chordId), palm, capo: idea.shapes?.capo });
           vs.coloured.set(key, (v = { notes: sh.notes, strings: sh.frets.flatMap((f, n) => (f === null ? [] : [n])) }));
         }
         ({ notes, strings } = v);
@@ -857,7 +860,7 @@ export class Engine {
         // the last strum before a change: the hand has let go, the open strings ring
         const c = chords.timeline[ci0 + 1]?.step;
         if (c !== undefined && c - g <= 2 && hands[c]?.open && this.chordId !== 'electric-dist' && strum.slice(g + 1, c).every((x) => x === '.')) {
-          notes = OPEN_STRINGS.slice(2);
+          notes = OPEN_STRINGS.slice(2).map((m) => m + (idea.shapes?.capo ?? 0));
           strings = [2, 3, 4, 5];
           open = true;
         }
@@ -874,7 +877,7 @@ export class Engine {
         stroke: st,
         notes,
         strings,
-        time: Math.max(0, time + (idea.strumFeel ?? 0) / 1000),
+        time: Math.max(0, time + ((idea.strumFeel ?? 0) + (idea.rhythmTime?.[g] ?? 0)) / 1000),
         dur: ending ? 6 : Math.min(n * six * (legato ? 1 : 0.97) + (legato ? 0.05 : 0), maxRing),
         vel: ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1) * (ghost ? 0.6 : (idea.strumVel?.[g] ?? 1)) * (open ? 0.8 : 1),
         sixteenth: six,

@@ -128,13 +128,13 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
     const id = o.chordIdFor(idea);
     // chord voicings for strummed parts: the same shapes playback uses
     const shapes = idea.guitar || !isGuitar(id) ? null
-      : guitarVoicings(song.key, chords.timeline.map((e) => e.chord), { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist' });
+      : guitarVoicings(song.key, chords.timeline.map((e) => e.chord), { preferOpen: id === 'acoustic', powerChords: id === 'electric-dist', ...(id === 'electric-dist' ? {} : idea.shapes) });
     const voicings = idea.guitar ? [] : shapes ? shapes.map((v) => v.notes) : chords.timeline.map((e) => pianoVoicing(song.key, e.chord));
     // the player's colour on a stroke (a sus, a triad up the neck, a power chord), as playback has it
     const strokeNotes = (g: number, st: string) => {
       const ix = chords.chordIdx[g], colour = idea.strumColour?.[g];
       if (!shapes || id === 'electric-dist' || (!colour && st !== 'p')) return voicings[ix];
-      return strokeShape(shapes[ix], song.key, chords.timeline[ix].chord, colour, { electric: id.startsWith('electric'), palm: st === 'p' }).notes;
+      return strokeShape(shapes[ix], song.key, chords.timeline[ix].chord, colour, { electric: id.startsWith('electric'), palm: st === 'p', capo: idea.shapes?.capo }).notes;
     };
 
     /** A guitar hit (riff or guitar 2) as notes, strummed low to high. */
@@ -144,7 +144,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       if (h.mute === 'palm') { dur = Math.min(dur, 0.2); hv *= 0.9; }
       if (h.mute === 'dead') { dur = 0.05; hv *= 0.6; }
       if (h.swell) hv *= 0.8;
-      h.notes.forEach((m, i) => note(t, m, at(h.step) + secToTicks(late / 1000) + i * 6, secToTicks(dur), hv));
+      h.notes.forEach((m, i) => note(t, m, Math.max(0, at(h.step) + secToTicks(late / 1000)) + i * 6, secToTicks(dur), hv));
     };
 
     for (let g = 0; g < total; g++) {
@@ -153,7 +153,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
 
       // rhythm guitar: riff hits, or strums of the chord voicing
-      for (const h of [...(idea.guitar ?? []), ...(idea.rhythmPick ?? [])]) if (h.step === g) hit(rhythm, h, h.vel * dyn, ending);
+      for (const h of [...(idea.guitar ?? []), ...(idea.rhythmPick ?? [])]) if (h.step === g) hit(rhythm, h, h.vel * dyn, ending, idea.rhythmTime?.[g] ?? 0);
       const st = strum[g];
       if (!idea.guitar && st !== '.') {
         const notes = strokeNotes(g, st);
@@ -161,7 +161,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
         const n = gapUntil(strum, '.', g, 16);
         const ring = ending ? 6 : Math.min(n * sixSec * 0.97, isGuitar(id) ? 2.4 : 1.6);
         const v = ((st === 'U' ? 0.55 : 0.68) + accent) * dyn * (idea.strumGain ?? 1) * (idea.strumVel?.[g] ?? 1);
-        const t0 = at(g) + secToTicks((idea.strumFeel ?? 0) / 1000);
+        const t0 = Math.max(0, at(g) + secToTicks(((idea.strumFeel ?? 0) + (idea.rhythmTime?.[g] ?? 0)) / 1000));
         if (st === 'x') notes.slice(-3).forEach((m, i) => note(rhythm, m, t0 + i * 3, 30, 0.3));
         else if (st === 'p') notes.slice(0, 3).forEach((m, i) => note(rhythm, m, t0 + i * 4, secToTicks(Math.min(ring, 0.14)), v * 0.8));
         else (st === 'U' ? [...notes].reverse() : notes).forEach((m, i) => note(rhythm, m, t0 + i * 10, secToTicks(ring), v));

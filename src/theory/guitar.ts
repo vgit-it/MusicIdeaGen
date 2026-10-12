@@ -98,13 +98,47 @@ export interface VoicingOptions {
   preferOpen?: boolean;
   /** Turn triads and 7ths into power chords (high-gain electric). */
   powerChords?: boolean;
+  /** A capo on this fret: open shapes played above it (rhythm.ts picks one for open-chord players). */
+  capo?: number;
+  /** Stay near this position on the neck (above the capo): a section played higher up. */
+  near?: number;
+  /** Keep the top note moving smoothly from chord to chord (voice leading). */
+  smooth?: boolean;
 }
+
+/** A shape played with a capo on `capo`: every fret (open strings too) moves up. */
+const withCapo = (v: GuitarVoicing, capo: number): GuitarVoicing => (capo ? toVoicing(v.frets.map((f) => (f === null ? null : f + capo))) : v);
+const withoutCapo = (v: GuitarVoicing, capo: number): GuitarVoicing => (capo ? toVoicing(v.frets.map((f) => (f === null ? null : f - capo))) : v);
+
+/** Can this chord be played as an open-position shape (open strings ringing)? */
+function hasOpen(pc: number, q: Quality): boolean {
+  return !!OPEN[`${pc}:${q}`] || (SHAPES[q] ?? []).some((sh) => TUNING[sh.root] % 12 === pc);
+}
+
+/**
+ * The capo an open-chord player would use for these chords (0: none): the fret (up to 5, lower
+ * preferred) that turns the most chords into open shapes, if it beats no capo by at least one chord.
+ */
+export function pickCapo(key: number, chords: Chord[]): number {
+  const n = Math.max(1, chords.length);
+  const score = (capo: number) => chords.filter((c) => hasOpen(mod12(chordPc(key, c) - capo), c.q)).length / n - capo * 0.02;
+  let best = 0, bestScore = score(0) + 1 / n - 0.001;
+  for (let capo = 1; capo <= 5; capo++) {
+    const k = score(capo);
+    if (k > bestScore) { best = capo; bestScore = k; }
+  }
+  return best;
+}
+const mod12 = (n: number) => ((n % 12) + 12) % 12;
 
 const POWERABLE: Quality[] = ['maj', 'min', '7', 'm7', 'maj7', 'sus2', 'sus4', 'add9', '9', 'm9'];
 
 /** Pick one voicing per chord, keeping the hand close to the previous shape. */
 export function guitarVoicings(key: number, chords: Chord[], opts: VoicingOptions = {}): GuitarVoicing[] {
+  // with a capo: choose the shapes as if the capo were the nut, then move them up
+  if (opts.capo) return guitarVoicings(mod12(key - opts.capo), chords, { ...opts, capo: 0 }).map((v) => withCapo(v, opts.capo!));
   let prevPos: number | null = null;
+  let prevTop: number | null = null;
   return chords.map((c) => {
     const pc = chordPc(key, c);
     const q: Quality = opts.powerChords && POWERABLE.includes(c.q) ? '5' : c.q;
@@ -113,10 +147,13 @@ export function guitarVoicings(key: number, chords: Chord[], opts: VoicingOption
     let best = cands[0];
     let bestCost = Infinity;
     for (const v of cands) {
-      const k = cost(v, prevPos, !!opts.preferOpen);
+      let k = cost(v, prevPos, !!opts.preferOpen && opts.near === undefined);
+      if (opts.near !== undefined) k += Math.abs(position(v) - opts.near) * 0.7;
+      if (opts.smooth && prevTop !== null) k += Math.min(5, Math.abs(v.notes[v.notes.length - 1] - prevTop)) * 0.35;
       if (k < bestCost) { best = v; bestCost = k; }
     }
     prevPos = position(best);
+    prevTop = best.notes[best.notes.length - 1];
     return best;
   });
 }
@@ -127,8 +164,10 @@ export function guitarVoicings(key: number, chords: Chord[], opts: VoicingOption
  *   or a root up to the 9th), the embellishment players add on a held chord and take off again
  * - top: a three-string triad on the top strings, up the neck (small funk and pop voicings)
  * - power: root and 5th (and octave) on the low strings
+ * - drone: a power chord on the low strings with the open B and E strings ringing over it (indie,
+ *   alt rock; only in keys where those notes belong, rhythm.ts checks)
  */
-export type StrumColour = 'sus4' | 'sus2' | 'add9' | 'top' | 'power';
+export type StrumColour = 'sus4' | 'sus2' | 'add9' | 'top' | 'power' | 'drone';
 
 const span = (frets: Frets) => { const f = frets.filter((x): x is number => x !== null && x > 0); return f.length ? Math.max(...f) - Math.min(...f) : 0; };
 
@@ -143,6 +182,19 @@ export function colourVoicing(base: GuitarVoicing, key: number, chord: Chord, co
     return c ?? null;
   }
   if (colour === 'top') return topTriad(pc, chord, position(base));
+  if (colour === 'drone') {
+    // root on the low E or A string (open or up to fret 9), nearest where the hand is
+    let best: GuitarVoicing | null = null, bestD = Infinity;
+    for (const r of [0, 1]) {
+      const f = mod12(pc - TUNING[r]);
+      if (f > 9 || Math.abs(f - position(base)) >= bestD) continue;
+      const frets: Frets = [x, x, x, x, 0, 0];
+      frets[r] = f; frets[r + 1] = f + 2; frets[r + 2] = f + 2;
+      best = toVoicing(frets);
+      bestD = Math.abs(f - position(base));
+    }
+    return best;
+  }
   if (!plain || chord.q === '5') return null;
   const third = (pc + (minor ? 3 : 4)) % 12;
   const frets = [...base.frets];
@@ -199,7 +251,9 @@ function topTriad(pc: number, chord: Chord, near: number): GuitarVoicing | null 
  * strings of an open shape, muted, were mud).
  */
 export function strokeShape(shape: GuitarVoicing, key: number, chord: Chord, colour: StrumColour | undefined,
-  o: { electric: boolean; palm: boolean }): GuitarVoicing {
+  o: { electric: boolean; palm: boolean; capo?: number }): GuitarVoicing {
+  // (with a capo: worked out as if the capo were the nut)
+  if (o.capo) return withCapo(strokeShape(withoutCapo(shape, o.capo), mod12(key - o.capo), chord, colour, { ...o, capo: 0 }), o.capo);
   const c = o.palm && o.electric ? 'power' : colour === 'power' && !o.electric ? undefined : colour;
   return (c && colourVoicing(shape, key, chord, c)) || shape;
 }

@@ -16,11 +16,11 @@ import type { GuitarHit, Idea, SectionKind } from '../idea';
 import { Rng } from '../rng';
 import { groupStarts } from '../rhythm';
 import { type Chord, chordPc, SCALES } from '../theory';
-import { guitarVoicings, type StrumColour } from '../theory/guitar';
+import { guitarVoicings, pickCapo, type StrumColour } from '../theory/guitar';
 
 export type RhythmKind = 'strummer' | 'rocker' | 'punk' | 'funky' | 'indie';
 type Accent = 'backbeat' | 'downbeat' | 'tresillo' | 'kick' | 'even';
-type Voice = 'full' | 'top' | 'power';
+type Voice = 'full' | 'top' | 'power' | 'drone';
 type ArpKind = 'broken' | 'travis' | 'rolling' | 'ringing';
 type FillKind = 'walk' | 'pent' | 'double';
 
@@ -47,36 +47,44 @@ export interface RhythmPlayer {
   fillKinds: [FillKind, number][];
   /** Chance they play all downstrokes (8ths down, no up-strums in between). */
   downs: number;
+  /** Chance they put a capo on (where it turns more of the chords into open shapes). */
+  capo: number;
+  /** Chance they take the biggest sections higher up the neck. */
+  lift: number;
+  /** They keep the top note of their chords moving smoothly (voice leading). */
+  smooth: boolean;
+  /** How far their timing drifts off the grid (ms, typical). */
+  drift: number;
 }
 
 const PLAYERS: Record<RhythmKind, RhythmPlayer> = {
   strummer: {
     kind: 'strummer', desc: 'a strummer: the hand never stops, open chords, a sus or add9 on a held chord',
     accents: [['backbeat', 3], ['tresillo', 1], ['kick', 1]], depth: 0.8, wobble: 0.06, embellish: 0.45,
-    verse: [['full', 3], ['top', 1]], arp: 0.3, arps: [['broken', 2], ['travis', 2], ['rolling', 1]],
-    fills: 0.15, fillKinds: [['walk', 3], ['pent', 1]], downs: 0,
+    verse: [['full', 3], ['top', 1], ['drone', 0.5]], arp: 0.3, arps: [['broken', 2], ['travis', 2], ['rolling', 1]],
+    fills: 0.15, fillKinds: [['walk', 3], ['pent', 1]], downs: 0, capo: 0.7, lift: 0.4, smooth: true, drift: 3,
   },
   rocker: {
     kind: 'rocker', desc: 'a rock rhythm player: hard downstrokes, power chords in the verses, a lick between chords',
     accents: [['downbeat', 2], ['kick', 2], ['backbeat', 1]], depth: 0.9, wobble: 0.05, embellish: 0.25,
     verse: [['power', 3], ['full', 1]], arp: 0.15, arps: [['broken', 1], ['ringing', 1]],
-    fills: 0.35, fillKinds: [['pent', 2], ['double', 2], ['walk', 1]], downs: 0.5,
+    fills: 0.35, fillKinds: [['pent', 2], ['double', 2], ['walk', 1]], downs: 0.5, capo: 0, lift: 0.5, smooth: false, drift: 3,
   },
   punk: {
     kind: 'punk', desc: 'a punk player: even downstrokes, power chords, no frills',
     accents: [['even', 3], ['downbeat', 1]], depth: 0.3, wobble: 0.03, embellish: 0,
-    verse: [['power', 2], ['full', 1]], arp: 0, arps: [['broken', 1]], fills: 0, fillKinds: [['walk', 1]], downs: 1,
+    verse: [['power', 2], ['full', 1]], arp: 0, arps: [['broken', 1]], fills: 0, fillKinds: [['walk', 1]], downs: 1, capo: 0, lift: 0, smooth: false, drift: 2,
   },
   funky: {
     kind: 'funky', desc: 'a funk player: small chords high on the neck, accents locked to the drums',
     accents: [['kick', 2], ['tresillo', 1], ['backbeat', 1]], depth: 1, wobble: 0.08, embellish: 0.1,
-    verse: [['top', 1]], alwaysTop: true, arp: 0, arps: [['broken', 1]], fills: 0.1, fillKinds: [['double', 1]], downs: 0,
+    verse: [['top', 1]], alwaysTop: true, arp: 0, arps: [['broken', 1]], fills: 0.1, fillKinds: [['double', 1]], downs: 0, capo: 0, lift: 0, smooth: true, drift: 2,
   },
   indie: {
     kind: 'indie', desc: 'an indie player: ringing arpeggios in the quiet parts, triads up the neck',
     accents: [['backbeat', 1], ['even', 1], ['downbeat', 1]], depth: 0.6, wobble: 0.05, embellish: 0.35,
-    verse: [['top', 2], ['full', 1]], arp: 0.65, arps: [['ringing', 2], ['broken', 2], ['rolling', 1]],
-    fills: 0.2, fillKinds: [['double', 2], ['pent', 1]], downs: 0,
+    verse: [['top', 2], ['drone', 2], ['full', 1]], arp: 0.65, arps: [['ringing', 2], ['broken', 2], ['rolling', 1]],
+    fills: 0.2, fillKinds: [['double', 2], ['pent', 1]], downs: 0, capo: 0.5, lift: 0.5, smooth: true, drift: 3.5,
   },
 };
 
@@ -104,6 +112,8 @@ export interface RhythmContext {
   solo?: boolean;
   /** The section's last bar is a transition (left as written). */
   tail?: boolean;
+  /** Every chord in the track (where the player decides on a capo; otherwise this section's). */
+  allChords?: Chord[];
 }
 
 /**
@@ -120,18 +130,32 @@ export function playRhythm(idea: Idea, p: RhythmPlayer, seed: string, rng: Rng, 
   const arpKind = habit.weighted(p.arps);
   const picksQuiet = habit.chance(p.arp);
   const allDown = habit.chance(p.downs);
+  const capoOn = habit.chance(p.capo);
+  const lifts = habit.chance(p.lift);
   const notes: string[] = [];
   const { kind, energy = 4 } = ctx;
   const total = song.total;
   const changes = new Set(chords.timeline.map((t) => t.step));
   const lastBar = song.bars[song.bars.length - 1];
 
+  // how they shape the chords: a capo (open shapes higher up), the biggest sections higher up the
+  // neck, a smooth top line
+  const capo = capoOn ? pickCapo(song.key, ctx.allChords ?? chords.timeline.map((e) => e.chord)) : 0;
+  const lifted = lifts && energy >= 5 && (kind === 'chorus' || kind === 'outro');
+  if (capo || lifted || p.smooth) idea.shapes = { ...(capo ? { capo } : {}), ...(lifted ? { near: 7 } : {}), ...(p.smooth ? { smooth: true } : {}) };
+  if (capo) notes.push(`Rhythm guitar: capo on the ${ordinal(capo)} fret, open chord shapes`);
+  if (lifted) notes.push('Rhythm guitar: higher up the neck for the biggest section');
+  // the player's timing: a slow drift around the beat, never quite on the grid
+  idea.rhythmTime = drift(rng, total, p.drift);
+
   // the quiet parts picked: arpeggios instead of strums
   if (picksQuiet && energy <= 2 && (kind === 'verse' || kind === 'bridge' || kind === 'breakdown')) {
     const until = ctx.tail ? lastBar.start : total;
-    idea.rhythmPick = arpeggios(idea, arpKind, until);
+    idea.rhythmPick = arpeggios(idea, arpKind, until, idea.shapes);
     for (let g = 0; g < until; g++) strum[g] = '.';
-    notes.push(`Rhythm guitar: picks the chords, ${ARP_DESC[arpKind]}`);
+    // ringing arpeggios get an echo (The Edge)
+    idea.rhythmEcho = arpKind === 'ringing' || p.kind === 'indie';
+    notes.push(`Rhythm guitar: picks the chords, ${ARP_DESC[arpKind]}${idea.rhythmEcho ? ', with an echo' : ''}`);
   }
 
   // all downstrokes (punk, AC/DC): the 8ths are downs, the 16th up-strums go
@@ -166,21 +190,11 @@ export function playRhythm(idea: Idea, p: RhythmPlayer, seed: string, rng: Rng, 
   // accents and the hand's own variation
   const d = p.depth;
   song.bars.forEach((bar, bi) => {
-    const beats = groupStarts(bar.groups);
-    const tres = bar.len === 16 && bar.groups.length === 4;
     for (let j = 0; j < bar.len; j++) {
       const g = bar.start + j;
       if (strum[g] === '.' || strum[g] === 'x') continue;
-      const beat = beats.indexOf(j);
-      const odd = j % 2 === 1, off = !odd && beat < 0;
-      let a = 0;
-      if (accent === 'backbeat') a = beat === 1 || beat === 3 ? 0.12 : beat === 0 ? 0.04 : off ? -0.05 : odd ? -0.1 : 0;
-      else if (accent === 'downbeat') a = beat === 0 ? 0.14 : beat === 2 ? 0.05 : off ? -0.07 : odd ? -0.1 : 0;
-      else if (accent === 'tresillo' && tres) a = [0, 3, 6, 8, 11, 14].includes(j) ? 0.12 : -0.12;
-      else if (accent === 'tresillo') a = beat === 0 ? 0.1 : beat < 0 ? -0.06 : 0;
-      else if (accent === 'kick') a = drums.kick[g] ? 0.1 : odd ? -0.08 : off ? -0.04 : 0;
       // the start of each four-bar phrase lands a little harder
-      if (bi % 4 === 0 && j === 0) a += 0.04;
+      const a = accentAt(accent, bar, j, !!drums.kick[g]) + (bi % 4 === 0 && j === 0 ? 0.04 : 0);
       vel[g] *= (1 + a * d) * (1 + (rng.next() * 2 - 1) * p.wobble);
     }
   });
@@ -195,7 +209,11 @@ export function playRhythm(idea: Idea, p: RhythmPlayer, seed: string, rng: Rng, 
 
   // colours: how the strokes voice their chords
   const colour = new Array<StrumColour | undefined>(total).fill(undefined);
-  const voice: Voice = ctx.solo ? 'power' : p.alwaysTop ? 'top' : kind === 'verse' ? verseVoice : 'full';
+  // (open B and E strings droning over the chords only where those notes are in the key)
+  const scale = SCALES[song.mode].map((i) => (song.key + i) % 12);
+  const droneOk = [11, 4].every((pc) => scale.includes((pc + capo) % 12));
+  const v0: Voice = ctx.solo ? 'power' : p.alwaysTop ? 'top' : kind === 'verse' ? verseVoice : 'full';
+  const voice: Voice = v0 === 'drone' && !droneOk ? 'full' : v0;
   if (voice !== 'full') for (let g = 0; g < total; g++) if (strum[g] === 'D' || strum[g] === 'U') colour[g] = voice;
   let sus = 0;
   if (!ctx.solo && voice !== 'power' && p.embellish && energy <= 4) {
@@ -239,7 +257,8 @@ export function playRhythm(idea: Idea, p: RhythmPlayer, seed: string, rng: Rng, 
 
   const picked = !!idea.rhythmPick?.some((h) => h.clean);
   notes.unshift(`Rhythm guitar: ${p.desc}; ${accentNote[accent]}` +
-    (picked ? '' : voice === 'top' ? ', small triads up the neck' : voice === 'power' && !ctx.solo ? ', power chords' : '') +
+    (picked ? '' : voice === 'top' ? ', small triads up the neck' : voice === 'power' && !ctx.solo ? ', power chords'
+      : voice === 'drone' ? ', power chords with the open B and E strings ringing over them' : '') +
     (sus ? `, a sus or add9 on ${sus} held chord${sus > 1 ? 's' : ''}` : ''));
   return notes;
 }
@@ -259,9 +278,9 @@ const ARP_DESC: Record<ArpKind, string> = {
 };
 
 /** The section's chords picked one string at a time (open shapes, on the clean channel), up to `until`. */
-function arpeggios(idea: Idea, kind: ArpKind, until: number): GuitarHit[] {
+function arpeggios(idea: Idea, kind: ArpKind, until: number, o: Idea['shapes'] = {}): GuitarHit[] {
   const { song, chords } = idea;
-  const shapes = guitarVoicings(song.key, chords.timeline.map((e) => e.chord), { preferOpen: true });
+  const shapes = guitarVoicings(song.key, chords.timeline.map((e) => e.chord), { preferOpen: true, ...o });
   const hits: GuitarHit[] = [];
   chords.timeline.forEach((e, i) => {
     const end = Math.min(until, chords.timeline[i + 1]?.step ?? song.total);
@@ -347,4 +366,143 @@ function lick(kind: FillKind, idea: Idea, end: number): GuitarHit[] {
     { step: end - 4, notes: [from, fifth], strings: [3, 4], len: 1, vel: 0.7 },
     { step: end - 3, notes: [third, fifth], strings: [3, 4], len: 3, vel: 0.66 },
   ];
+}
+
+const ordinal = (n: number) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
+
+/**
+ * A player's timing per step (ms, + late): a slow random drift (each step leans on the last), so the
+ * part breathes around the beat rather than jittering on it; about `sd` ms either side, never over 3x.
+ */
+function drift(rng: Rng, total: number, sd: number): number[] {
+  const out: number[] = [];
+  let x = 0;
+  for (let g = 0; g < total; g++) {
+    const n = (rng.next() + rng.next() + rng.next() - 1.5) * 2;
+    x = Math.max(-3 * sd, Math.min(3 * sd, 0.94 * x + n * sd * 0.35));
+    out.push(Math.round(x * 10) / 10);
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------ riff genres */
+
+// Riff genres play a written riff (riff.ts): the same research applies to how it's played rather
+// than what: accents by player, a hand never the same twice, a riff that breathes (a chug ghosted,
+// dropped or let open in the middle bars of a phrase), room under the lead, a pre-chorus build, a
+// lighter touch under a solo, and the player's timing (tight for metal, loose for grunge).
+
+export type RiffKind = 'chugger' | 'heavy' | 'grunge' | 'groove';
+
+export interface RiffPlayer {
+  kind: RiffKind;
+  desc: string;
+  accents: [Accent, number][];
+  depth: number;
+  wobble: number;
+  /** Chance the middle bars of a four-bar phrase change a chug (ghosted, dropped, let open). */
+  vary: number;
+  drift: number;
+}
+
+const RIFF_PLAYERS: Record<RiffKind, RiffPlayer> = {
+  chugger: {
+    kind: 'chugger', desc: 'a metal rhythm player: tight, even downpicked chugs, the open hits standing out',
+    accents: [['downbeat', 2], ['kick', 2], ['even', 1]], depth: 0.6, wobble: 0.03, vary: 0.25, drift: 1.5,
+  },
+  heavy: {
+    kind: 'heavy', desc: 'a hard rock rhythm player: big accents, chords left to ring, a looser hand',
+    accents: [['downbeat', 2], ['backbeat', 1], ['kick', 1]], depth: 0.9, wobble: 0.06, vary: 0.3, drift: 3,
+  },
+  grunge: {
+    kind: 'grunge', desc: 'a grunge rhythm player: loose and heavy-handed, never quite on the grid',
+    accents: [['downbeat', 2], ['backbeat', 2]], depth: 0.8, wobble: 0.09, vary: 0.35, drift: 5,
+  },
+  groove: {
+    kind: 'groove', desc: 'a groove metal player: locked to the kick drum, syncopated accents',
+    accents: [['kick', 3], ['tresillo', 1]], depth: 0.9, wobble: 0.04, vary: 0.3, drift: 2,
+  },
+};
+
+const RIFF_BY_GENRE: Partial<Record<Genre, [RiffKind, number][]>> = {
+  metal: [['chugger', 3], ['groove', 1]],
+  hardrock: [['heavy', 3], ['chugger', 1]],
+  grunge: [['grunge', 3], ['heavy', 1]],
+  altmetal: [['groove', 3], ['chugger', 1]],
+};
+
+/** The riff player (`seed`: the band's), for a riff genre. */
+export function pickRiffPlayer(seed: string, genre: Genre): RiffPlayer {
+  return RIFF_PLAYERS[new Rng(`${seed}-riffplayer`).weighted<RiffKind>(RIFF_BY_GENRE[genre] ?? [['heavy', 1]])];
+}
+
+/** Accent (a share, + louder) for a stroke or hit at bar position `j`. */
+function accentAt(accent: Accent, bar: { len: number; groups: number[] }, j: number, kick: boolean): number {
+  const beat = groupStarts(bar.groups).indexOf(j);
+  const odd = j % 2 === 1, off = !odd && beat < 0;
+  const tres = bar.len === 16 && bar.groups.length === 4;
+  if (accent === 'backbeat') return beat === 1 || beat === 3 ? 0.12 : beat === 0 ? 0.04 : off ? -0.05 : odd ? -0.1 : 0;
+  if (accent === 'downbeat') return beat === 0 ? 0.14 : beat === 2 ? 0.05 : off ? -0.07 : odd ? -0.1 : 0;
+  if (accent === 'tresillo' && tres) return [0, 3, 6, 8, 11, 14].includes(j) ? 0.12 : -0.12;
+  if (accent === 'tresillo') return beat === 0 ? 0.1 : beat < 0 ? -0.06 : 0;
+  if (accent === 'kick') return kick ? 0.1 : odd ? -0.08 : off ? -0.04 : 0;
+  return 0;
+}
+
+/** The riff player plays a riff-genre section (in place). Returns notes. */
+export function playRiffPart(idea: Idea, p: RiffPlayer, seed: string, rng: Rng, ctx: RhythmContext = {}): string[] {
+  const { song, drums } = idea;
+  if (!idea.guitar?.length) return [];
+  const habit = new Rng(`${seed}-riffhabits`);
+  const accent = habit.weighted(p.accents);
+  const { kind } = ctx;
+  const total = song.total;
+  const notes: string[] = [];
+  const barOf = (g: number) => song.bars.findIndex((b) => g >= b.start && g < b.start + b.len);
+  const changes = new Set(idea.chords.timeline.map((t) => t.step));
+
+  // the riff breathes: in the middle bars of each four-bar phrase, one chug is ghosted, dropped or let open
+  let hits = idea.guitar.map((h) => ({ ...h }));
+  let varied = 0;
+  if (!ctx.solo) {
+    song.bars.forEach((bar, bi) => {
+      if (bi % 4 !== 1 && bi % 4 !== 2) return;
+      if (!rng.chance(p.vary)) return;
+      const cands = hits.filter((h) => h.mute === 'palm' && h.step > bar.start && h.step < bar.start + bar.len && (h.step - bar.start) % 4 !== 0 && !changes.has(h.step));
+      if (!cands.length) return;
+      const h = rng.pick(cands);
+      const how = rng.weighted<'ghost' | 'drop' | 'open'>([['ghost', 2], ['drop', 1], ['open', 1]]);
+      if (how === 'drop') hits = hits.filter((x) => x !== h);
+      else if (how === 'ghost') { h.mute = 'dead'; h.vel *= 0.7; }
+      else { h.mute = undefined; h.vel = Math.min(1, h.vel * 1.1); h.len = Math.max(1, Math.min(h.len, 2)); }
+      varied++;
+    });
+  }
+
+  // accents, the hand, the section's shape, room under the lead
+  const under = new Set<number>();
+  if (ctx.answering) for (const h of idea.guitar2) for (let g = h.step; g < Math.min(total, h.step + h.len + 2); g++) under.add(g);
+  let lighter = 0;
+  for (const h of hits) {
+    const bi = barOf(h.step);
+    if (bi < 0) continue;
+    const bar = song.bars[bi], j = h.step - bar.start;
+    let m = (1 + accentAt(accent, bar, j, !!drums.kick[h.step]) * p.depth) * (1 + (rng.next() * 2 - 1) * p.wobble);
+    if (bi % 4 === 0 && j === 0) m *= 1.04;
+    if (kind === 'prechorus') m *= 0.88 + 0.22 * (h.step / total);
+    if (ctx.solo) m *= 0.92;
+    if (under.has(h.step)) { m *= 0.9; lighter++; }
+    h.vel = Math.max(0.2, Math.min(1, h.vel * m));
+  }
+  idea.guitar = hits;
+  idea.rhythmTime = drift(rng, total, p.drift);
+
+  const accentNote: Record<Accent, string> = {
+    backbeat: 'accents on the backbeat', downbeat: 'accents on the downbeat', tresillo: 'accents in a 3-3-2 across the bar',
+    kick: 'accents with the kick drum', even: 'even picking',
+  };
+  notes.push(`Rhythm guitar: ${p.desc}; ${accentNote[accent]}`);
+  if (varied) notes.push('Rhythm guitar: the riff breathes, a chug ghosted, dropped or let ring in the middle of a phrase');
+  if (lighter) notes.push('Rhythm guitar: lighter under the lead\'s answers');
+  return notes;
 }
