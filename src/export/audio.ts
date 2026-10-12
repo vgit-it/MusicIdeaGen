@@ -120,7 +120,8 @@ export async function renderAudio(
   const sec = (steps: number) => (steps * 15) / bpm;
   const totalMusic = sec(list.reduce((a, i) => a + i.song.total, 0));
   // stems: one pass (the mix + a stereo pair per part), so the instruments only play once; added layers only
-  const parts = MIX_PARTS.filter((p) => (!isLayer(p) || settings.layers[p]) && (p !== 'vocal' || (settings.vocal !== 'off' && list.some((i) => i.vocal?.length))));
+  const parts = MIX_PARTS.filter((p) => (!isLayer(p) || settings.layers[p]) && (p !== 'vocal' || (settings.vocal !== 'off' && list.some((i) => i.vocal?.length)))
+    && (p !== 'backing' || (settings.vocal !== 'off' && settings.backing !== 'off' && list.some((i) => i.backing?.some((n) => n.role !== 'adlib')))));
   const channels = withStems ? 2 + parts.length * 2 : 2;
   // the live context's sample rate: the samples and cabinet impulse responses were decoded at it
   const rate = Tone.getContext().sampleRate;

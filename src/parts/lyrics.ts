@@ -41,13 +41,14 @@ export interface LyricStyle {
 
 type W<T> = [T, number][];
 
-// onsets, roughly by how often English uses them (single consonants, then clusters)
+// onsets, roughly by how often English uses them (single consonants, then clusters; w and y fewer:
+// sung, they glide, and too many made the words all "wo" and "ye", Paul)
 const ONSETS: W<Cons[]> = [
-  [['N'], 6], [['T'], 6], [['D'], 5], [['S'], 5], [['L'], 5], [['R'], 4], [['M'], 5], [['K'], 4], [['W'], 4], [['B'], 4],
-  [['HH'], 3], [['F'], 3], [['P'], 3], [['G'], 2], [['V'], 1.5], [['Y'], 1.5], [['SH'], 1.5], [['CH'], 1], [['JH'], 1], [['TH'], 0.8], [['Z'], 0.4],
+  [['N'], 6], [['T'], 6], [['D'], 5], [['S'], 5], [['L'], 5], [['R'], 4], [['M'], 5], [['K'], 4], [['W'], 2], [['B'], 4],
+  [['HH'], 3], [['F'], 3], [['P'], 3], [['G'], 2], [['V'], 1.5], [['Y'], 0.7], [['SH'], 1.5], [['CH'], 1], [['JH'], 1], [['TH'], 0.8], [['Z'], 0.4],
   [['B', 'L'], 1], [['B', 'R'], 1.2], [['K', 'L'], 0.8], [['K', 'R'], 1], [['D', 'R'], 1], [['F', 'L'], 1], [['F', 'R'], 1.2], [['G', 'L'], 0.6], [['G', 'R'], 1],
   [['P', 'L'], 0.8], [['P', 'R'], 0.8], [['T', 'R'], 1.2], [['TH', 'R'], 0.5], [['S', 'T'], 1.2], [['S', 'L'], 0.8], [['S', 'P'], 0.7], [['S', 'K'], 0.5],
-  [['S', 'M'], 0.4], [['S', 'N'], 0.4], [['S', 'W'], 0.6], [['K', 'W'], 0.4], [['T', 'W'], 0.3], [['S', 'T', 'R'], 0.5], [['S', 'P', 'R'], 0.2], [['S', 'K', 'R'], 0.2],
+  [['S', 'M'], 0.4], [['S', 'N'], 0.4], [['S', 'W'], 0.3], [['K', 'W'], 0.2], [['T', 'W'], 0.15], [['S', 'T', 'R'], 0.5], [['S', 'P', 'R'], 0.2], [['S', 'K', 'R'], 0.2],
 ];
 
 // codas: most English syllables are closed; clusters fall in sonority (n before d, l before t...)
@@ -58,9 +59,10 @@ const CODAS: W<Cons[]> = [
   [['K', 'S'], 0.6], [['T', 'S'], 0.6], [['M', 'Z'], 0.4], [['L', 'Z'], 0.5], [['R', 'D'], 0.6], [['R', 'T'], 0.5], [['R', 'N'], 0.5], [['R', 'Z'], 0.3], [['N', 'CH'], 0.3],
 ];
 
-// stressed vowels (songs lean on eye, ee, oh, ay, oo)
+// stressed vowels (songs lean on eye, ee, oh, ay, oo; the gliding ones, eye, ay, oh, ow, a little less
+// than before: each ends in a y or a w, and together they made the language all glides, Paul)
 const VOWELS: W<Vowel> = [
-  [['IH'][0] as Vowel, 6], ['EH', 4], ['AE', 3], ['AH', 3], ['AA', 3], ['AY', 5], ['IY', 4], ['EY', 4], ['OW', 4], ['UW', 3], ['AW', 1.2], ['AO', 1.5], ['UH', 0.8], ['OY', 0.3],
+  [['IH'][0] as Vowel, 6], ['EH', 4], ['AE', 3], ['AH', 3], ['AA', 3], ['AY', 3.5], ['IY', 4], ['EY', 2.8], ['OW', 3], ['UW', 3], ['AW', 0.8], ['AO', 1.5], ['UH', 0.8], ['OY', 0.3],
 ];
 
 /** Vowels that sing well held and high (closed ee and oo open up toward ay/ih and oh). */
@@ -69,8 +71,8 @@ const OPEN: Vowel[] = ['AA', 'AY', 'OW', 'EY', 'AO', 'AW', 'EH', 'AH', 'AE'];
 /** Light "function" syllables for the weak beats and pickups (the, a, in, my, to...). */
 const FUNCTION: W<[Cons[], Vowel, Cons[], string]> = [
   [[['DH'], 'AX', [], 'the'], 6], [[[], 'AX', [], 'a'], 4], [[[], 'IH', ['N'], 'in'], 3], [[[], 'AX', ['N'], 'an'], 3], [[['T'], 'AX', [], 'ta'], 2],
-  [[['Y'], 'AX', [], 'ya'], 2], [[['M'], 'AY', [], 'my'], 2.5], [[[], 'AY', [], 'I'], 2], [[[], 'IH', ['T'], 'it'], 1.5], [[[], 'IH', ['Z'], 'is'], 1.5],
-  [[[], 'AX', ['V'], 'of'], 1], [[[], 'AA', ['N'], 'on'], 1], [[['D'], 'AX', [], 'da'], 1.5], [[['N'], 'AX', [], 'na'], 1], [[['W'], 'IY', [], 'we'], 1],
+  [[['Y'], 'AX', [], 'ya'], 0.8], [[['M'], 'AY', [], 'my'], 2.5], [[[], 'AY', [], 'I'], 2], [[[], 'IH', ['T'], 'it'], 1.5], [[[], 'IH', ['Z'], 'is'], 1.5],
+  [[[], 'AX', ['V'], 'of'], 1], [[[], 'AA', ['N'], 'on'], 1], [[['D'], 'AX', [], 'da'], 1.5], [[['N'], 'AX', [], 'na'], 1], [[['W'], 'IY', [], 'we'], 0.5],
   [[['S'], 'OW', [], 'so'], 1], [[['B'], 'AX', [], 'ba'], 0.8], [[['L'], 'AX', [], 'la'], 0.8],
 ];
 
@@ -209,7 +211,9 @@ export function lyricLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts:
       if (weak === 0) { i = j; continue; }
       const trochee = rng.chance(weak === 1 ? 0.65 : 0.75);
       if (trochee) {
-        if (w.coda.length && rng.chance(0.7)) { w.coda = []; w.text = spellSyl(w.onset, w.vowel, []); }
+        // (often opened into the next syllable, but not always: English keeps many syllables closed,
+        // and all-open ones, "ly ni ry", sound less like it)
+        if (w.coda.length && rng.chance(0.45)) { w.coda = []; w.text = spellSyl(w.onset, w.vowel, []); }
         out.push(fromList(weighted(rng, WEAK_END), false, false));
       } else out.push(fromList(weighted(rng, FUNCTION), false, true));
       // longer runs of weak notes: alternate a light syllable and a lightly stressed word

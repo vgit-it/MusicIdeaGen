@@ -1,6 +1,6 @@
 // Plays a list of ideas back to back: one idea on a loop, a whole track once, or one section on a loop.
 
-import { Singer, type VocalChoice } from './singer';
+import { Singer, type TimbreChoice, type VocalChoice } from './singer';
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
@@ -32,6 +32,10 @@ export interface EngineSettings {
   realAmps?: boolean;
   /** The demo singer: Auto (the song's own voice), a low or high voice, or off (missing: off). */
   vocal?: VocalChoice;
+  /** The backing singer: Auto (a second singer around the lead), a low or high voice, or off (missing: Auto). */
+  backing?: VocalChoice;
+  /** The lead singer's voice (missing in older ones: Auto). */
+  timbre?: TimbreChoice;
 }
 
 /** The layers you've added (left out = removed) and their style or tone. */
@@ -152,6 +156,7 @@ export class Engine {
     return {
       chord: this.chordChoice, guitar2: this.g2Choice, bass: this.bassChoice, drumSynth: this.drums.useSynth,
       mix: this.mixer.state(), layers: this.layerSettings, realAmps: this.realAmps, vocal: this.vocalChoice,
+      backing: this.backingChoice, timbre: this.timbreChoice,
     };
   }
 
@@ -168,6 +173,8 @@ export class Engine {
     this.mixer.restore(mix);
     for (const p of LAYER_PARTS) this.setLayer(p, s.layers[p] ?? null);
     this.layers.throughout = [...(s.layers.throughout ?? [])];
+    this.backingChoice = s.backing ?? 'auto';
+    this.timbreChoice = s.timbre ?? 'auto';
     this.setVocal(s.vocal ?? 'off');
   }
 
@@ -180,12 +187,52 @@ export class Engine {
     return this.vocalChoice;
   }
 
+  /** The backing singer (harmonies, gang, oohs): their own voice and mixer strip; sings only with the lead. */
+  private backer: Singer | null = null;
+  private backingChoice: VocalChoice = 'auto';
+  get backingVocal(): VocalChoice {
+    return this.backingChoice;
+  }
+
   setVocal(choice: VocalChoice) {
     this.vocalChoice = choice;
-    if (choice === 'off') { this.singer?.releaseAll(); if (this.singer) this.singer.choice = 'off'; return; }
-    this.singer ??= inContext(this.ctx, () => new Singer(this.mixer.input('vocal')));
-    this.singer.choice = choice;
-    if (this.list.length) this.singer.prepare(this.list, () => 15 / this.transport.bpm.value);
+    this.syncSingers();
+  }
+
+  /** The lead singer's voice: Auto (the song's singer's own), clear, raspy or deep. */
+  private timbreChoice: TimbreChoice = 'auto';
+  get vocalTimbre(): TimbreChoice {
+    return this.timbreChoice;
+  }
+
+  setVocalTimbre(choice: TimbreChoice) {
+    this.timbreChoice = choice;
+    this.syncSingers();
+  }
+
+  setBackingVocal(choice: VocalChoice) {
+    this.backingChoice = choice;
+    this.syncSingers();
+  }
+
+  private get backingOn() {
+    return this.vocalChoice !== 'off' && this.backingChoice !== 'off';
+  }
+
+  private syncSingers() {
+    const six = () => 15 / this.transport.bpm.value;
+    if (this.vocalChoice === 'off') { this.singer?.releaseAll(); if (this.singer) this.singer.choice = 'off'; }
+    else {
+      this.singer ??= inContext(this.ctx, () => new Singer(this.mixer.input('vocal')));
+      this.singer.choice = this.vocalChoice;
+      this.singer.timbre = this.timbreChoice;
+      if (this.list.length) this.singer.prepare(this.list, six);
+    }
+    if (!this.backingOn) { this.backer?.releaseAll(); if (this.backer) this.backer.choice = 'off'; return; }
+    this.backer ??= inContext(this.ctx, () => new Singer(this.mixer.input('backing'), 'backing'));
+    this.backer.choice = this.backingChoice;
+    this.backer.leadChoice = this.vocalChoice;
+    if (this.list.length) this.backer.prepare(this.list, six);
   }
 
   /* ---- layers you can add and remove */
@@ -267,7 +314,7 @@ export class Engine {
 
   /** Offline: wait until every instrument the list needs has its samples. */
   async loadAll() {
-    const insts = [this.drums, this.bass, this.g2Inst, this.keysInst, this.stringsInst, this.percInst, this.singer, ...this.instsNeeded().map(([inst]) => inst)]
+    const insts = [this.drums, this.bass, this.g2Inst, this.keysInst, this.stringsInst, this.percInst, this.singer, this.backer, ...this.instsNeeded().map(([inst]) => inst)]
       .filter((x): x is NonNullable<typeof x> => !!x);
     // load() hands back the same promise while loading, so this waits for loads already under way
     await Promise.all(insts.map((inst) => inst.load()));
@@ -323,7 +370,7 @@ export class Engine {
     // prepared guitars are at the old tempo: back to live until they're ready again
     if (changed && this.playing && this.realSrcs.length) this.endPrepared(this.ctx.now() + 0.05);
     if (changed) this.onRealChange();
-    if (changed && this.list.length) this.singer?.prepare(this.list, () => 15 / bpm);
+    if (changed && this.list.length) { this.singer?.prepare(this.list, () => 15 / bpm); this.backer?.prepare(this.list, () => 15 / bpm); }
   }
 
   /** Play one idea on a loop (`keepPlace`: carry on from the same bar, for rerolls). */
@@ -360,7 +407,7 @@ export class Engine {
     this.applyGuitar2();
     this.applyPadTone();
     // the singer renders its lines ahead
-    if (this.vocalChoice !== 'off') this.setVocal(this.vocalChoice);
+    if (this.vocalChoice !== 'off') this.syncSingers();
     // start loading the instruments later sections play on
     if (!this.offline) for (const [inst, id] of this.instsNeeded()) void this.ensureLoaded(inst, kindOf(id));
     this.applyLevel(this.ctx.now());
@@ -725,6 +772,7 @@ export class Engine {
     // every instrument: the last notes of an earlier section can still be ringing
     for (const inst of [...this.rhythmInsts.values(), ...this.g2Insts.values()]) inst.releaseAll();
     this.singer?.releaseAll();
+    this.backer?.releaseAll();
     this.bass.releaseAll();
     this.keysInst?.releaseAll();
     this.padInst?.releaseAll();
@@ -849,6 +897,7 @@ export class Engine {
     }
     // the singer: its lines start a little ahead of their first notes
     if (others && this.singer && this.vocalChoice !== 'off') this.singer.playStep(idea, g, time, six);
+    if (others && this.backer && this.backingOn) this.backer.playStep(idea, g, time, six);
     const keys = others && this.keysInst && this.layerAt(idea, 'keys');
     if (keys) for (const n of keys.at[g]) {
       this.keysInst!.strum({ stroke: 'D', notes: n.notes, time, dur: n.len * six * 0.97, vel: n.vel, sixteenth: six });

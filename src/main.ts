@@ -1,5 +1,5 @@
 import './style.css';
-import type { VocalChoice } from './audio/singer';
+import { TIMBRE_CHOICES, type TimbreChoice, type VocalChoice } from './audio/singer';
 import { MOOD_LABEL, type MoodChoice } from './tension';
 import * as Tone from 'tone';
 import { Engine, type LayerSettings } from './audio/engine';
@@ -67,7 +67,7 @@ function render() {
   const sound = `Sound: ${SOUND_NAME[engine.chordIdFor(cur)]}${cur.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[engine.guitar2IdFor(cur)]}` : ''}`;
   // (the singer's lanes and words only while it sings)
   const sings = engine.vocal !== 'off';
-  const shownIdea = { ...cur, vocal: sings ? cur.vocal : undefined, backing: sings ? cur.backing : undefined, notes: cur.notes.filter((n) => sings || !n.startsWith('Vocal')).map((n) => (n.startsWith('Sound: ') ? sound : n)) };
+  const shownIdea = { ...cur, vocal: sings ? cur.vocal : undefined, backing: sings ? cur.backing?.filter((n) => n.role === 'adlib' || engine.backingVocal !== 'off') : undefined, notes: cur.notes.filter((n) => sings || !n.startsWith('Vocal')).map((n) => (n.startsWith('Sound: ') ? sound : n)) };
   renderIdea(shownIdea, engine.shapesFor(cur), label(engine.chordIdFor(cur)), label(engine.guitar2IdFor(cur)),
     Object.fromEntries(LAYER_PARTS.map((p) => [p, engine.layerFor(cur, p)])),
     target ? { sheet: target.idea.opts.chords, from: target.from, n: target.n, selected: chordEditor.bar } : null);
@@ -156,12 +156,12 @@ chordReset.onclick = () => {
 
 /* ---- shareable link: the address always holds the current idea (and track) */
 
-interface Shared { o: GenOptions; s: Seeds; t?: TrackOptions; l?: LayerSettings; v?: VocalChoice }
+interface Shared { o: GenOptions; s: Seeds; t?: TrackOptions; l?: LayerSettings; v?: VocalChoice; b?: VocalChoice; w?: TimbreChoice }
 
 function updateLink() {
   if (!idea) return;
   const layers = engine.layerSettings;
-  const data: Shared = { o: idea.opts, s: idea.seeds, ...(track ? { t: track.opts } : {}), ...(Object.keys(layers).length ? { l: layers } : {}), ...(engine.vocal !== 'off' ? { v: engine.vocal } : {}) };
+  const data: Shared = { o: idea.opts, s: idea.seeds, ...(track ? { t: track.opts } : {}), ...(Object.keys(layers).length ? { l: layers } : {}), ...(engine.vocal !== 'off' ? { v: engine.vocal } : {}), ...(engine.vocal !== 'off' && engine.backingVocal !== 'auto' ? { b: engine.backingVocal } : {}), ...(engine.vocal !== 'off' && engine.vocalTimbre !== 'auto' ? { w: engine.vocalTimbre } : {}) };
   try {
     history.replaceState(null, '', `#${btoa(encodeURIComponent(JSON.stringify(data)))}`);
   } catch { /* history blocked: no link */ }
@@ -195,7 +195,7 @@ type ExportKind = 'midi' | 'mp3' | 'wav' | 'stems';
 interface ExportFile { bytes: Uint8Array; name: string; type: string }
 
 const STEM_NAMES: Record<MixPart, string> = {
-  vocal: 'vocal', chords: 'rhythm-guitar', guitar2: 'guitar-2', bass: 'bass', drums: 'drums', keys: 'piano', pad: 'pad', strings: 'strings', perc: 'percussion',
+  vocal: 'vocal', backing: 'backing-vocals', chords: 'rhythm-guitar', guitar2: 'guitar-2', bass: 'bass', drums: 'drums', keys: 'piano', pad: 'pad', strings: 'strings', perc: 'percussion',
 };
 const exportButtons = ['ex-mp3', 'ex-wav', 'ex-stems', 'ex-midi'].map((id) => $<HTMLButtonElement>(id));
 let exporting = false;
@@ -210,7 +210,7 @@ async function buildExport(kind: ExportKind, progress: (msg: string) => void = (
       chordIdFor: (i) => engine.chordIdFor(i), guitar2IdFor: (i) => engine.guitar2IdFor(i),
       keysFor: (i) => engine.layerFor(i, 'keys'), padFor: (i) => engine.layerFor(i, 'pad'),
       stringsFor: (i) => engine.layerFor(i, 'strings'), percFor: (i) => engine.layerFor(i, 'perc'),
-      vocal: engine.vocal,
+      vocal: engine.vocal, backing: engine.backingVocal,
     });
     return { bytes, name: `${base}.mid`, type: 'audio/midi' };
   }
@@ -655,6 +655,9 @@ if (shared) {
   $('wv').textContent = weird.value;
   if (shared.o.bpm) tempo.value = String(shared.o.bpm);
   for (const p of LAYER_PARTS) if (shared.l?.[p]) engine.setLayer(p, shared.l[p]!);
+  if (shared.b) engine.setBackingVocal(shared.b);
+  // (older links may name voices that are gone: left on Auto)
+  if (shared.w && TIMBRE_CHOICES.some((c) => c.id === shared.w)) engine.setVocalTimbre(shared.w);
   if (shared.v) engine.setVocal(shared.v);
   for (const p of shared.l?.throughout ?? []) engine.setLayerThroughout(p, true);
   partsPanel.sync();

@@ -4,7 +4,7 @@ import type { ChordChoice, Engine } from '../audio/engine';
 import { BASS_INSTRUMENTS, type BassId, CHORD_INSTRUMENTS, DRUM_KITS, type DrumKitId } from '../audio/instruments';
 import type { LayerPart, MixPart } from '../audio/mixer';
 import { PAD_TONES } from '../audio/pad';
-import { VOCAL_CHOICES, type VocalChoice } from '../audio/singer';
+import { BACKING_CHOICES, TIMBRE_CHOICES, type TimbreChoice, VOCAL_CHOICES, type VocalChoice } from '../audio/singer';
 import { KEYS_STYLES, PERC_STYLES, STRINGS_STYLES } from '../parts/layers';
 
 interface PartDef {
@@ -28,6 +28,11 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
     {
       part: 'vocal', label: 'Vocal (demo)', volume: 75, options: VOCAL_CHOICES,
       onInstrument: (id) => { engine.setVocal(id as VocalChoice); onChange(); },
+    },
+    {
+      // (harmonies, the gang and oohs, sung by a second singer; the lead's ad-libs stay with the lead)
+      part: 'backing', label: 'Backing vocals', volume: 65, options: BACKING_CHOICES,
+      onInstrument: (id) => { engine.setBackingVocal(id as VocalChoice); onChange(); },
     },
     {
       part: 'chords', label: 'Rhythm', volume: 80,
@@ -78,6 +83,7 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       <span class="name">${d.label}</span>
       <span class="picks">
         <select aria-label="${d.label} ${d.layer ? 'style' : 'instrument'}">${d.options.map((o) => `<option value="${o.id}">${o.label}</option>`).join('')}</select>
+        ${d.part === 'vocal' ? `<select class="timbre" aria-label="Vocal voice" title="The singer's voice: each genre has its own (made by ear: a warm rock voice that blends from low to high and changes gear past its break, grittier the harder it sings), or the clear first voice. Auto: the song's genre's voice.">${TIMBRE_CHOICES.map((o) => `<option value="${o.id}">${o.id === 'auto' ? 'Voice: Auto' : o.label}</option>`).join('')}</select>` : ''}
         ${d.layer ? `<select class="use" aria-label="Where the ${d.label.toLowerCase()} plays" title="Comes and goes: the ${d.label.toLowerCase()} plays some sections and moments, not others, to suit the song. Throughout: every bar."><option value="auto">Comes and goes</option><option value="all">Throughout</option></select>` : ''}
       </span>
       <input type="range" min="0" max="100" value="${d.volume}" aria-label="${d.label} volume">
@@ -127,7 +133,14 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       });
     }
 
-    if (d.part === 'vocal') { select.value = engine.vocal; syncs.push(() => { select.value = engine.vocal; }); }
+    if (d.part === 'vocal') {
+      const timbre = row.querySelector<HTMLSelectElement>('.timbre')!;
+      timbre.onchange = () => { engine.setVocalTimbre(timbre.value as TimbreChoice); onChange(); };
+      const sync = () => { select.value = engine.vocal; timbre.value = engine.vocalTimbre; };
+      sync();
+      syncs.push(sync);
+    }
+    if (d.part === 'backing') { select.value = engine.backingVocal; syncs.push(() => { select.value = engine.backingVocal; }); }
     engine.setVolume(d.part, d.volume);
     root.appendChild(row);
   }

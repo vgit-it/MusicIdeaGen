@@ -2,19 +2,22 @@
 
 import * as Tone from 'tone';
 
-export type MixPart = 'vocal' | 'chords' | 'guitar2' | 'drums' | 'bass' | 'keys' | 'pad' | 'strings' | 'perc';
-export const MIX_PARTS: MixPart[] = ['vocal', 'chords', 'guitar2', 'drums', 'bass', 'keys', 'pad', 'strings', 'perc'];
+export type MixPart = 'vocal' | 'backing' | 'chords' | 'guitar2' | 'drums' | 'bass' | 'keys' | 'pad' | 'strings' | 'perc';
+export const MIX_PARTS: MixPart[] = ['vocal', 'backing', 'chords', 'guitar2', 'drums', 'bass', 'keys', 'pad', 'strings', 'perc'];
 /** Parts you add and remove (the rest always play). */
 export type LayerPart = 'keys' | 'pad' | 'strings' | 'perc';
 export const LAYER_PARTS: LayerPart[] = ['keys', 'pad', 'strings', 'perc'];
 export const isLayer = (p: MixPart): p is LayerPart => (LAYER_PARTS as MixPart[]).includes(p);
 
-const REVERB_SEND: Record<MixPart, number> = { vocal: -9, chords: -12, guitar2: -9, drums: -16, bass: -40, keys: -11, pad: -7, strings: -6, perc: -13 };
-/** Fixed level per part, before the fader: Guitar 2's melodies sit just forward of the rhythm part (a band member, not a lead vocal). */
-const TRIM: Record<MixPart, number> = { vocal: 12, chords: 0, guitar2: 1.5, drums: 0, bass: 0, keys: 5, pad: 5, strings: -6.5, perc: 6 };
+const REVERB_SEND: Record<MixPart, number> = { vocal: -9, backing: -6, chords: -12, guitar2: -9, drums: -16, bass: -40, keys: -11, pad: -7, strings: -6, perc: -13 };
+/**
+ * Fixed level per part, before the fader: Guitar 2's melodies sit just forward of the rhythm part (a band
+ * member, not a lead vocal); backing vocals well under the lead (they were as loud as it: Paul).
+ */
+const TRIM: Record<MixPart, number> = { vocal: 12, backing: 8, chords: 0, guitar2: 1.5, drums: 0, bass: 0, keys: 5, pad: 5, strings: -6.5, perc: 6 };
 /** Tempo-synced echo (dotted 8th): the second guitar, and a touch on the singer. */
 const DELAY_SEND: Record<MixPart, number> = {
-  vocal: -18, chords: -Infinity, guitar2: -9, drums: -Infinity, bass: -Infinity, keys: -Infinity, pad: -Infinity, strings: -Infinity, perc: -Infinity,
+  vocal: -18, backing: -22, chords: -Infinity, guitar2: -9, drums: -Infinity, bass: -Infinity, keys: -Infinity, pad: -Infinity, strings: -Infinity, perc: -Infinity,
 };
 
 const irCache = new Map<number, AudioBuffer>();
@@ -123,6 +126,8 @@ export class Mixer {
 
   restore(s: MixState) {
     for (const p of MIX_PARTS) {
+      // (saved before a part existed: left as it is)
+      if (!s[p]) continue;
       this.setVolume(p, s[p].slider);
       this.strips[p].mute = s[p].mute;
       this.strips[p].solo = s[p].solo;
