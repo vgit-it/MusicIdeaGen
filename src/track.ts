@@ -4,6 +4,7 @@
 //
 // Pure and deterministic: the same idea always grows into the same track.
 
+import { type Mood, type MoodChoice, PROFILES, arcNote, autoMood, planTension } from './tension';
 import { type BuildOptions, buildIdea, withSheet } from './generator';
 import { GENRES, type Genre, QUIET_STYLES, type RiffStyle } from './genres';
 import type {
@@ -45,6 +46,8 @@ export interface TrackOptions {
   riffVerse?: Choice;
   /** Played by the band: each player plays the written parts their own way (missing in older links: on). */
   band?: 'on' | 'off';
+  /** The song's mood, which shapes its tension and release (missing in older links: Auto). */
+  mood?: MoodChoice;
   /** Sections in order, when edited by hand (otherwise the genre template decides). */
   order?: SectionKind[];
   /** Rhythm instrument chosen by hand for a kind of section (every verse, every chorus...). */
@@ -87,6 +90,9 @@ export interface Track {
   /** Riff genres: the idea's riff plays the verses, and (`newChorus`) the chorus is new music. */
   riffVerse: boolean;
   newChorus: boolean;
+  /** The song's mood (picked, or chosen on Auto), and which section is its climax. */
+  mood: Mood;
+  climax: number;
 }
 
 /** Length in seconds at the track's tempo. */
@@ -1026,6 +1032,12 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const S = opts.seeds;
   // separate random streams, so rerolling one block leaves everything else as it was
   const rng = new Rng(S.structure);
+  // the mood: how the song builds and lets go (tension.ts); it leans the quiet sections, the key
+  // change and the stops its way
+  const moodAuto = !opts.mood || opts.mood === 'auto';
+  const mood: Mood = moodAuto ? autoMood(src.song, src.seeds.song) : opts.mood as Mood;
+  const MP = PROFILES[mood];
+  const mr = new Rng(`${S.structure}-${mood}`);
   const vr = new Rng(S.verse), pr = new Rng(S.pre), br = new Rng(S.bridge);
   const { genre, mode } = src.song;
   const riff = !!src.song.sections;
@@ -1109,7 +1121,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       bridgeE = 5;
       bridge = [seg(block(base, bTag, ['strum', 'drums'], { sections: fill8('chug'), forceHalf: true }, pin('bridge', base.song, tonicOnly)))];
     } else {
-      const quiet = !quietVerse && br.chance(0.4);
+      br.chance(0.4);
+      const quiet = !quietVerse && mr.chance(MP.quiet * 0.6);
       const options = R.bridge.filter(([x]) => x !== vb && x !== verseStyle);
       const style: RiffStyle = quiet ? 'arp' : options.length ? br.weighted(options) : 'single';
       bridgeE = quiet ? 2 : 4;
@@ -1128,9 +1141,11 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     }
     verse = [seg(vb!)];
     // usually a soft first verse, so the chorus lands
-    verseE = vr.pick([2, 2, 2, 3]);
+    vr.pick([2, 2, 2, 3]);
+    verseE = mr.chance(MP.quiet) ? 2 : 3;
     if (withPre) pre = [seg(block(src, pTag, ['strum'], {}, pin('pre', src.song, planned(src.song, prePlan(pr, P.pre, chorus), pr, false))), 0, 4)];
-    bridgeE = br.weighted([[2, 1], [3, 2], [4, 1]]);
+    br.weighted([[2, 1], [3, 2], [4, 1]]);
+    bridgeE = mr.weighted([[2, MP.quiet], [3, 1], [4, 1 - MP.quiet * 0.8]]);
     // pop bridges are four bars: the plan at double speed, still ending on V
     const bPlan = br.pick(P.bridge).map(([r, n]): [number, number] => [r, genre === 'pop' ? Math.max(1, n / 2) : n]);
     const b = block(src, bTag, ['strum'], { forceHalf: bridgeE <= 3 ? !src.drums.halfTime : undefined }, pin('bridge', src.song, planned(src.song, bPlan, br, false)));
@@ -1196,7 +1211,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       : introKind === 'layered' ? layered : alone;
 
   // the order of sections: by hand, or the genre's template
-  const keyRoll = rng.chance(0.3);
+  rng.chance(0.3);
+  const keyRoll = mr.chance(MP.keyChange);
   let order: SectionKind[];
   if (opts.order?.length) order = [...opts.order];
   else {
@@ -1322,6 +1338,12 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     longer[v1] = { ...slots[v1], segs: [...slots[v1].segs, ...slots[v1].segs], g2: 'build' as const };
     if (seconds(longer) <= MAX_SECONDS * 0.85) slots = longer;
   }
+  // the tension curve over the whole song: each section's energy comes from it, and its level bar by bar
+  const arc = planTension(slots.map((x) => ({
+    kind: x.kind, bars: x.segs.reduce((a, g) => a + g.n, 0), final: x.final, energy: x.energy, intro: x.intro, solo: x.g2 === 'solo',
+  })), mood);
+  slots.forEach((x, i) => { x.energy = arc.sections[i].energy; });
+
   // numbers only for kinds that repeat
   const total: Partial<Record<SectionKind, number>> = {};
   for (const s of slots) total[s.kind] = (total[s.kind] ?? 0) + 1;
@@ -1431,7 +1453,12 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const rhythm = idea.song.sections
       ? [...new Set(idea.song.sections)].map((x) => RIFF_STYLE_LABEL[x]).join(', then ')
       : STRUM_DESC(s.energy, idea.song.partGenres.strum);
-    notes.unshift(`${label} · energy ${s.energy} of 5 · ${idea.song.bars.length} bars · ${rhythm}`, `Chords: ${describeChords(idea)}`);
+    const ten = arc.sections[si];
+    idea.section!.tension = ten.tension;
+    idea.section!.db = ten.db;
+    const pc = (x: number) => Math.round(x * 100);
+    const t0 = ten.tension[0], t1 = ten.tension[ten.tension.length - 1];
+    notes.unshift(`${label} · energy ${s.energy} of 5 · tension ${pc(t0)}%${Math.abs(t1 - t0) >= 0.04 ? ` → ${pc(t1)}%` : ''} (${ten.role}) · ${idea.song.bars.length} bars · ${rhythm}`, `Chords: ${describeChords(idea)}`);
     notes.push(g2);
     if (idea.drums.groove && s.intro !== 'alone' && s.energy >= 2) notes.push(`Drums: ${idea.drums.groove}`);
     if (!riff && idea.bassLine && s.intro !== 'alone') {
@@ -1474,10 +1501,10 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     // the band by their last bars, so they hand over like any other section)
     if (slots[i].intro !== 'alone') {
       if (next.kind === 'chorus' && kind !== 'chorus') {
-        t = r.weighted<Seam>([['fill', 3], ['build', kind === 'prechorus' || lift ? 4 : 2], ['hits', 2], ['stop', e >= 3 ? 2 : 0], ['push', lift ? 1 : 2]]);
+        t = r.weighted<Seam>([['fill', 3], ['build', kind === 'prechorus' || lift ? 4 : 2], ['hits', 2], ['stop', e >= 3 ? 2 * MP.stop : 0], ['push', lift ? 1 : 2]]);
       } else if (lift) t = r.weighted<Seam>([['fill', 3], ['build', 2], ['push', 1]]);
       else if (next.energy >= e) t = r.weighted<Seam>([['fill', 3], ['push', 1]]);
-      else t = r.weighted<Seam>([['fill', 3], ['ring', 2], ['stop', 1]]);
+      else t = r.weighted<Seam>([['fill', 3], ['ring', 2 / MP.stop], ['stop', MP.stop]]);
     }
     if (t === 'push' && !push(idea, b)) t = 'fill';
     if (t === 'build') { snareBuild(idea); idea.notes.push('Snare build into the chorus'); }
@@ -1534,6 +1561,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
   });
   sections[0].notes.push(`Band feel: ${describeSounds(soundList, sounds)}`);
+  sections[0].notes.splice(2, 0, arcNote(arc, moodAuto, sections.map((x) => x.section!.label)));
 
   // the band plays it: each player reads the whole track and plays the written part their way
   if (opts.band !== 'off') {
@@ -1546,7 +1574,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   const bars = sections.reduce((a, s) => a + s.song.bars.length, 0);
   const steps = sections.reduce((a, s) => a + s.song.total, 0);
-  return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps, edit, riffVerse, newChorus };
+  return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps, edit, riffVerse, newChorus, mood, climax: arc.climax };
 }
 
 /** Which of the track's seeds a section's reroll changes (null: the section is the idea itself). */

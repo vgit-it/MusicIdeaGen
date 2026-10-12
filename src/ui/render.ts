@@ -7,6 +7,7 @@ import type { Layer } from '../parts/layers';
 import { NOTE_NAMES, chordName } from '../theory';
 import { CELLS_PER_BAR, numeral } from '../parts/sheet';
 import type { GuitarVoicing } from '../theory/guitar';
+import { MOOD_LABEL } from '../tension';
 import { type Track, trackSeconds } from '../track';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -110,6 +111,7 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).
 /** The track's section strip: one block per section, tinted by energy, with the rhythm part's instrument. */
 export function renderTrack(track: Track, soundOf: (section: Idea) => string) {
   $('trackinfo').textContent = `${mmss(trackSeconds(track))} · ${track.bars} bars`;
+  renderTension(track);
   $('sections').innerHTML = track.sections.map((s, i) => {
     const { label, energy } = s.section!;
     const n = s.song.bars.length;
@@ -120,12 +122,46 @@ export function renderTrack(track: Track, soundOf: (section: Idea) => string) {
   }).join('');
 }
 
+/**
+ * The song's tension line, bar by bar, across the whole track (its sections marked, the climax dotted),
+ * with its mood. The section playing (or shown) is shaded by markSection.
+ */
+function renderTension(track: Track) {
+  const W = 1000, H = 60;
+  const bars = track.sections.flatMap((s) => s.song.bars.map((b, i) => ({ len: b.len, t: s.section!.tension?.[i] ?? (s.section!.energy - 1) / 4 })));
+  const total = bars.reduce((a, b) => a + b.len, 0);
+  let at = 0;
+  const pts: [number, number][] = [];
+  for (const b of bars) {
+    const y = H - 4 - b.t * (H - 8);
+    pts.push([(at / total) * W, y], [((at + b.len) / total) * W, y]);
+    at += b.len;
+  }
+  const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('');
+  let x0 = 0;
+  const spans = track.sections.map((s) => {
+    const w = (s.song.total / total) * W;
+    const r = { x: x0, w };
+    x0 += w;
+    return r;
+  });
+  const ticks = spans.slice(1).map((r) => `<line class="tick" x1="${r.x.toFixed(1)}" x2="${r.x.toFixed(1)}" y1="0" y2="${H}"/>`).join('');
+  const shades = spans.map((r, i) => `<rect class="now" data-i="${i}" x="${r.x.toFixed(1)}" y="0" width="${r.w.toFixed(1)}" height="${H}" visibility="hidden"/>`).join('');
+  const climax = track.sections[track.climax];
+  $('tension').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Tension: ${MOOD_LABEL[track.mood]}, climax in ${climax.section!.label}">` +
+    `${shades}${ticks}<path class="area" d="${line}L${W} ${H}L0 ${H}Z"/><path class="line" d="${line}"/></svg>` +
+    `<div class="cap"><span>Tension · ${MOOD_LABEL[track.mood]}${(track.opts.mood ?? 'auto') === 'auto' ? ' (Auto)' : ''}</span><span>Climax: ${climax.section!.label}</span></div>`;
+}
+
 /** Mark the section that's playing (or shown) and the one being looped. */
 export function markSection(current: number, looping: number | null) {
   document.querySelectorAll<HTMLElement>('#sections .sec').forEach((el) => {
     const i = Number(el.dataset.i);
     el.classList.toggle('now', i === current);
     el.classList.toggle('loop', i === looping);
+  });
+  document.querySelectorAll<SVGRectElement>('#tension rect.now').forEach((el) => {
+    el.setAttribute('visibility', Number(el.dataset.i) === current ? 'visible' : 'hidden');
   });
 }
 

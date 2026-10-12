@@ -1,4 +1,5 @@
 import './style.css';
+import { MOOD_LABEL, type MoodChoice } from './tension';
 import * as Tone from 'tone';
 import { Engine, type LayerSettings } from './audio/engine';
 import { CHORD_INSTRUMENTS } from './audio/instruments';
@@ -467,6 +468,7 @@ $('sections').onclick = async (e) => {
 
 // structure options (changing one goes back to the automatic order)
 const optSel = {
+  mood: $<HTMLSelectElement>('t-mood'),
   intro: $<HTMLSelectElement>('t-intro'),
   pre: $<HTMLSelectElement>('t-pre'),
   interlude: $<HTMLSelectElement>('t-interlude'),
@@ -478,6 +480,9 @@ const optSel = {
 };
 function syncTrackOptions() {
   if (!track) return;
+  optSel.mood.value = track.opts.mood ?? 'auto';
+  // Auto says which mood it chose
+  optSel.mood.options[0].textContent = `Auto (${MOOD_LABEL[track.mood]})`;
   optSel.intro.value = track.opts.intro;
   optSel.pre.value = track.opts.pre;
   optSel.interlude.value = track.opts.interlude;
@@ -495,7 +500,8 @@ for (const [k, sel] of Object.entries(optSel)) {
     // the band playing it (or not) changes how it's played, not the song: stay where you are
     if (k === 'band') return rebuildTrack({ ...track.opts, band: sel.value as 'on' | 'off' }, shown, true);
     const opts: TrackOptions = { ...track.opts, order: undefined };
-    if (k === 'intro') opts.intro = sel.value as IntroChoice;
+    if (k === 'mood') opts.mood = sel.value as MoodChoice;
+    else if (k === 'intro') opts.intro = sel.value as IntroChoice;
     else if (k === 'outro') opts.outro = sel.value as OutroChoice;
     else (opts as unknown as Record<string, Choice>)[k] = sel.value as Choice;
     rebuildTrack(opts, 0);

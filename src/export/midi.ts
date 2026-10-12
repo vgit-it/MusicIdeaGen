@@ -5,7 +5,7 @@
 import { Midi } from '@tonejs/midi';
 import type { Track as MidiTrack } from '@tonejs/midi/dist/Track';
 import type { ChordInstrumentId } from '../audio/instruments';
-import { DYNAMICS, SECTION_DB } from '../audio/dynamics';
+import { DYNAMICS, levelAt, liftAt } from '../audio/dynamics';
 import { GENRE_LABEL } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
 import type { Layer } from '../parts/layers';
@@ -95,7 +95,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
     human = idea.lilt !== undefined;
     const total = song.total;
     const energy = idea.section?.energy ?? 4;
-    const dyn = DYNAMICS[energy];
+    const dyn0 = DYNAMICS[energy];
     const lastBar = song.bars[song.bars.length - 1];
     // swing: odd 16ths come late, as Tone's transport plays them
     // (and the band's lilt, when the band plays it)
@@ -121,8 +121,12 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       midi.header.meta.push({ type: 'text', text: `Key: ${keyName}`, ticks: offset });
       lastKey = keyName;
     }
-    const expression = Math.round(127 * 10 ** (SECTION_DB[energy] / 20));
-    for (const t of [rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset });
+    // the section's level as expression, bar by bar (it follows the song's tension curve)
+    song.bars.forEach((b, bi) => {
+      if (bi > 0 && !idea.section?.db) return;
+      const expression = Math.round(127 * 10 ** (levelAt(idea.section, bi) / 20));
+      for (const t of [rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
+    });
 
     const isGuitar = (id: ChordInstrumentId) => id !== 'piano';
     const id = o.chordIdFor(idea);
@@ -151,6 +155,8 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       const ending = !!idea.section?.ending && g >= lastBar.start;
       const bar = song.bars.find((b) => g >= b.start && g < b.start + b.len)!;
       const onBeat = groupStarts(bar.groups).includes(g - bar.start);
+      // (the band builds or settles with the tension inside a section, as playback does)
+      const dyn = dyn0 * liftAt(idea.section, song.bars.indexOf(bar));
 
       // rhythm guitar: riff hits, or strums of the chord voicing
       for (const h of [...(idea.guitar ?? []), ...(idea.rhythmPick ?? [])]) if (h.step === g) hit(rhythm, h, h.vel * dyn, ending, idea.rhythmTime?.[g] ?? 0);

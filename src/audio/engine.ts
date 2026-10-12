@@ -9,7 +9,7 @@ import { type GuitarVoicing, guitarVoicings, strokeShape } from '../theory/guita
 import {
   Bass, type BassId, type BassTone, type ChordInstrument, type ChordInstrumentId, DrumKit, type DrumKitId, Guitar, Piano,
 } from './instruments';
-import { DYNAMICS, SECTION_DB } from './dynamics';
+import { DYNAMICS, levelAt, liftAt } from './dynamics';
 import { inContext } from './context';
 import { LAYER_PARTS, type LayerPart, type MixPart, type MixState, Mixer } from './mixer';
 import { Percussion } from './percussion';
@@ -350,7 +350,7 @@ export class Engine {
 
   private applyLevel(time: number) {
     const e = this.idea?.section?.energy ?? 4;
-    this.mixer.setSectionLevel(SECTION_DB[e], time);
+    this.mixer.setSectionLevel(levelAt(this.idea?.section, 0), time);
     // a guitar solo stands out: Guitar 2 up, the rhythm guitar down
     const solo = !!this.idea?.section?.solo;
     this.mixer.setFeature('guitar2', solo ? SOLO_DB.lead : 0, time);
@@ -759,7 +759,14 @@ export class Engine {
     const six = 15 / this.transport.bpm.value;
     // the band's lilt: the in-between 16ths come a touch late, for everyone
     if (g % 2 && idea.lilt) time += idea.lilt * six;
-    const dyn = DYNAMICS[idea.section?.energy ?? 4];
+    // (and inside a section the band builds or settles with the song's tension, bar by bar)
+    let bar = 0;
+    for (let k = 1; k < song.bars.length && song.bars[k].start <= g; k++) bar = k;
+    const dyn = DYNAMICS[idea.section?.energy ?? 4] * liftAt(idea.section, bar);
+    if (bar > 0 && song.bars[bar].start === g && idea.section?.db) {
+      // the mix follows the curve: a crescendo through a build, a fade through an outro
+      this.mixer.setSectionLevel(levelAt(idea.section, bar), time, (song.bars[bar].len * six) / 3);
+    }
     // the final held chord of a track rings out
     const lastBar = song.bars[song.bars.length - 1];
     const ending = !!idea.section?.ending && g >= lastBar.start;
@@ -891,7 +898,7 @@ export class Engine {
     // big lift the whole last bar does
     const rise = idea.section?.riser ? lastBar.len : lastBar.groups[lastBar.groups.length - 1];
     if (after && after !== idea && g === lastBar.start + lastBar.len - rise) {
-      const now = SECTION_DB[idea.section?.energy ?? 4], then = SECTION_DB[after.section?.energy ?? 4];
+      const now = levelAt(idea.section, song.bars.length - 1), then = levelAt(after.section, 0);
       if (then > now) this.mixer.setSectionLevel((now + then) / 2, time, rise * six / 2);
     }
 
