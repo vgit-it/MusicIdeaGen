@@ -113,7 +113,9 @@ export function arrangeBacking(sections: Idea[], ctx: BackingContext, climax: nu
       lines.forEach((L, li) => {
         if (!every && li % 2 === 1) return;
         for (const n of L) {
-          const m = style === 'gang' ? n.midi : harmonyFor(idea, n, style === 'thirds');
+          let m = style === 'gang' ? n.midi : harmonyFor(idea, n, style === 'thirds');
+          // (above a note that's already up high: the harmony goes under it)
+          if (m !== null && m > 72) m = harmonyFor(idea, n, false);
           if (m === null) continue;
           idea.backing!.push({ ...n, midi: m, vel: n.vel * 0.85, syl: { ...n.syl }, role: style === 'gang' ? 'gang' : 'harmony', start: n === L[0] });
         }
