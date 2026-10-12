@@ -33,6 +33,10 @@ export interface VocalNote {
   start?: boolean;
   /** Backing vocals: a harmony line, the gang in unison, a held "ooh", an ad-lib (the lead has none). */
   role?: 'harmony' | 'gang' | 'ooh' | 'adlib';
+  /** Scooped up into from so many semitones below; falling off its end by so many; a wail (sung full out). */
+  slide?: number;
+  fall?: number;
+  belt?: boolean;
 }
 
 export type VoiceType = 'low' | 'high';
@@ -133,7 +137,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         if (g >= total || blockSteps <= 0) return;
         // (an outro sings only its first half, then lets the band play out)
         if (kind === 'outro' && g >= Math.max(blockLen / 2, total / 2)) return;
-        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start });
+        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt });
       });
     }
     // the tune follows the tension curve, line by line: reaching up as the song builds, settling as it lets go
@@ -144,15 +148,16 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const held = [...v].reverse().find((x, k) => x.len >= 4 && x.syl.text !== '~' && v[v.length - k]?.syl.text !== '~');
       if (held) {
         const tones = chordTones(idea.song.key, idea.chords.timeline[idea.chords.chordIdx[held.step]].chord);
+        const top = PEAK + 1 + melody.top;
         let m = held.midi + 3;
-        while (m < PEAK + 1 && !tones.includes(mod(m, 12))) m++;
-        if (m <= PEAK + 1) held.midi = m;
+        while (m < top && !tones.includes(mod(m, 12))) m++;
+        if (m <= top) { held.midi = m; held.belt = true; held.vel = 0.95; }
       }
     }
     leaveRoom(idea);
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
-      if (!told) { idea.notes.push(`Melody: ${melodyDesc(melody)}`); told = true; }
+      if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}`, `Melody: ${melodyDesc(melody)}`); told = true; }
       idea.notes.push(`Vocal (${VOCAL_DESC[as]}): “${words.length > 140 ? `${words.slice(0, 140)}…` : words}”`);
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
       if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);
@@ -160,11 +165,11 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   });
 }
 
-/** A held note stops where Guitar 2's answer starts (the singer breathes, the lead answers). */
+/** A held note stops where Guitar 2's answer starts (the singer breathes, the lead answers); a wail holds on. */
 function leaveRoom(idea: Idea) {
   const lead = idea.guitar2.filter((h) => !h.letRing && !h.swell).map((h) => h.step);
   for (const n of idea.vocal ?? []) {
-    if (n.len < 4) continue;
+    if (n.len < 4 || n.belt) continue;
     const hit = lead.find((g) => g >= n.step + 2 && g < n.step + n.len);
     if (hit !== undefined) n.len = hit - n.step;
   }
@@ -184,6 +189,18 @@ export function singIdea(idea: Idea, seed: string, mood: Mood) {
 export function autoVoice(seed: string, genre: Genre): VoiceType {
   const high = genre === 'pop' ? 0.5 : genre === 'funk' ? 0.4 : genre === 'rock' ? 0.25 : 0.12;
   return new Rng(`${seed}-voice`).chance(high) ? 'high' : 'low';
+}
+
+/**
+ * The backing singer's voice: chosen, or on Auto a second singer around the lead: the other voice (an
+ * octave apart: low lead, high backing voices) in pop, funk and rock; the same register, another
+ * person, in the heavier genres (the low harmonies under a grunge or metal lead).
+ */
+export function backingVoice(idea: Idea, leadChoice: string, choice: string): VoiceType {
+  if (choice === 'low' || choice === 'high') return choice;
+  const lead: VoiceType = leadChoice === 'low' || leadChoice === 'high' ? leadChoice : idea.vocalVoice ?? 'low';
+  const g = idea.song.partGenres.strum;
+  return ['pop', 'funk', 'rock'].includes(g) ? (lead === 'low' ? 'high' : 'low') : lead;
 }
 
 /** The lyric of a section as text (lines separated by " / "). */

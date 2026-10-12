@@ -92,6 +92,15 @@ Paul: ad-libs and harmonies next; vocals off by default.
   each with its own take; all in the vocal stem. MIDI: a "Backing vocals" track (Choir Aahs). Lanes: a
   Backs lane (h harmony, g gang, o ooh, a ad-lib). ✓
 - The singer is off until you turn it on (Parts: Vocal (demo)); a link remembers it when it's on. ✓
+- A second singer and their own part (2026-10-12; Paul: the backing vocals were very loud; a different
+  voice, a separate track, lower). Harmonies, the gang and oohs are sung by a backing singer: another
+  person (a different vocal tract, breathier, less vibrato, thinner and softer up top) on their own
+  mixer strip ("Backing vocals": Auto, Low voice, High voice, Off; volume, mute, solo), with more reverb
+  and echo, so they sit behind the lead. Auto: the other voice an octave apart in pop, funk and rock (a
+  low lead gets high backing voices), the same register in the heavier genres (low harmonies under the
+  lead). The lead's double and ad-libs stay with the lead. Measured on a last chorus: backing about
+  10-14 dB under the lead (before: about 5). Own stem (backing-vocals), the MIDI backing track in their
+  voice, the choice kept in links. ✓
 
 ## 6. How the tunes are written, by mood and genre (`src/parts/melody.ts`, 2026-10-12)
 Paul: research how vocal melodies are written; build a system that writes them by mood and genre, with
@@ -163,7 +172,56 @@ song lets go; the tune stays recognisable (word for word, same shape). Built (`f
 - Every note louder (and so brighter) with its bar's tension. ✓
 - The notes say it: "Vocal follows the tension: reaching up (notes moved 5 up, a turn)". ✓
 
-## 7. Later
+## 7. The singers: phrasing, runs and wails (`src/parts/singers.ts`, 2026-10-12)
+Paul: the phrasing and melodies sound very similar across songs; mostly short phrases of a few
+syllables; it needs more range and vocal runs, the kind of phrasing you hear from Axl Rose (Sweet Child
+o' Mine), Eddie Vedder (Black), Chris Cornell (Audioslave), Layne Staley (Alice in Chains), and the like
+in other genres. Not impressions: kinds of singers.
+
+What made songs alike: every line was two bars (a bar of words, a held note, a breath), the same
+rhythm cells, runs of at most three notes, the top note around E4. Measured over 42 songs before:
+95% of lines 1.5-2 bars, no run of 3+ notes on one vowel, range about 15 semitones.
+
+- [P] Phrase length is a singer's signature: the short-short-long "sentence" (a short line, said
+  again, then a long answer: Sweet Child's chorus), four bars on one breath (wordy verses tumbling down,
+  or a few words stretched long, Black's verses), one-bar chants in call and answer (funk, nu-metal).
+  Built: each song gets a singer with phrase plans per section ("1124", "44", "2222", "1111", "224"...);
+  lines of one to four bars; a long line travels further (wider contour) and catches a quick breath
+  halfway; one-bar lines pair up as call and answer. ✓
+- [P] Words per beat and where they fall: patter of 16ths (storytellers), syncopated pushes on the "a"
+  of the beat (pop, funk), one word drawn out over two beats (drawlers, brooders). ✓
+- [P] Held notes through the bar line: a long one lands on beat 3 or 4 and holds into the next bar (a
+  bar and a half), the wail. ✓
+- [P] Runs (melisma) on one vowel, 3-7 notes: down into a note from above (the rock cascade), a blues
+  fall (minor pentatonic with the flat 5th), up into it, an R&B wave, or a held note running down off its
+  end (the grunge tail). 16ths, or 8ths when 16ths would be too quick; never out of the singer's reach,
+  never more than an octave above the note before. ✓
+- [P] Wails: a chorus or bridge line peaking on a high held note near the top of the singer's range,
+  sung full out (brighter, louder), no more than an octave over the note before it; the climax's last
+  held note can go higher still (up to C5 for a wailer). The lead guitar no longer cuts them short. ✓
+- [P] Delivery: scoops up into held notes (a semitone to a fourth below; more on wails: Staley and
+  Vedder), falls off line ends (2-7 semitones, fading). In the voice: per-note slides and falls, quicker
+  glides between the quick notes of a run, diphthongs gliding only on a run's last note. ✓
+
+| Singer | Lines | Words | Held notes | Runs | Wails | Delivery | Mostly in |
+|---|---|---|---|---|---|---|---|
+| Wailer | 1124, 44, 224 | medium | long, through the bar | cascades, blues falls, tails | often, high | some slides | hard rock, metal, grunge, rock |
+| Storyteller | 44 verses, 1124 choruses | wordy patter, tumbling down | short-mid | some | some | plain | rock, hard rock |
+| Low drawl | 44, 2222 | few, stretched, off the beat | long, mid-line too | tails, waves | some | slides, falls | grunge, rock |
+| Brooder | 2222, 44 | few, held | long, through the chords | a few | sudden | lots of slides | grunge, alt metal |
+| Pop voice | 1124, 1111 | syncopated hooks | mid | waves, cascades | some | clean | pop, funk |
+| Chanter | 1111 | busy, syncopated, near one note | short | none | rare | punchy | funk, alt metal |
+| Crooner | 44, 2222 | few, legato | mid-long | waves, cascades | gentle | some slides | pop, ballads |
+| Shouter | 1111, 2222, 1124 | short, hard | screams on the peaks | rare | often | falls | metal, hard rock |
+
+- Moods lean who sings (melancholic: drawl, crooner, brooder; angry: shouter, chanter; dark: brooder;
+  triumphant: wailer; happy: pop voice, storyteller). The singer is in the notes ("Singer: a wailer...").
+  The Vocal reroll can bring a different singer.
+- Measured after, over 70 songs: lines of 1 bar 50%, 2 bars 31%, 3-4 bars 18%; about 200 runs of 3+
+  notes; about 270 wails; range about 19 semitones; every song's verse and chorus phrasing different.
+
+## 8. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
+- · Singing behind the beat (the drawl's lag), breathy and raspy tones per singer, falsetto flips.
 - · Fillers in the gaps of the lead line itself;
   screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).

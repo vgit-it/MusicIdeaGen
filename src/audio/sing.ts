@@ -7,8 +7,8 @@
 // - consonants as a singer places them: onsets before the beat so the vowel lands on it, codas at the
 //   end of the note; stops (closure, burst, aspiration), fricatives (shaped noise), nasals (the nasal
 //   pole and zero), liquids and glides (formant targets), with formant transitions into the vowel
-// - pitch: glides between legato notes, a scoop into some phrases, vibrato that grows on long notes, a
-//   fall off the end of some lines; a breath of aspiration at phrase ends
+// - pitch: glides between legato notes (quicker in fast runs), scoops up into the notes the singer slides
+//   into, vibrato that grows on long notes, falls off the ends of lines; a breath of aspiration at phrase ends
 
 import { type FrameParms, Generator } from 'klatt-syn';
 import type { Cons, Syllable, Vowel } from '../parts/lyrics';
@@ -43,8 +43,11 @@ const CONS: Record<Cons, ConsSpec> = {
   W: { kind: 'liquid', voiced: true, f: [300, 700, 2200], dur: 0.07 }, Y: { kind: 'liquid', voiced: true, f: [260, 2200, 3000], dur: 0.06 },
 };
 
-/** A note to sing, in seconds from the line's start (its vowel lands at `t`). */
-export interface SungNote { t: number; end: number; midi: number; vel: number; syl: Syllable }
+/**
+ * A note to sing, in seconds from the line's start (its vowel lands at `t`); `slide`: scooped up into from
+ * so many semitones below; `fall`: falls off its end by so many (left out: the line's own way).
+ */
+export interface SungNote { t: number; end: number; midi: number; vel: number; syl: Syllable; slide?: number; fall?: number }
 
 export interface VoiceShape {
   high: boolean;
@@ -52,6 +55,8 @@ export interface VoiceShape {
   slides: number;
   /** A fixed random-ish identity (tract length, vibrato rate). */
   seed: number;
+  /** Another person (the backing singer): vocal tract length (x), more breath (dB), vibrato depth (x). */
+  person?: { tract: number; breath: number; vibrato: number };
 }
 
 /** A segment of the line's timeline: a consonant, or a vowel (with an optional glide target at its end). */
@@ -66,7 +71,8 @@ function layout(notes: SungNote[]): Seg[] {
   const segs: Seg[] = [];
   notes.forEach((n, i) => {
     const room = Math.max(0.03, Math.min(0.2, (n.t - (i > 0 ? notes[i - 1].t : n.t - 0.4)) * 0.45));
-    const vow = VOWELS[n.syl.vowel];
+    // (a diphthong sung over a run glides only on its last note)
+    const vow: [F3, F3?] = notes[i + 1]?.syl.text === '~' ? [VOWELS[n.syl.vowel][0]] : VOWELS[n.syl.vowel];
     const firstF = vow[0];
     // onset consonants before the beat (shrunk to fit the room the last note leaves)
     const on = n.syl.onset.map((c) => CONS[c]);
@@ -124,7 +130,8 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
   const out = new Float32Array(nFrames * frameLen);
   const buf = new Float64Array(frameLen);
   const fscale = voice.high ? 1.17 : 1;
-  const tract = 0.97 + (voice.seed % 7) * 0.01;
+  const tract = (0.97 + (voice.seed % 7) * 0.01) * (voice.person?.tract ?? 1);
+  const vibDepth = voice.person?.vibrato ?? 1;
   const F45 = voice.high ? [4100, 4800, 5700] : [3300, 3750, 4900];
   const vibHz = 5.2 + (voice.seed % 5) * 0.15;
   const scale = (f: F3): F3 => [f[0] * fscale * tract, f[1] * fscale * tract, f[2] * fscale * tract];
@@ -146,22 +153,34 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     const note = vowelNotes[ni];
     let midi = note.midi + (voice.high ? 12 : 0);
     const prevN = vowelNotes[ni - 1];
-    if (prevN && t < note.t + 0.06 && prevN.end >= note.t - 0.12) midi = lerp(prevN.midi + (voice.high ? 12 : 0), midi, (t - (note.t - 0.03)) / 0.09);
-    if (ni === 0 && scoop && t < note.t + 0.1) midi -= lerp(1, 0, (t - note.t + 0.02) / 0.12);
     const into = t - note.t, held = note.end - note.t;
-    if (held > 0.45 && into > 0.3) midi += (Math.min(1, (into - 0.3) / 0.25) * (0.28 + 0.1 * note.vel)) * Math.sin(2 * Math.PI * vibHz * into);
+    if (note.slide) {
+      // a scoop up into the note (easing in), over up to a fifth of a second
+      const sd = Math.min(0.22, held * 0.35);
+      midi -= note.slide * (1 - Math.max(0, Math.min(1, (into + 0.02) / sd))) ** 2;
+    } else if (prevN && prevN.end >= note.t - 0.12) {
+      // a glide from the last note (quicker between the quick notes of a run)
+      const gl = Math.min(0.09, Math.max(0.025, (note.t - prevN.t) * 0.4));
+      if (t < note.t + gl * 0.67) midi = lerp(prevN.midi + (voice.high ? 12 : 0), midi, (t - (note.t - gl / 3)) / gl);
+    }
+    if (ni === 0 && note.slide === undefined && scoop && t < note.t + 0.1) midi -= lerp(1, 0, (t - note.t + 0.02) / 0.12);
+    if (held > 0.45 && into > 0.3) midi += (Math.min(1, (into - 0.3) / 0.25) * (0.28 + 0.1 * note.vel) * vibDepth) * Math.sin(2 * Math.PI * vibHz * into);
     const lastNote = ni === vowelNotes.length - 1;
-    if (lastNote && fall && t > note.end - 0.14) midi -= lerp(0, 2, (t - (note.end - 0.14)) / 0.14);
+    // a fall off the note's end (accelerating, fading), or the line's own little fall
+    const fallBy = note.fall ?? (lastNote && fall ? 2 : 0);
+    const fw = note.fall ? Math.min(0.3, held * 0.35) : 0.14;
+    const fx = fallBy && t > note.end - fw ? Math.min(1, (t - (note.end - fw)) / fw) : 0;
+    midi -= fallBy * (note.fall ? fx * fx : fx);
     fr.f0 = mtof(midi);
     // loud notes brighter (less tilt), soft ones breathier
     fr.tiltDb = lerp(9, 2, note.vel);
-    fr.breathinessDb = lerp(-22, -32, note.vel);
+    fr.breathinessDb = lerp(-22, -32, note.vel) + (voice.person?.breath ?? 0);
     const F = currentF(s, t);
     // F1 never under the pitch (it would go silent), F2 clear of it too
     F[0] = Math.max(F[0], fr.f0 * 1.05);
     if (F[1] < fr.f0 * 1.9) F[1] = fr.f0 * 1.9;
     fr.oralFormantFreq = [F[0], F[1], F[2], F45[0], F45[1], F45[2]];
-    const amp = lerp(-8, 0, note.vel);
+    const amp = lerp(-8, 0, note.vel) - (note.fall ? 9 * fx : 0);
     if (t < s.t0) fr.cascadeVoicingDb = -99;
     else if (s.vowel && t <= s.t1) {
       fr.cascadeVoicingDb = amp;

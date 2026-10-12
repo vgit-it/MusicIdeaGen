@@ -9,6 +9,7 @@ import { DYNAMICS, levelAt, liftAt } from '../audio/dynamics';
 import { GENRE_LABEL } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
 import type { Layer } from '../parts/layers';
+import { backingVoice } from '../parts/vocal';
 import { cymbalAccent, groupStarts } from '../rhythm';
 import { NOTE_NAMES, pianoVoicing } from '../theory';
 import { guitarVoicings, strokeShape } from '../theory/guitar';
@@ -45,6 +46,8 @@ export interface MidiOptions {
   percFor?: (idea: Idea) => Layer | null;
   /** The singer: off, or which voice (the high one sings an octave up). */
   vocal?: 'off' | 'low' | 'high' | 'auto';
+  /** The backing singer: off, or which voice (Auto: a second singer around the lead). Ad-libs are the lead's. */
+  backing?: 'off' | 'low' | 'high' | 'auto';
 }
 
 const vel = (v: number) => Math.max(0.05, Math.min(1, v));
@@ -186,8 +189,8 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
           midi.header.meta.push({ type: 'lyrics', text: n.syl.wordStart || n === idea.vocal![0] ? n.syl.text : `-${n.syl.text}`, ticks: Math.round(at(g)) });
         }
         for (const n of idea.backing ?? []) {
-          if (n.step !== g) continue;
-          const voice = o.vocal === 'low' || o.vocal === 'high' ? o.vocal : idea.vocalVoice ?? 'low';
+          if (n.step !== g || (n.role !== 'adlib' && o.backing === 'off')) continue;
+          const voice = n.role === 'adlib' ? (o.vocal === 'low' || o.vocal === 'high' ? o.vocal : idea.vocalVoice ?? 'low') : backingVoice(idea, o.vocal ?? 'auto', o.backing ?? 'auto');
           note(backing, n.midi + (voice === 'high' ? 12 : 0), at(g), Math.max(10, at(n.step + n.len) - at(g) - 10), n.vel * 0.85);
         }
       }
