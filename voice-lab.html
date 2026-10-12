@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voice lab</title>
+  <style>
+    :root { --bg: #f6f5f2; --card: #fff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e0da; --accent: #e8623a; --chip: #f0eee9; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #141416; --card: #1e1e21; --ink: #f2f2f3; --muted: #9a9aa0; --line: #2e2e33; --accent: #f07a52; --chip: #29292d; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .lead { color: var(--muted); margin: 0 0 18px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+    select, button { font: inherit; color: var(--ink); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+    button { cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .pitch { display: flex; align-items: center; gap: 10px; }
+    .pitch .note { font-size: 34px; font-weight: 700; min-width: 86px; text-align: center; font-variant-numeric: tabular-nums; }
+    .pitch button { width: 44px; height: 44px; font-size: 22px; padding: 0; }
+    input[type=range] { width: 100%; accent-color: var(--accent); }
+    .hint { font-size: 13px; color: var(--muted); }
+    .slider { display: grid; grid-template-columns: 70px 1fr 48px; align-items: center; gap: 10px; margin: 6px 0; }
+    .slider span:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+    .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 8px 0 2px; background: var(--chip); }
+    .bar i { display: block; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+    .chip button { padding: 0 6px; border: 0; background: transparent; color: var(--muted); font-size: 15px; }
+    .chip .go { padding: 0; color: var(--ink); font-size: 13px; }
+    textarea { width: 100%; min-height: 90px; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--chip); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+    @media (max-width: 560px) { .two { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Voice lab</h1>
+    <p class="lead">Pick a pitch, mix the three registers, listen. Save a mix at a few pitches, then play a scale or the phrase to hear the voice move between your mixes. Copy the settings and paste them to Claude.</p>
+
+    <section class="card">
+      <h2>Voice</h2>
+      <div class="row">
+        <label class="f">Starting voice <select id="voice"></select></label>
+        <label class="f">Way up (high register) <select id="up">
+          <option value="belt">Power belt</option><option value="scream">Scream</option>
+          <option value="squeal">Squeal</option><option value="falsetto">Falsetto</option></select></label>
+        <label class="f">Vowel <select id="vowel">
+          <option value="AA">ah</option><option value="AH">uh</option><option value="EH">eh</option><option value="AE">a (cat)</option>
+          <option value="IY">ee</option><option value="OW">oh</option><option value="UW">oo</option></select></label>
+        <label class="f">How hard <select id="effort">
+          <option value="0.75">Soft</option><option value="0.85" selected>Normal</option><option value="0.9">Pushed</option><option value="0.95">Belted</option></select></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Pitch</h2>
+      <div class="pitch">
+        <button id="down" aria-label="One note lower">−</button>
+        <div class="note" id="note">E3</div>
+        <button id="upBtn" aria-label="One note higher">+</button>
+        <div style="flex:1"><input id="pitch" type="range" min="40" max="76" step="1" value="52" aria-label="Pitch" />
+          <div class="hint" id="brkHint"></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Registers at this pitch</h2>
+      <div class="slider"><span>Deep</span><input id="rD" type="range" min="0" max="100" value="50" /><span id="vD"></span></div>
+      <div class="slider"><span>Mid</span><input id="rM" type="range" min="0" max="100" value="50" /><span id="vM"></span></div>
+      <div class="slider"><span>High</span><input id="rH" type="range" min="0" max="100" value="0" /><span id="vH"></span></div>
+      <div class="bar" id="bar"><i id="bD" style="background:#5a6fd8"></i><i id="bM" style="background:#58b28b"></i><i id="bH" style="background:var(--accent)"></i></div>
+      <div class="hint">Shares are the sliders against each other (all at 50 = a third each). Blue: deep, green: mid, orange: high.</div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="play">▶ Play note</button>
+        <button id="auto">Set to Auto for this pitch</button>
+        <button id="save">Save mix at this pitch</button>
+        <span class="hint">Solo:</span><button id="soloD">Deep</button><button id="soloM">Mid</button><button id="soloH">High</button>
+        <label class="hint"><input type="checkbox" id="live" checked /> Play when I change something</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Saved mixes</h2>
+      <div class="chips" id="points"><span class="hint">None yet. Without saved mixes, scales and the phrase use Auto.</span></div>
+      <div class="row" style="margin-top:10px">
+        <button id="scale">▶ Play scale</button>
+        <button id="phrase">▶ Play phrase</button>
+        <button id="clear">Clear saved</button>
+      </div>
+      <div class="hint" style="margin-top:6px">The scale climbs one note at a time across your saved pitches (or a little below and above this pitch). The phrase is the low line, the climb and the wail from the clips.</div>
+    </section>
+
+    <section class="card">
+      <h2>Character</h2>
+      <div class="two">
+        <div class="slider"><span>Grit</span><input id="grit" type="range" min="0" max="100" /><span id="vgrit"></span></div>
+        <div class="slider"><span>Breath</span><input id="breath" type="range" min="0" max="100" /><span id="vbreath"></span></div>
+        <div class="slider"><span>Drive</span><input id="drive" type="range" min="0" max="100" /><span id="vdrive"></span></div>
+        <div class="slider"><span>Vibrato</span><input id="vib" type="range" min="0" max="100" /><span id="vvib"></span></div>
+        <div class="slider"><span>Edge</span><input id="edge" type="range" min="0" max="100" /><span id="vedge"></span></div>
+        <div class="slider"><span>Ring</span><input id="ring" type="range" min="0" max="100" /><span id="vring"></span></div>
+      </div>
+      <div class="hint" style="margin-top:6px">Edge: the folds close faster, bringing up the 1.5-4 kHz range (try it when "ah" or "oh" sounds hollow; "eh" and "ee" need less). Ring: the upper resonances drawn together around 3 kHz.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Settings to send</h2>
+      <textarea id="out" readonly></textarea>
+      <div class="row" style="margin-top:8px"><button id="copy">Copy settings</button><span class="hint" id="copied"></span></div>
+    </section>
+  </main>
+  <script type="module" src="/src/lab/voiceLab.ts"></script>
+</body>
+</html>

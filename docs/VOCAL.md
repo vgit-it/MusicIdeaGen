@@ -92,6 +92,15 @@ Paul: ad-libs and harmonies next; vocals off by default.
   each with its own take; all in the vocal stem. MIDI: a "Backing vocals" track (Choir Aahs). Lanes: a
   Backs lane (h harmony, g gang, o ooh, a ad-lib). ✓
 - The singer is off until you turn it on (Parts: Vocal (demo)); a link remembers it when it's on. ✓
+- A second singer and their own part (2026-10-12; Paul: the backing vocals were very loud; a different
+  voice, a separate track, lower). Harmonies, the gang and oohs are sung by a backing singer: another
+  person (a different vocal tract, breathier, less vibrato, thinner and softer up top) on their own
+  mixer strip ("Backing vocals": Auto, Low voice, High voice, Off; volume, mute, solo), with more reverb
+  and echo, so they sit behind the lead. Auto: the other voice an octave apart in pop, funk and rock (a
+  low lead gets high backing voices), the same register in the heavier genres (low harmonies under the
+  lead). The lead's double and ad-libs stay with the lead. Measured on a last chorus: backing about
+  10-14 dB under the lead (before: about 5). Own stem (backing-vocals), the MIDI backing track in their
+  voice, the choice kept in links. ✓
 
 ## 6. How the tunes are written, by mood and genre (`src/parts/melody.ts`, 2026-10-12)
 Paul: research how vocal melodies are written; build a system that writes them by mood and genre, with
@@ -163,7 +172,109 @@ song lets go; the tune stays recognisable (word for word, same shape). Built (`f
 - Every note louder (and so brighter) with its bar's tension. ✓
 - The notes say it: "Vocal follows the tension: reaching up (notes moved 5 up, a turn)". ✓
 
-## 7. The singer listens to the band (`src/parts/fit.ts`, 2026-10-12)
+## 7. The singers: phrasing, runs and wails (`src/parts/singers.ts`, 2026-10-12)
+Paul: the phrasing and melodies sound very similar across songs; mostly short phrases of a few
+syllables; it needs more range and vocal runs, the kind of phrasing you hear from Axl Rose (Sweet Child
+o' Mine), Eddie Vedder (Black), Chris Cornell (Audioslave), Layne Staley (Alice in Chains), and the like
+in other genres. Not impressions: kinds of singers.
+
+What made songs alike: every line was two bars (a bar of words, a held note, a breath), the same
+rhythm cells, runs of at most three notes, the top note around E4. Measured over 42 songs before:
+95% of lines 1.5-2 bars, no run of 3+ notes on one vowel, range about 15 semitones.
+
+- [P] Phrase length is a singer's signature: the short-short-long "sentence" (a short line, said
+  again, then a long answer: Sweet Child's chorus), four bars on one breath (wordy verses tumbling down,
+  or a few words stretched long, Black's verses), one-bar chants in call and answer (funk, nu-metal).
+  Built: each song gets a singer with phrase plans per section ("1124", "44", "2222", "1111", "224"...);
+  lines of one to four bars; a long line travels further (wider contour) and catches a quick breath
+  halfway; one-bar lines pair up as call and answer. ✓
+- [P] Words per beat and where they fall: patter of 16ths (storytellers), syncopated pushes on the "a"
+  of the beat (pop, funk), one word drawn out over two beats (drawlers, brooders). ✓
+- [P] Held notes through the bar line: a long one lands on beat 3 or 4 and holds into the next bar (a
+  bar and a half), the wail. ✓
+- [P] Runs (melisma) on one vowel, 3-7 notes: down into a note from above (the rock cascade), a blues
+  fall (minor pentatonic with the flat 5th), up into it, an R&B wave, or a held note running down off its
+  end (the grunge tail). 16ths, or 8ths when 16ths would be too quick; never out of the singer's reach,
+  never more than an octave above the note before. ✓
+- [P] Wails: a chorus or bridge line peaking on a high held note near the top of the singer's range,
+  sung full out (brighter, louder), no more than an octave over the note before it; the climax's last
+  held note can go higher still (up to C5 for a wailer). The lead guitar no longer cuts them short. ✓
+- [P] Delivery: scoops up into held notes (a semitone to a fourth below; more on wails: Staley and
+  Vedder), falls off line ends (2-7 semitones, fading). In the voice: per-note slides and falls, quicker
+  glides between the quick notes of a run, diphthongs gliding only on a run's last note. ✓
+
+| Singer | Lines | Words | Held notes | Runs | Wails | Delivery | Mostly in |
+|---|---|---|---|---|---|---|---|
+| Wailer | 1124, 44, 224 | medium | long, through the bar | cascades, blues falls, tails | often, high | some slides | hard rock, metal, grunge, rock |
+| Storyteller | 44 verses, 1124 choruses | wordy patter, tumbling down | short-mid | some | some | plain | rock, hard rock |
+| Low drawl | 44, 2222 | few, stretched, off the beat | long, mid-line too | tails, waves | some | slides, falls | grunge, rock |
+| Brooder | 2222, 44 | few, held | long, through the chords | a few | sudden | lots of slides | grunge, alt metal |
+| Pop voice | 1124, 1111 | syncopated hooks | mid | waves, cascades | some | clean | pop, funk |
+| Chanter | 1111 | busy, syncopated, near one note | short | none | rare | punchy | funk, alt metal |
+| Crooner | 44, 2222 | few, legato | mid-long | waves, cascades | gentle | some slides | pop, ballads |
+| Shouter | 1111, 2222, 1124 | short, hard | screams on the peaks | rare | often | falls | metal, hard rock |
+
+- Moods lean who sings (melancholic: drawl, crooner, brooder; angry: shouter, chanter; dark: brooder;
+  triumphant: wailer; happy: pop voice, storyteller). The singer is in the notes ("Singer: a wailer...").
+  The Vocal reroll can bring a different singer.
+- Measured after, over 70 songs: lines of 1 bar 50%, 2 bars 31%, 3-4 bars 18%; about 200 runs of 3+
+  notes; about 270 wails; range about 19 semitones; every song's verse and chorus phrasing different.
+
+### Voices: a voice per genre (2026-10-12)
+Paul: a raspier voice for some singers, deep ones too; keep the first voice as an option. Worked out
+with him by ear over a day of clips and then a voice lab (the whole path: docs/VOICES.md). The lead
+singer's voice is a choice next to the Vocal part: Auto (the song's genre's voice), Clear (the first
+voice, unchanged), or any genre's voice; kept in links and exports. The backing singer stays clear.
+
+- Each genre's voice (`src/audio/voices.ts`) is a recipe on the voice box (`src/audio/voicebox.ts`, the
+  LF model of the vocal folds), rendered at 44.1 kHz: a rock singer, not an opera singer (the larynx
+  not lowered, vowels as spoken, little and uneven vibrato), relaxed, breathy all through, edge on the
+  open vowels, a softer "s"; three registers (deep, mid, high) sounding together, mixed by pitch,
+  vowel and loudness (Paul's own mixes); a break and a way up past it (Rock, Metal, Grunge: a power
+  belt; Hard rock: a squeal; Alt metal: a scream; Pop, Funk: falsetto); grit, breath and drive
+  growing on the loud notes; tunes written lower than the clear voice's (2 to 8 semitones: Metal the
+  highest, Grunge the lowest).
+- The earlier Raspy and Deep (on klatt-syn, then on the voice box) are gone from the app; the first is
+  kept in git (tag `voices-v1-klatt`).
+- Measured over songs in every genre: no glitches or clipping; levels within about 1 dB of the clear
+  voice through the mixer; about 10 ms of rendering per second sung (rock) on a desktop (the clear
+  voice: about 4), in the background ahead of playback.
+
+### The FOF singer (2026-10-13)
+Paul: "the voice is not working, let's build it up from scratch". The options weighed: an AI singer,
+recorded syllables, a vocal tract model, measured real singing, and, from the research on building a
+voice by rule, IRCAM's CHANT (FOF: formant wave functions, Rodet 1984). FOF won the first head-to-head
+by ear and is now every genre's voice (`src/audio/fof.ts`; tried in the FOF lab, `npm run fof-lab`).
+- Each pulse of the vocal folds starts one short decaying burst per formant, already at the vowel's
+  pitch, width and level, plus a low glottal one for the body; nothing rings on from sound to sound
+  (the filters of the old voices were the suspect for their "underwater" sound). Breath and
+  consonants are shaped noise.
+- Registers blended by pitch around the singer's break (chest, fuller at the bottom; belt, scream,
+  squeal or falsetto above); edge (Paul's, toned down); a level the singer's ear keeps steady.
+- A real voice's unevenness, measured to stay as clean as a singer (harmonics 13-21 dB over the noise).
+- Pitch from note to note as a spring settles (Saitou et al.'s model, damped more), bends in the same
+  line, smooth; phrase-level loudness arcs.
+- Wider formants and a warmer balance than the first trial (Paul: less ringing, less treble, more bass).
+- About 17 ms of rendering per second sung in the browser, in the background ahead of playback. The
+  backing singer and the clear voice stay on the formant synth.
+
+### Western (English-language) singing only, for now (2026-10-13)
+Paul: the tunes and runs "sound very much like Chinese vocals"; he wants the melody styles and run
+techniques of Western (English-language) music only, and may add other traditions later. What made
+them sound East Asian, and what changed:
+- A major key's tune walked the major pentatonic alone (do-re-mi-so-la, stepped through): now the
+  whole major scale, half steps and all. Minor keys keep the minor pentatonic in verses (the blues-rock
+  singer's scale) and the mode elsewhere (`scaleFor`, `src/parts/melody.ts`).
+- Runs on a vowel: only the rock and soul ones (down into a note, the blues fall, a tail off a held
+  note), half as often; their scale the blues scale, or in major the major blues scale (the flat 3rd
+  slid through to the 3rd), never the plain major pentatonic (`runScale`; `src/parts/singers.ts`).
+- Fewer, smaller scoops; quick note-turns inside a syllable gone (`settle`, `src/parts/vocal.ts`); a
+  smaller rise and dip around every note (the voice, `src/audio/fof.ts`): a contour on every syllable
+  sounds like a tonal language.
+- More closed syllables in the words (English keeps many; "ly ni ry" all open sounds less like it).
+- Later: other traditions as a choice (a "singing style" per song), not mixed in by chance.
+
+## 8. The singer listens to the band (`src/parts/fit.ts`, 2026-10-12)
 Paul: the vocal sounds human but doesn't suit the band. Measured on 140 songs: the tune only knew the
 key and chords, never the bass, drums or guitars. Over borrowed chords (mood chords) it rubbed a semitone
 against the chord 21-46% of the time; 20-33% of held notes ran into a chord they didn't fit; it clashed
@@ -175,8 +286,9 @@ with the bass about 6% of the time. Built:
 - Each line written 6 times and the best fit kept: fewest clashes (chords, bass, riff), stressed
   syllables with the kick and snare, notes starting on chord changes, out of Guitar 2's range. ✓
 - Every section fitted to its own chords and bass (a verse with new chords no longer sings the old ones). ✓
-- Result: borrowed-chord rubs 21-46% → 0-9%; held notes ending off their chord 20-33% → 5-21% (the rest
-  colour notes, not clashes); bass clashes about 6% → 2%; the tunes' shape (steps, leaps, range) unchanged.
+- Result (first measured on the two-bar writer): borrowed-chord rubs 21-46% → 0-9%; held notes ending
+  off their chord 20-33% → 5-21% (the rest colour notes, not clashes); bass clashes about 6% → 2%; the
+  tunes' shape (steps, leaps, range) unchanged.
 - [P] Rhythm with the groove: off-beat notes scored by whether the band plays there (kick, snare,
   bass, strum, riff), so the singer's syncopations match the band's. Off-beat notes landing with the band
   43-80% → 48-84%. ✓
@@ -186,11 +298,17 @@ with the bass about 6% of the time. Built:
   words, in either voice's range, are left out (arpeggios, swells, chords and muted scratches stay).
   Guitar 2 notes over the words: about 50% → 22% (what's left: out of range, or ringing parts). ✓
 - [P] Tempo: fewer, longer notes over a fast band, more words over a slow one. ✓
+- Re-measured on top of the singers (section 7), 140 songs, before → after: borrowed-chord rubs 13-35% →
+  0-6% (funk 24%, its 7th and 9th chords); bass clashes 4-8% → 2-4%; held notes ending off their chord
+  8-35% → 3-21%; notes starting on chord changes 41-55% → 63-69%; Guitar 2 notes over the words 25-38%
+  → 22-35%; off-beat notes with the band about the same (61-93%, already good).
 - Checked, already fine: the singer rests through drum fills and stops (about 1% of notes overlap).
 - · Next: riff genres echoing the riff's rhythm and notes; density by section energy; Guitar 2 moving
   out of the singer's range rather than leaving notes out.
 
-## 8. Later
+## 9. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
+- · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the
+  beat (the drawl's lag).
 - · Fillers in the gaps of the lead line itself;
   screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).

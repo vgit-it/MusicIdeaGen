@@ -153,9 +153,11 @@ export function fitToBand(idea: Idea, lo: number, hi: number): { moved: number; 
     if (c - n.step < 2) { n.midi = to; out.moved++; continue; }
     // a slide on the same vowel into the new chord's note
     const tie: VocalNote = {
-      ...n, step: c, len: n.step + n.len - c, midi: to, start: false,
+      ...n, step: c, len: n.step + n.len - c, midi: to, start: false, slide: undefined,
       syl: { onset: [], vowel: n.syl.vowel, coda: n.syl.coda, stress: false, text: '~', wordStart: false },
     };
+    // (a fall off the end goes with the end)
+    n.fall = undefined;
     n.len = c - n.step;
     n.syl = { ...n.syl, coda: [] };
     v.splice(i + 1, 0, tie);

@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "samples": "node scripts/prepare-samples.mjs",
-    "tuning": "node scripts/measure-tuning.mjs"
+    "tuning": "node scripts/measure-tuning.mjs",
+    "fof-lab": "rolldown scripts/fof-lab.ts --platform node --format esm -o node_modules/.cache/fof-lab.mjs && node node_modules/.cache/fof-lab.mjs",
+    "flow-lab": "rolldown scripts/flow-lab.ts --platform node --format esm -o node_modules/.cache/flow-lab.mjs && node node_modules/.cache/flow-lab.mjs",
+    "voice-lab": "rolldown scripts/voice-lab.ts --platform node --format esm -o node_modules/.cache/voice-lab.mjs && node node_modules/.cache/voice-lab.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
