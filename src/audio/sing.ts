@@ -22,9 +22,9 @@ import { type VoiceFrame, VoiceBox } from './voicebox';
 export const SING_RATE = 22050;
 const FRAME = 0.004;
 
-type F3 = [number, number, number];
+export type F3 = [number, number, number];
 /** Sung vowel formants (F1-F3, low voice; front vowels' F2 a little darker than speech). [vowel, glide target] */
-const VOWELS: Record<Vowel, [F3, F3?]> = {
+export const VOWELS: Record<Vowel, [F3, F3?]> = {
   IY: [[280, 2100, 2900]], IH: [[400, 1850, 2550]], EY: [[470, 1950, 2600], [400, 1850, 2550]], EH: [[540, 1720, 2500]],
   AE: [[650, 1650, 2450]], AA: [[700, 1100, 2550]], AO: [[580, 880, 2500]], OW: [[490, 920, 2450], [450, 1050, 2350]],
   UH: [[450, 1050, 2350]], UW: [[330, 880, 2300]], AH: [[620, 1200, 2500]], AX: [[500, 1400, 2500]],
@@ -32,8 +32,8 @@ const VOWELS: Record<Vowel, [F3, F3?]> = {
 };
 
 type Kind = 'stop' | 'fric' | 'nasal' | 'liquid' | 'h' | 'affric';
-interface ConsSpec { kind: Kind; voiced: boolean; f: F3; /** stop/fricative noise shape */ shape?: 'lab' | 'alv' | 'vel' | 's' | 'sh' | 'flat'; anti?: number; dur: number }
-const CONS: Record<Cons, ConsSpec> = {
+export interface ConsSpec { kind: Kind; voiced: boolean; f: F3; /** stop/fricative noise shape */ shape?: 'lab' | 'alv' | 'vel' | 's' | 'sh' | 'flat'; anti?: number; dur: number }
+export const CONS: Record<Cons, ConsSpec> = {
   P: { kind: 'stop', voiced: false, f: [250, 900, 2300], shape: 'lab', dur: 0.075 }, B: { kind: 'stop', voiced: true, f: [250, 900, 2300], shape: 'lab', dur: 0.06 },
   T: { kind: 'stop', voiced: false, f: [280, 1750, 2700], shape: 'alv', dur: 0.075 }, D: { kind: 'stop', voiced: true, f: [280, 1750, 2700], shape: 'alv', dur: 0.06 },
   K: { kind: 'stop', voiced: false, f: [300, 1900, 2400], shape: 'vel', dur: 0.08 }, G: { kind: 'stop', voiced: true, f: [300, 1900, 2400], shape: 'vel', dur: 0.065 },
@@ -65,6 +65,31 @@ export interface VoiceShape {
   person?: { tract: number; breath: number; vibrato: number };
   /** The voice's recipe (voices.ts; the voice lab tries them out); left out: the clear voice. */
   recipe?: VoiceRecipe;
+  /** How the syllables join (left out: as written, each note starting and stopping on its own). */
+  flow?: Flow;
+}
+
+/**
+ * How sung syllables join, as a language is spoken or sung (Paul: "a lot of unnatural start-stops"):
+ * legato (flowing: the vowel carries on into the next syllable), words (flowing within a word, a short
+ * lift between words, a catch in the throat on a word starting with a vowel), phrases (flowing, the
+ * words told apart by a small dip in level instead of a stop). In all three the voice fades in and out
+ * instead of switching, its loudness follows one line across the notes, and consonants are shorter.
+ */
+export type Flow = 'legato' | 'words' | 'phrases';
+
+/**
+ * The notes as joined: short gaps (under a quarter second) filled so the vowel runs into the next
+ * syllable, or (words) a lift of about 60 ms kept before each new word. Longer gaps are rests: kept.
+ */
+export function joinNotes(notes: SungNote[], flow: Flow): SungNote[] {
+  return notes.map((n, i) => {
+    const nx = notes[i + 1];
+    if (!nx || nx.t - n.end >= 0.25) return n;
+    const newWord = nx.syl.wordStart && nx.syl.text !== '~';
+    if (flow === 'words' && newWord) return { ...n, end: Math.max(n.t + 0.6 * (nx.t - n.t), Math.min(n.end, nx.t - 0.06)) };
+    return { ...n, end: nx.t };
+  });
 }
 
 /** A voice: how it's made, aspect by aspect (each left out: as the clear voice). */
@@ -141,6 +166,8 @@ export interface VoiceRecipe {
   regMix?: 'grunge' | 'rock';
   /** How far a chest or belt vowel opens on higher notes (x, default 1; less: less of a small, cartoon voice). */
   open?: number;
+  /** The vocal folds' slow natural flutter (x Klatt's own, about 1.5% at 5-13 Hz; 0: none). */
+  flutter?: number;
   /** Their break (MIDI), if not the person's own. */
   brk?: number;
   /** No nasal resonance anywhere (m, n, ng by the mouth alone). */
@@ -184,7 +211,7 @@ const PERSON: Person = { formants: 1, f45: 1, brk: 65, chest: [1.4, 0.85], belt:
  * otherwise empty ("ah" sounded hollow to Paul; edge fixed it), half on the front ones, which have a
  * resonance up there already (edge brought them up much more: harsh).
  */
-const EDGE_VOWEL: Record<Vowel, number> = {
+export const EDGE_VOWEL: Record<Vowel, number> = {
   AA: 1, AO: 1, AW: 1, AY: 0.9, OY: 0.9, OW: 1, UH: 0.9, UW: 0.9, AH: 0.9, AX: 0.8, AE: 0.7, EH: 0.5, EY: 0.5, IH: 0.5, IY: 0.45,
 };
 
@@ -266,14 +293,14 @@ function seededRnd(seed: number) {
 }
 
 /** A segment of the line's timeline: a consonant, or a vowel (with an optional glide target at its end). */
-interface Seg { t0: number; t1: number; cons?: ConsSpec; vowel?: [F3, F3?]; next?: F3; midi: number; vel: number }
+export interface Seg { t0: number; t1: number; cons?: ConsSpec; vowel?: [F3, F3?]; next?: F3; midi: number; vel: number }
 
 const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
 const lerp = (a: number, b: number, x: number) => a + (b - a) * Math.max(0, Math.min(1, x));
 const lerp3 = (a: F3, b: F3, x: number): F3 => [lerp(a[0], b[0], x), lerp(a[1], b[1], x), lerp(a[2], b[2], x)];
 
 /** Lay the line out as segments: onset consonants before each note's vowel, codas at its end. */
-function layout(notes: SungNote[]): Seg[] {
+export function layout(notes: SungNote[], cScale = 1): Seg[] {
   const segs: Seg[] = [];
   notes.forEach((n, i) => {
     const room = Math.max(0.03, Math.min(0.2, (n.t - (i > 0 ? notes[i - 1].t : n.t - 0.4)) * 0.45));
@@ -281,14 +308,14 @@ function layout(notes: SungNote[]): Seg[] {
     const vow: [F3, F3?] = notes[i + 1]?.syl.text === '~' ? [VOWELS[n.syl.vowel][0]] : VOWELS[n.syl.vowel];
     const firstF = vow[0];
     // onset consonants before the beat (shrunk to fit the room the last note leaves)
-    const on = n.syl.onset.map((c) => CONS[c]);
+    const on = n.syl.onset.map((c) => ({ ...CONS[c], dur: CONS[c].dur * cScale }));
     const want = on.reduce((a, c) => a + c.dur, 0);
     const k = want > room ? room / want : 1;
     let t = n.t - want * k;
     for (const c of on) { segs.push({ t0: t, t1: t + c.dur * k, cons: c, next: firstF, midi: n.midi, vel: n.vel }); t += c.dur * k; }
     // the vowel, then the coda at the note's end (no longer than 40% of the note)
     const len = n.end - n.t;
-    const coda = n.syl.coda.map((c) => CONS[c]);
+    const coda = n.syl.coda.map((c) => ({ ...CONS[c], dur: CONS[c].dur * cScale }));
     const cw = coda.reduce((a, c) => a + c.dur * 0.8, 0);
     const kc = cw > len * 0.4 ? (len * 0.4) / cw : 1;
     const vEnd = n.end - cw * kc;
@@ -328,7 +355,10 @@ function noiseShape(fr: FrameParms, shape: NonNullable<ConsSpec['shape']>, vowel
  * (where its onset consonants and a breath go); the buffer's time 0 is `pre` before notes' time 0.
  */
 export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): Float32Array {
-  const segs = layout(notes.map((n) => ({ ...n, t: n.t + pre, end: n.end + pre })));
+  const flow = voice.flow;
+  // (joined: the gaps filled, the consonants shorter, as a singer joins syllables)
+  if (flow) notes = joinNotes(notes, flow);
+  const segs = layout(notes.map((n) => ({ ...n, t: n.t + pre, end: n.end + pre })), flow === 'words' ? 0.85 : flow ? 0.7 : 1);
   const endT = segs[segs.length - 1].t1 + 0.25;
   // (the raspy and deep voices: a person on the voice box; clear: klatt-syn's pulse, as it was)
   const rc = voice.recipe ?? {};
@@ -364,12 +394,15 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
   const vowelNotes = notes.map((n) => ({ ...n, t: n.t + pre, end: n.end + pre }));
   let si = 0;
   let lastF: F3 = scale(segs[0].next ?? [500, 1500, 2500]);
+  // (joined: the voicing level now, easing in and out; the loudness now, following one line)
+  let vNow = -60, ampNow: number | null = null;
   for (let fi = 0; fi < nFrames; fi++) {
     const t = fi * FRAME;
     while (si + 1 < segs.length && segs[si + 1].t0 <= t) { lastF = currentF(segs[si], segs[si].t1); si++; }
     const s = segs[si];
     const fr: FrameParms = P ? ({ ...blankFrame(), rd: 1, jitter: 0.003, shimmer: 0.02, sub: 0, harsh: 0 } as VoiceFrame)
       : gen instanceof VoiceBox ? ({ ...blankFrame(), rd: 1, jitter: 0, shimmer: 0, sub: 0, harsh: 0 } as VoiceFrame) : blankFrame();
+    if (rc.flutter !== undefined) fr.flutterLevel = 0.25 * rc.flutter;
     // pitch: the note sounding (or about to), a glide over the change, vibrato on long notes
     let ni = 0;
     for (let k = 0; k < vowelNotes.length; k++) if (vowelNotes[k].t - 0.03 <= t) ni = k;
@@ -413,6 +446,10 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     fr.tiltDb = lerp(9, 2, note.vel);
     fr.breathinessDb = lerp(-22, -32, note.vel) + (voice.person?.breath ?? 0);
     const F = currentF(s, t);
+    // (the voice-box voices shape their vowels by the note's own pitch, not the pitch of this moment: a
+    // mouth holds its vowel while the pitch wobbles, slides and falls; tied to the moment's pitch, the
+    // vowel wah-ed with every glide and vibrato, "underwater")
+    const vf0 = P ? mtof(note.midi + (voice.high ? 12 : 0)) : fr.f0;
     const labRing = rc.ring ?? 0;
     // (the recipe's spoken vowels: the mouth more open, front vowels brighter)
     if (rc.speech && s.vowel) {
@@ -481,7 +518,7 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
         // each register's share by the pitch: deep below, mid through the middle, high at the top
         let [d0, m0, h0] = autoRegisters(rc.regMix ?? 'grunge', x, note.syl.vowel, note.vel);
         if (rc.regPoints?.length) [d0, m0, h0] = regAt(rc.regPoints, note.midi + (voice.high ? 12 : 0));
-        const sum = d0 + h0 + m0 || 1, f0 = fr.f0;
+        const sum = d0 + h0 + m0 || 1, f0 = vf0;
         // (a vowel opens on higher notes so F1 sits above the note, never on it: no hoot)
         const opened = (v: F3, k: number, cap: number): F3 => { const o: F3 = [...v]; if (o[0] < k * f0) o[0] = Math.min(k * f0, cap); o[1] = Math.max(o[1], o[0] + 250); return o; };
         // (the source's roughness, fry and scream, the same for every register)
@@ -514,14 +551,14 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       // drops F1 and F2 a little (Henrich et al.)
       const op = rc.open ?? 1;
       if (belt > 0) {
-        F[0] = lerp(F[0], Math.max(F[0], Math.min(1.9 * fr.f0, 1150)), belt * 0.85 * (1 - 0.6 * dp) * op);
+        F[0] = lerp(F[0], Math.max(F[0], Math.min(1.9 * vf0, 1150)), belt * 0.85 * (1 - 0.6 * dp) * op);
         for (let k = 0; k < 3; k++) F[k] *= 1 + (0.04 - 0.06 * dp) * belt * op;
       }
       if (!three) F[0] -= 65 * headW;
       // (in chest and mixed voice the vowel's F1 never sits on the note itself: that makes a hoot,
       // falsetto-like, the fundamental alone; it opens toward the 2nd harmonic as chest and belt singers
       // do, so the note has its lows and highs together; head voice and falsetto keep F1 on the note)
-      if (!three && F[0] < 1.6 * fr.f0) F[0] = lerp(F[0], Math.min(lerp(1.05, 1.9, op) * fr.f0, 1150), 1 - headW);
+      if (!three && F[0] < 1.6 * vf0) F[0] = lerp(F[0], Math.min(lerp(1.05, 1.9, op) * vf0, 1150), 1 - headW);
       if (!three) F[1] = Math.max(F[1] - 90 * headW, F[0] + 250);
       // (a squeal: the larynx high and the throat narrowed, a bright twang; falsetto airy and darker)
       if (three) { /* (the registers carry their own vowels) */ } else if (hs === 'squeal') {
@@ -535,8 +572,8 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       }
     }
     // F1 never under the pitch (it would go silent), F2 clear of it too
-    F[0] = Math.max(F[0], fr.f0 * 1.05);
-    if (F[1] < fr.f0 * 1.9) F[1] = fr.f0 * 1.9;
+    F[0] = Math.max(F[0], vf0 * 1.05);
+    if (F[1] < vf0 * 1.9) F[1] = vf0 * 1.9;
     fr.oralFormantFreq = [F[0], F[1], F[2], F45[0], F45[1], F45[2]];
     // (a belt's "twang": the 3rd and 4th formants sharper and closer together, a ring around 3 kHz)
     if (belt > 0) {
@@ -559,13 +596,13 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     }
     // (the recipe's mixed registers: the chest voice's natural vowel as a second register)
     if (chestShare > 0 && !three && s.vowel && gen instanceof VoiceBox) {
-      const n0 = Math.max(Fnat[0], fr.f0 * 1.05), n1 = Math.max(Fnat[1], n0 + 250, fr.f0 * 1.9);
+      const n0 = Math.max(Fnat[0], vf0 * 1.05), n1 = Math.max(Fnat[1], n0 + 250, vf0 * 1.9);
       (fr as VoiceFrame).layers = [{ w: chestShare, rd: chestRdNow, tilt: fr.tiltDb, formants: [n0, n1, Fnat[2], ...fr.oralFormantFreq.slice(3)], bws: [...fr.oralFormantBw] }];
     }
     // (the recipe's three registers: deep and high as layers, the mid one the frame's own)
     if (three && s.vowel && gen instanceof VoiceBox) {
       const up = fr.oralFormantFreq.slice(3);
-      const floor = (v: F3): F3 => { const a = Math.max(v[0], fr.f0 * 1.05); return [a, Math.max(v[1], a + 250, fr.f0 * 1.9), v[2]]; };
+      const floor = (v: F3): F3 => { const a = Math.max(v[0], vf0 * 1.05); return [a, Math.max(v[1], a + 250, vf0 * 1.9), v[2]]; };
       const hi = floor(three.high), tw = three.twang;
       (fr as VoiceFrame).layers = [
         { w: three.wD, rd: three.deepRd, tilt: fr.tiltDb + 2, formants: [...floor(three.deep), ...up.map((f, k) => f * (k < 3 ? 0.95 : 1))], bws: [...fr.oralFormantBw] },
@@ -600,7 +637,14 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       vf.harsh = Math.max(vf.harsh, 0.5 * g);
       if (s.vowel) fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, lerp(-8, 0, note.vel) - 34 + 12 * g);
     }
-    const amp = lerp(-8, 0, note.vel) - (note.fall ? 9 * fx : 0) - 6 * fry;
+    let amp = lerp(-8, 0, note.vel) - (note.fall ? 9 * fx : 0) - 6 * fry;
+    if (flow) {
+      // (the loudness glides from note to note, not in steps)
+      ampNow = ampNow === null ? amp : ampNow + (amp - ampNow) * 0.12;
+      amp = ampNow;
+      // (phrases: each new word marked by a small dip, about 6 dB over 90 ms, instead of a stop)
+      if (flow === 'phrases' && ni > 0 && note.syl.wordStart && note.syl.text !== '~') amp -= 6 * Math.max(0, 1 - Math.abs(t - (note.t - 0.01)) / 0.045);
+    }
     if (t < s.t0) fr.cascadeVoicingDb = -99;
     else if (s.vowel && t <= s.t1) {
       fr.cascadeVoicingDb = amp;
@@ -612,7 +656,20 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
         fr.cascadeAspirationMod = 0.7;
       }
     } else if (s.cons && t <= s.t1) {
+      const tractF = fr.oralFormantFreq, tractBw = fr.oralFormantBw;
       consonant(fr, s, t, amp, voice.high);
+      // (on the voice box, a consonant's hiss gets its own formants: the vocal tract's stay as they were)
+      if (gen instanceof VoiceBox && fr.parallelEnabled) {
+        const vf = fr as VoiceFrame;
+        // (a hiss swells in over its first third and tapers off at its end, as a real "s" or "f" does:
+        // switched on at nearly full strength, it crackled)
+        if (s.cons.kind === 'fric' || s.cons.kind === 'affric') {
+          const x = (t - s.t0) / Math.max(0.005, s.t1 - s.t0);
+          fr.fricationDb += lerp(-18, 0, x / 0.33) + lerp(0, -12, (x - 0.75) / 0.25);
+        }
+        vf.parFormants = fr.oralFormantFreq; vf.parBws = fr.oralFormantBw;
+        fr.oralFormantFreq = tractF; fr.oralFormantBw = tractBw;
+      }
       // (on the voice box, a voiceless consonant's hiss isn't chopped by the vocal folds' cycles: it crackles)
       if (gen instanceof VoiceBox && !s.cons.voiced) { fr.fricationMod = 0; fr.parallelAspirationMod = 0; fr.cascadeAspirationMod = 0; }
       if (rc.ess && (s.cons.shape === 's' || s.cons.shape === 'sh')) fr.fricationDb += rc.ess;
@@ -621,7 +678,6 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       // silence after the line (the last vowel's ring decays in the filters)
       fr.cascadeVoicingDb = -99;
     }
-    // the very start of the line: a soft attack
     // the recipe's breathiness: air on every vowel, with the folds' pulses
     if (rc.airy && s.vowel && t >= s.t0 && t <= s.t1) {
       // (less air in a belt: the folds close firmly)
@@ -630,8 +686,26 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, fr.cascadeVoicingDb + rc.airy - 8 * belt + 14 * harder);
       fr.cascadeAspirationMod = 0.5;
     }
+    // the very start of the line: a soft attack
     const att = rc.attack ?? 0.03;
     if (t < firstVowelT + att && s.vowel) fr.cascadeVoicingDb += lerp(-18, 0, (t - firstVowelT + 0.0) / att);
+    if (flow) {
+      // joined: the voice fades in (about 20 ms) and out (about 50 ms) instead of switching; a consonant
+      // keeps its own quick shape (a burst starts at once, a closure shuts within about 25 ms)
+      const want = Math.max(-60, fr.cascadeVoicingDb);
+      const inCons = !!s.cons && t >= s.t0 && t <= s.t1;
+      // (words: a word starting on a vowel starts with a catch in the throat, quicker)
+      const catchNow = flow === 'words' && s.vowel && ni > 0 && !note.syl.onset.length && note.syl.wordStart && note.syl.text !== '~' && t >= note.t && t < note.t + 0.035;
+      if (catchNow) {
+        vNow = Math.max(vNow, want - 12);
+        if (gen instanceof VoiceBox) { const vf = fr as VoiceFrame; vf.harsh = Math.max(vf.harsh, 0.7); vf.sub = Math.max(vf.sub, 0.4); }
+      }
+      // (a voiceless one ("s", "f", "t") stops the voice within about 15 ms: voice left buzzing under the
+      // hiss crackled)
+      if (inCons) vNow = want < vNow ? Math.max(want, vNow - (s.cons!.voiced ? 7 : 16)) : want;
+      else vNow = want > vNow ? Math.min(want, vNow + 9) : Math.max(want, vNow - 4);
+      fr.cascadeVoicingDb = vNow <= -59 ? -99 : vNow;
+    }
     if (gen instanceof VoiceBox) gen.generateFrame(fr as VoiceFrame, buf);
     else gen.generateFrame(fr, buf);
     for (let k = 0; k < frameLen; k++) out[fi * frameLen + k] = buf[k];

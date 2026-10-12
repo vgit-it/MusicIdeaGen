@@ -254,15 +254,6 @@ export function melodyDesc(s: MelodyStyle): string {
   return `${bits.join(', ')}${s.twist ? `; twist: ${TWIST_DESC[s.twist]}` : ''}`;
 }
 
-/** Rhythm cells per beat group, by how busy (positions within the group, 16ths). */
-const CELLS: Record<number, number[][][]> = {
-  // [sparse, medium, busy]
-  4: [[[0], [0, 2], [2]], [[0, 2], [0, 2], [0, 3], [0, 1, 2], [2, 3]], [[0, 2, 3], [0, 1, 2], [0, 1, 2, 3], [0, 2]]],
-  3: [[[0], [0, 2]], [[0, 2], [0, 1, 2], [0]], [[0, 1, 2], [0, 2]]],
-  2: [[[0]], [[0], [0, 1]], [[0, 1]]],
-};
-const cellsFor = (g: number) => CELLS[g] ?? CELLS[g >= 4 ? 4 : g === 3 ? 3 : 2];
-
 /** What a block of the song sings like. */
 interface Plan { busy: number; span: number; toneStrong: number }
 const PLANS: Partial<Record<SectionKind, Plan>> = {
@@ -284,18 +275,36 @@ const GENRE_LEAN: Record<Genre, { busy: number; span: number; center: number }> 
   altmetal: { busy: 0.95, span: 1, center: 0 },
 };
 
-/** The notes the melody may use: verses pentatonic, choruses the mode with the pentatonic leaning. */
+/**
+ * The notes the melody may use, in the Western (English-language) way only for now (Paul: the tunes
+ * "sound very much like Chinese vocals"; other traditions maybe later, docs/VOCAL.md): a major key's
+ * tune walks the whole major scale, half steps and all (the major pentatonic alone, do-re-mi-so-la
+ * stepped through, is the sound of East Asian folk and pop); a minor one's verse keeps the minor
+ * pentatonic (the blues-rock singer's scale), its other sections the mode.
+ */
 function scaleFor(song: Song, kind: SectionKind): number[] {
   const minor = MINORISH.includes(song.mode);
-  const pent = minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9];
+  if (!minor) return [...SCALES[song.mode]];
+  const pent = [0, 3, 5, 7, 10];
   return kind === 'verse' ? pent : [...new Set([...pent, ...SCALES[song.mode]])].sort((a, b) => a - b);
 }
 
-/** Beats of 16ths: a wordy patter (tumbling lines, rapid verses). */
-const PATTER: Record<number, number[][]> = { 4: [[0, 1, 2, 3], [0, 1, 2], [0, 2, 3], [0, 1, 3]], 3: [[0, 1, 2]], 2: [[0, 1]] };
-/** Syncopated beats: a word on the "a" pushing over the next beat, only on the "and", a dotted figure. */
-const SYNC: Record<number, number[][]> = { 4: [[0, 3], [2, 3], [2], [0, 1, 3], [1, 2]], 3: [[0, 2], [1, 2]], 2: [[1]] };
-const pick16 = (t: Record<number, number[][]>, g: number) => t[g] ?? t[g >= 4 ? 4 : g === 3 ? 3 : 2];
+/**
+ * Where `k` light syllables go between two stresses `gap` 16ths apart (offsets from the first), as
+ * they're said: the stress held longest, the light ones bunched before the next stress (DUM . da-DUM).
+ * Never quicker than 8ths, and on the 8ths (Paul: quick syllables "on beat... at the 1/8th at most").
+ */
+function spoken(rng: Rng, gap: number, k: number): number[] {
+  if (k <= 0) return [];
+  const T: Record<number, [number[], number][][]> = {
+    4: [[], [[[2], 1]]],
+    6: [[], [[[4], 2], [[2], 1]], [[[2, 4], 1]]],
+    8: [[], [[[4], 2], [[6], 1.5], [[2], 0.5]], [[[4, 6], 2], [[2, 4], 0.7], [[2, 6], 0.5]], [[[2, 4, 6], 1]]],
+  };
+  if (T[gap]?.[k]) return rng.weighted(T[gap][k]);
+  // (other gaps: bunched before the next stress, an 8th apart)
+  return Array.from({ length: k }, (_, i) => gap - 2 * (k - i));
+}
 
 /** A line's rhythm: onsets (absolute steps) with stress, and where its last (held) note ends. */
 interface LineRhythm { onsets: { g: number; stress: boolean }[]; end: number }
@@ -307,12 +316,11 @@ interface PhraseOpts { busy: number; start: Start; sync: number; flow: number; s
  * A sung line's rhythm over one to four bars: words from the top (or a pickup, or after the beat) up to
  * the held note, then a breath. The held note lands in the last bar after a beat or two; a short one
  * lasts a beat; a long one lands in the bar before and is held through the bar line (a bar and a half:
- * the wail). Beats are filled by the singer's ways: plain cells by how busy, a patter of 16ths, a
- * syncopated push, or one word drawn out over two beats. A four-bar line catches a quick breath halfway.
+ * the wail). The words are set as spoken (stresses on beats, light syllables between them, see below),
+ * by the singer's ways: how busy, pushed, drawn out. A four-bar line catches a quick breath halfway.
  */
 function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
   const onsets: { g: number; stress: boolean }[] = [];
-  const level = (x: number) => Math.max(0, Math.min(2, Math.round(x + (rng.next() - 0.5) * 0.8)));
   const b1 = bars[0], bl = bars[bars.length - 1];
   const g1 = groupStarts(b1.groups), gl = groupStarts(bl.groups);
   const nl = bl.groups.length;
@@ -338,32 +346,55 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
   }
   // (rock's anticipation: the held note lands an 8th early)
   if (rng.chance(0.1 + o.sync * 0.5) && hold - 2 > b1.start + 2) hold -= 2;
-  // the words up to the held note, beat by beat
+  // the words up to the held note, set as English is spoken (Paul: the rhythm "like it's running on a
+  // drum beat", then "still weird and unnatural": every beat filled with a cell made even 8ths): the
+  // stressed syllables land on beats (nearly every strong beat, some weak ones, by how busy), now and
+  // then pushed an 8th early; between two stresses go none to three light syllables, placed as
+  // they're said (long on the stress, short before the next: DUM-da, DUM . da-da), so the gaps between
+  // syllables vary the way speech does
   const mid = bars.length >= 4 && rng.chance(0.6) ? bars[Math.floor(bars.length / 2)].start : -1;
-  let carry = false;
-  bars.forEach((b, bi) => {
-    const gs = groupStarts(b.groups);
-    b.groups.forEach((len, gi) => {
-      const at = b.start + gs[gi];
-      if (at >= hold) return;
-      // (a word drawn out over the last beat carries through this one)
-      if (carry) { carry = false; return; }
-      // (a four-bar line's quick breath: the beat before its second half left empty)
-      if (mid > 0 && at + len === mid) return;
-      const next = b.groups[gi + 1] ?? bars[bi + 1]?.groups[0] ?? 0;
-      if (onsets.length && next && at + len + next <= hold && rng.chance(o.hold)) {
-        onsets.push({ g: at + (rng.chance(o.syncop * 0.5) ? Math.min(2, len - 1) : 0), stress: true });
-        carry = true;
-        return;
-      }
-      // the bar before the held note a little calmer (the line slowing into its end)
-      const calm = bi === bars.length - 1 || (o.holdLen === 'long' && bi === bars.length - 2) ? 0.5 : 0;
-      const cell = rng.chance(o.flow * Math.min(1, o.busy)) ? rng.pick(pick16(PATTER, len))
-        : rng.chance(o.syncop * 0.6) ? rng.pick(pick16(SYNC, len))
-          : rng.pick(cellsFor(len)[level(o.busy - calm)]);
-      cell.forEach((p, k) => onsets.push({ g: at + p, stress: p === 0 || (k === 0 && p === 2) }));
+  const beats: { g: number; strong: boolean }[] = [];
+  bars.forEach((b) => groupStarts(b.groups).forEach((x, gi) => {
+    const g = b.start + x;
+    if (g < hold && !(mid > 0 && g < mid && g + b.groups[gi] >= mid)) beats.push({ g, strong: gi === 0 || (b.groups.length >= 4 && gi === b.groups.length / 2) });
+  }));
+  const pWeak = Math.max(0.1, Math.min(0.6, 0.3 + 0.4 * (o.busy - 1)));
+  const stresses: number[] = [];
+  let drawn = false;
+  for (const bt of beats) {
+    // (a word drawn out over the beat after it)
+    if (drawn) { drawn = false; continue; }
+    if (o.start === 'after' && bt.g === b1.start) continue;
+    if (!rng.chance(bt.strong ? 0.9 : pWeak)) continue;
+    let g = bt.g;
+    // (pushed: sung ahead of the beat)
+    const last = stresses[stresses.length - 1] ?? -99;
+    if (stresses.length && rng.chance(o.syncop * 0.35) && g - 2 - last >= 2) g -= 2;
+    stresses.push(g);
+    if (rng.chance(o.hold * 0.6)) drawn = true;
+  }
+  // the light syllables between: how many by the gap and how busy; where, as said
+  const kWeights = (gap: number): [number, number][] => [
+    [0, gap >= 4 ? 0.5 + o.hold : 0.25], [1, 1.6], [2, gap >= 3 ? 0.8 * o.busy : 0], [3, gap >= 4 ? 0.12 * o.busy + 0.4 * o.flow : 0],
+  ];
+  const setLight = (from: number, to: number, lead: boolean) => {
+    const gap = to - from;
+    if (gap < 2) return;
+    const most = Math.min(3, Math.floor(gap / 2) - 1);
+    if (most < 0) return;
+    const k = rng.weighted(kWeights(gap).filter(([x]) => x <= most));
+    for (const p of spoken(rng, gap, k)) onsets.push({ g: from + p, stress: false });
+    if (lead && !k && gap >= 3 && rng.chance(0.5)) onsets.push({ g: to - 2, stress: false });
+  };
+  if (stresses.length) {
+    // (before the first stress: a lead-in of light words, or a rest)
+    const first = stresses[0];
+    if (first > b1.start + 1) setLight(b1.start, first, true);
+    stresses.forEach((g, i) => {
+      onsets.push({ g, stress: true });
+      setLight(g, stresses[i + 1] ?? hold, false);
     });
-  });
+  } else setLight(b1.start, hold, true);
   // back-heavy: the line starts after the downbeat (on its "and", or the next beat)
   if (o.start === 'after') {
     const first = onsets.findIndex((x) => x.g === b1.start);
@@ -591,9 +622,34 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     if (nx && nx.line === n.line && n.len >= 2 && n.len < 6) n.len = Math.max(1, Math.round(n.len * style.legato));
   });
   wail(rng, out, form, kind, style, tonesAt);
+  singable(out, pool);
   const sung = ornament(rng, out, style, pool, tonesAt, { key, minorish, kind, step: 60 / song.bpm / 4 });
   deliver(rng, sung, style);
   return { notes: sung, lines: lines.length };
+}
+
+/**
+ * Singable (Paul: "too much sudden movement in the vocal melody... like a robot"): a singer doesn't
+ * jump about on quick notes. On a quick weak note (an 8th or less from its neighbours; not a line's
+ * first): there and back again (a zig-zag) by a leap of 3 semitones or more, or between two 16ths by
+ * any step, is sung on the note before instead; a leap of 3 or more into it, going on the same way,
+ * becomes a passing note (the scale note between the notes either side).
+ */
+function singable(notes: TuneNote[], pool: number[]) {
+  for (let i = 1; i + 1 < notes.length; i++) {
+    const p = notes[i - 1], n = notes[i], nx = notes[i + 1];
+    if (n.stress || n.start || n.line !== p.line || nx.line !== n.line) continue;
+    const gapIn = n.step - p.step, gapOut = nx.step - n.step;
+    if (gapIn > 2 && gapOut > 2) continue;
+    const dIn = n.midi - p.midi, dOut = nx.midi - n.midi;
+    const zig = dIn !== 0 && Math.sign(dOut) === -Math.sign(dIn);
+    if (zig && (Math.abs(dIn) >= 3 || (gapIn <= 1 && gapOut <= 1))) { n.midi = p.midi; continue; }
+    if (Math.abs(dIn) >= 3) {
+      const lo = Math.min(p.midi, nx.midi), hi = Math.max(p.midi, nx.midi);
+      const between = pool.filter((m) => m > lo && m < hi);
+      n.midi = between.length ? between[Math.floor(between.length / 2)] : p.midi;
+    }
+  }
 }
 
 /** The highest a song's wails go (the climax gets a little more). */
@@ -625,9 +681,13 @@ function wail(rng: Rng, notes: TuneNote[], form: string, kind: SectionKind, styl
   }
 }
 
-/** A run's scale: the pentatonic (minor for the blues, with its flat 5th). */
+/**
+ * A run's scale, Western: the blues scale (minor, with its flat 5th), the minor pentatonic, or in a
+ * major key the major blues scale (the pentatonic with the flat 3rd slid through to the 3rd: the soul
+ * and gospel run; the plain major pentatonic sounds East Asian).
+ */
 function runScale(key: number, minor: boolean, blues: boolean): (m: number) => boolean {
-  const pcs = blues ? [0, 3, 5, 6, 7, 10] : minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9];
+  const pcs = blues ? [0, 3, 5, 6, 7, 10] : minor ? [0, 3, 5, 7, 10] : [0, 2, 3, 4, 7, 9];
   return (m: number) => pcs.includes(mod(m - key, 12));
 }
 
@@ -729,7 +789,9 @@ function deliver(rng: Rng, notes: TuneNote[], style: MelodyStyle) {
     const nx = notes[i + 1];
     const lineEnd = !nx || nx.line !== n.line;
     // (inside a run, the run itself is the movement)
-    if (!n.tie && !nx?.tie && n.len >= 4 && rng.chance(Math.min(0.95, s.slide + (n.belt ? 0.3 : 0)))) n.slide = rng.weighted([[1, 2], [2, 3], [3, 1], [5, n.belt ? 1 : 0]]);
+    // (scoops sparingly and small, on held notes: one on nearly every syllable bends each word like a
+    // tone in a tonal language, part of what sounded Chinese to Paul)
+    if (!n.tie && !nx?.tie && n.len >= 4 && rng.chance(Math.min(0.6, 0.5 * s.slide + (n.belt ? 0.2 : 0)))) n.slide = rng.weighted([[1, 3], [2, 3], [3, 1], [5, n.belt ? 0.5 : 0]]);
     if (lineEnd && n.len >= 3 && rng.chance(s.fall)) n.fall = rng.weighted([[2, 2], [3, 2], [5, 1], [7, n.belt ? 1 : 0.3]]);
   });
 }
@@ -784,16 +846,17 @@ export function followTension(idea: Idea, ref: number, mood: Mood, style: Melody
         break;
       }
     }
-    // a big lift: the line's last held note turns (up a step and back) on its vowel
+    // a big lift: the line's last held note turns (up a step and back) on its vowel, unhurried: held a
+    // quarter first, the step up an 8th (Paul: quick turns right after a syllable starts sound weird)
     const last = L[L.length - 1];
-    if (d > 0.15 && style.melisma > 0.05 && v[last].len >= 6 && v[last].syl.text !== '~' && rng.chance(p * 0.6)) {
+    if (d > 0.15 && style.melisma > 0.05 && v[last].len >= 8 && v[last].syl.text !== '~' && rng.chance(p * 0.6)) {
       const n = v[last];
       const up = n.midi + (mod(n.midi + 1, 12) === scale.find((x) => x === mod(n.midi + 1, 12)) ? 1 : 2);
       const cont = (coda: Syllable['coda']): Syllable => ({ onset: [], vowel: n.syl.vowel, coda, stress: false, text: '~', wordStart: false });
       v.splice(last, 1,
-        { ...n, len: 2, syl: { ...n.syl, coda: [] } },
-        { ...n, step: n.step + 2, len: 1, midi: Math.min(up, PEAK), start: false, syl: cont([]) },
-        { ...n, step: n.step + 3, len: n.len - 3, start: false, syl: cont(n.syl.coda) });
+        { ...n, len: 4, syl: { ...n.syl, coda: [] } },
+        { ...n, step: n.step + 4, len: 2, midi: Math.min(up, PEAK), start: false, syl: cont([]) },
+        { ...n, step: n.step + 6, len: n.len - 6, start: false, syl: cont(n.syl.coda) });
       out.turns++;
     }
   }

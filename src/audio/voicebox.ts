@@ -27,6 +27,12 @@ export interface VoiceFrame extends FrameParms {
    * register under a mid one, or a belt's ringing vowel over them near the top.
    */
   layers?: { w: number; rd: number; tilt: number; formants: number[]; bws: number[] }[];
+  /**
+   * The noise branch's own formants (a consonant's hiss), so the vocal tract's (the voice's) aren't
+   * changed under it: changed while still ringing from a vowel, they crackled.
+   */
+  parFormants?: number[];
+  parBws?: number[];
 }
 
 /* ---- the LF pulse: one period's shape per Rd, made once */
@@ -403,8 +409,9 @@ export class VoiceBox {
       this.nasalP.set(fr.nasalFormantFreq, fr.nasalFormantBw);
       this.nasalP.peakGain(dbToLin(fr.nasalFormantDb));
     } else this.nasalP.setMute();
+    const pf = fr.parFormants ?? fr.oralFormantFreq, pb = fr.parBws ?? fr.oralFormantBw;
     this.oralP.forEach((r, i) => {
-      const f = fr.oralFormantFreq[i], bw = fr.oralFormantBw[i], g = dbToLin(fr.oralFormantDb[i]);
+      const f = pf[i], bw = pb[i], g = dbToLin(fr.oralFormantDb[i]);
       if (f && bw && g) {
         r.set(f, bw);
         const diffGain = Math.sqrt(2 - 2 * Math.cos((2 * Math.PI * f) / rate));

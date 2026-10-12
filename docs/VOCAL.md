@@ -240,6 +240,22 @@ voice, unchanged), or any genre's voice; kept in links and exports. The backing 
   voice through the mixer; about 10 ms of rendering per second sung (rock) on a desktop (the clear
   voice: about 4), in the background ahead of playback.
 
+### Western (English-language) singing only, for now (2026-10-13)
+Paul: the tunes and runs "sound very much like Chinese vocals"; he wants the melody styles and run
+techniques of Western (English-language) music only, and may add other traditions later. What made
+them sound East Asian, and what changed:
+- A major key's tune walked the major pentatonic alone (do-re-mi-so-la, stepped through): now the
+  whole major scale, half steps and all. Minor keys keep the minor pentatonic in verses (the blues-rock
+  singer's scale) and the mode elsewhere (`scaleFor`, `src/parts/melody.ts`).
+- Runs on a vowel: only the rock and soul ones (down into a note, the blues fall, a tail off a held
+  note), half as often; their scale the blues scale, or in major the major blues scale (the flat 3rd
+  slid through to the 3rd), never the plain major pentatonic (`runScale`; `src/parts/singers.ts`).
+- Fewer, smaller scoops; quick note-turns inside a syllable gone (`settle`, `src/parts/vocal.ts`); a
+  smaller rise and dip around every note (the voice, `src/audio/fof.ts`): a contour on every syllable
+  sounds like a tonal language.
+- More closed syllables in the words (English keeps many; "ly ni ry" all open sounds less like it).
+- Later: other traditions as a choice (a "singing style" per song), not mixed in by chance.
+
 ## 8. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the

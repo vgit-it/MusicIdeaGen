@@ -18,7 +18,7 @@ import { Rng } from '../rng';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import type { Timbre } from './singers';
-import { PEAK, type Tune, followTension, melodyDesc, melodyStyle, writeTune } from './melody';
+import { PEAK, type Tune, type TuneNote, followTension, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -45,14 +45,136 @@ export type VoiceType = 'low' | 'high';
 const TIMBRE_DESC = (t: Timbre) => (t === 'clear' ? 'the clear voice' : `the ${GENRE_LABEL[t].toLowerCase()} voice (three registers mixed by pitch, sung lower)`);
 
 /**
- * Words for a tune: rhymes on every other line, the chorus hook at the start of lines 1 and 3. A tied
- * note (a sigh or a turn) carries on the last syllable's vowel, its closing consonants moved to the end.
+ * Which notes carry on the syllable before rather than start a new one: tied notes (a sigh or a turn),
+ * and a quick weak note (a 16th after a syllable): the words come at most about every 8th note, the
+ * quick notes between sung on the vowel (Paul: a slower pace of speaking sounds more natural).
+ */
+function carried(tune: Tune): boolean[] {
+  let lastStep = -99, lastLine = -1;
+  return tune.notes.map((n) => {
+    if (n.tie) return true;
+    if (!n.stress && n.line === lastLine && n.step - lastStep < 2) return true;
+    lastStep = n.step; lastLine = n.line;
+    return false;
+  });
+}
+
+/**
+ * No quick turns inside a syllable (Paul: the ornaments moving the note on 8ths and 16ths, "especially
+ * right after a syllable has started", sound weird): a syllable's pitch changes only once it has been
+ * held a quarter note, and only to a note at least an 8th long. Other notes sung on a syllable's vowel
+ * merge into the note before, on the pitch held longest (a lean onto the note, or a run into it,
+ * becomes the note itself).
+ */
+function settle(tune: Tune): Tune {
+  const tied = carried(tune);
+  const out: TuneNote[] = [];
+  let sylStep = 0;
+  tune.notes.forEach((n, i) => {
+    const prev = out[out.length - 1];
+    if (!tied[i] || !prev) { sylStep = n.step; out.push({ ...n }); return; }
+    if (n.step - sylStep >= 4 && n.len >= 2 && n.tie) { out.push({ ...n }); return; }
+    // (merged: the pitch held longest; a fall off the end kept)
+    const ownLen = n.step - prev.step;
+    if (n.len > ownLen) { prev.midi = n.midi; prev.belt = prev.belt || n.belt; }
+    prev.len = n.step + n.len - prev.step;
+    if (n.fall) prev.fall = n.fall;
+  });
+  return { ...tune, notes: out };
+}
+
+/**
+ * Speech rhythm (Paul: the syllables land on the beat "way too often... like it's running on a drum
+ * beat"): now and then a stressed syllable on the beat is pushed an 8th early, ahead of the beat and
+ * tied over it (the anticipation all through pop and rock); never four even 8ths in a row where a push
+ * can break them. By the singer's way with syncopation (`syncop`); the same tune always the same.
+ */
+function speak(tune: Tune, rng: Rng, syncop: number): Tune {
+  const ns = tune.notes;
+  let run = 0;
+  for (let i = 0; i < ns.length; i++) {
+    const n = ns[i], prev = ns[i - 1];
+    if (n.tie) { run = 0; continue; }
+    const even = prev && !prev.tie && prev.line === n.line && n.step - prev.step === 2;
+    run = even ? run + 1 : 0;
+    const canPush = n.stress && n.step % 4 === 0 && prev && n.step - prev.step >= 4;
+    if (canPush && rng.chance(run >= 3 ? 1 : 0.15 + 0.35 * syncop)) {
+      n.step -= 2; n.len += 2;
+      prev.len = Math.min(prev.len, n.step - prev.step);
+      run = 0;
+    }
+  }
+  return tune;
+}
+
+/**
+ * Quick syllables on the 8ths (Paul: a quick run of syllables should be on the beat, "at the 1/8th at
+ * most, not quicker"): no new syllable sooner than an 8th after the last; one off the 8th grid (on a
+ * 16th) only on its own, a dotted 8th or more from its neighbours; otherwise moved onto the nearest 8th
+ * that leaves that room, or, if none does, dropped (the note before carries on through it).
+ */
+function onEighths(tune: Tune): Tune {
+  const out: TuneNote[] = [];
+  const syl = tune.notes.filter((x) => !x.tie);
+  const absorb = (n: TuneNote) => { const p = out[out.length - 1]; if (p) p.len = n.step + n.len - p.step; };
+  for (const n of tune.notes) {
+    if (n.tie) { out.push(n); continue; }
+    const prev = [...out].reverse().find((x) => !x.tie);
+    const nextStep = syl.find((x) => x.step > n.step)?.step ?? Infinity;
+    const room = (g: number) => (!prev || g - prev.step >= 2) && nextStep - g >= 2;
+    if (n.step % 2) {
+      const alone = (!prev || n.step - prev.step >= 3) && nextStep - n.step >= 3;
+      if (!alone) {
+        const to = [n.step + 1, n.step - 1].find((g) => g >= 0 && room(g));
+        if (to === undefined) { absorb(n); continue; }
+        n.len = Math.max(1, n.step + n.len - to);
+        n.step = to;
+      }
+    }
+    if (prev && n.step - prev.step < 2) { absorb(n); continue; }
+    out.push(n);
+  }
+  // (nothing overlapping after the moves)
+  out.forEach((n, i) => { const nx = out[i + 1]; if (nx && n.step + n.len > nx.step) n.len = Math.max(1, nx.step - n.step); });
+  return { ...tune, notes: out };
+}
+
+/** A tune as sung: settled (no quick turns), spoken (speech rhythm), with room to breathe. */
+function shape(tune: Tune, rng: Rng, syncop: number): Tune {
+  const t = onEighths(speak(settle(tune), rng, syncop));
+  breathe(t.notes);
+  return t;
+}
+
+/**
+ * Room to breathe (Paul: a break in the voice before the next note should be at least a quarter bar,
+ * "like they're taking a breath"): a gap of an 8th to under a beat before a note becomes a full beat,
+ * the note before let go earlier; or, if that would leave it shorter than an 8th, no gap at all (sung
+ * through). A new line straight after the last (under a beat) is the same: a beat's breath before it, or
+ * sung through, joined to the line before. A 16th's gap is sung through anyway (the singer joins it).
+ */
+function breathe(notes: { step: number; len: number; start?: boolean }[]) {
+  notes.forEach((n, i) => {
+    const nx = notes[i + 1];
+    if (!nx) return;
+    const gap = nx.step - (n.step + n.len);
+    // (a new line stops and starts the voice whatever the gap: it gets its beat too, or is sung through)
+    if (gap >= 4 || (gap < 2 && !nx.start)) return;
+    if (nx.step - 4 - n.step >= 2) n.len = nx.step - 4 - n.step;
+    else { n.len = nx.step - n.step; if (nx.start) nx.start = false; }
+  });
+}
+
+/**
+ * Words for a tune: rhymes on every other line, the chorus hook at the start of lines 1 and 3. A carried
+ * note carries on the last syllable's vowel, its closing consonants moved to the end.
  */
 function writeWords(rng: Rng, tune: Tune, style: LyricStyle, hook: Syllable[] | null, hi: number): Syllable[] {
   const sung: Syllable[] = [];
   let rhyme: Rhyme | null = null;
+  const tied = carried(tune);
   for (let li = 0; li < tune.lines; li++) {
-    const ns = tune.notes.filter((n) => n.line === li && !n.tie);
+    const ns = tune.notes.filter((n, i) => n.line === li && !tied[i]);
     if (!ns.length) continue;
     const slots: LyricSlot[] = ns.map((n) => ({ stress: n.stress, long: n.len >= 4, high: n.midi >= hi - 3 }));
     const useHook = hook && li % 2 === 0 ? hook.slice(0, Math.min(hook.length, ns.length - 1)) : undefined;
@@ -62,8 +184,8 @@ function writeWords(rng: Rng, tune: Tune, style: LyricStyle, hook: Syllable[] | 
   }
   const out: Syllable[] = [];
   let k = 0;
-  for (const n of tune.notes) {
-    if (!n.tie || !out.length) { out.push({ ...sung[Math.min(k++, sung.length - 1)] }); continue; }
+  for (const [i] of tune.notes.entries()) {
+    if (!tied[i] || !out.length) { out.push({ ...sung[Math.min(k++, sung.length - 1)] }); continue; }
     const before = out[out.length - 1];
     out.push({ onset: [], vowel: before.vowel, coda: before.coda, stress: false, text: '~', wordStart: false });
     before.coda = [];
@@ -120,7 +242,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     let b = blocks.get(as);
     if (!b) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
-      const tune = writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, melody);
+      const tune = shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, melody), new Rng(`${ctx.seed}-speak-${as}`), melody.singer.syncop);
       const words = writeWords(new Rng(`${ctx.seed}-words-${as}`), tune, style, as === 'chorus' ? hook : null, base + 6);
       const t = idea.section?.tension ?? [];
       b = { tune, key: src.song.key, bars: src.song.bars.length, words, tag: as, ref: t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0.5 };
@@ -159,6 +281,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       }
     }
     leaveRoom(idea);
+    breathe(idea.vocal);
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
       if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`); told = true; }
@@ -169,7 +292,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   });
 }
 
-/** A held note stops where Guitar 2's answer starts (the singer breathes, the lead answers); a wail holds on. */
+/** A held note stops where Guitar 2's answer starts (the singer breathes, the lead answers; a full beat's room, breathe()); a wail holds on. */
 function leaveRoom(idea: Idea) {
   const lead = idea.guitar2.filter((h) => !h.letRing && !h.swell).map((h) => h.step);
   for (const n of idea.vocal ?? []) {

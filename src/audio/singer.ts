@@ -13,6 +13,7 @@ import type { Idea } from '../idea';
 import type { Timbre } from '../parts/singers';
 import { type VoiceType, backingVoice } from '../parts/vocal';
 import { inContext } from './context';
+import { lagFor, perform } from './feel';
 import { VOICES, recipeFor } from './voices';
 import { SING_RATE, type SungNote, renderLine } from './sing';
 
@@ -115,6 +116,7 @@ export class Singer {
     // the band's swing and lilt move the off-beat 16ths, as the engine plays them
     const at = (g: number) => g * six + (g % 2 ? (song.swing * (2 / 3) + (idea.lilt ?? 0)) * six : 0);
     const byStep = new Map<number, Line[]>();
+    const lag = lagFor(idea.seeds.vocal ?? idea.seeds.song);
     const slides = SLIDES[song.partGenres.strum];
     // the lead, its double (choruses) and ad-libs; or the backing vocals by role; each as its own lines
     const mine = ROLE_STREAMS[this.role];
@@ -134,7 +136,8 @@ export class Singer {
       }
       for (const L of groups) {
         const t0 = at(L[0].step);
-        const notes: SungNote[] = L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall }));
+        // (as the singer feels it: laid back, long-short, slowing at the end; feel.ts)
+        const notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lag, L[0].step + L.length * 7);
         const key = `${voice}|${S.variant}|${timbre}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
         // started a little ahead of its first note, from the step that leaves room for the lead-in
         const first = Math.max(0, L[0].step - Math.ceil(PRE / six));
