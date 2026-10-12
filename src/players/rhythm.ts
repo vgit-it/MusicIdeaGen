@@ -114,6 +114,8 @@ export interface RhythmContext {
   tail?: boolean;
   /** Every chord in the track (where the player decides on a capo; otherwise this section's). */
   allChords?: Chord[];
+  /** Building into an arrival: the last bar's chord suspended (sus4), resolving as the next section lands. */
+  suspend?: boolean;
 }
 
 /**
@@ -233,6 +235,15 @@ export function playRhythm(idea: Idea, p: RhythmPlayer, seed: string, rng: Rng, 
       if (next !== undefined && next - at <= 2 && rng.chance(0.5)) colour[next] = add;
       sus++;
     });
+  }
+  // building into an arrival: the last bar's chord suspended, resolving as the next section lands
+  if (ctx.suspend && voice !== 'power') {
+    const c = chords.timeline[chords.chordIdx[lastBar.start]].chord;
+    let n = 0;
+    if (['maj', 'min', '7', 'm7', 'maj7'].includes(c.q)) {
+      for (let g = lastBar.start; g < total; g++) if ((strum[g] === 'D' || strum[g] === 'U') && chords.chordIdx[g] === chords.chordIdx[lastBar.start]) { colour[g] = 'sus4'; n++; }
+    }
+    if (n) notes.push('Rhythm guitar: the last chord held suspended (sus4), resolving as the next section lands');
   }
   if (colour.some(Boolean)) idea.strumColour = colour;
 

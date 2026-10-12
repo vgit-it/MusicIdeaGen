@@ -44,25 +44,28 @@ export interface MoodProfile {
   stop: number;
   /** Quiet verses and bridges (strummed songs). */
   quiet: number;
+  /** Into an arrival: chances of the bass holding the 5th underneath (a pedal), and the last chord suspended (sus4). */
+  pedal: number;
+  sus: number;
   desc: string;
 }
 
 export const PROFILES: Record<Mood, MoodProfile> = {
-  happy: { base: 0.4, peak: 0.88, grow: 0.06, build: 0.18, release: 0.35, shape: 'waves', outro: 'hold', range: 7, keyChange: 0.2, stop: 1.2, quiet: 0.5,
+  happy: { base: 0.4, peak: 0.88, grow: 0.06, build: 0.18, release: 0.35, shape: 'waves', outro: 'hold', range: 7, keyChange: 0.2, stop: 1.2, quiet: 0.5, pedal: 0.45, sus: 0.35,
     desc: 'lifts into every chorus, a dip before the last one, a full, bright arrival' },
-  melancholic: { base: 0.22, peak: 0.62, grow: 0.08, build: 0.1, release: 0.25, shape: 'arch', outro: 'fade', range: 6, keyChange: 0, stop: 0.5, quiet: 0.85,
+  melancholic: { base: 0.22, peak: 0.62, grow: 0.08, build: 0.1, release: 0.25, shape: 'arch', outro: 'fade', range: 6, keyChange: 0, stop: 0.5, quiet: 0.85, pedal: 0.15, sus: 0.5,
     desc: 'a slow rise to a modest peak, then a long letting go; soft landings' },
-  nostalgic: { base: 0.3, peak: 0.72, grow: 0.07, build: 0.12, release: 0.3, shape: 'waves', outro: 'fade', range: 6, keyChange: 0.08, stop: 0.8, quiet: 0.7,
+  nostalgic: { base: 0.3, peak: 0.72, grow: 0.07, build: 0.12, release: 0.3, shape: 'waves', outro: 'fade', range: 6, keyChange: 0.08, stop: 0.8, quiet: 0.7, pedal: 0.25, sus: 0.5,
     desc: 'gentle waves that grow, a warm peak late, a soft ending' },
-  tense: { base: 0.5, peak: 0.84, grow: 0.05, build: 0.2, release: 0.12, shape: 'restless', outro: 'hold', range: 5, keyChange: 0, stop: 1.5, quiet: 0.4,
+  tense: { base: 0.5, peak: 0.84, grow: 0.05, build: 0.2, release: 0.12, shape: 'restless', outro: 'hold', range: 5, keyChange: 0, stop: 1.5, quiet: 0.4, pedal: 0.7, sus: 0.3,
     desc: 'restless, many small builds, releases that never quite settle' },
-  angry: { base: 0.62, peak: 1, grow: 0.04, build: 0.15, release: 0.15, shape: 'plateau', outro: 'hold', range: 4.5, keyChange: 0, stop: 1.6, quiet: 0.15,
+  angry: { base: 0.62, peak: 1, grow: 0.04, build: 0.15, release: 0.15, shape: 'plateau', outro: 'hold', range: 4.5, keyChange: 0, stop: 1.6, quiet: 0.15, pedal: 0.4, sus: 0.1,
     desc: 'high from the start, released by impact (stops, then the band slams back in)' },
-  dreamy: { base: 0.15, peak: 0.48, grow: 0.04, build: 0.06, release: 0.1, shape: 'flat', outro: 'fade', range: 4, keyChange: 0, stop: 0.2, quiet: 0.9,
+  dreamy: { base: 0.15, peak: 0.48, grow: 0.04, build: 0.06, release: 0.1, shape: 'flat', outro: 'fade', range: 4, keyChange: 0, stop: 0.2, quiet: 0.9, pedal: 0, sus: 0.6,
     desc: 'calm, small swells, no hard arrivals, a fade' },
-  triumphant: { base: 0.35, peak: 1, grow: 0.1, build: 0.22, release: 0.3, shape: 'climb', outro: 'hold', range: 8, keyChange: 0.35, stop: 1, quiet: 0.5,
+  triumphant: { base: 0.35, peak: 1, grow: 0.1, build: 0.22, release: 0.3, shape: 'climb', outro: 'hold', range: 8, keyChange: 0.35, stop: 1, quiet: 0.5, pedal: 0.6, sus: 0.45,
     desc: 'one long climb to a big late peak, every lever at once for the arrival' },
-  dark: { base: 0.38, peak: 0.78, grow: 0.06, build: 0.12, release: 0.25, shape: 'waves', outro: 'fade', range: 6, keyChange: 0, stop: 1, quiet: 0.6,
+  dark: { base: 0.38, peak: 0.78, grow: 0.06, build: 0.12, release: 0.25, shape: 'waves', outro: 'fade', range: 6, keyChange: 0, stop: 1, quiet: 0.6, pedal: 0.4, sus: 0.2,
     desc: 'heavy and slow to rise, releases that fall back low rather than bright' },
 };
 
@@ -97,6 +100,8 @@ export interface ArcSlot {
   intro?: 'alone' | 'band' | 'layered' | 'long';
   /** A solo section. */
   solo?: boolean;
+  /** An outro that goes somewhere (a solo over it, a jam): it can be the climax. */
+  big?: boolean;
 }
 
 export interface ArcSection {
@@ -168,7 +173,9 @@ export function planTension(slots: ArcSlot[], mood: Mood): Arc {
   });
 
   // 3. one climax: the last chorus (or the outro / a late solo, if they're higher), in the mood's range
-  let climax = slots.findIndex((s) => s.final);
+  // (an outro that solos or jams takes the climax in moods that hold to the end: the song's last word)
+  const bigOutro = slots.findIndex((s) => s.kind === 'outro' && s.big);
+  let climax = bigOutro >= 0 && P.outro === 'hold' ? bigOutro : slots.findIndex((s) => s.final);
   if (climax < 0) climax = level.reduce((bi, v, i) => (v > level[bi] ? i : bi), 0);
   const lo = Math.min(...level), hi = Math.max(...level);
   const scaled = level.map((v) => P.base + (P.peak - P.base) * ((v - lo) / Math.max(0.01, hi - lo)));

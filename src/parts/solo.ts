@@ -93,9 +93,11 @@ interface Motif { rhythm: number[]; moves: number[] }
 
 /**
  * A guitar solo over a section (usually 8 or 16 bars). `lick`: the lead player's kind. `hook`: the
- * track's hook over the same chords (the solo can start by quoting it), or null.
+ * track's hook over the same chords (the solo can start by quoting it), or null. `intensity` (0-1):
+ * where the solo sits on the song's tension curve: the song's climax goes higher, busier and louder;
+ * a solo in a calm song or a release stays lower and sings.
  */
-export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null): Guitar2Part {
+export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null, intensity = 0.7): Guitar2Part {
   const { key, mode, bars, total } = song;
   const t = song.tuning ?? TUNINGS.standard;
   const minor = MINORISH.includes(mode);
@@ -138,7 +140,8 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
   const phaseOf = (u: number): Phase => (u === peakU ? 'peak' : u > peakU ? 'release' : u < openN ? 'open' : 'build');
   // the peak note: the highest chord note near an octave and a half above the root (within the guitar's reach)
   const peakBar = units[peakU][units[peakU].length - 1];
-  let top = Math.min(R + 17, 83);
+  // (the peak's height follows the solo's intensity: up to an octave and a half for the climax, about an octave when it's calm)
+  let top = Math.min(R + 12 + Math.round(6 * intensity), 83);
   while (!isTone(top, peakBar.start) && top > R + 10) top--;
   const buildN = Math.max(1, peakU - openN);
   // the register: the ceiling climbs unit by unit, always under the peak note until the peak
@@ -293,8 +296,9 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     muted: [[['motif', 'lickFast'], 2], [['lickMid', 'sing'], 2], [['lickFast', 'lickMid'], 1]],
   };
 
-  const vel = (u: number) => 0.8 + 0.12 * Math.min(1, u / Math.max(1, peakU)) - (u > peakU ? 0.06 : 0);
-  const level = (base: Level): Level => Math.max(0, Math.min(2, base + st.busy)) as Level;
+  const vel = (u: number) => 0.74 + 0.1 * intensity + 0.12 * Math.min(1, u / Math.max(1, peakU)) - (u > peakU ? 0.06 : 0);
+  const busy = st.busy + (intensity > 0.85 ? 1 : intensity < 0.4 ? -1 : 0);
+  const level = (base: Level): Level => Math.max(0, Math.min(2, base + busy)) as Level;
   const gs = (b: Bar) => groupStarts(b.groups).map((p) => b.start + p);
   const endOf = (b: Bar) => b.start + b.len;
 
