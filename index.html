@@ -73,6 +73,9 @@
       <button id="backidea" class="small">Back to idea</button>
     </div>
     <div class="trackopts">
+      <label>Mood
+        <select id="t-mood"><option value="auto">Auto</option><option value="happy">Happy</option><option value="melancholic">Melancholic</option><option value="nostalgic">Nostalgic</option><option value="tense">Tense</option><option value="angry">Angry</option><option value="dreamy">Dreamy</option><option value="triumphant">Triumphant</option><option value="dark">Dark</option></select>
+      </label>
       <label>Intro
         <select id="t-intro"><option value="auto">Auto</option><option value="alone">Short</option><option value="layered">Layered</option><option value="long">Long build</option><option value="band">Full band</option></select>
       </label>
@@ -98,6 +101,7 @@
         <select id="t-band"><option value="on">On</option><option value="off">Off (as written)</option></select>
       </label>
     </div>
+    <div id="tension" class="tension" aria-label="Tension across the song"></div>
     <div id="sections" class="sections"></div>
     <div class="sectool" id="sectool">
       <span id="sectname" class="sectname"></span>

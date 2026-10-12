@@ -35,6 +35,13 @@ button:disabled { opacity: .5; cursor: default; }
 .trackhead h2 { margin: 0; }
 .trackinfo { font-size: 13px; color: var(--mute); margin-right: auto; }
 button.small { padding: 8px 12px; font-size: 13px; font-weight: 600; background: #232836; border: 1px solid var(--line); border-radius: 10px; }
+.tension { margin: 4px 0 10px; }
+.tension svg { display: block; width: 100%; height: 64px; overflow: visible; }
+.tension .area { fill: color-mix(in srgb, var(--accent) 18%, transparent); }
+.tension .line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.tension .tick { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.tension .now { fill: color-mix(in srgb, var(--accent2) 14%, transparent); }
+.tension .cap { display: flex; justify-content: space-between; font-size: 11px; color: var(--mute); margin-top: 4px; }
 .sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
 .sec {
   min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px;

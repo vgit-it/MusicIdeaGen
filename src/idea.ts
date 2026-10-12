@@ -268,6 +268,9 @@ export interface SectionInfo {
   riser?: boolean;
   /** The previous section pushed this one's first chord early: its downbeat isn't struck again. */
   pushedIn?: boolean;
+  /** Tension per bar (0-1) from the song's arc, and the mix level per bar (dB, 0 at the climax). */
+  tension?: number[];
+  db?: number[];
   /** Where it sits in its track (and what the track is), so added layers can plan where they play. */
   pos?: { index: number; all: { kind: SectionKind; energy: number }[] };
 }
