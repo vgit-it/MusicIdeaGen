@@ -221,6 +221,9 @@ export interface Idea {
   vocal?: VocalNote[];
   /** Which voice sings it on Auto (the melody is written for the low one; the high one sings it an octave up). */
   vocalVoice?: VoiceType;
+  /** Backing vocals and ad-libs (sung by the same singer, panned around the lead), and whether the lead is double-tracked. */
+  backing?: VocalNote[];
+  vocalDouble?: boolean;
   /** Tracks: the strummer's hands at chord changes (by the step of the change). */
   changeTouch?: Record<number, ChangeTouch>;
   /** Tracks, played by the band: how hard the strummed rhythm guitar plays (1 = as written). */

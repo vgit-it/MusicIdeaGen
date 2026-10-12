@@ -65,7 +65,9 @@ function render() {
   const label = (id: string) => CHORD_INSTRUMENTS.find((i) => i.id === id)!.label;
   // the section's "Sound:" note names what actually plays (a part set by hand, or no piano rhythm under the piano layer)
   const sound = `Sound: ${SOUND_NAME[engine.chordIdFor(cur)]}${cur.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[engine.guitar2IdFor(cur)]}` : ''}`;
-  const shownIdea = { ...cur, notes: cur.notes.map((n) => (n.startsWith('Sound: ') ? sound : n)) };
+  // (the singer's lanes and words only while it sings)
+  const sings = engine.vocal !== 'off';
+  const shownIdea = { ...cur, vocal: sings ? cur.vocal : undefined, backing: sings ? cur.backing : undefined, notes: cur.notes.filter((n) => sings || !n.startsWith('Vocal')).map((n) => (n.startsWith('Sound: ') ? sound : n)) };
   renderIdea(shownIdea, engine.shapesFor(cur), label(engine.chordIdFor(cur)), label(engine.guitar2IdFor(cur)),
     Object.fromEntries(LAYER_PARTS.map((p) => [p, engine.layerFor(cur, p)])),
     target ? { sheet: target.idea.opts.chords, from: target.from, n: target.n, selected: chordEditor.bar } : null);
@@ -159,7 +161,7 @@ interface Shared { o: GenOptions; s: Seeds; t?: TrackOptions; l?: LayerSettings;
 function updateLink() {
   if (!idea) return;
   const layers = engine.layerSettings;
-  const data: Shared = { o: idea.opts, s: idea.seeds, ...(track ? { t: track.opts } : {}), ...(Object.keys(layers).length ? { l: layers } : {}), ...(engine.vocal !== 'auto' ? { v: engine.vocal } : {}) };
+  const data: Shared = { o: idea.opts, s: idea.seeds, ...(track ? { t: track.opts } : {}), ...(Object.keys(layers).length ? { l: layers } : {}), ...(engine.vocal !== 'off' ? { v: engine.vocal } : {}) };
   try {
     history.replaceState(null, '', `#${btoa(encodeURIComponent(JSON.stringify(data)))}`);
   } catch { /* history blocked: no link */ }

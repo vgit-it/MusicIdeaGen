@@ -4,6 +4,7 @@
 //
 // Pure and deterministic: the same idea always grows into the same track.
 
+import { arrangeBacking, pickBacking } from './parts/backing';
 import { autoVoice, singTrack } from './parts/vocal';
 import { type Mood, type MoodChoice, PROFILES, arcNote, autoMood, planTension } from './tension';
 import { type BuildOptions, buildIdea, withSheet } from './generator';
@@ -71,9 +72,9 @@ export const defaultTrackOptions = (src: Idea): TrackOptions => {
   const s = src.seeds.song;
   return {
     seeds: { structure: `${s}-track`, verse: `${s}-verse`, pre: `${s}-pre`, bridge: `${s}-bridge`, hook: `${s}-hook`, chorus: `${s}-chorus` },
-    // (Paul: long intros and outros by default: a 16-bar intro built up a layer at a time, and an
+    // (Paul: layered intros and long outros by default: an 8-bar intro built up in two steps, and an
     // outro whose last line repeats as a tag)
-    intro: 'long', outro: 'long', pre: 'auto', interlude: 'auto', keyChange: 'auto',
+    intro: 'layered', outro: 'long', pre: 'auto', interlude: 'auto', keyChange: 'auto',
   };
 };
 
@@ -1669,6 +1670,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum }, arc.climax);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
   for (const x of sections) x.vocalVoice = voice;
+  // backing vocals: doubled choruses, harmonies (or oohs) by the mood, ad-libs over the climax
+  const backing = pickBacking(vocalSeed, mood, src.song.partGenres.strum);
+  arrangeBacking(sections, { seed: vocalSeed, backing, mood }, arc.climax);
 
   // each section knows the shape of its track (added layers plan where they play from it)
   const all = sections.map((s) => ({ kind: s.section!.kind, energy: s.section!.energy }));

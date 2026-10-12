@@ -73,7 +73,27 @@ What makes nonsense sound English (rather than Italian or Icelandic):
 - Exports: a vocal stem; MIDI gets a Vocal track (GM Voice Oohs) with the words as lyric events (on
   the song's first track, where @tonejs/midi writes them). ✓
 
-## 5. Later
+## 5. Backing vocals and ad-libs (`src/parts/backing.ts`, 2026-10-12)
+Paul: ad-libs and harmonies next; vocals off by default.
+- [P] Choruses (and the outro) double-tracked: the lead sung a second time, a second take (another
+  vocal-tract length and vibrato rate), 17 ms late, panned right, 6 dB down. ✓
+- [P] Harmonies by the song's mood and style: a third above (happy, triumphant, nostalgic: pop and
+  rock's bright stack), a lower harmony a fourth to a fifth under (dark, angry, tense; metal, alt metal,
+  grunge), soft "ooh"/"aah" pads holding a chord note each chord (melancholic, dreamy: also under
+  pre-choruses, bridges and some second verses), or a gang singing the hook in unison (funk). Harmony
+  notes are the nearest chord note a third/fourth above (or fourth/fifth below), else the diatonic one. ✓
+- [P] They grow through the song: the first chorus harmonises its hook lines, later choruses, the
+  climax and the outro every line; calm sections only get the soft pads. ✓
+- [P/R] Ad-libs over the climax and the outro (research: last chorus, 1-3 short "oh/yeah/whoa" in the
+  gaps between lines, 3-7 semitones above the melody; melisma only here): "yeah" held up high, an "oh"
+  run falling down the pentatonic on one vowel, a "whoa-oh"; and a long high "oh" over the climax's last
+  held note. ✓
+- Panned around the lead (harmony left, double right, ad-libs a little right, oohs left and soft),
+  each with its own take; all in the vocal stem. MIDI: a "Backing vocals" track (Choir Aahs). Lanes: a
+  Backs lane (h harmony, g gang, o ooh, a ad-lib). ✓
+- The singer is off until you turn it on (Parts: Vocal (demo)); a link remembers it when it's on. ✓
+
+## 6. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
-- · Ad-libs, harmonies and doubled choruses; fillers in the gaps; the melody following the tension
-  curve more closely; screamed or growled delivery for metal.
+- · Fillers in the gaps of the lead line itself; the melody following the tension curve more closely;
+  screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).

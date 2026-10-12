@@ -127,7 +127,7 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       });
     }
 
-    if (d.part === 'vocal') syncs.push(() => { select.value = engine.vocal; });
+    if (d.part === 'vocal') { select.value = engine.vocal; syncs.push(() => { select.value = engine.vocal; }); }
     engine.setVolume(d.part, d.volume);
     root.appendChild(row);
   }
