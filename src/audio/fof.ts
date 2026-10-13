@@ -71,6 +71,12 @@ export interface FofVoice {
    * kept open and speech-like (no covering), wider formants (less pure), more twang and edge.
    */
   raw?: number;
+  /**
+   * Spread 0-1 (left out: 0): the lips spread, not rounded (Paul: "reduce the roundedness"): no covering,
+   * F2 up (most on the front vowels), F3 a touch up, and a throat no longer than about 0.97 (a bigger
+   * voice's darkness kept, its roundness not).
+   */
+  spread?: number;
   /** The line's section energy, 0 (quiet verse) to 1 (the biggest chorus); left out: 0.5. */
   energy?: number;
   /** Their break (MIDI, about E4) and their way up past it. */
@@ -149,8 +155,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
 
   // (the high voice: nearly the same person as the low one, Paul: "a bit too different", then "even
   // closer"; was 1.17, then 1.1, and its break an octave up with the voice, so it sang past it most of the time)
-  const fscale = (v.high ? 1.04 : 1) * (v.tract ?? 1);
-  const high = (v.high ? [3380, 3850, 5100] : [3250, 3700, 4950]).map((f) => f * (v.tract ?? 1));
+  const spread = v.spread ?? 0;
+  const tract = lerp(v.tract ?? 1, Math.max(v.tract ?? 1, 0.97), spread);
+  const fscale = (v.high ? 1.04 : 1) * tract;
+  const high = (v.high ? [3380, 3850, 5100] : [3250, 3700, 4950]).map((f) => f * tract);
   const plain = v.plain ?? 0;
   const bws = [90, 110, 160, 200, 230, 500].map((b, k) => b * (v.bw ?? 1) * (k >= 3 ? 1 + 0.6 * plain : 1));
   const vibC = v.vib ?? 30, driftC = (v.drift ?? 4) + 3 * hu, grit = v.grit ?? 0, breath = v.breath ?? -24;
@@ -392,7 +400,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       breathNow = breath + secBreath + lnBreath + exBreath;
       edgeW = clamp01((v.edge ?? 0) + 0.2 * rise + (expr ? secEdge + lnEdge + exEdge : 0)) * EDGE_VOWEL[note.syl.vowel];
       // (down low: rounder, more relaxed)
-      const cover = Math.min(1, cover0 + expr * 0.15 * smooth01((-place - 6) / 6)) * (1 - rise);
+      const cover = (1 - spread) * Math.min(1, cover0 + expr * 0.15 * smooth01((-place - 6) / 6)) * (1 - rise);
       for (let k = 0; k < 3; k++) B[k] = bws[k] * (1 + 0.5 * rise);
       // (a held note swells a little in and eases at its end)
       const swell = held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
@@ -438,6 +446,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // the formants: F1 kept above the pitch, a little up on loud notes (the mouth opens)
       const f3 = formantsAt(t).slice() as F3;
       // (covered: the front vowels' F2 pulled back most, every vowel a little rounder and darker)
+      if (spread) {
+        const fr = clamp01((f3[1] - 900) / 1300);
+        f3[1] *= 1 + spread * (0.03 + 0.06 * fr);
+        f3[2] *= 1 + spread * 0.03;
+      }
       if (cover) {
         const front = clamp01((f3[1] - 1100) / 1200);
         f3[1] *= 1 - cover * (0.08 + 0.2 * front);

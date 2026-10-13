@@ -152,6 +152,10 @@ fry) at five amounts ("acting weird at different places": the base was better).
   throat, little covering, brighter, wider formants, less vibrato); rounder low notes from expression
   smaller.
 
+- **Spread** (`spread` 1, the low voice only; Paul: "reduce the roundedness of the normal voices"):
+  lips spread, not rounded: no covering, F2 up 3-9% (most on the front vowels), F3 up 3%, the throat
+  no longer than 0.97. The high voice is left for its own round of work.
+
 ## 9. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).

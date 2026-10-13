@@ -73,7 +73,8 @@ const SUNG: Partial<FofVoice> = { expr: 1, plain: 0.6, raw: 1 };
 
 /** A genre's voice for the FOF singer (`high`: an octave up, the high voice type), or a character on top of it. */
 export const fofFor = (g: Genre, seed: number, high: boolean, character?: Character): FofVoice =>
-  ({ ...VOICES[g].fof, ...SUNG, ...(character ? CHARACTERS[character].fof : {}), seed, high });
+  // (the low voice less rounded, Paul; the high voice left for its own round of work)
+  ({ ...VOICES[g].fof, ...SUNG, ...(character ? CHARACTERS[character].fof : {}), spread: high ? 0 : 1, seed, high });
 
 /** A voice's full recipe for the voice box (the base, its own changes, its break and way up; the voice lab's). */
 export function recipeFor(g: Genre): VoiceRecipe {
