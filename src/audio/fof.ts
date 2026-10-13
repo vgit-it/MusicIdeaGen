@@ -63,6 +63,14 @@ export interface FofVoice {
    * top (the 3-5 kHz "singer's formant" cluster wider and quieter); no swell on held notes.
    */
   plain?: number;
+  /**
+   * Raw 0-1 (left out: 0): an untrained rock singer, not a trained one (Paul: "in the mid-high range
+   * it's sounding like an opera singer, not because of vibrato but timbre"). A trained singer keeps the
+   * throat low and the vowels round all the way up; a rock singer lets the throat rise with the pitch:
+   * from about an octave under the break, the formants up (brighter, nearer a yell), the vowels
+   * kept open and speech-like (no covering), wider formants (less pure), more twang and edge.
+   */
+  raw?: number;
   /** The line's section energy, 0 (quiet verse) to 1 (the biggest chorus); left out: 0.5. */
   energy?: number;
   /** Their break (MIDI, about E4) and their way up past it. */
@@ -376,11 +384,14 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         exAmp *= expr; exBreath *= expr; exBright *= expr; exEdge *= expr; exEffort *= expr;
       }
       effort = clamp01(effort + secEffort + exEffort);
-      bright = (v.bright ?? 0) + secBright + lnBright + exBright;
+      // (raw: how far up into the rise: from about an octave under the break, all of it by the break)
+      const rise = (v.raw ?? 0) * smooth01((place + 12) / 12);
+      bright = (v.bright ?? 0) + secBright + lnBright + exBright + 1.5 * rise;
       breathNow = breath + secBreath + lnBreath + exBreath;
-      edgeW = clamp01((v.edge ?? 0) + (expr ? secEdge + lnEdge + exEdge : 0)) * EDGE_VOWEL[note.syl.vowel];
+      edgeW = clamp01((v.edge ?? 0) + 0.2 * rise + (expr ? secEdge + lnEdge + exEdge : 0)) * EDGE_VOWEL[note.syl.vowel];
       // (down low: rounder, more relaxed)
-      const cover = Math.min(1, cover0 + expr * 0.35 * smooth01((-place - 6) / 6));
+      const cover = Math.min(1, cover0 + expr * 0.35 * smooth01((-place - 6) / 6)) * (1 - rise);
+      for (let k = 0; k < 3; k++) B[k] = bws[k] * (1 + 0.5 * rise);
       // (a held note swells a little in and eases at its end)
       const swell = held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
       const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? 12 * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0);
@@ -439,7 +450,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       const lx = fal ? 1 : 1 + 0.04 * upW;
       // (formants kept apart: F1 riding up into F2 pushes it up, as the tongue does)
       const f2 = Math.max(f3[1] * lx, f1 + 250), f3b = Math.max(f3[2] * lx, f2 + 350);
-      F = [f1, f2, f3b, ...high].map((f, k) => f * (1 + fw[k]));
+      F = [f1, f2, f3b, ...high].map((f, k) => f * (1 + fw[k]) * (k < 3 ? 1 + 0.07 * rise : 1));
       for (let k = 0; k < 3; k++) asp[k].set(fs, F[k], Math.max(B[k] * 2, 150));
       asp[3].set(fs, F[3], 400);
     }

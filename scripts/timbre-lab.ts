@@ -49,11 +49,13 @@ const verseLen = 2;
 const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math.min(n.vel, 0.7) : Math.max(n.vel, 0.85) })));
 
 // (the voices as the app sings them: fofFor, with expression and less of the operatic sound)
-const TAKES: [string, FofVoice][] = [
+const VOICE: [string, FofVoice][] = [
   ['rock', fofFor('rock', 17, false)],
   ['big-dark', fofFor('rock', 17, false, 'deep')],
   ['dark-nasal', fofFor('rock', 17, false, 'nasal')],
 ];
+// (raw: the throat rising with the pitch, a rock singer's, not a trained one's; two amounts)
+const TAKES: [string, FofVoice][] = VOICE.flatMap(([n, v]): [string, FofVoice][] => [[`${n}-raw-medium`, { ...v, raw: 0.5 }], [`${n}-raw-strong`, { ...v, raw: 1 }]]);
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
