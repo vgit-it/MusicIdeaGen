@@ -208,6 +208,19 @@ export type Timbre = 'clear' | Genre;
 /** Semitones lower than the clear voice each genre's voice has its tunes written (where it sits best, by ear in the voice lab). */
 export const VOICE_DOWN: Record<Genre, number> = { rock: 6, pop: 3, funk: 4, hardrock: 3, metal: 2, grunge: 8, altmetal: 6 };
 
+/**
+ * Who sings the high voice (Paul: the old high voice, the low man's tune an octave up, "horrible" up
+ * there: it sang up to F#5-C6). A woman in pop, funk and rock (her own voice an octave over the man's,
+ * the tune written a 3rd lower first, so she sits about a 6th over him: up to about D5, now and then
+ * higher); a tenor in the heavier genres (the same kind of man, his tune written a 3rd higher, in key).
+ */
+export type HighSinger = 'female' | 'tenor';
+export const highSinger = (genre: Genre): HighSinger => (['pop', 'funk', 'rock'].includes(genre) ? 'female' : 'tenor');
+/** Semitones the high voice's tune is written up (down for the woman, who sings it an octave up). */
+export const HIGH_LIFT: Record<HighSinger, number> = { female: -4, tenor: 4 };
+/** Semitones the high voice sings over the written tune (the woman an octave; the tenor as written). */
+export const highOctave = (genre: Genre) => (highSinger(genre) === 'female' ? 12 : 0);
+
 /** The singer's voice on Auto: the song's genre's. */
 export function pickTimbre(genre: Genre): Timbre {
   return genre;

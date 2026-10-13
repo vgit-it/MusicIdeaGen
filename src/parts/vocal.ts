@@ -18,7 +18,7 @@ import { Rng } from '../rng';
 import { type MoveId, movesDesc, pickMoves } from './moves';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
-import type { Timbre } from './singers';
+import { HIGH_LIFT, type Timbre, highSinger } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
 import { FLOOR, PEAK, type Tune, type TuneNote, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
@@ -401,6 +401,9 @@ export function autoVoice(seed: string, genre: Genre): VoiceType {
   const high = genre === 'pop' ? 0.5 : genre === 'funk' ? 0.4 : genre === 'rock' ? 0.25 : 0.12;
   return new Rng(`${seed}-voice`).chance(high) ? 'high' : 'low';
 }
+
+/** Semitones the lead's tunes are written up for its voice: the high singer's own (singers.ts), or `lift` (the Chester voice's). */
+export const writtenLift = (voice: VoiceType, genre: Genre, lift = 0) => (voice === 'high' ? HIGH_LIFT[highSinger(genre)] : lift);
 
 /**
  * The backing singer's voice: chosen, or on Auto a second singer around the lead: the other voice (an

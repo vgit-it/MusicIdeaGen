@@ -40,6 +40,8 @@ export interface GenOptions {
   chords?: ChordSheet;
   /** Semitones higher the vocal tunes are written (the Chester voice: a tenor; in key, the tune itself rewritten). */
   vocalLift?: number;
+  /** The lead voice chosen (left out: Auto, the song's own); the high singer's tunes are written for them (singers.ts). */
+  vocalVoice?: 'low' | 'high';
   /** How the vocal's rhythm is written: classic (speech rhythm, the default) or on the metronome grid (docs/VOCAL-RHYTHM.md). */
   vocalRhythm?: 'grid';
   /** How the vocal's pitches are written: classic (the default) or shaped (docs/VOCAL-MELODY.md). */

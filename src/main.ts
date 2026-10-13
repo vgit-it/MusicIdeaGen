@@ -380,7 +380,12 @@ function newIdea() {
   }
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
   // (the vocal's rhythm and the Chester voice's higher tunes carry over to the new idea)
-  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove }, seeds));
+  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalVoice: leadVoiceChoice(), vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove }, seeds));
+}
+
+/** The lead voice picked in the mixer (left out: Auto, the song's own). */
+function leadVoiceChoice(): 'low' | 'high' | undefined {
+  return engine.vocal === 'low' || engine.vocal === 'high' ? engine.vocal : undefined;
 }
 
 /** One part gets new seeds; everything else stays. Playback carries on from the same spot. */
@@ -575,10 +580,12 @@ addSel.onchange = () => {
 };
 
 const partsPanel = buildPartsPanel($('parts'), engine, () => {
-  // the Chester voice sings higher: its tunes rewritten 3 semitones up (in key; same seeds, only the vocal changes)
+  // the Chester voice sings higher: its tunes rewritten 3 semitones up (in key; same seeds, only the vocal changes);
+  // and the high singer has their own tunes (singers.ts: written for the woman or the tenor)
   const lift = engine.vocalTimbre === 'scream' ? 3 : 0;
-  if (idea && (idea.opts.vocalLift ?? 0) !== lift) {
-    showIdea(generate({ ...idea.opts, vocalLift: lift || undefined }, idea.seeds), true);
+  const voice = leadVoiceChoice();
+  if (idea && ((idea.opts.vocalLift ?? 0) !== lift || idea.opts.vocalVoice !== voice)) {
+    showIdea(generate({ ...idea.opts, vocalLift: lift || undefined, vocalVoice: voice }, idea.seeds), true);
     return;
   }
   // a layer added or removed: the strip labels, lanes, Keep / reroll and the link all follow

@@ -25,7 +25,9 @@ turned into a number. ✓ = built, · = later.
 - [P] The song's highest note saved for the climax (its last held note lifted). ✓
 - Room for the band: a held note stops where Guitar 2's answer starts; Guitar 2 steps back 3 dB where
   the singer sings. ✓
-- The low voice's range: C3 to E4, the climax up to A4; a high voice sings an octave up. ✓
+- The low voice's range: C3 to E4, the climax up to A4. The high voice: a woman in pop, funk and rock
+  (her tune written a 3rd lower, sung an octave up: about G#3 to D5), a tenor in the heavier genres (his
+  tune written a 3rd higher, in key) (docs/VOICES.md, section 9c). ✓
 - Sung: verses, pre-choruses, choruses, bridges, the first half of the outro (the chorus hook). Not
   sung: intros, interludes, solos, breakdowns. ✓
 - Genres: grunge lower and narrower, funk busier, metal and hard rock a little higher, pop wider. ✓

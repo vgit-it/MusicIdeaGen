@@ -6,7 +6,7 @@
 
 import type { Genre } from '../genres';
 import type { Vowel } from '../parts/lyrics';
-import { VOICE_DOWN } from '../parts/singers';
+import { type HighSinger, VOICE_DOWN } from '../parts/singers';
 import type { FofVoice } from './fof';
 import { type VoiceRecipe, autoRegisters } from './sing';
 
@@ -111,17 +111,17 @@ export function autoShares(voice: GenreVoice, midi: number, vowel: Vowel, vel: n
   return autoRegisters(voice.recipe.regMix ?? 'grunge', midi - voice.brk, vowel, vel);
 }
 
-/** The singers on trial for the high voice (Paul: "both"): a tenor, or a woman. */
-export type HighSinger = 'tenor' | 'female';
 /**
- * A high singer's voice. The tenor: the same kind of singer, a 4th up (a touch smaller, his break with
- * him). The woman: her own voice an octave up: a smaller person (formants about 16% up), breathier (a
- * glottal chink), a softer buzz (a steeper tilt, more of the first harmonic), less grit, a quicker,
- * lighter vibrato, her break a little higher than his in the melody's terms (she belts and mixes up there).
+ * The high voice (singers.ts: a woman in pop, funk and rock, a tenor in the heavier genres). The tenor:
+ * the same kind of singer, his tunes written a 3rd higher (in key; sung as written), a touch smaller,
+ * his break with him. The woman: her own voice an octave over the written tune (written a 3rd lower for
+ * her): a smaller person (formants about 16% up), breathier (a glottal chink), a softer buzz (a steeper
+ * tilt, more of the first harmonic), less grit, a quicker, lighter vibrato, her break about B4 (she
+ * belts and mixes up there; up high her first formant follows the pitch, as sopranos' do: fof.ts).
  */
 export function fofHigh(g: Genre, seed: number, who: HighSinger, character?: Character): FofVoice {
   const v = fofFor(g, seed, false, character);
-  if (who === 'tenor') return { ...v, shift: 5, size: 1.03, brkUp: 4 };
+  if (who === 'tenor') return { ...v, shift: 0, size: 1.03, brkUp: 4 };
   return {
     ...v, shift: 12, size: 1.16, brkUp: 6, spread: 0.5,
     breath: (v.breath ?? -24) + 5, grit: (v.grit ?? 0) * 0.4, bright: (v.bright ?? 0) - 1, body: (v.body ?? 5) + 2,

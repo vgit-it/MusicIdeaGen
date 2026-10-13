@@ -6,7 +6,7 @@
 
 import { arrangeBacking, pickBacking } from './parts/backing';
 import type { MoveId } from './parts/moves';
-import { autoVoice, singTrack } from './parts/vocal';
+import { autoVoice, singTrack, writtenLift } from './parts/vocal';
 import { type Mood, type MoodChoice, PROFILES, arcNote, autoMood, planTension } from './tension';
 import { type BuildOptions, buildIdea, withSheet } from './generator';
 import { GENRES, type Genre, QUIET_STYLES, type RiffStyle } from './genres';
@@ -1668,8 +1668,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
   const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
-  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', shaped: src.opts.vocalMelody === 'shaped', move: src.opts.vocalMove as MoveId | undefined }, arc.climax);
-  const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
+  const voice = src.opts.vocalVoice ?? autoVoice(vocalSeed, src.song.partGenres.strum);
+  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: writtenLift(voice, src.song.partGenres.strum, src.opts.vocalLift), grid: src.opts.vocalRhythm === 'grid', shaped: src.opts.vocalMelody === 'shaped', move: src.opts.vocalMove as MoveId | undefined }, arc.climax);
   for (const x of sections) x.vocalVoice = voice;
   // backing vocals: doubled choruses, harmonies (or oohs) by the mood, ad-libs over the climax
   const backing = pickBacking(vocalSeed, mood, src.song.partGenres.strum);

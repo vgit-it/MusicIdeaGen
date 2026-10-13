@@ -600,6 +600,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // falsetto keeps F1 clear above the pitch)
       if (!fal && f3[0] > 450) f1 = lerp(f1, Math.min(Math.max(2.04 * f0, f1), f1 * 1.5), upW);
       if (fal) f1 = Math.max(f1, f0 * 1.3);
+      // (over about C#5, only a woman's notes: the 2nd-harmonic belt gives way to F1 just over the pitch, as
+      // sopranos tune it; a mouth can't open to 1.2 kHz and more, and up there it went shrill)
+      const sop = smooth01((f0 - 540) / 120);
+      if (sop) f1 = lerp(f1, Math.max(f0 * 1.12, Math.min(f1, f0 * 1.3)), sop);
       const lx = fal ? 1 : 1 + 0.04 * upW;
       // (formants kept apart: F1 riding up into F2 pushes it up, as the tongue does)
       const f2 = Math.max(f3[1] * lx, f1 + 250), f3b = Math.max(f3[2] * lx, f2 + 350);

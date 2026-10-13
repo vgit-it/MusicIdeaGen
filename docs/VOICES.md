@@ -219,7 +219,27 @@ singer before any post (`life` in `src/audio/fof.ts`, on every sung voice; `rush
 
 Clips: `npm run timbre-lab` (life-normal / -vedder / -staley, before and after).
 
+## 9c. The high voice: its own singer (2026-10-13)
+Paul: the high voice "horrible", "when songs go for these highs, it ruins it". It was the low man's tune
+an octave up with nearly his own throat (formants x1.04): a man pushed into a woman's range. Measured on
+25 songs a genre, it sang a median of G4-A4, 5% of its notes over F-F#5, up to C6. Auto picked it in
+half of pop songs, 40% of funk, 25% of rock.
+
+Now (Paul: "1, 2, 3": a woman and a tenor, by genre; `src/parts/singers.ts`):
+- **A woman in pop, funk and rock.** Her tune written a major 3rd lower, then sung an octave up (about
+  a 6th over the man: in key, and the backing man under her stays in his range). Sung: about G#3 to D5,
+  a median of D#4-F4, the odd wail to G5. Her own person (`fofHigh` in `voices.ts`): formants about 16%
+  up, breathier, a softer buzz with more of the first harmonic, less grit, a quicker, lighter vibrato,
+  her break about B4. Over about C#5 her first formant follows the pitch (as sopranos tune it) instead of
+  the belt's 2nd harmonic (a mouth can't open to 1.2 kHz and more: it went shrill).
+- **A tenor in hard rock, metal, grunge and alt metal.** The same kind of man, his tune written a major
+  3rd higher (in key; sung as written), a touch smaller (formants x1.03), his break up with him.
+- Picking High voice in the mixer rewrites the tune for that singer (same seeds; only the vocal
+  changes), as the Chester voice does. MIDI export: the woman an octave over the written notes, the
+  tenor as written. The clear voice and the backing singer follow the same rule.
+- Clips: `npm run high-lab` (each genre: the low voice, the old high voice, the new one; `ONLY=pop,metal`).
+
 ## 10. Next
-- The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
+- The high voice by ear with Paul (her brightness, his break; whether a genre wants the other singer).
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
 - More of Paul's lab mixes (other voices, vowels) to refine REGISTER_MIX and MID_FIT.

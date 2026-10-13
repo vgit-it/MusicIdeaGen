@@ -10,7 +10,7 @@
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
 import type { Idea } from '../idea';
-import type { Timbre } from '../parts/singers';
+import { type HighSinger, type Timbre, highSinger } from '../parts/singers';
 import { type VoiceType, backingVoice } from '../parts/vocal';
 import { stepAt } from '../rhythm';
 import { inContext } from './context';
@@ -18,7 +18,7 @@ import { lagFor, perform } from './feel';
 import { FOF_RATE, renderFof } from './fof';
 import { type PolishOpts, type VocalComp, type VocalFx, polishVoice } from './polish';
 import { Rng } from '../rng';
-import { CHARACTERS, type Character, VOICES, fofFor } from './voices';
+import { CHARACTERS, type Character, VOICES, fofFor, fofHigh } from './voices';
 import { SING_RATE, type SungNote, renderLine } from './sing';
 
 export type VocalChoice = 'auto' | VoiceType | 'off';
@@ -72,7 +72,9 @@ const PRE = 0.3;
 /** How much each style slides into and off notes. */
 const SLIDES: Record<Genre, number> = { rock: 0.6, pop: 0.4, funk: 0.3, hardrock: 0.5, metal: 0.3, grunge: 0.7, altmetal: 0.5 };
 
-interface Job { key: string; notes: SungNote[]; voice: VoiceType; timbre: Sung; base: Genre; slides: number; variant: number; energy: number }
+/** Who sings a line: the low voice, or the song's high singer (a woman, or a tenor: singers.ts). */
+type Who = 'low' | HighSinger;
+interface Job { key: string; notes: SungNote[]; who: Who; timbre: Sung; base: Genre; slides: number; variant: number; energy: number }
 interface Line { first: number; key: string; notes: SungNote[]; t0: number; pan: number; gain: number; delay: number }
 
 /** The voices around the lead: where each sits (pan), how loud, how late (a double is a second take), which take. */
@@ -144,6 +146,7 @@ export class Singer {
   /** An idea's lines at this tempo, indexed by the step that starts them. */
   private linesFor(idea: Idea, six: number) {
     const voice = this.voiceOf(idea);
+    const who: Who = voice === 'high' ? highSinger(idea.song.partGenres.strum) : 'low';
     const timbre = this.timbreOf(idea);
     const got = this.lines.get(idea);
     if (got && got.six === six && got.voice === voice && got.timbre === timbre) return got;
@@ -180,13 +183,13 @@ export class Singer {
         const notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lag, L[0].step + L.length * 7, rush);
         const popts = polishFor(idea, this.role === 'lead' && stream !== 'adlib');
         // (an effect is part of the line: the same tune in another verse is another line)
-        const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
+        const key = `${who}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
         // started a little ahead of its first note, from the step that leaves room for the lead-in
         const first = Math.max(0, L[0].step - Math.ceil(PRE / six));
         const line: Line = { first, key, notes, t0, pan: S.pan, gain: S.gain, delay: S.delay };
         this.polOpts.set(key, popts);
         (byStep.get(first) ?? byStep.set(first, []).get(first)!).push(line);
-        if (!this.bufs.has(key)) this.queue.push({ key, notes, voice, timbre, slides: stream === 'lead' || stream === 'adlib' ? slides : slides * 0.4, variant: S.variant, energy, base });
+        if (!this.bufs.has(key)) this.queue.push({ key, notes, who, timbre, slides: stream === 'lead' || stream === 'adlib' ? slides : slides * 0.4, variant: S.variant, energy, base });
       }
     }
     const entry = { six, voice, timbre, byStep };
@@ -243,8 +246,11 @@ export class Singer {
     // (a genre's voice: the FOF singer; the clear voice and the backing singer: the formant synth, as they were)
     const v = (seed + job.variant * 13) % 97;
     const fof = job.timbre !== 'clear' && this.role === 'lead';
-    const pcm = fof ? renderFof(job.notes, { ...(isCharacter(job.timbre) ? fofFor(job.base, v, job.voice === 'high', job.timbre) : fofFor(job.timbre as Genre, v, job.voice === 'high')), energy: job.energy }, PRE)
-      : renderLine(job.notes, { high: job.voice === 'high', slides: job.slides, seed: v, person }, PRE);
+    // (the high voice: the song's woman or tenor, on the voice's own recipe; the clear voice an octave up only for the woman,
+    // the tenor's tunes being written higher already)
+    const genre = isCharacter(job.timbre) ? job.base : (job.timbre as Genre), ch = isCharacter(job.timbre) ? job.timbre : undefined;
+    const pcm = fof ? renderFof(job.notes, { ...(job.who === 'low' ? fofFor(genre, v, false, ch) : fofHigh(genre, v, job.who, ch)), energy: job.energy }, PRE)
+      : renderLine(job.notes, { high: job.who === 'female', slides: job.slides, seed: v, person }, PRE);
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
     const buf = raw.createBuffer(1, pcm.length, fof ? FOF_RATE : SING_RATE);
     buf.copyToChannel(pcm as Float32Array<ArrayBuffer>, 0);
@@ -265,7 +271,7 @@ export class Singer {
       // (not rendered yet: render it now, it's short)
       let buf = this.bufs.get(line.key);
       if (!buf) {
-        buf = this.render({ key: line.key, notes: line.notes, voice: entry.voice, timbre: entry.timbre, slides: SLIDES[idea.song.partGenres.strum], variant: Number(line.key.split('|')[1]), energy: Number(line.key.split('|')[3]), base: line.key.split('|')[4] as Genre });
+        buf = this.render({ key: line.key, notes: line.notes, who: line.key.split('|')[0] as Who, timbre: entry.timbre, slides: SLIDES[idea.song.partGenres.strum], variant: Number(line.key.split('|')[1]), energy: Number(line.key.split('|')[3]), base: line.key.split('|')[4] as Genre });
         this.bufs.set(line.key, buf);
       }
       if (this.polish) buf = this.polished(line.key) ?? buf;

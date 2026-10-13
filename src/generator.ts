@@ -1,7 +1,7 @@
 // Pure, deterministic idea generator: same options + seeds = same idea.
 
 import type { MoveId } from './parts/moves';
-import { autoVoice, singIdea } from './parts/vocal';
+import { autoVoice, singIdea, writtenLift } from './parts/vocal';
 import { autoMood } from './tension';
 import { GENRES, GENRE_LIST, type Genre, type RiffStyle } from './genres';
 import type { ChordPart, Cycle, GenOptions, Idea, Seeds, Song, Stroke } from './idea';
@@ -102,8 +102,10 @@ export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
   idea.notes.splice(at, 0, ...notes);
   // the singer: the idea is a chorus, so it sings the chorus tune and its hook
   const vs = seeds.vocal ?? `${seeds.chords}-vocal`;
-  singIdea(idea, vs, autoMood(song, seeds.song), opts.vocalLift ?? 0, opts.vocalRhythm === 'grid', opts.vocalMelody === 'shaped', opts.vocalMove as MoveId | undefined);
-  idea.vocalVoice = autoVoice(vs, song.partGenres.strum);
+  // (the lead's voice first: the high singer's tunes are written for them)
+  const voice = opts.vocalVoice ?? autoVoice(vs, song.partGenres.strum);
+  singIdea(idea, vs, autoMood(song, seeds.song), writtenLift(voice, song.partGenres.strum, opts.vocalLift), opts.vocalRhythm === 'grid', opts.vocalMelody === 'shaped', opts.vocalMove as MoveId | undefined);
+  idea.vocalVoice = voice;
   return idea;
 }
 
