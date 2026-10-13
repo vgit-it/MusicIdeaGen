@@ -16,7 +16,7 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   let held = 0, heldTime = 0, voiced = 0, highs = 0, highShort = 0, highFall = 0, odd = 0, qrun = 0, secs = 0, syls = 0, same = 0, run3 = 0, lines = 0, flatLines = 0;
   const lens: Record<number, number> = {};
   // pitch measures (docs/VOCAL-FIRST.md): strong notes on chord notes, off-chord ones resolving by step, steps and leaps, gap-fill, 4-note shapes heard across songs
-  let strongN = 0, strongOn = 0, offRes = 0, ints = 0, steps = 0, leaps = 0, leapN = 0, filled = 0;
+  let bPairs = 0, bContra = 0, bPar = 0, strongN = 0, strongOn = 0, offRes = 0, ints = 0, steps = 0, leaps = 0, leapN = 0, filled = 0;
   const shapes = new Map<string, Set<string>>();
   let sample = '';
   for (const g of GENRES) for (let i = 0; i < N; i++) {
@@ -57,6 +57,15 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
             const nx = l[k + 1];
             if (nx && Math.abs(nx.midi - n.midi) <= 2 && nx.midi !== n.midi && tonesAt(nx.step).includes(((nx.midi % 12) + 12) % 12)) offRes++;
           });
+          { const bAt = (g: number) => { for (let x = Math.min(g, sec.bass.length - 1); x >= 0; x--) if (sec.bass[x]) return sec.bass[x]; return 0; };
+            const st = l.filter((n) => n.syl.text !== '~' && (n.syl.stress || n.len >= 4));
+            for (let k = 1; k < st.length; k++) {
+              const b0 = bAt(st[k - 1].step), b1 = bAt(st[k].step), dv = st[k].midi - st[k - 1].midi, db = b1 - b0;
+              if (!b0 || !b1 || !dv || !db) continue;
+              bPairs++;
+              if (Math.sign(dv) !== Math.sign(db)) bContra++;
+              else if ([0, 7].includes((((st[k - 1].midi - b0) % 12) + 12) % 12) && [0, 7].includes((((st[k].midi - b1) % 12) + 12) % 12)) bPar++;
+            } }
           const on4 = l.filter((n, k) => k === 0 || n.syl !== l[k - 1].syl);
           for (let k = 1; k < on4.length; k++) {
             const d = on4[k].midi - on4[k - 1].midi;
@@ -76,7 +85,8 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   console.log(`   held (half a bar+): ${(100 * held / syls).toFixed(1)}% of syllables, ${(100 * heldTime / voiced).toFixed(0)}% of sung time; high notes (belts, jumps up to the top, as written) ${highs}: ${highShort} under half a bar, ${highFall} falling off`);
   { const songs = GENRES.length * N; const common = [...shapes.values()].filter((x) => x.size >= songs / 3).length;
     const pc = (a: number, b: number) => `${Math.round((100 * a) / Math.max(1, b))}%`;
-    console.log(`   strong notes on chord notes ${pc(strongOn, strongN)}, off-chord ones resolving by step ${pc(offRes, strongN - strongOn)}; steps ${pc(steps, ints)}, leaps ${pc(leaps, ints)}, gap-fill after leaps ${pc(filled, leapN)}; 4-note shapes ${shapes.size} (in a third of the songs or more: ${common})`); }
+    console.log(`   strong notes on chord notes ${pc(strongOn, strongN)}, off-chord ones resolving by step ${pc(offRes, strongN - strongOn)}; steps ${pc(steps, ints)}, leaps ${pc(leaps, ints)}, gap-fill after leaps ${pc(filled, leapN)}; 4-note shapes ${shapes.size} (in a third of the songs or more: ${common})`);
+    console.log(`   against the bass (strong notes, both moving): contrary ${pc(bContra, bPairs)}, parallel 5ths/octaves ${pc(bPar, bPairs)}`); }
   lineRates.sort((a, b) => a - b); console.log(`   line syl/s: median ${lineRates[lineRates.length >> 1].toFixed(1)}, 90th ${lineRates[Math.floor(lineRates.length * 0.9)].toFixed(1)}, max ${lineRates[lineRates.length - 1].toFixed(1)}`);
   if (sample) console.log('   pop verse line:', sample);
 }

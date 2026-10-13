@@ -1,4 +1,4 @@
-# Vocal melody: Melody first (2026-10-13; steps 1 and 2 built)
+# Vocal melody: Melody first (2026-10-13; steps 1-4 built)
 
 A third way of choosing the vocal's pitches, beside **Classic** and **Shaped** (both kept).
 Paul: the melody "seems generic and not really saying anything on its own"; it outlines the chords (it
@@ -134,6 +134,35 @@ Numbers are only a check: Paul judges by ear.
 Below the 75-85% target on chord notes: loops and signature moves sit off the chord on purpose; to judge
 by ear.
 
+## Built (steps 3 and 4)
+- **The sentence (Caplin), now and then** (about 45% of verses and choruses of 4+ even lines; form
+  A A B C): the idea, the idea again (moved along the spine), then the continuation: the idea's first two
+  or three notes again and again, each time a step nearer the spine's next note, its rhythm a little
+  busier (x1.2), then the cadence, closed on the root. Other sections keep ABAb.
+- **Against the bass:** strong notes moving the same way as the bass into a 5th or an octave with it
+  (parallels) move to a chord note the other way; other similar motion does too about a third of the
+  time.
+- **A musical score for each try** (added to the band's score; the best of 6 tries kept): reaching the
+  spine note (+), gap-fill after leaps (+, a leap carrying on −), more than one visit to the top note (−),
+  three or more of one note (−), about four different intervals (− the further off), leaps over 40% or
+  none at all (−).
+- Classic and Shaped unchanged (checked: the same notes as before).
+
+## Measured after steps 3 and 4 (42 songs, all genres, 4/4)
+| | Classic | Shaped | Melody first (1-2) | Melody first (1-4) |
+|---|---|---|---|---|
+| Strong notes on chord notes | 85% | 87% | 72% | 71% |
+| Off-chord strong notes resolving by step | 45% | 46% | 49% | 54% |
+| The same note again | 24% | 22% | 18% | 15% |
+| Three of one note in a row | 8% | 7% | 4% | 3% |
+| One-note lines | 17 of 885 | 43 of 911 | 10 of 854 | 8 of 852 |
+| Gap-fill after leaps | 63% | 60% | 67% | 70% |
+| Different 4-note shapes (in a third of songs or more) | 1038 (17) | 1054 (15) | 1409 (16) | 1425 (9) |
+| Against the bass: contrary motion | 51% | 51% | | 53% |
+| Parallel 5ths/octaves with the bass | 14% | 16% | | 8% |
+
+6/8 and 7/8: parallels 6-7%, gap-fill 64-68%, resolving 63%.
+
 ## Next
-- Step 3: the sentence form; contrary motion to the bass.
-- Step 4: a musical score for each try (spine reached, gap-fill, one high point, surprise in the middle).
+- Paul listens: Melody first vs Shaped; then decide whether it replaces Shaped.
+- Possible: the clash rates and loop chance tuned by ear; the sentence's continuation shown in the notes.
