@@ -326,6 +326,28 @@ rule against quick turns as a syllable starts removed them too).
 - Result: syllables a second at 65 bpm 1.1 → 1.4, at 80 bpm 1.4 → 1.5, 120 bpm unchanged; runs in 60
   songs 1-3 → 100-190; run notes at 65 bpm 0.46 s → about 0.19 s on average.
 
+## 9b. Fixes from listening (2026-10-13)
+Paul: "the vocal melody is sitting at one note most of the time", "some songs ... at a very low
+register and barely audible", "too many long runs", and a sung line heard twice at once after tapping
+a section. Measured on 56 songs (8 per genre, Classic; Shaped alike):
+
+| | Before | After |
+|---|---|---|
+| Syllables on the same note as the last | 46% | 35% |
+| Share of the song's most-used note | 34% | 26% |
+| Notes under B2 (Shaped) | 6% (down to D#2) | 0 |
+| Runs per song / long runs (5+ notes) | 1.9 / 0.29 | 1.3 / 0.18 (the wailer's only) |
+
+- **The floor:** no sung note under B2 (`FLOOR` in `melody.ts`, plus a higher singer's lift); the band
+  fitting allowed the Shaped voice down to C#2. A range pushed up off the floor keeps its width.
+- **One note:** the low-voiced genres (grunge, alt metal) had their verse and chorus both pressed onto the
+  floor, the chorus with no lift: the lift is now measured from where the verse really sits. The
+  repeat chance is about half, never more than two repeats running (three in a recited line), at least
+  about a 6th of range, and the reciting verse rarer in the dark, tense and angry moods.
+- **Runs:** long runs, and runs from well above the note, are the wailer's own; the other singers' are
+  fewer and no more than 4 notes, from no more than a 4th above.
+- **Sung twice:** a jump while playing (a section tapped) stops the lines already sung (faded over 40 ms).
+
 ## 10. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the

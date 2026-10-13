@@ -106,7 +106,7 @@ export class Singer {
   /** Sing the polished lines (on with the Prepare button, and in exports made with it on). */
   polish = false;
   private lines = new WeakMap<Idea, { six: number; voice: VoiceType; timbre: Sung; byStep: Map<number, Line[]> }>();
-  private sources = new Set<AudioBufferSourceNode>();
+  private sources = new Map<AudioBufferSourceNode, GainNode>();
   private queue: Job[] = [];
   private working: Promise<void> | null = null;
 
@@ -281,12 +281,16 @@ export class Singer {
       Tone.connect(pan, this.input);
       const when = Math.max(time, start);
       src.start(when, Math.max(0, when - start));
-      this.sources.add(src);
+      this.sources.set(src, gain);
       src.onended = () => { src.disconnect(); gain.disconnect(); pan.disconnect(); this.sources.delete(src); };
     }
   }
 
-  releaseAll(time = this.ctx.now()) {
-    for (const s of this.sources) { try { s.stop(time); } catch { /* already stopped */ } }
+  /** Stop every line sounding or about to (`fade`: faded out over that many seconds, no click). */
+  releaseAll(time = this.ctx.now(), fade = 0) {
+    for (const [s, g] of this.sources) {
+      if (fade) { g.gain.cancelScheduledValues(time); g.gain.setValueAtTime(g.gain.value, time); g.gain.linearRampToValueAtTime(0, time + fade); }
+      try { s.stop(time + fade); } catch { /* already stopped */ }
+    }
   }
 }

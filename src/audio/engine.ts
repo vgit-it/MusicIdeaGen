@@ -397,6 +397,15 @@ export class Engine {
     this.loop = loop;
     this.idx = start;
     this.step = place < list[start].song.total ? place : 0;
+    // (a jump while playing (a section tapped): the lines already sung stop, or the jump sings them again
+    // over themselves (Paul: "it plays the vocals part of it 2 times simultaneously"); the other parts are
+    // note by note and stop on their own)
+    if (this.playing && !this.offline && !(keepPlace && place)) {
+      // (right away: the context's now() is a look-ahead later, by when the jump's own lines start)
+      const now = this.ctx.rawContext.currentTime;
+      this.singer?.releaseAll(now, 0.04);
+      this.backer?.releaseAll(now, 0.04);
+    }
     this.tail = -1;
     const { song } = list[0];
     const tr = this.transport;

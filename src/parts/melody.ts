@@ -32,6 +32,11 @@ const mod = (n: number, m: number) => ((n % m) + m) % m;
 /** The low voice's comfortable range (a rock tenor-baritone): C3 to E4, the climax up to A4. */
 export const LOW: [number, number] = [48, 64];
 export const PEAK = 69;
+/**
+ * The lowest a sung note goes (B2; plus a higher singer's lift): under it the voice sinks into the band
+ * and is barely heard (Paul: "very low register ... barely audible").
+ */
+export const FLOOR = 47;
 
 /** A line's shape: recite (one note, falling at the end), arch, rise (peak late), fall, valley, climb, wave, tumble (from up high all the way down, lifting at the end). */
 export type Contour = 'recite' | 'arch' | 'rise' | 'fall' | 'valley' | 'climb' | 'wave' | 'tumble';
@@ -108,7 +113,7 @@ interface MoodMelody {
  */
 const MOOD_MELODY: Record<Mood, MoodMelody> = {
   happy: {
-    verse: [['wave', 3], ['recite', 2], ['arch', 2]], chorus: [['arch', 4], ['rise', 2], ['wave', 1]], bridge: [['rise', 2], ['arch', 2]],
+    verse: [['wave', 3], ['recite', 1], ['arch', 2]], chorus: [['arch', 4], ['rise', 2], ['wave', 1]], bridge: [['rise', 2], ['arch', 2]],
     lift: [4, 7], register: 1, span: 1.15, leap: 0.18, leaps: [3, 4], repeat: 0.2, stable: 0.82, lean: 0.05, melisma: 0.08,
     busy: 1.05, legato: 0.8, sync: 0.25, verseStart: [['down', 3], ['pickup', 2]], chorusStart: [['down', 4], ['pickup', 1]],
     dark: 0, hookLeap: [[0, 2], [2, 2], [3, 2]], ends: 'open',
@@ -126,7 +131,7 @@ const MOOD_MELODY: Record<Mood, MoodMelody> = {
     dark: 0, hookLeap: [[5, 2], [0, 2], [3, 1]], ends: 'fall',
   },
   melancholic: {
-    verse: [['fall', 3], ['recite', 2], ['wave', 1]], chorus: [['arch', 3], ['fall', 3]], bridge: [['valley', 2], ['fall', 1], ['arch', 1]],
+    verse: [['fall', 3], ['recite', 1], ['wave', 2]], chorus: [['arch', 3], ['fall', 3]], bridge: [['valley', 2], ['fall', 1], ['arch', 1]],
     lift: [2, 5], register: -1, span: 0.85, leap: 0.07, leaps: [3, 5], repeat: 0.22, stable: 0.68, lean: 0.32, melisma: 0.22,
     busy: 0.82, legato: 0.95, sync: 0.15, verseStart: [['pickup', 3], ['after', 2], ['down', 1]], chorusStart: [['pickup', 2], ['down', 2]],
     dark: 0.05, hookLeap: [[0, 3], [5, 1]], ends: 'fall',
@@ -138,20 +143,20 @@ const MOOD_MELODY: Record<Mood, MoodMelody> = {
     dark: 0, hookLeap: [[4, 3], [0, 1]], ends: 'open',
   },
   tense: {
-    verse: [['recite', 4], ['wave', 1]], chorus: [['climb', 3], ['rise', 2], ['arch', 1]], bridge: [['climb', 2], ['recite', 1]],
-    lift: [2, 5], register: 0, span: 0.75, leap: 0.1, leaps: [3, 4], repeat: 0.45, stable: 0.45, lean: 0.1, melisma: 0.03,
+    verse: [['recite', 1.5], ['wave', 2], ['valley', 1]], chorus: [['climb', 3], ['rise', 2], ['arch', 1]], bridge: [['climb', 2], ['recite', 1]],
+    lift: [2, 5], register: 0, span: 0.75, leap: 0.1, leaps: [3, 4], repeat: 0.3, stable: 0.45, lean: 0.1, melisma: 0.03,
     busy: 1.1, legato: 0.72, sync: 0.45, verseStart: [['after', 3], ['pickup', 2]], chorusStart: [['pickup', 2], ['down', 2]],
     dark: 0.2, hookLeap: [[0, 3], [3, 1]], ends: 'open',
   },
   angry: {
-    verse: [['recite', 3], ['rise', 1]], chorus: [['rise', 3], ['arch', 2]], bridge: [['climb', 2], ['rise', 1]],
-    lift: [4, 7], register: 1, span: 0.9, leap: 0.25, leaps: [3, 4], repeat: 0.4, stable: 0.6, lean: 0.03, melisma: 0,
+    verse: [['recite', 1.5], ['rise', 1.5], ['wave', 1]], chorus: [['rise', 3], ['arch', 2]], bridge: [['climb', 2], ['rise', 1]],
+    lift: [4, 7], register: 1, span: 0.9, leap: 0.25, leaps: [3, 4], repeat: 0.3, stable: 0.6, lean: 0.03, melisma: 0,
     busy: 1.15, legato: 0.6, sync: 0.4, verseStart: [['down', 3], ['after', 1]], chorusStart: [['down', 4]],
     dark: 0.15, hookLeap: [[3, 2], [0, 2]], ends: 'fall',
   },
   dark: {
-    verse: [['recite', 3], ['fall', 2]], chorus: [['arch', 2], ['valley', 2], ['fall', 1]], bridge: [['valley', 2], ['recite', 1]],
-    lift: [2, 5], register: -2, span: 0.8, leap: 0.1, leaps: [3, 4], repeat: 0.35, stable: 0.6, lean: 0.2, melisma: 0.06,
+    verse: [['recite', 1.5], ['fall', 2], ['valley', 1]], chorus: [['arch', 2], ['valley', 2], ['fall', 1]], bridge: [['valley', 2], ['recite', 1]],
+    lift: [2, 5], register: -2, span: 0.8, leap: 0.1, leaps: [3, 4], repeat: 0.28, stable: 0.6, lean: 0.2, melisma: 0.06,
     busy: 0.9, legato: 0.85, sync: 0.25, verseStart: [['after', 3], ['pickup', 2]], chorusStart: [['down', 2], ['pickup', 2]],
     dark: 0.35, hookLeap: [[0, 3], [4, 1]], ends: 'fall',
   },
@@ -242,7 +247,7 @@ export function melodyStyle(seed: string, mood: Mood, genre: Genre, lift = 0): M
     const t = rng.weighted(twists.map((k) => [k, TWIST_FIT[k](mood, genre)] as [Twist, number]));
     s.twist = t;
     if (t === 'octave') { s.register -= 2; s.lift = Math.max(s.lift + 5, 9); s.verse = 'recite'; s.span *= 0.9; }
-    else if (t === 'chant') { s.verse = 'recite'; s.repeat = Math.max(s.repeat, 0.7); s.leap *= 0.3; }
+    else if (t === 'chant') { s.verse = 'recite'; s.repeat = Math.max(s.repeat, 0.55); s.leap *= 0.3; }
     else if (t === 'leap') s.hookLeap = rng.pick([5, 7]);
     else if (t === 'call') s.chorusForm = 'ABAB';
     else if (t === 'offbeat') { s.verseStart = 'after'; s.chorusStart = 'after'; s.sync = Math.max(s.sync, 0.4); }
@@ -584,17 +589,21 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   // against the clear voice's floor, which left a low voice's verse two notes wide)
   const off = style.up - (style.shaped ? Math.min(3, floorDown(style)) : 0);
   const spanX = !style.shaped ? 1 : kind === 'verse' ? 0.75 : big ? (style.contrast === 'dramatic' ? 1.5 : style.contrast === 'subtle' ? 1.1 : 1.3) : 1;
-  const span = Math.max(style.shaped ? (big ? 10 : 8) : 5, Math.round(P.span * G.span * style.span * spanX));
+  // (at least about a 6th: narrower, a low voice's lines circled two or three notes)
+  const span = Math.max(style.shaped ? (big ? 10 : 8) : 8, Math.round(P.span * G.span * style.span * spanX));
   // (shaped: the centre high enough off the floor for the whole range to fit above it)
-  const floorC = style.shaped ? LOW[0] + off - 3 + Math.ceil(span / 2) : LOW[0] + off + 2;
+  const floorC = Math.max(FLOOR + style.up + Math.ceil(span / 2), style.shaped ? LOW[0] + off - 3 + Math.ceil(span / 2) : LOW[0] + off + 2);
   let center = Math.max(floorC, Math.min(PEAK + off - 5, base + G.center + style.register + lift));
-  // (shaped: the lift measured from where the verse really sits, so a floor can't flatten it)
-  if (style.shaped && lift) {
-    const verseC = Math.max(LOW[0] + off - 3 + Math.ceil(Math.max(8, Math.round(P.span * G.span * style.span * 0.75)) / 2), base + G.center + style.register);
+  // (the lift measured from where the verse really sits, so a floor can't flatten it: a low voice's
+  // verse and chorus both pressed onto the floor sang on the same few notes)
+  if (lift) {
+    const vSpan = style.shaped ? Math.max(8, Math.round(P.span * G.span * style.span * 0.75)) : Math.max(8, Math.round((PLANS.verse ?? P).span * G.span * style.span));
+    const verseC = Math.max(FLOOR + style.up + Math.ceil(vSpan / 2), style.shaped ? LOW[0] + off - 3 + Math.ceil(vSpan / 2) : LOW[0] + off + 2, base + G.center + style.register);
     center = Math.max(center, Math.min(PEAK + off - 5, verseC + lift));
   }
   // (shaped: verses low and narrow, choruses wide, more so in a dramatic song: spanX above)
-  const lo = Math.max(LOW[0] + off - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + off - 2, center + Math.floor(span / 2));
+  // (never under the floor; a range pushed up off it keeps its width)
+  const lo = Math.max(FLOOR + style.up, LOW[0] + off - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + off - 2, Math.max(center + Math.floor(span / 2), lo + span));
   const pool: number[] = [];
   for (let m = lo; m <= hi; m++) if (scale.includes(mod(m - key, 12))) pool.push(m);
   const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(Math.max(0, g), total - 1)]].chord;
@@ -816,6 +825,11 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       const alt: number[] = [];
       let prevIdx = anchor;
       let leapDir = 0;
+      // (how many times running the line has stayed on one note: Paul, "the vocal melody is sitting at
+      // one note most of the time"; about half the syllables were repeats, a third now; a recited line
+      // may stay a little longer)
+      let same = 0;
+      const sameMax = contour === 'recite' ? 3 : 2;
       const closed = li === last || (style.ends === 'fall' && li % 2 === 1);
       rh.onsets.forEach((o, oi) => {
         const isLast = oi === n - 1;
@@ -841,7 +855,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
             let move: number;
             const dir = Math.sign(target - prevIdx) || (rng.chance(0.5) ? 1 : -1);
             if (leapDir) { move = -leapDir; leapDir = 0; } // after a leap, a step back (gap-fill)
-            else if (rng.chance(style.repeat)) move = 0;
+            else if (same < sameMax && rng.chance(style.repeat * 0.55)) move = 0;
             else if (rng.chance(style.leap * (contour === 'recite' ? 0.4 : 1))) { move = leapTo(prevIdx, dir * rng.pick(style.leaps)) - prevIdx; leapDir = Math.sign(move); }
             else move = (rng.chance(0.8) ? dir : -dir) * (Math.abs(target - prevIdx) >= 3 && rng.chance(0.4) ? 2 : 1);
             idx = prevIdx + move;
@@ -869,6 +883,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           a = 0;
         }
         if (len >= 4 && rubs(pool[idx], g)) idx = Math.max(0, idx - 1);
+        same = oi > 0 && idx === prevIdx ? same + 1 : 0;
         prevIdx = idx;
         shape.push(idx - anchor);
         alt.push(a);
@@ -1141,7 +1156,7 @@ function ornament(rng: Rng, notes: TuneNote[], style: MelodyStyle, pool: number[
     if (n.len >= 6 && rng.chance(singer.runs * where * slow * (lineEnd ? 1 : 0.4) * (n.belt ? 1.3 : 1))) {
       const kind = rng.weighted(singer.runKinds);
       const want = rng.int(singer.runLen[0], singer.runLen[1]);
-      const inRange = (m: number) => m >= LOW[0] + style.up - 3 && m <= wailTop(style) + 1;
+      const inRange = (m: number) => m >= FLOOR + style.up && m <= wailTop(style) + 1;
       if (kind === 'tail') {
         // the note held for at least half its length, then down off its end a unit a note (the last two
         // units), no deeper than the singer goes
@@ -1160,7 +1175,8 @@ function ornament(rng: Rng, notes: TuneNote[], style: MelodyStyle, pool: number[
         const hold = 4;
         const ms = runNotes(kind, n.midi, Math.min(want, Math.floor((n.len - hold - 2) / unit) + 1), c.key, c.minorish);
         // (a run starting out of the singer's reach starts later, shorter; nor more than an octave over the note)
-        while (ms.length && (!inRange(ms[0]) || ms[0] > n.midi + 12)) ms.shift();
+        // (a wailer's from up to an octave over it; the others' from no more than a 4th)
+        while (ms.length && (!inRange(ms[0]) || ms[0] > n.midi + (singer.kind === 'wailer' ? 12 : 5))) ms.shift();
         const k = ms.length;
         if (k >= 3 && ms[0] !== n.midi) {
           out.push({ ...n, len: hold, belt: false });
@@ -1246,7 +1262,7 @@ export function followTension(idea: Idea, ref: number, mood: Mood, style: Melody
       for (let s = 2; s <= 5; s++) {
         const m = n.midi + (d > 0 ? s : -s);
         // (the song's top notes kept for its climax)
-        if (!tones.includes(mod(m, 12)) || m > wailTop(style) || m < LOW[0] + style.up - 3) continue;
+        if (!tones.includes(mod(m, 12)) || m > wailTop(style) || m < FLOOR + style.up) continue;
         n.midi = m;
         if (d > 0) out.up++; else out.down++;
         break;
