@@ -163,7 +163,8 @@ export class Singer {
     // the band's swing and lilt move the off-beat 16ths, as the engine plays them
     const at = stepAt((g) => g * six + (g % 2 ? (song.swing * (2 / 3) + (idea.lilt ?? 0)) * six : 0));
     const byStep = new Map<number, Line[]>();
-    const lag = lagFor(idea.seeds.vocal ?? idea.seeds.song);
+    // (by the energy style: a Brooder further behind the beat, a Puncher ahead of it when loud; energy.ts)
+    const lag = Math.max(0, lagFor(idea.seeds.vocal ?? idea.seeds.song) + (idea.vocalLay ?? 0));
     const slides = SLIDES[song.partGenres.strum];
     // (the section's energy, 0-1: the singer's tone moves with it)
     const energy = idea.section ? (idea.section.energy - 1) / 4 : 0.5;

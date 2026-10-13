@@ -16,6 +16,7 @@ import type { Idea, SectionKind } from '../idea';
 import { GENRE_LABEL, type Genre } from '../genres';
 import { Rng } from '../rng';
 import { type MoveId, movesDesc, pickMoves } from './moves';
+import { ENERGY, type EnergyStyle, FOLLOW_BY, againstFor, bandBusy, deliverEnergy, dialsFor, energize, layFor, levelOf, pickEnergy } from './energy';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import { HIGH_VOICES, type HighVoice, type Timbre } from './singers';
@@ -180,6 +181,30 @@ function breathe(notes: { step: number; len: number; start?: boolean; peak?: boo
 }
 
 /**
+ * Space (energy.ts: a Drifter, Alice in Chains "Nutshell"): now and then a line leaves its first words
+ * out and starts later, a beat or more into its bar, so the band has the gaps; at least three syllables
+ * are kept, the held end always.
+ */
+function spaceOut(tune: Tune, space: number, rng: Rng): Tune {
+  if (!space) return tune;
+  const out: TuneNote[] = [];
+  for (let li = 0; li < tune.lines; li++) {
+    const L = tune.notes.filter((n) => n.line === li);
+    const syl = L.map((n, i) => (n.tie ? -1 : i)).filter((i) => i >= 0);
+    let cut = 0;
+    if (syl.length >= 6 && rng.chance(space)) {
+      // (up to half the words, cut where a new syllable starts at least a beat after the first)
+      const most = Math.floor(syl.length / 2) - 1;
+      for (let k = 1; k <= most; k++) if (L[syl[k]].step - L[0].step >= 4) { cut = syl[k]; break; }
+    }
+    const keep = L.slice(cut);
+    if (keep.length) keep[0] = { ...keep[0], start: true, tie: false };
+    out.push(...keep);
+  }
+  return { ...tune, notes: out };
+}
+
+/**
  * Words for a tune: rhymes on every other line, the chorus hook at the start of lines 1 and 3. A carried
  * note carries on the last syllable's vowel, its closing consonants moved to the end.
  */
@@ -232,6 +257,8 @@ export interface SingContext {
   shaped?: boolean;
   /** Shaped: the one signature move chosen in the menu (left out: the song's own, by genre). */
   move?: MoveId;
+  /** How the singer carries the energy (src/parts/energy.ts): a style chosen, 'off', or left out: Auto. */
+  energy?: EnergyStyle | 'off';
 }
 
 /**
@@ -257,6 +284,11 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     if (melody.moves.includes('flip')) { const up = cr.chance(0.7); melody.verse = up ? 'fall' : 'climb'; melody.chorus = up ? 'rise' : 'tumble'; }
     if (melody.moves.includes('belt')) { melody.contrast = 'dramatic'; melody.lift = cr.int(7, 9); }
   }
+  // how the singer carries the song's energy: its energy style (docs/VOCAL-ENERGY.md), or off (as before)
+  const es = ctx.energy === 'off' ? null : pickEnergy(ctx.seed, ctx.mood, ctx.genre, ctx.energy);
+  const sungE = sections.filter((s) => SUNG.includes(s.section!.kind) && !s.section!.solo).map((s) => s.section!.energy);
+  const firstSung = sections.findIndex((s) => SUNG.includes(s.section!.kind) && !s.section!.solo);
+  const eLo = Math.min(...sungE), eHi = Math.max(...sungE);
   const first = sections.find((s) => s.section?.kind === 'verse') ?? sections[0];
   // the song's anchor: the verse centre, the key's root nearest G3 (the low voice's comfortable middle)
   const key = first.song.key;
@@ -278,7 +310,9 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     let b = blocks.get(as);
     if (!b) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
-      const tune = shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, melody, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}`), melody.singer.syncop, melody.grid);
+      // (written at its section's energy, by the energy style's dials)
+      const st = es ? energize(melody, dialsFor(es, levelOf(src.section?.energy ?? 3, eLo, eHi)), as, bandBusy(src), es) : melody;
+      const tune = spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}`), st.singer.syncop, melody.grid), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}`));
       const words = writeWords(new Rng(`${ctx.seed}-words-${as}`), tune, style, as === 'chorus' ? hook : null, base + 6);
       const t = idea.section?.tension ?? [];
       b = { tune, key: src.song.key, bars: src.song.bars.length, words, tag: as, ref: t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0.5 };
@@ -303,7 +337,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       });
     }
     // the tune follows the tension curve, line by line: reaching up as the song builds, settling as it lets go
-    const moved = followTension(idea, b.ref, ctx.mood, melody, new Rng(`${ctx.seed}-follow-${si}`));
+    const moved = followTension(idea, b.ref, ctx.mood, melody, new Rng(`${ctx.seed}-follow-${si}`), es ? FOLLOW_BY[es] : 1);
     // the climax: its last held note lifted to the song's top
     if (si === climax && idea.vocal.length) {
       const v = idea.vocal;
@@ -326,12 +360,20 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     const cleared = clearForSinger(idea);
     leaveRoom(idea);
     breathe(idea.vocal);
+    // sung at its energy: the style's accents; now and then against the band on purpose
+    let against: string | null = null;
+    if (es) {
+      idea.vocalEnergy = es;
+      idea.vocalLay = layFor(es, info.energy);
+      against = deliverEnergy(idea, es, sections.length > 1 ? againstFor(new Rng(`${ctx.seed}-against-${si}`), info.energy, si === firstSung) : null, FLOOR + melody.up, PEAK + melody.up + 1 + melody.top);
+    }
     if (ctx.high) fitHigh(idea, ctx.high);
     const quick = quicken(idea.vocal, 15 / idea.song.bpm, new Rng(`${ctx.seed}-quick-${si}`));
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
       if (!told) {
         idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`);
+        if (es) idea.notes.push(`Energy (${ctx.energy ? 'chosen' : 'this song\'s'}): ${ENERGY[es].label}, like ${ENERGY[es].like}: ${ENERGY[es].desc}`);
         if (melody.moves?.length) idea.notes.push(`Melody moves (${ctx.move ? 'chosen' : 'this song\'s signature'}): ${movesDesc(melody.moves)}`);
         told = true;
       }
@@ -340,6 +382,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
       if (quick) fitBits.push(`${quick === 1 ? 'a run' : `${quick} runs`} sung quicker than the beat`);
       if (fitBits.length) idea.notes.push(`Vocal fits the band: ${fitBits.join(', ')}`);
+      if (against) idea.notes.push(`Vocal against the band: ${against}`);
       if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);
     }
   });
@@ -409,14 +452,16 @@ function leaveRoom(idea: Idea) {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, shaped = false, move?: MoveId, high?: HighVoice) {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, shaped = false, move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off') {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
-  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped, move, high }, 0);
-  arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum), mood }, -1);
+  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped, move, high, energy }, 0);
+  arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum, fake.vocalEnergy), mood, energy: fake.vocalEnergy }, -1);
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;
   idea.backing = fake.backing;
   idea.vocalDouble = fake.vocalDouble;
+  idea.vocalEnergy = fake.vocalEnergy;
+  idea.vocalLay = fake.vocalLay;
 }
 
 /** The voice for a song on Auto: low for heavier genres, either for pop. */

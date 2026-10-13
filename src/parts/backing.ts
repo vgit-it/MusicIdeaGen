@@ -18,6 +18,7 @@ import { SCALES } from '../theory';
 import { chordTones } from './guitar2';
 import type { Cons, Syllable, Vowel } from './lyrics';
 import type { VocalNote } from './vocal';
+import { type EnergyStyle, stackFor } from './energy';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -31,7 +32,10 @@ export const BACKING_DESC: Record<Backing, string> = {
 };
 
 /** The song's backing vocals, by its mood and style. */
-export function pickBacking(seed: string, mood: Mood, genre: Genre): Backing {
+export function pickBacking(seed: string, mood: Mood, genre: Genre, energy?: EnergyStyle): Backing {
+  // (the Brooder's dark harmony under the lead, the Alice in Chains way)
+  const by = stackFor(energy ?? null).backing;
+  if (by) return by;
   const w: [Backing, number][] = genre === 'funk' ? [['gang', 3], ['thirds', 2], ['oohs', 1]]
     : ['melancholic', 'dreamy'].includes(mood) ? [['oohs', 4], ['thirds', 1]]
       : ['dark', 'angry', 'tense'].includes(mood) || ['metal', 'altmetal', 'grunge'].includes(genre) ? [['under', 3], ['thirds', 1], ['oohs', 1]]
@@ -86,6 +90,8 @@ export interface BackingContext {
   seed: string;
   backing: Backing;
   mood: Mood;
+  /** The singer's energy style (energy.ts): how the stacking grows with the energy. */
+  energy?: EnergyStyle;
 }
 
 /**
@@ -110,7 +116,9 @@ export function arrangeBacking(sections: Idea[], ctx: BackingContext, climax: nu
     const notes: string[] = [];
 
     // choruses (and the outro) double-tracked
-    if (big) { idea.vocalDouble = true; notes.push('doubled'); }
+    // (by energy style: a Driver doubles every loud section, a Drifter or Switcher leaves quieter choruses single)
+    const stack = stackFor(ctx.energy ?? null), e = idea.section!.energy;
+    if ((big && !(stack.singleBelow && e < stack.singleBelow)) || (stack.doubleAt && e >= stack.doubleAt)) { idea.vocalDouble = true; notes.push('doubled'); }
 
     // harmonies: on the hook lines in the first chorus, every line later on; soft pads in a quieter
     // second verse, a pre-chorus building, or a bridge

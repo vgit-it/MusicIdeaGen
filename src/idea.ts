@@ -1,3 +1,4 @@
+import type { EnergyStyle } from './parts/energy';
 import type { VocalNote, VoiceType } from './parts/vocal';
 // Shared types for a generated idea.
 
@@ -48,6 +49,8 @@ export interface GenOptions {
   vocalMelody?: 'shaped';
   /** Shaped: one signature move chosen (src/parts/moves.ts); left out: each song its own, by genre. */
   vocalMove?: string;
+  /** How the singer carries the energy (src/parts/energy.ts): a style chosen, 'off' (as before), or left out: Auto. */
+  vocalEnergy?: string;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */
@@ -239,6 +242,10 @@ export interface Idea {
   /** Backing vocals and ad-libs (sung by the same singer, panned around the lead), and whether the lead is double-tracked. */
   backing?: VocalNote[];
   vocalDouble?: boolean;
+  /** The singer's energy style (src/parts/energy.ts), if on. */
+  vocalEnergy?: EnergyStyle;
+  /** Seconds the singer sits further behind the beat (or ahead: negative), by energy style. */
+  vocalLay?: number;
   /** Tracks: the strummer's hands at chord changes (by the step of the change). */
   changeTouch?: Record<number, ChangeTouch>;
   /** Tracks, played by the band: how hard the strummed rhythm guitar plays (1 = as written). */

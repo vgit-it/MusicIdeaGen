@@ -96,6 +96,12 @@ export interface MelodyStyle {
   contrast?: 'subtle' | 'clear' | 'dramatic';
   /** Shaped: the song's signature moves (src/parts/moves.ts, docs/VOCAL-MOVES.md). */
   moves?: MoveId[];
+  /** The energy style's grip on the band (src/parts/energy.ts): stressed words with the kick and snare (x), words in the riff's gaps. */
+  grip?: { lock: number; gaps: number };
+  /** Semitones a section's tune moves for its energy (energy.ts), after the verse-to-chorus lift (so a voice near its floor still moves). */
+  energyReg?: number;
+  /** Chance a line leaves its first words out, starting later (energy.ts: a Drifter's space). */
+  space?: number;
 }
 
 type W<T> = [T, number][];
@@ -610,6 +616,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const verseC = Math.max(FLOOR + style.up + Math.ceil(vSpan / 2), style.shaped ? LOW[0] + off - 3 + Math.ceil(vSpan / 2) : LOW[0] + off + 2, base + G.center + style.register);
     center = Math.max(center, Math.min(PEAK + off - 5, verseC + lift));
   }
+  // (the energy style's height for this section: after the lift, within the voice)
+  if (style.energyReg) center = Math.max(floorC, Math.min(PEAK + off - 4, center + style.energyReg));
   // (shaped: verses low and narrow, choruses wide, more so in a dramatic song: spanX above)
   // (never under the floor; a range pushed up off it keeps its width)
   let lo = Math.max(FLOOR + style.up, LOW[0] + off - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + off - 2, Math.max(center + Math.floor(span / 2), lo + span));
@@ -929,7 +937,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     // or snare scored, so the try with the most beats sung won, a line of back to back quarter notes; Paul:
     // the grid gave "a bunch of back to back 1/4 bar length notes")
     const plodding = (ns: TuneNote[]) => { let r = 0, p = 0; for (let k = 1; k < ns.length; k++) { r = ns[k].step - ns[k - 1].step === 4 && ns[k].line === ns[k - 1].line ? r + 1 : 0; if (r >= 3) p++; } return p; };
-    const score = (ns: TuneNote[]) => bandScore(ns, H, band!, total) - (style.grid ? 1.5 * plodding(ns) : 0);
+    const score = (ns: TuneNote[]) => bandScore(ns, H, band!, total, style.grip) - (style.grid ? 1.5 * plodding(ns) : 0);
     let best = attempt(tries > 1 ? new Rng(`${seed}-0`) : rng);
     let bestScore = band ? score(best.lineNotes) : 0;
     for (let c = 1; c < tries; c++) {
@@ -1329,7 +1337,7 @@ const FOLLOW: Record<Mood, number> = { happy: 1, triumphant: 1.3, nostalgic: 0.8
  * turns its last held note; a calmer line lets its held notes down to the chord note below. Every note
  * gets louder (and brighter) with its bar's tension. `ref`: the tension where the tune was first sung.
  */
-export function followTension(idea: Idea, ref: number, mood: Mood, style: MelodyStyle, rng: Rng): { up: number; down: number; turns: number } {
+export function followTension(idea: Idea, ref: number, mood: Mood, style: MelodyStyle, rng: Rng, follow = 1): { up: number; down: number; turns: number } {
   const out = { up: 0, down: 0, turns: 0 };
   const t = idea.section?.tension;
   const v = idea.vocal;
@@ -1345,7 +1353,7 @@ export function followTension(idea: Idea, ref: number, mood: Mood, style: Melody
   for (const L of lines) {
     for (const i of L) v[i].vel = Math.max(0.45, Math.min(1, v[i].vel * (0.86 + 0.3 * t[barAt(v[i].step)])));
     const bs = [...new Set(L.map((i) => barAt(v[i].step)))];
-    const d = (bs.reduce((a, b) => a + t[b], 0) / bs.length - ref) * FOLLOW[mood];
+    const d = (bs.reduce((a, b) => a + t[b], 0) / bs.length - ref) * FOLLOW[mood] * follow;
     const p = clamp01((Math.abs(d) - 0.04) / 0.18);
     if (!p) continue;
     // which notes move: the held ones, and (going up) the line's top note

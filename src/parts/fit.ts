@@ -82,8 +82,11 @@ function grinds(m: number, g: number, firm: boolean, H: Harmony, bass: number[])
 }
 
 /** How well a stretch of sung notes sits with the band (higher is better). */
-export function bandScore(notes: { step: number; len: number; midi: number; stress: boolean }[], H: Harmony, band: Band, total: number): number {
+export function bandScore(notes: { step: number; len: number; midi: number; stress: boolean }[], H: Harmony, band: Band, total: number, grip?: { lock: number; gaps: number }): number {
   let s = 0;
+  // (the energy style's grip: words in the riff's gaps, call and response, not on its hits)
+  const riffAt = grip?.gaps && band.riff.length ? new Set(band.riff.map((h) => h.step)) : null;
+  const sounding = (g: number) => band.riff.some((h) => h.step <= g && g < h.step + Math.max(1, h.len));
   const changes = new Set(H.changes);
   for (const n of notes) {
     if (n.step < 0) continue;
@@ -97,7 +100,8 @@ export function bandScore(notes: { step: number; len: number; midi: number; stre
       // (Guitar 2 sounding right where the voice is: in each other's way)
       for (const h of band.lead) if (h.step <= g && g < h.step + h.len) for (const r of h.notes) if (Math.abs(r - n.midi) <= 4) s -= 0.3 * w;
     }
-    if (n.stress && (band.kick[n.step] || band.snare[n.step])) s += 0.5;
+    if (n.stress && (band.kick[n.step] || band.snare[n.step])) s += 0.5 * (grip?.lock ?? 1);
+    if (riffAt) s += (riffAt.has(n.step) ? -0.4 : sounding(n.step) ? 0 : 0.3) * grip!.gaps;
     if (changes.has(n.step)) s += 0.6;
     // off the beat: with the groove's syncopations, not against silence
     if (!band.beats.has(n.step)) s += band.hits.has(n.step) ? 0.3 : n.step % 2 ? -0.3 : 0;

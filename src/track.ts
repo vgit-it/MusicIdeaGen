@@ -7,6 +7,7 @@
 import { arrangeBacking, pickBacking } from './parts/backing';
 import type { MoveId } from './parts/moves';
 import { autoVoice, singTrack } from './parts/vocal';
+import type { EnergyStyle } from './parts/energy';
 import { type Mood, type MoodChoice, PROFILES, arcNote, autoMood, planTension } from './tension';
 import { type BuildOptions, buildIdea, withSheet } from './generator';
 import { GENRES, type Genre, QUIET_STYLES, type RiffStyle } from './genres';
@@ -1669,13 +1670,14 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
   const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
-  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', shaped: src.opts.vocalMelody === 'shaped', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger }, arc.climax);
+  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', shaped: src.opts.vocalMelody === 'shaped', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger, energy: src.opts.vocalEnergy as EnergyStyle | 'off' | undefined }, arc.climax);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
   const high = pickHigh(vocalSeed, src.song.partGenres.strum);
   for (const x of sections) { x.vocalVoice = voice; x.vocalHigh = high; }
   // backing vocals: doubled choruses, harmonies (or oohs) by the mood, ad-libs over the climax
-  const backing = pickBacking(vocalSeed, mood, src.song.partGenres.strum);
-  arrangeBacking(sections, { seed: vocalSeed, backing, mood }, arc.climax);
+  const energy = sections.find((x) => x.vocalEnergy)?.vocalEnergy;
+  const backing = pickBacking(vocalSeed, mood, src.song.partGenres.strum, energy);
+  arrangeBacking(sections, { seed: vocalSeed, backing, mood, energy }, arc.climax);
 
   // each section knows the shape of its track (added layers plan where they play from it)
   const all = sections.map((s) => ({ kind: s.section!.kind, energy: s.section!.energy }));
