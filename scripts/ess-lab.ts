@@ -3,7 +3,7 @@
 // E0 as written; E1 no hiss (every s, z, sh, ch, j, f, v, th swapped for a soft sound); E2 no squeeze
 // (consonants that would be squashed into a short burst left out instead); E3 seam rules only (a hard or
 // hissy ending dropped before a hard or hissy start). WAV files in voice-lab/, with counts behind them.
-// Run: npm run ess-lab (the stops made softer: npm run ess-lab soft)
+// Run: npm run ess-lab (the stops made softer: npm run ess-lab soft; the noisy consonants blended, shorter, quieter: npm run ess-lab cons)
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { lagFor, perform } from '../src/audio/feel';
@@ -134,12 +134,23 @@ const SOFT: [string, (n: SungNote[]) => SungNote[], Stops?][] = [
   ['S4-whisper', (n) => n, { burst: -22, voiced: -20, asp: -14, len: 0.05, hold: 24 }],
   ['S5-dips-only', (n) => n, { burst: -80, asp: -80, hold: 18 }],
 ];
+// (the fuzz at the ends of notes: mostly the next word's s, t, k, f before the beat; three fixes in the synth)
+type ConsFix = NonNullable<FofVoice['cons']>;
+const WHISPER: Stops = { burst: -22, voiced: -20, asp: -14, len: 0.05, hold: 24 };
+const CONSF: [string, (n: SungNote[]) => SungNote[], Stops?, ConsFix?][] = [
+  ['C0-as-now', (n) => n],
+  ['C1-blend', (n) => n, undefined, { blend: 0.04 }],
+  ['C2-shorter', (n) => n, undefined, { short: 0.6 }],
+  ['C3-quieter-darker', (n) => n, undefined, { level: -6, dark: 0.75 }],
+  ['C4-all-three', (n) => n, undefined, { blend: 0.04, short: 0.6, level: -6, dark: 0.75 }],
+  ['C5-all-three-whisper-stops', (n) => n, WHISPER, { blend: 0.04, short: 0.6, level: -6, dark: 0.75 }],
+];
 const ONLY = process.argv[2];
-const TAKES: [string, (n: SungNote[]) => SungNote[], Stops?][] = ONLY === 'soft' ? SOFT : [['E0-as-written', (n) => n], ['E1-no-hiss', noHiss], ['E2-no-squeeze', noSqueeze], ['E3-seam-rules', seams], ['E4-vowels-only', (ns) => ns.map((n) => ({ ...n, syl: reSyl(n.syl, [], []) }))], ['E6-no-ptk', (ns) => ns.map((n) => { const f = (cs: Cons[]) => cs.filter((c) => !['P', 'T', 'K'].includes(c)); return { ...n, syl: reSyl(n.syl, f(n.syl.onset), f(n.syl.coda)) }; })], ['E5-no-stops', (ns) => ns.map((n) => { const f = (cs: Cons[]) => cs.filter((c) => !HARD.includes(c)); return { ...n, syl: reSyl(n.syl, f(n.syl.onset), f(n.syl.coda)) }; })]];
-for (const [name, fix, stops] of TAKES) {
+const TAKES: [string, (n: SungNote[]) => SungNote[], Stops?, ConsFix?][] = ONLY === 'cons' ? CONSF : ONLY === 'soft' ? SOFT : [['E0-as-written', (n) => n], ['E1-no-hiss', noHiss], ['E2-no-squeeze', noSqueeze], ['E3-seam-rules', seams], ['E4-vowels-only', (ns) => ns.map((n) => ({ ...n, syl: reSyl(n.syl, [], []) }))], ['E6-no-ptk', (ns) => ns.map((n) => { const f = (cs: Cons[]) => cs.filter((c) => !['P', 'T', 'K'].includes(c)); return { ...n, syl: reSyl(n.syl, f(n.syl.onset), f(n.syl.coda)) }; })], ['E5-no-stops', (ns) => ns.map((n) => { const f = (cs: Cons[]) => cs.filter((c) => !HARD.includes(c)); return { ...n, syl: reSyl(n.syl, f(n.syl.onset), f(n.syl.coda)) }; })]];
+for (const [name, fix, stops, cons] of TAKES) {
   const parts: Float32Array[] = [];
   const all: SungNote[][] = [];
-  for (const { g, lines } of songs) for (const L of lines) { const ns = fix(L); all.push(ns); parts.push(renderFof(ns, { ...fofFor(g, 17, false), stops }, PRE)); }
+  for (const { g, lines } of songs) for (const L of lines) { const ns = fix(L); all.push(ns); parts.push(renderFof(ns, { ...fofFor(g, 17, false), stops, cons }, PRE)); }
   const gap = Math.round(0.6 * FOF_RATE);
   const out = new Float32Array(parts.reduce((a, p) => a + p.length + gap, 0));
   let at = 0;
@@ -147,7 +158,7 @@ for (const [name, fix, stops] of TAKES) {
   writeFileSync(`voice-lab/${name}.wav`, wav(out, FOF_RATE));
   const w = wordStats(all), n = noiseStats(out);
   console.log(`${name.padEnd(15)} noise ${(n.noiseMs / 1000).toFixed(1)} s of ${n.secs.toFixed(0)} s, short bursts ${n.bursts} | consonants ${w.cons} (hiss ${w.hiss}, squashed ${w.squashed}), clusters ${w.clusters}, joined seams ${w.seamsAll} (noisy ${w.noisySeams}, with hiss ${w.hissSeams})`);
-  if (name === 'E0-as-written' || name === 'S0-as-now') {
+  if (name === 'E0-as-written' || name === 'S0-as-now' || name === 'C0-as-now') {
     console.log('  commonest noisy seams:', w.top.map(([k, c]) => `${k} x${c}`).join(', '));
     console.log('  lines:'); for (const L of all) console.log('   ', L.map((x) => x.syl.text).join(' '));
   }
