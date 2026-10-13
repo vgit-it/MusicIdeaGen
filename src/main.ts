@@ -380,7 +380,7 @@ function newIdea() {
   }
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
   // (the vocal's rhythm and the Chester voice's higher tunes carry over to the new idea)
-  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody }, seeds));
+  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove }, seeds));
 }
 
 /** One part gets new seeds; everything else stays. Playback carries on from the same spot. */
@@ -589,11 +589,15 @@ const partsPanel = buildPartsPanel($('parts'), engine, () => {
 }, {
   // how the vocal is written: its rhythm (Classic / Grid, docs/VOCAL-RHYTHM.md) and its pitches (Classic /
   // Shaped, docs/VOCAL-MELODY.md); rewrites the vocal, same seeds, the band unchanged
-  get: (k) => (k === 'rhythm' ? (idea?.opts.vocalRhythm ?? 'classic') : (idea?.opts.vocalMelody ?? 'classic')),
+  get: (k) => (k === 'rhythm' ? (idea?.opts.vocalRhythm ?? 'classic') : k === 'melody' ? (idea?.opts.vocalMelody ?? 'classic') : (idea?.opts.vocalMove ?? 'auto')),
   set: (k, v) => {
     if (!idea) return;
-    const opts = k === 'rhythm' ? { ...idea.opts, vocalRhythm: v === 'grid' ? ('grid' as const) : undefined } : { ...idea.opts, vocalMelody: v === 'shaped' ? ('shaped' as const) : undefined };
+    // (a move chosen: the melody goes Shaped, where the moves live)
+    const opts = k === 'rhythm' ? { ...idea.opts, vocalRhythm: v === 'grid' ? ('grid' as const) : undefined }
+      : k === 'melody' ? { ...idea.opts, vocalMelody: v === 'shaped' ? ('shaped' as const) : undefined }
+      : { ...idea.opts, vocalMove: v === 'auto' ? undefined : v, ...(v !== 'auto' ? { vocalMelody: 'shaped' as const } : {}) };
     showIdea(generate(opts, idea.seeds), true);
+    partsPanel.sync();
   },
 });
 

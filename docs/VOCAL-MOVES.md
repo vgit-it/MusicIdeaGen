@@ -73,3 +73,30 @@ notes placed on purpose (below).
 - Some fire **whenever their moment comes** (6: a borrowed chord always gets its b6; 18: leap, then fill).
 - Some are **once a song**, at the tension peak (4, 14, 15).
 - The rest are **spice**: per song, one colour move (1-11), one shape (16-23), maybe a drone or rhythm move (12-13, 24-25).
+
+## Built (in Shaped; `src/parts/moves.ts`, `applyMoves` in `src/parts/melody.ts`)
+Paul: "build it into shaped. And keep the move selectable for now." Each Shaped song gets a signature:
+one colour move and one shape by its genre, an extra in half the songs, the chills at the peak in about 3
+in 10 (not funk). Or one move chosen in the vocal row (**Moves**; choosing one switches the melody to
+Shaped). The song's moves are listed in the notes ("Melody moves: ..."). Always on: a borrowed chord's b6.
+
+20 moves: the 6-5 sigh, the 9th falling to the root, the 4-3 over V, chills at the peak, the line cliché,
+the Lydian #4, landing on the b7, never landing home, sour endings, blue notes bent up, the dark flat 2nd,
+slides and falls, one note over moving chords, the one-note verse, the octave-leap hook, the whoop, verse
+falls and chorus rises, the sequence, up up up down, a low talky verse and a belted chorus.
+
+Colour notes are marked, so fitting to the band and following the tension leave them where they are.
+
+| Genre | Colour moves | Shapes | Extras |
+|---|---|---|---|
+| Pop | sigh, never home, Lydian, 9th, line cliché | flip, octave hook, whoop, sequence | one-note verse, pedal |
+| Rock | 4-3, b7, blue notes, sigh | octave hook, flip, sequence | one-note verse, falls |
+| Funk | b7, blue notes | one-note verse, flip, sequence | pedal |
+| Hard rock | 4-3, blue notes, b7 | octave hook, belt, flip | falls |
+| Metal | flat 2nd, 4-3 | belt, octave hook, up up up down | falls |
+| Grunge | sour endings, 9th, flat 2nd | pedal, up up up down, belt | falls, one-note verse |
+| Alt metal | sour endings, flat 2nd, 9th | belt, one-note verse, up up up down | falls, pedal |
+
+Measured (21 songs, all genres): every move changes the tune; 21 different signatures in 21 songs; about
+700 colour notes (Classic: none); strong notes on chord notes 90% with Auto, down to 83% with the 9th move.
+Classic unchanged (the same notes as before, checked).

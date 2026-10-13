@@ -15,6 +15,7 @@ import { arrangeBacking, pickBacking } from './backing';
 import type { Idea, SectionKind } from '../idea';
 import { GENRE_LABEL, type Genre } from '../genres';
 import { Rng } from '../rng';
+import { type MoveId, movesDesc, pickMoves } from './moves';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import type { Timbre } from './singers';
@@ -38,6 +39,8 @@ export interface VocalNote {
   /** Scooped up into from so many semitones below; falling off its end by so many; a wail (sung full out). */
   slide?: number;
   fall?: number;
+  /** A colour note against the chord on purpose (a signature move: a 9th, a sigh, a sour ending): fitting to the band leaves it be. */
+  colour?: boolean;
   belt?: boolean;
 }
 
@@ -219,6 +222,8 @@ export interface SingContext {
   grid?: boolean;
   /** The pitches written the shaped way (docs/VOCAL-MELODY.md) instead of the classic way. */
   shaped?: boolean;
+  /** Shaped: the one signature move chosen in the menu (left out: the song's own, by genre). */
+  move?: MoveId;
 }
 
 /**
@@ -239,6 +244,10 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     melody.shaped = true;
     melody.contrast = cr.pick(['subtle', 'clear', 'dramatic'] as const);
     melody.lift = melody.contrast === 'subtle' ? cr.int(2, 3) : melody.contrast === 'clear' ? cr.int(4, 5) : cr.int(7, 9);
+    // the song's signature moves (docs/VOCAL-MOVES.md); two of them set its whole shape
+    melody.moves = pickMoves(ctx.seed, ctx.genre, ctx.move);
+    if (melody.moves.includes('flip')) { const up = cr.chance(0.7); melody.verse = up ? 'fall' : 'climb'; melody.chorus = up ? 'rise' : 'tumble'; }
+    if (melody.moves.includes('belt')) { melody.contrast = 'dramatic'; melody.lift = cr.int(7, 9); }
   }
   const first = sections.find((s) => s.section?.kind === 'verse') ?? sections[0];
   // the song's anchor: the verse centre, the key's root nearest G3 (the low voice's comfortable middle)
@@ -282,7 +291,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         if (g >= total || blockSteps <= 0) return;
         // (an outro sings only its first half, then lets the band play out)
         if (kind === 'outro' && g >= Math.max(blockLen / 2, total / 2)) return;
-        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt });
+        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt, ...(t.colour ? { colour: true } : {}) });
       });
     }
     // the tune follows the tension curve, line by line: reaching up as the song builds, settling as it lets go
@@ -310,7 +319,11 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     const quick = quicken(idea.vocal, 15 / idea.song.bpm, new Rng(`${ctx.seed}-quick-${si}`));
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
-      if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`); told = true; }
+      if (!told) {
+        idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`);
+        if (melody.moves?.length) idea.notes.push(`Melody moves (${ctx.move ? 'chosen' : 'this song\'s signature'}): ${movesDesc(melody.moves)}`);
+        told = true;
+      }
       idea.notes.push(`Vocal (${VOCAL_DESC[as]}): “${words.length > 140 ? `${words.slice(0, 140)}…` : words}”`);
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
       const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
@@ -365,9 +378,9 @@ function leaveRoom(idea: Idea) {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, shaped = false) {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, shaped = false, move?: MoveId) {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
-  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped }, 0);
+  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped, move }, 0);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum), mood }, -1);
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;

@@ -24,6 +24,7 @@ import { SCALES, chordPc } from '../theory';
 import { MINORISH, chordTones } from './guitar2';
 import { type Band, bandScore, harmonyOf } from './fit';
 import type { Syllable } from './lyrics';
+import type { MoveId } from './moves';
 import { type RunKind, type Singer, type Timbre, VOICE_DOWN, phrasePlan, pickSinger, pickTimbre } from './singers';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -88,6 +89,8 @@ export interface MelodyStyle {
   shaped?: boolean;
   /** How far the chorus jumps above the verse, shaped: subtle, clear or dramatic (the song's pick). */
   contrast?: 'subtle' | 'clear' | 'dramatic';
+  /** Shaped: the song's signature moves (src/parts/moves.ts, docs/VOCAL-MOVES.md). */
+  moves?: MoveId[];
 }
 
 type W<T> = [T, number][];
@@ -539,7 +542,7 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
  * One note of a tune; `tie`: sung on the last note's vowel (a sigh, a turn, a run), no new syllable;
  * `slide`: scooped up into from so many semitones below; `fall`: falls off its end by so many; `belt`: a wail.
  */
-export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean }
+export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean; colour?: boolean }
 /** A melody block (one section's worth), before its words. */
 export interface Tune { notes: TuneNote[]; lines: number }
 
@@ -887,6 +890,129 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     if (!prev) motifs.set(name, { rh, start: lineStart, split, lens: L.map((b) => b.len), shape, alt });
   });
 
+  /**
+   * The song's signature moves (src/parts/moves.ts, docs/VOCAL-MOVES.md), on the written tune: colour notes
+   * against the chord (marked `colour`, so fitting to the band leaves them be), drones, hooks and shapes.
+   * Always: a borrowed chord's b6 (Radiohead "Creep", the Beatles "Nowhere Man": the note that makes it heard).
+   */
+  const applyMoves = (ns: TuneNote[]) => {
+    const moves = new Set(style.moves ?? []);
+    const has = (m: MoveId) => moves.has(m);
+    const rootOf = (g: number) => mod(chordPc(key, chordAt(g)), 12);
+    const majorAt = (g: number) => tonesAt(g).includes(mod(rootOf(g) + 4, 12));
+    // the nearest pitch of a pitch class to m (in the singer's reach)
+    const nearPc = (m: number, pc: number, below = false) => {
+      let best = m, bd = 99;
+      for (let x = m - 7; x <= m + 7; x++) {
+        if (mod(x, 12) !== mod(pc, 12) || x < lo - 3 || x > hi + 4) continue;
+        const d = Math.abs(x - m) + (below && x > m ? 3 : 0);
+        if (d < bd) { bd = d; best = x; }
+      }
+      return best;
+    };
+    const stepFrom = (m: number, k: number) => pool[clampIdx(nearestIdx(m) + k)];
+    const extra: TuneNote[] = [];
+    // a held note sung as one note, then (on its vowel) another: 9-8, 4-3, an appoggiatura's resolution
+    const split = (n: TuneNote, first: number, then: number) => {
+      if (n.len < 4) return;
+      const h = Math.max(2, Math.floor(n.len / 2));
+      extra.push({ step: n.step + h, len: n.len - h, midi: then, stress: false, start: false, line: n.line, tie: true });
+      n.len = h; n.midi = first; n.colour = true;
+    };
+    const lineNs: TuneNote[][] = [];
+    for (const n of ns) { if (n.tie) continue; (lineNs[n.line] ??= []).push(n); }
+    const verse = kind === 'verse' || kind === 'prechorus';
+    lineNs.forEach((L, li) => {
+      if (!L?.length) return;
+      const strong = L.filter((n) => n.stress || n.len >= 4);
+      const last = L[L.length - 1];
+      // shapes and drones first, colour after
+      if (has('monotone') && kind === 'verse') {
+        const recite = nearPc(pool[nearestIdx(center)], minorish ? key + 3 : key);
+        for (const n of L) {
+          const ok = tonesAt(n.step).includes(mod(recite, 12)) || !n.stress;
+          n.midi = ok ? recite : pool[nearTone(nearestIdx(recite), n.step)];
+          n.colour = true;
+        }
+      }
+      if (has('pedal') && verse && li % 2 === 0) {
+        const cands = [key, key + 7, key + (minorish ? 3 : 4)];
+        const shared = (pc: number) => strong.filter((n) => tonesAt(n.step).includes(mod(pc, 12)) || [2, 5].includes(mod(pc - rootOf(n.step), 12))).length;
+        const pc = cands.reduce((b, c) => (shared(c) > shared(b) ? c : b), cands[0]);
+        const m = nearPc(pool[nearestIdx(center)], pc);
+        for (const n of strong) { n.midi = m; n.colour = true; }
+      }
+      if (has('upupdown') && strong.length >= 4) {
+        const base = nearestIdx(strong[0].midi);
+        strong.forEach((n, k) => { const step = k % 4 === 3 ? -2 : k % 4; n.midi = pool[nearTone(clampIdx(base + step + Math.floor(k / 4)), n.step)]; });
+      }
+      if (has('sequence') && kind === 'verse' && li % 2 === 1 && lineNs[li - 1]?.length) {
+        const P = lineNs[li - 1];
+        L.forEach((n, k) => {
+          const src = P[Math.min(k, P.length - 1)];
+          const j = clampIdx(nearestIdx(src.midi) - 1);
+          n.midi = n.stress ? pool[nearTone(j, n.step)] : pool[j];
+        });
+      }
+      if (has('octave') && big && li === 0 && strong.length >= 2) {
+        const a = strong[0], b = strong[1];
+        const want = a.midi + (a.midi + 12 <= hi + 4 ? 12 : 7);
+        b.midi = nearPc(want, tonesAt(b.step).reduce((x, pc) => (Math.abs(mod(pc - want, 12)) < Math.abs(mod(x - want, 12)) ? pc : x), tonesAt(b.step)[0]));
+        b.colour = true;
+        // (then down by step, filling the leap)
+        const after = L.slice(L.indexOf(b) + 1, L.indexOf(b) + 4);
+        let m = b.midi;
+        for (const n of after) { m = stepFrom(m, -1); n.midi = m; }
+      }
+      if (has('whoop') && big && li === lineNs.length - 1) {
+        L.slice(0, 4).forEach((n, k) => { n.midi = nearPc(k ? L[0].midi : pool[nearestIdx(center)], k % 2 ? key + 4 : key + 7); n.colour = true; });
+      }
+      // colour against the chord
+      if (has('sigh')) {
+        const n = strong.find((x, k) => k > 0 && rootOf(x.step) !== rootOf(strong[k - 1].step) && majorAt(x.step) && x !== last);
+        if (n) {
+          const r = rootOf(n.step);
+          n.midi = nearPc(n.midi, r + 9); n.colour = true;
+          const nx = L[L.indexOf(n) + 1];
+          if (nx && nx !== last) nx.midi = nearPc(n.midi, r + 7, true);
+        }
+      }
+      if (has('cliche')) {
+        const run = strong.filter((n) => rootOf(n.step) === mod(key, 12) && majorAt(n.step));
+        if (run.length >= 3) run.slice(0, 4).forEach((n, k) => { n.midi = nearPc(k ? run[0].midi : n.midi, key + [0, 11, 10, 9][k], k > 0); n.colour = true; });
+      }
+      if (has('lydian')) {
+        for (const n of strong) if (rootOf(n.step) === mod(key + 2, 12) && majorAt(n.step)) n.midi = nearPc(n.midi, key + 6);
+        const onI = strong.find((n) => rootOf(n.step) === mod(key, 12) && n !== last);
+        if (onI && li % 2 === 0) { onI.midi = nearPc(onI.midi, key + 6); onI.colour = true; }
+      }
+      if (has('blue')) for (const n of strong) if (majorAt(n.step) && mod(n.midi - rootOf(n.step), 12) === 4 && [0, 5].includes(mod(rootOf(n.step) - key, 12))) n.slide = 1;
+      if (has('phrygian')) {
+        const k = L.findIndex((n, j) => j > 0 && j < L.length - 1 && !n.stress && n.len <= 2);
+        if (k > 0) { L[k].midi = nearPc(L[k - 1].midi, key + 1); L[k].colour = true; }
+      }
+      if (has('falls')) for (const n of L) { if (n.len >= 6 && !n.fall && rng.chance(0.6)) n.fall = rng.pick([3, 4]); else if (n.start && rng.chance(0.4)) n.slide = 2; }
+      // line endings
+      const r = rootOf(last.step);
+      if (has('ninth') && last.len >= 4) split(last, nearPc(last.midi, r + 2), nearPc(last.midi, r, true));
+      if (has('suspension') && last.len >= 4 && r === mod(key + 7, 12)) split(last, nearPc(last.midi, key), nearPc(last.midi, key + 11, true));
+      if (has('flat7')) {
+        if (r === mod(key + 10, 12)) last.midi = nearPc(last.midi, key + 10);
+        else if (r === mod(key, 12) && rng.chance(0.4)) { last.midi = nearPc(last.midi, key + 10); last.colour = true; }
+      }
+      if (has('nohome') && (r === mod(key + 5, 12) || r === mod(key + 7, 12))) { last.midi = nearPc(last.midi, key); last.colour = r === mod(key + 7, 12); }
+      if (has('sour') && (li % 4 === 3 || rng.chance(0.2))) { last.midi = nearPc(last.midi, r + rng.pick([5, 2])); last.colour = true; }
+      if (has('appoggiatura') && big && li === lineNs.length - 1) {
+        let made = 0;
+        for (const n of strong) { if (made >= 3 || n.len < 4) continue; const to = n.midi; split(n, stepFrom(to, 1), to); made++; }
+      }
+      // always: a borrowed chord's b6 (in a major key)
+      if (!minorish) for (const n of strong) if (tonesAt(n.step).includes(mod(key + 8, 12)) && !tonesAt(n.step).includes(mod(key + 9, 12))) n.midi = nearPc(n.midi, key + 8);
+    });
+    ns.push(...extra);
+    ns.sort((a, b) => a.step - b.step || (a.tie ? 1 : 0) - (b.tie ? 1 : 0));
+  };
+
   // nothing before the block or past it, nothing overlapping
   let out = notes.filter((n) => n.step >= 0 && n.step < total).sort((a, b) => a.step - b.step);
   out = out.filter((n, i) => i === 0 || n.step !== out[i - 1].step);
@@ -896,6 +1022,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const nx = out[i + 1];
     if (nx && nx.line === n.line && n.len >= 2 && n.len < 6) n.len = Math.max(1, Math.round(n.len * style.legato));
   });
+  if (style.shaped) applyMoves(out);
   wail(rng, out, form, kind, style, tonesAt);
   singable(out, pool);
   const sung = ornament(rng, out, style, pool, tonesAt, { key, minorish, kind, step: 60 / song.bpm / 4 });
@@ -1107,7 +1234,8 @@ export function followTension(idea: Idea, ref: number, mood: Mood, style: Melody
     const p = clamp01((Math.abs(d) - 0.04) / 0.18);
     if (!p) continue;
     // which notes move: the held ones, and (going up) the line's top note
-    const free = L.filter((i) => v[i].syl.text !== '~' && !tied(i));
+    // (a colour note, a signature move's, stays where it is)
+    const free = L.filter((i) => v[i].syl.text !== '~' && !tied(i) && !v[i].colour);
     const held = free.filter((i) => v[i].len >= 4);
     const top = free.reduce((b, i) => (b < 0 || v[i].midi > v[b].midi ? i : b), -1);
     const moving = new Set(d > 0 && top >= 0 && v[top].len >= 2 ? [...held, top] : held);
