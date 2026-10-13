@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voice creator</title>
+  <style>
+    :root { --bg: #f6f5f2; --card: #fff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e0da; --accent: #e8623a; --chip: #f0eee9; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #141416; --card: #1e1e21; --ink: #f2f2f3; --muted: #9a9aa0; --line: #2e2e33; --accent: #f07a52; --chip: #29292d; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+    main { max-width: 820px; margin: 0 auto; padding: 20px 16px 120px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .lead { color: var(--muted); margin: 0 0 18px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+    select, button { font: inherit; color: var(--ink); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+    button { cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    input[type=range] { width: 100%; accent-color: var(--accent); }
+    .hint { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+    .slider { display: grid; grid-template-columns: 112px 1fr 56px; align-items: center; gap: 10px; margin: 4px 0; }
+    .slider label { font-size: 14px; }
+    .slider .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+    .slider.changed label { color: var(--accent); font-weight: 600; }
+    .slider .tip { grid-column: 2 / 4; font-size: 12px; color: var(--muted); margin-top: -4px; }
+    .groups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 700px) { .groups { grid-template-columns: 1fr; } }
+    .groups .card { margin: 0; }
+    .pitch { display: flex; align-items: center; gap: 8px; }
+    .pitch .note { font-size: 22px; font-weight: 700; min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
+    .pitch button { width: 36px; height: 36px; padding: 0; font-size: 18px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+    .chip button { padding: 0 6px; border: 0; background: transparent; color: var(--muted); font-size: 15px; }
+    .chip .go { padding: 0; color: var(--ink); font-size: 13px; }
+    textarea { width: 100%; min-height: 110px; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--chip); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+    .dock { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line); padding: 10px 16px; }
+    .dock .row { max-width: 820px; margin: 0 auto; align-items: center; }
+    .status { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Voice creator</h1>
+    <p class="lead">Start from a voice, move the sliders, listen. Changed sliders turn orange. When you like it, save it here, or copy the settings and paste them to Claude to make it a voice in the app.</p>
+
+    <section class="card">
+      <h2>Start from</h2>
+      <div class="row">
+        <label class="f">Voice <select id="preset"></select></label>
+        <button id="reset">Reset to it</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Listen to</h2>
+      <div class="row">
+        <label class="f">What <select id="material">
+          <option value="song">A song: soft verse, loud chorus, a high note</option>
+          <option value="held">One held note</option>
+          <option value="climb">A climb, low to high and back</option>
+        </select></label>
+        <div class="f" id="heldOpts" style="display:none">
+          <div class="row">
+            <div class="pitch"><button id="down">−</button><span class="note" id="note">A3</span><button id="up1">+</button></div>
+            <label class="f">Vowel <select id="vowel">
+              <option value="AA">ah</option><option value="AH">uh</option><option value="EH">eh</option><option value="AE">a (cat)</option>
+              <option value="IY">ee</option><option value="OW">oh</option><option value="UW">oo</option><option value="AY">eye</option></select></label>
+            <label class="f">How hard <select id="effort">
+              <option value="0.7">Soft</option><option value="0.8" selected>Normal</option><option value="0.9">Pushed</option><option value="0.97">Belted</option></select></label>
+          </div>
+        </div>
+        <label class="f"><span><input type="checkbox" id="polish" checked /> Mixed (compressed, as in the app)</span></label>
+      </div>
+    </section>
+
+    <div class="groups" id="groups"></div>
+
+    <section class="card" style="margin-top:12px">
+      <h2>Saved voices</h2>
+      <div class="row">
+        <button id="save">Save this voice</button>
+      </div>
+      <p class="hint" style="margin-top:8px">Kept in this browser. Click a name to load it.</p>
+      <div class="chips" id="saved"></div>
+    </section>
+
+    <section class="card">
+      <h2>Settings to paste to Claude</h2>
+      <div class="row" style="margin-bottom:8px"><button id="copy">Copy</button><span class="status" id="copied"></span></div>
+      <textarea id="json" readonly></textarea>
+    </section>
+  </main>
+
+  <div class="dock">
+    <div class="row">
+      <button class="primary" id="play">▶ Play</button>
+      <button id="stop">Stop</button>
+      <label class="f" style="grid-auto-flow:column;align-items:center"><span><input type="checkbox" id="auto" checked /> Play again when I change something</span></label>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+  <script type="module" src="/src/lab/voiceCreator.ts"></script>
+</body>
+</html>
