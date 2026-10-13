@@ -108,6 +108,19 @@ export interface FofVoice {
   shift?: number;
   size?: number;
   brkUp?: number;
+  /**
+   * Heft 0-1 (left out: 0): a baritone's weight, kept all the way up (Paul, on a Chris Cornell-like
+   * voice: "rich, dark baritone... massive chest/mix weight high into the 4th and 5th octaves without
+   * thinning out"): the folds' low hump (the chest's body) not let go as the voice pushes or climbs
+   * past the break, and the deep, full sound starting higher (from about 8 semitones under the break).
+   */
+  heft?: number;
+  /**
+   * Fry 0-1 (left out: 0): controlled vocal fry, the creak of a bluesy rock singer: a line growled
+   * into from a creak and let go into one at its end, and a little on the lowest notes; the pulses
+   * there uneven, every other one weak (a creak an octave under the note), the low hump thinned.
+   */
+  fry?: number;
   /** Their break (MIDI, about E4) and their way up past it. */
   brk?: number;
   up?: 'belt' | 'falsetto' | 'scream' | 'squeal';
@@ -386,6 +399,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   let f0 = 110, vT = 0, nasalT = 0, barT = 0, aspT = 0, effort = 0.5;
   // (the register: how far up past the break, 0-1; how deep below it, 0-1)
   let upW = 0, lowW = 0, edgeW = 0;
+  // (heft: a baritone's weight kept up high; fry: the creak at the line's ends and on the deepest notes, 0-1 now)
+  const heft = v.heft ?? 0, fry = v.fry ?? 0;
+  let fryW = 0;
+  const lineT0 = notes[0].t, lineT1 = notes[notes.length - 1].end;
   // (the singer's ear: the level they hear, kept steady from note to note whatever the vowel and pitch do to it)
   let comp = 1;
   // (as heard on an "ah" at G3: no correction)
@@ -452,7 +469,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // their way up past it; the deep notes fuller
       const place = note.midi + shift - brk;
       upW = smooth01((place + 1) / 4);
-      lowW = smooth01((-place - 14) / 6);
+      lowW = smooth01((-place - 14 + 6 * heft) / 6);
+      fryW = fry ? fry * Math.max(1 - smooth01((t - lineT0 + 0.02) / 0.16), 0.8 * smooth01((t - (lineT1 - 0.28)) / 0.28), 0.5 * smooth01((-place - 16) / 4)) : 0;
       // (expression: the section, the line, the note's start and end, a key word, the reach up high)
       let exAmp = 0, exBreath = 0, exBright = 0, exEdge = 0, exEffort = 0;
       roughAdd = 0;
@@ -574,9 +592,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // the next period: a little jitter; on rasp, every other period a touch longer and weaker
       alt = -alt;
       const rough = Math.min(1, roughAdd + 0.25 * scr + grit * effort * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8)));
-      periodK = 1 + (0.003 + 0.004 * hu) * gauss() + 0.015 * rough * alt;
+      periodK = 1 + (0.003 + 0.004 * hu) * gauss() + 0.015 * rough * alt + fryW * (0.1 * alt + 0.06 * gauss());
       if (vA > 1e-4) {
-        const shimmer = (1 + (0.04 + 0.03 * hu) * gauss() + 0.2 * rough * gauss()) * (1 - 0.18 * rough * (alt > 0 ? 1 : 0));
+        const shimmer = (1 + (0.04 + 0.03 * hu) * gauss() + 0.2 * rough * gauss()) * (1 - 0.18 * rough * (alt > 0 ? 1 : 0)) * (1 - 0.65 * fryW * (alt > 0 ? 1 : 0));
         // the source: about -6 dB an octave (the folds and the lips together), brighter when louder
         // (falsetto: soft-edged pulses, a steep tilt; belt and scream: sharp ones, flat; the deep notes a touch darker)
         const tiltX = (lerp(1.5, -2.5, effort) + (fal ? 6 : -1.5) * upW + 1.5 * lowW - bright - 4 * edgeW) / 6.02;
@@ -613,7 +631,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         // tract's formants leave out: the voice's low end and its 2nd harmonic (weaker when pressed)
         {
           const fg = Math.min(f0 * 1.15, F[0] * 0.7), bg = 0.8 * f0;
-          const a = 2.5 * (bg / 1000) * (fg / 1000) ** (-1 - tiltX) * db((v.body ?? 5) - 6 * effort + (fal ? 6 : -3) * upW + 4 * lowW - 3 * edgeW) * comp * vA * shimmer;
+          const a = 2.5 * (bg / 1000) * (fg / 1000) ** (-1 - tiltX) * db((v.body ?? 5) - 6 * effort * (1 - 0.6 * heft) + (fal ? 6 : -3 + 9 * heft) * upW + 4 * lowW - 3 * edgeW - 6 * fryW) * comp * vA * shimmer;
           const alpha = (Math.PI * bg) / fs, w = (2 * Math.PI * fg) / fs, m = Math.exp(-alpha * d);
           const durS = Math.min(0.035 * fs, (5.3 / (Math.PI * bg)) * fs) + tex;
           grains.push({ re: a * m * Math.cos(w * d), im: a * m * Math.sin(w * d), cr: Math.exp(-alpha) * Math.cos(w), ci: Math.exp(-alpha) * Math.sin(w), n: d, tex, dur: durS, rel: durS * 0.25 });

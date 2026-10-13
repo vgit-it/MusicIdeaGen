@@ -1,6 +1,6 @@
 // The timbre lab: one sample vocal (a verse low and soft, a chorus high and loud, a long held top note)
 // sung by the rock voice and by voices on trial, as MP3s in voice-lab/ to pick from by ear.
-// Run: npm run timbre-lab
+// Run: npm run timbre-lab (LIFE=1: the life clips, before and after)
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -61,12 +61,19 @@ const scream = fofFor('rock', 17, false, 'scream');
 // (each genre's voice, polished its genre's way: compression, and the effect on the verse where it has one)
 const COMP: Record<string, VocalComp> = { rock: 'natural', pop: 'radio', funk: 'tight', hardrock: 'heavy', metal: 'heavy', grunge: 'dark', altmetal: 'heavy' };
 const FX: Record<string, VocalFx | undefined> = { pop: 'telephone', grunge: 'megaphone', altmetal: 'radio' };
-// (life: before and after, on the normal voice, Vedder (big & dark) and Staley (dark & nasal))
-const TAKES: [string, FofVoice, boolean][] = [];
-for (const [nm, ch] of [['normal', undefined], ['vedder', 'deep'], ['staley', 'nasal']] as const) {
-  TAKES.push([`life-${nm}-before`, { ...fofFor('rock', 17, false, ch), life: 0 }, false]);
-  TAKES.push([`life-${nm}-after`, fofFor('rock', 17, false, ch), true]);
+// (ONLY=name,name: just those takes; cornell: the Chris Cornell-like character on the rock voice)
+COMP.cornell = 'natural';
+const ALL: [string, FofVoice, boolean][] = [...(['pop', 'rock', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'] as const).map((g): [string, FofVoice, boolean] => [g, fofFor(g, 17, false), true]), ['cornell', fofFor('rock', 17, false, 'cornell'), true]];
+// (LIFE=1: life before and after, on the normal voice, Vedder (big & dark), Staley (dark & nasal) and Cornell)
+if (process.env.LIFE) {
+  ALL.length = 0;
+  for (const [nm, ch] of [['normal', undefined], ['vedder', 'deep'], ['staley', 'nasal'], ['cornell', 'cornell']] as const) {
+    ALL.push([`life-${nm}-before`, { ...fofFor('rock', 17, false, ch), life: 0 }, false]);
+    ALL.push([`life-${nm}-after`, fofFor('rock', 17, false, ch), true]);
+  }
 }
+const only = process.env.ONLY?.split(',');
+const TAKES = only ? ALL.filter(([n]) => only.includes(n)) : ALL;
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
@@ -83,13 +90,13 @@ const PRE = 0.3;
 const ffmpeg: string = createRequire(import.meta.url)('ffmpeg-static');
 for (const [name, v, rushOn] of TAKES) {
   // (each line its own seed, as the app sings them; the verse's level under the chorus's)
-  for (const pol of [false]) {
-  const parts = (rushOn ? sampleRushed : sample).map((L, i) => (pol ? (x: Float32Array) => polishVoice(x, FOF_RATE, { comp: COMP[name] }) : (x: Float32Array) => x)(renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE)).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
+  for (const pol of [!process.env.LIFE]) {
+  const parts = (rushOn ? sampleRushed : sample).map((L, i) => (pol ? (x: Float32Array) => polishVoice(x, FOF_RATE, { comp: COMP[name], fx: i < verseLen ? FX[name] : undefined }) : (x: Float32Array) => x)(renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE)).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
   const gap = Math.round(0.5 * FOF_RATE);
   const out = new Float32Array(parts.reduce((a, p) => a + p.length + gap, 0));
   let at = 0;
   for (const p of parts) { out.set(p, at); at += p.length + gap; }
-  const w = `voice-lab/${name}.wav`;
+  const w = `voice-lab/${pol ? 'fx-' : ''}${name}.wav`;
   writeFileSync(w, wav(out, FOF_RATE));
   execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-i', w, '-b:a', '160k', w.replace('.wav', '.mp3')]);
   unlinkSync(w);

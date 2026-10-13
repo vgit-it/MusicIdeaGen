@@ -59,7 +59,7 @@ export const voiceDown = (g: Genre) => VOICE_DOWN[g];
  * Characters: a singer's own tone on top of a genre's voice (Paul, by ear: "more Alice in Chains, or a
  * voice like Eddie Vedder"), picked in the Voice menu.
  */
-export type Character = 'deep' | 'nasal' | 'scream';
+export type Character = 'deep' | 'nasal' | 'scream' | 'cornell';
 export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoice> }> = {
   // big and dark (Vedder-like): a long throat, round vowels, a full low end, a slow wobble, scoops and sags
   // (less operatic in its normal range, Paul: a less low throat, rounder vowels only a little, brighter, wider)
@@ -68,6 +68,17 @@ export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoic
   // clean and scream (Chester Bennington-like): bright and forward, a little nasal, little vibrato, breathy
   // when quiet, a distorted scream on pushed notes (Paul: medium distortion, "a bit of nasal feel": strong twang; less breathy; his break a few semitones higher (a tenor's: full voice further up; not the tune moved up 3 semitones, which took it out of the song's key: Paul, "out of tune"); the scream from the distortion, over a belt, not the rough 'scream' register: cracks and noise)
   scream: { label: 'Chester (clean & scream)', fof: { tract: 0.98, nasal: 0.25, twang: 1, edge: 0.5, bright: 1, breath: -39, vib: 15, vibHz: 5.8, scoop: 0.3, sag: 0.1, grit: 0.35, brk: 64, up: 'belt', distort: 0.65, size: 1.02, brkUp: 3 } },
+  // dark and soaring (Chris Cornell-like): built from Paul's notes on what the rock voice was missing (a
+  // dark baritone's weight carried up into a full belt, a bluesy rasp and fry, a forward ring), then
+  // tuned by him in the voice creator (voice-creator.html): "close to Cornell". A longer throat, a
+  // moderate low end with weight kept up high, rasp and a scream on pushed notes, a creak into and out
+  // of the lines; nasal and bright, open vowels, less operatic, soft but full when pushing; expressive,
+  // sagging held notes, scoops; a break around D#4 and a belt past it
+  cornell: { label: 'Cornell (dark & soaring)', fof: {
+    tract: 0.94, body: 3.5, heft: 0.55, bw: 1.2, grit: 0.65, distort: 0.45, fry: 0.5, breath: -36, twang: 0.35, edge: 0.35, nasal: 0.38,
+    bright: 1.25, cover: 0.1, spread: 0.6, raw: 1, plain: 0.55, soft: 0.5, softPushed: 0.9, expr: 0.75, scoop: 0.5, sag: 0.75,
+    vib: 32, vibHz: 5.6, drift: 5, brk: 63, up: 'belt',
+  } },
   nasal: { label: 'Dark & nasal', fof: { tract: 0.93, bw: 1.15, bright: 0.5, edge: 0.55, nasal: 0.5, cover: 0.2, vib: 12, vibHz: 6, breath: -30, scoop: 0.4, sag: 0.2, brk: 65 } },
 };
 /**
@@ -80,7 +91,8 @@ const SUNG: Partial<FofVoice> = { expr: 1, plain: 0.6, raw: 1, soft: 0.75, softP
 /** A genre's voice for the FOF singer (`high`: an octave up, the high voice type), or a character on top of it. */
 export const fofFor = (g: Genre, seed: number, high: boolean, character?: Character): FofVoice =>
   // (the low voice less rounded, Paul; the high voice left for its own round of work)
-  ({ ...VOICES[g].fof, ...SUNG, ...(character ? CHARACTERS[character].fof : {}), spread: high ? 0 : 0.5, seed, high });
+  // (a character's own spread kept: the Cornell voice's, tuned by Paul)
+  ({ ...VOICES[g].fof, ...SUNG, ...(character ? CHARACTERS[character].fof : {}), spread: high ? 0 : (character ? CHARACTERS[character].fof.spread : undefined) ?? 0.5, seed, high });
 
 /** A voice's full recipe for the voice box (the base, its own changes, its break and way up; the voice lab's). */
 export function recipeFor(g: Genre): VoiceRecipe {
