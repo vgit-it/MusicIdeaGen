@@ -172,8 +172,9 @@ fry) at five amounts ("acting weird at different places": the base was better).
   mostly muffles); less breathy than the others (breath -39).
   Then (Paul: "a bunch of cracks and noise in the pushed parts"; "lift his natural voice higher"): no
   expression cracks on a screaming voice, the scream over a belt (not the rough 'scream' register),
-  half the turbulence, less period-to-period roughness from it; sung 3 semitones up (a tenor), his
-  break with him.
+  half the turbulence, less period-to-period roughness from it; his break 3 semitones up (a tenor's).
+  He sang 3 semitones up at first: out of the song's key (Paul: "out of tune"). A pitch shift on the
+  rendered voice can't lift a singer's range; only writing the tune higher can (in key).
 
 ## 9. Polish: prepared with the real amps (2026-10-13)
 Paul: one-time processing like the real amps, "start with 1 and 2" (a vocal chain; a clean-up pass), "one
