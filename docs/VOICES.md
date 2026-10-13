@@ -156,6 +156,11 @@ fry) at five amounts ("acting weird at different places": the base was better).
   lips spread, not rounded: no covering, F2 up 3-9% (most on the front vowels), F3 up 3%, the throat
   no longer than 0.97. The high voice is left for its own round of work.
 
+- **Soft** (every voice; Paul: "no softness ... it feels like someone shouting at you"): less push
+  (a steeper tilt, less edge), softer-edged pulses, a little breath through the formants (not the
+  hiss). Medium (0.5) on the normal notes, strong (1) on pushed notes (loud or reaching up) and low
+  ones (Paul's pick from the clips); most in quiet sections, about half in the loudest.
+
 ## 9. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).

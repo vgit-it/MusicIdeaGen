@@ -50,12 +50,12 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 
 // (the voices as the app sings them: fofFor, with expression and less of the operatic sound)
 // (the voices as the app sings them, low and high)
-// (softer: a singer, not someone shouting; two amounts)
-const TAKES: [string, FofVoice][] = ([0.5, 1] as const).flatMap((soft): [string, FofVoice][] => [
-  [`rock-soft-${soft === 1 ? 'strong' : 'medium'}`, { ...fofFor('rock', 17, false), soft }],
-  [`big-dark-soft-${soft === 1 ? 'strong' : 'medium'}`, { ...fofFor('rock', 17, false, 'deep'), soft }],
-  [`dark-nasal-soft-${soft === 1 ? 'strong' : 'medium'}`, { ...fofFor('rock', 17, false, 'nasal'), soft }],
-]);
+// (the voices as the app sings them)
+const TAKES: [string, FofVoice][] = [
+  ['rock', fofFor('rock', 17, false)],
+  ['big-dark', fofFor('rock', 17, false, 'deep')],
+  ['dark-nasal', fofFor('rock', 17, false, 'nasal')],
+];
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);

@@ -84,6 +84,8 @@ export interface FofVoice {
    * half in the loudest.
    */
   soft?: number;
+  /** Soft on pushed notes and low ones (left out: as `soft`; Paul: medium on the normal notes, strong pushed and low). */
+  softPushed?: number;
   /** The line's section energy, 0 (quiet verse) to 1 (the biggest chorus); left out: 0.5. */
   energy?: number;
   /** Their break (MIDI, about E4) and their way up past it. */
@@ -196,7 +198,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     const crack = expr && n.end - n.t > 0.5 && er() < expr * 0.12 * en ? 0.2 + 0.4 * er() : 0;
     return { onset, ends, key, crack };
   });
-  const softK = (v.soft ?? 0) * (1 - 0.45 * en);
+  const soft0 = v.soft ?? 0, softPushed = v.softPushed ?? soft0;
+  let softK = soft0 * (1 - 0.45 * en);
   let bright = v.bright ?? 0, breathNow = breath, roughAdd = 0;
   // (plain: some held notes sung straight, no vibrato; its own random)
   const pr = rng(v.seed * 53 + notes.length * 5 + 2);
@@ -400,6 +403,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         exEdge += 0.15 * reach; exBright += 1 * reach; roughAdd = 0.15 * reach * expr;
         if (ex.crack) { const c = Math.max(0, 1 - Math.abs(into - held * ex.crack - 0.04) / 0.04); exAmp -= 7 * c; exBreath += 6 * c; exBright -= 4 * c; }
         exAmp *= expr; exBreath *= expr; exBright *= expr; exEdge *= expr; exEffort *= expr;
+      }
+      // (soft: the note's own, more on a pushed note (loud or reaching up) and on a low one)
+      if (softPushed !== soft0) {
+        const pushed = Math.max(clamp01((note.vel - 0.75) / 0.15), smooth01((place + 4) / 4) * clamp01((note.vel - 0.6) / 0.2));
+        softK = lerp(soft0, softPushed, Math.max(pushed, smooth01((-place - 8) / 6))) * (1 - 0.45 * en);
       }
       effort = clamp01(effort * (1 - 0.4 * softK) + secEffort + exEffort);
       // (raw: how far up into the rise: from about an octave under the break, all of it by the break)
