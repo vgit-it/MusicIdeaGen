@@ -64,8 +64,8 @@ export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoic
   deep: { label: 'Big & dark', fof: { tract: 0.93, bw: 1.4, body: 6, bright: 0, breath: -35, edge: 0.3, cover: 0.2, vib: 24, vibHz: 4.8, drift: 6, scoop: 0.6, sag: 0.5, brk: 66 } },
   // dark and pinched (Staley-like): nasal, a metallic edge, a tight narrow vibrato, bends into notes
   // clean and scream (Chester Bennington-like): bright and forward, a little nasal, little vibrato, breathy
-  // when quiet, a distorted scream on pushed notes (Paul: medium distortion, "a bit of nasal feel")
-  scream: { label: 'Clean & scream', fof: { tract: 0.98, nasal: 0.25, twang: 0.7, edge: 0.5, bright: 1, breath: -32, vib: 15, vibHz: 5.8, scoop: 0.3, sag: 0.1, grit: 0.5, brk: 64, up: 'scream', distort: 0.65 } },
+  // when quiet, a distorted scream on pushed notes (Paul: medium distortion, "a bit of nasal feel": strong twang; less breathy)
+  scream: { label: 'Clean & scream', fof: { tract: 0.98, nasal: 0.25, twang: 1, edge: 0.5, bright: 1, breath: -39, vib: 15, vibHz: 5.8, scoop: 0.3, sag: 0.1, grit: 0.5, brk: 64, up: 'scream', distort: 0.65 } },
   nasal: { label: 'Dark & nasal', fof: { tract: 0.93, bw: 1.15, bright: 0.5, edge: 0.55, nasal: 0.5, cover: 0.2, vib: 12, vibHz: 6, breath: -30, scoop: 0.4, sag: 0.2, brk: 65 } },
 };
 /**

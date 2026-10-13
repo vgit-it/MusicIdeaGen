@@ -168,8 +168,8 @@ fry) at five amounts ("acting weird at different places": the base was better).
 
 - **Clean & scream** (a third character, Chester Bennington-like; Paul: medium distortion): bright,
   forward, little vibrato, breathy when quiet, the scream (distort 0.65) on pushed notes, and a nasal
-  twang (`twang` 0.7: the 2.5-4 kHz ring up 5 dB, F1 down 2 dB, a little of the nose; `nasal` alone
-  mostly muffles).
+  twang (`twang` 1, Paul's pick: the 2.5-4 kHz ring up 7 dB, F1 down 3 dB, a little of the nose; `nasal` alone
+  mostly muffles); less breathy than the others (breath -39).
 
 ## 9. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.

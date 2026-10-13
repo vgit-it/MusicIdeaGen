@@ -52,12 +52,7 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 // (the voices as the app sings them, low and high)
 // (Clean & scream, Chester Bennington-like: the nasal feel (twang) at three amounts)
 const scream = fofFor('rock', 17, false, 'scream');
-const TAKES: [string, FofVoice][] = [
-  ['scream-nasal-none', { ...scream, twang: 0 }],
-  ['scream-nasal-light', { ...scream, twang: 0.4 }],
-  ['scream-nasal-medium', scream],
-  ['scream-nasal-strong', { ...scream, twang: 1 }],
-];
+const TAKES: [string, FofVoice][] = [['clean-and-scream', scream]];
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
