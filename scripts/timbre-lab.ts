@@ -1,6 +1,6 @@
-// The rasp lab: one sample vocal (a verse low and soft, a chorus high and loud, a long held top note)
-// sung by the rock voice at several amounts of rasp, dryness and creak, as MP3s in voice-lab/ to pick
-// from by ear. Run: npm run rasp-lab
+// The timbre lab: one sample vocal (a verse low and soft, a chorus high and loud, a long held top note)
+// sung by the rock voice and by voices on trial, as MP3s in voice-lab/ to pick from by ear.
+// Run: npm run timbre-lab
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -51,10 +51,12 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 const ROCK = VOICES.rock.fof;
 const TAKES: [string, Partial<FofVoice>][] = [
   ['0-now', {}],
-  ['1-light', { grit: 0.55, gritFloor: 0.2, breath: -29, bw: 1.35, fry: 0.2 }],
-  ['2-medium', { grit: 0.7, gritFloor: 0.35, breath: -31, bw: 1.45, edge: 0.3, fry: 0.35 }],
-  ['3-strong', { grit: 0.85, gritFloor: 0.5, breath: -32, bw: 1.55, edge: 0.35, fry: 0.5 }],
-  ['4-heavy', { grit: 1, gritFloor: 0.7, breath: -33, bw: 1.7, edge: 0.4, fry: 0.65 }],
+  // a big, dark baritone: a long throat, covered round vowels, a slow wide wobble, scoops and sags
+  ['1-big-dark', { tract: 0.9, bw: 1.3, body: 7, bright: -0.5, breath: -28, edge: 0.2, cover: 0.7, vib: 45, vibHz: 4.6, drift: 6, scoop: 0.6, sag: 0.5, brk: 66 }],
+  // dark and heavy but pinched: nasal, a metallic edge, a tight narrow vibrato, bends into notes
+  ['2-dark-nasal', { tract: 0.93, bw: 1.15, bright: 0.5, edge: 0.55, nasal: 0.5, cover: 0.3, vib: 15, vibHz: 6, breath: -29, scoop: 0.4, sag: 0.2, brk: 65 }],
+  // between the two
+  ['3-blend', { tract: 0.91, bw: 1.22, body: 6, bright: 0, edge: 0.4, nasal: 0.25, cover: 0.5, vib: 30, vibHz: 5.2, breath: -28, scoop: 0.5, sag: 0.35, brk: 66 }],
 ];
 
 function wav(samples: Float32Array, rate: number): Buffer {
@@ -78,9 +80,9 @@ for (const [name, change] of TAKES) {
   const out = new Float32Array(parts.reduce((a, p) => a + p.length + gap, 0));
   let at = 0;
   for (const p of parts) { out.set(p, at); at += p.length + gap; }
-  const w = `voice-lab/rasp-${name}.wav`;
+  const w = `voice-lab/timbre-${name}.wav`;
   writeFileSync(w, wav(out, FOF_RATE));
-  execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-i', w, '-b:a', '160k', `voice-lab/rasp-${name}.mp3`]);
+  execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-i', w, '-b:a', '160k', `voice-lab/timbre-${name}.mp3`]);
   unlinkSync(w);
   console.log(name, `${(out.length / FOF_RATE).toFixed(1)} s`);
 }

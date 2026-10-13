@@ -12,7 +12,7 @@
     "tuning": "node scripts/measure-tuning.mjs",
     "fof-lab": "rolldown scripts/fof-lab.ts --platform node --format esm -o node_modules/.cache/fof-lab.mjs && node node_modules/.cache/fof-lab.mjs",
     "flow-lab": "rolldown scripts/flow-lab.ts --platform node --format esm -o node_modules/.cache/flow-lab.mjs && node node_modules/.cache/flow-lab.mjs",
-    "rasp-lab": "rolldown scripts/rasp-lab.ts --platform node --format esm -o node_modules/.cache/rasp-lab.mjs && node node_modules/.cache/rasp-lab.mjs",
+    "timbre-lab": "rolldown scripts/timbre-lab.ts --platform node --format esm -o node_modules/.cache/timbre-lab.mjs && node node_modules/.cache/timbre-lab.mjs",
     "voice-lab": "rolldown scripts/voice-lab.ts --platform node --format esm -o node_modules/.cache/voice-lab.mjs && node node_modules/.cache/voice-lab.mjs"
   },
   "dependencies": {
