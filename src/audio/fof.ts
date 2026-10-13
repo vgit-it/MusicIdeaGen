@@ -133,6 +133,19 @@ export interface FofVoice {
    * sections); and each phrase building toward its top note, easing after it.
    */
   life?: number;
+  /**
+   * The stops (p t k, b d g; left out: as before): their burst (dB, added), a voiced stop's burst on top
+   * (dB, added), the breath after p/t/k (dB, added), the burst's length (share of the stop, default
+   * 0.12), and the voice kept through a p/t/k's closure (dB under the vowel; left out: silent).
+   */
+  stops?: { burst?: number; voiced?: number; asp?: number; len?: number; hold?: number };
+  /**
+   * The noisy consonants (s, f, sh, th, t, k, p...; left out: as before): blend (s: the vowel fading out
+   * as the hiss fades in, instead of the voice stopping at once), short (x: a word's starting noisy
+   * consonants shortened toward the beat, the note before held on longer), level (dB, added to their
+   * noise), dark (x: the hiss's colour lowered, less fizz up top).
+   */
+  cons?: { blend?: number; short?: number; level?: number; dark?: number };
 }
 
 const lerp = (a: number, b: number, x: number) => a + (b - a) * Math.max(0, Math.min(1, x));
@@ -198,6 +211,18 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   // (each note's own vibrato: rate within about 8%, depth within about 30%; a start a little under the note)
   const noteVib = notes.map(() => ({ hz: 1 + hu * 0.08 * (nr() * 2 - 1), depth: 1 + hu * 0.3 * (nr() * 2 - 1), under: hu * (0.05 + 0.1 * nr()) }));
   const segs = layout(notes, 0.7);
+  const cv = v.cons ?? {};
+  const noisy = (c?: ConsSpec) => !!c && !c.voiced && (c.kind === 'fric' || c.kind === 'affric' || c.kind === 'stop');
+  // (a word's starting noisy consonants shortened toward the beat: the run before each vowel squeezed to its end, the note before held on)
+  if (cv.short !== undefined) for (let a = 0; a < segs.length; a++) {
+    if (!segs[a].next || !noisy(segs[a].cons)) continue;
+    let b = a;
+    while (b + 1 < segs.length && segs[b + 1].next) b++;
+    const t0 = segs[a].t0, t1 = segs[b].t1, nt0 = t1 - (t1 - t0) * cv.short;
+    for (let k = a; k <= b; k++) { segs[k].t0 = nt0 + (segs[k].t0 - t0) * cv.short; segs[k].t1 = nt0 + (segs[k].t1 - t0) * cv.short; }
+    if (a > 0 && Math.abs(segs[a - 1].t1 - t0) < 1e-6) segs[a - 1].t1 = nt0;
+    a = b;
+  }
   const endT = segs[segs.length - 1].t1 + 0.3;
   const N = Math.ceil(endT * fs);
   const out = new Float32Array(N);
@@ -295,7 +320,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   };
 
   // noise colours (each band scaled so white noise comes out at about the same loudness)
-  const bank = SHAPES.map((sh) => NOISE[sh].map(([f, b]) => ({ band: new Band().set(fs, f, b), g: Math.sqrt(fs / 2 / b) })));
+  const dk = (sh: Shape) => (cv.dark && (sh === 's' || sh === 'alv' || sh === 'flat') ? cv.dark : 1);
+  const bank = SHAPES.map((sh) => NOISE[sh].map(([f, b]) => ({ band: new Band().set(fs, f * dk(sh), b * dk(sh)), g: Math.sqrt(fs / 2 / (b * dk(sh))) })));
   const asp = [new Band(), new Band(), new Band(), new Band()];
   const aspG = [1, 0.7, 0.45, 0.3];
   // (breath in the highs, above the formants: what a real voice always has and a machine doesn't)
@@ -413,6 +439,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   const B = bws.slice();
   const kUp = 1 - Math.exp(-1 / (0.012 * fs)), kDown = 1 - Math.exp(-1 / (0.025 * fs)), kFast = 1 - Math.exp(-1 / (0.006 * fs));
   const kNoise = 1 - Math.exp(-1 / (0.004 * fs));
+  // (blended: the voice let go and the hiss brought in over the blend time)
+  const kBlend = cv.blend ? 1 - Math.exp(-1 / (cv.blend * 0.5 * fs)) : kFast, kHissIn = cv.blend ? 1 - Math.exp(-1 / (cv.blend * 0.35 * fs)) : kNoise;
+  const consDb = db(cv.level ?? 0);
   let lastVoiceless = false;
   let dc = 0;
 
@@ -534,10 +563,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
             break;
           }
           case 'stop': {
-            const closeEnd = c.voiced ? 0.7 : 0.5, burstEnd = closeEnd + 0.12;
-            if (x < closeEnd) { if (c.voiced) { voice = amp - 22; bar = 1; } else lastVoiceless = true; break; }
-            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : -6)); lastVoiceless = !c.voiced; if (c.voiced) { voice = amp - 14; bar = 1; } break; }
-            if (!c.voiced) { aspir = amp - 10; lastVoiceless = true; } else voice = amp - 3;
+            const st = v.stops ?? {};
+            const closeEnd = c.voiced ? 0.7 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12);
+            if (x < closeEnd) { if (c.voiced) { voice = amp - 22; bar = 1; } else if (st.hold !== undefined) voice = amp - st.hold; else lastVoiceless = true; break; }
+            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : -6) + (st.burst ?? 0) + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && st.hold === undefined; if (c.voiced) { voice = amp - 14; bar = 1; } break; }
+            if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0); lastVoiceless = st.hold === undefined; } else voice = amp - 3;
             break;
           }
         }
@@ -578,11 +608,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     }
 
     // levels, smoothed (a voiceless consonant stops the voice quicker)
-    vA += (vT - vA) * (vT > vA ? kUp : lastVoiceless ? kFast : kDown);
+    vA += (vT - vA) * (vT > vA ? kUp : lastVoiceless ? kBlend : kDown);
     vNasal += (nasalT - vNasal) * kNoise * 0.5;
     vBar += (barT - vBar) * kNoise * 0.5;
-    aspA += (aspT - aspA) * kNoise;
-    for (let k = 0; k < SHAPES.length; k++) fricA[k] += (fricT[k] - fricA[k]) * kNoise;
+    aspA += (aspT * consDb - aspA) * (aspT * consDb > aspA ? kHissIn : kNoise);
+    for (let k = 0; k < SHAPES.length; k++) fricA[k] += (fricT[k] * consDb - fricA[k]) * (fricT[k] * consDb > fricA[k] ? kHissIn : kNoise);
 
     // a pulse of the vocal folds: a grain per formant (and the rasp's noise)
     phase += (f0 * periodK) / fs;

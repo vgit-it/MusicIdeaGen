@@ -348,6 +348,21 @@ a section. Measured on 56 songs (8 per genre, Classic; Shaped alike):
   fewer and no more than 4 notes, from no more than a 4th above.
 - **Sung twice:** a jump while playing (a section tapped) stops the lines already sung (faded over 40 ms).
 
+## 9c. No fuzz between syllables (2026-10-13)
+Paul: "fuzzes and 'ts' 's' sounds ... making it sound weird". Measured with the ess lab
+(`npm run ess-lab`, 19 lines from 5 songs, the FOF singer), the cause was the synth, not the words:
+
+- Hard or hissy sounds meeting at a seam were rare (15 of 273 joins); seam rules barely helped.
+- The short bursts were the stops (t, k, p and d, b, g made just as loud): 93 bursts, 23 without them.
+- The fuzz "at the end of a sound" was mostly the next word's s, t, k, f, sung before the beat, so
+  on the note before, with the vowel cut off at once and the hiss loud and bright.
+
+The fix (Paul's pick, take C5), on every FOF voice (`SUNG` in `voices.ts`; `cons` and `stops` in `fof.ts`):
+the vowel fades into the hiss over about 40 ms; a word's starting s, t, k, f at 60% of their length,
+toward the beat; their noise 6 dB down and darker; stops with barely a burst, the voice dipping
+through p, t, k instead of stopping. Noise in the lines 4.8 s to 1.4 s (vowels alone: 1.2 s), short
+bursts 93 to 31, the words as written. The clear (Klatt) voice is unchanged.
+
 ## 10. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the

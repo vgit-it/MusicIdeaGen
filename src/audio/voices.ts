@@ -86,7 +86,13 @@ export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoic
  * raw: the throat rising with the pitch as a rock singer's does (Paul: "much better"), and soft: a
  * singer, not someone shouting (medium on the normal notes, strong on pushed and low ones: Paul's pick; then "softer across the board").
  */
-const SUNG: Partial<FofVoice> = { expr: 1, plain: 0.6, raw: 1, soft: 0.75, softPushed: 1, life: 1 };
+const SUNG: Partial<FofVoice> = {
+  expr: 1, plain: 0.6, raw: 1, soft: 0.75, softPushed: 1, life: 1,
+  // (no fuzz between syllables, Paul's pick of the ess lab's takes, C5: the vowel fading into s, t, k, f;
+  // those shorter toward the beat, quieter and darker; p, t, k, b, d, g with barely a burst)
+  cons: { blend: 0.04, short: 0.6, level: -6, dark: 0.75 },
+  stops: { burst: -22, voiced: -20, asp: -14, len: 0.05, hold: 24 },
+};
 
 /** A genre's voice for the FOF singer (`high`: an octave up, the high voice type), or a character on top of it. */
 export const fofFor = (g: Genre, seed: number, high: boolean, character?: Character): FofVoice =>

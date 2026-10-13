@@ -13,6 +13,7 @@
     "fof-lab": "rolldown scripts/fof-lab.ts --platform node --format esm -o node_modules/.cache/fof-lab.mjs && node node_modules/.cache/fof-lab.mjs",
     "flow-lab": "rolldown scripts/flow-lab.ts --platform node --format esm -o node_modules/.cache/flow-lab.mjs && node node_modules/.cache/flow-lab.mjs",
     "timbre-lab": "rolldown scripts/timbre-lab.ts --platform node --format esm -o node_modules/.cache/timbre-lab.mjs && node node_modules/.cache/timbre-lab.mjs",
+    "ess-lab": "rolldown scripts/ess-lab.ts --platform node --format esm -o node_modules/.cache/ess-lab.mjs && node node_modules/.cache/ess-lab.mjs",
     "voice-lab": "rolldown scripts/voice-lab.ts --platform node --format esm -o node_modules/.cache/voice-lab.mjs && node node_modules/.cache/voice-lab.mjs"
   },
   "dependencies": {
