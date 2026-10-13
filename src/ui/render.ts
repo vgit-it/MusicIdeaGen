@@ -94,10 +94,13 @@ export function renderIdea(
   const voc = new Array<string>(song.total).fill('.');
   const words = new Array<string>(song.total).fill(' ');
   vocal.forEach((n, i) => {
-    for (let g = n.step + 1; g < Math.min(song.total, n.step + n.len); g++) voc[g] = '-';
-    voc[n.step] = 'o';
-    const room = (vocal[i + 1]?.step ?? song.total) - n.step;
-    [...n.syl.text].slice(0, Math.max(1, room)).forEach((ch, k) => { if (n.step + k < song.total) words[n.step + k] = ch; });
+    // (a run's quick notes between the 16ths: shown in the 16th they start in)
+    const s = Math.floor(n.step);
+    if (s !== n.step) return;
+    for (let g = s + 1; g < Math.min(song.total, n.step + n.len); g++) voc[g] = '-';
+    voc[s] = 'o';
+    const room = Math.ceil((vocal[i + 1]?.step ?? song.total) - n.step);
+    [...n.syl.text].slice(0, Math.max(1, room)).forEach((ch, k) => { if (s + k < song.total) words[s + k] = ch; });
   });
   // backing vocals: h = harmony, g = gang, o = ooh, a = ad-lib, - = held
   const back = new Array<string>(song.total).fill('.');

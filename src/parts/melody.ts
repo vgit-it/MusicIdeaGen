@@ -310,11 +310,11 @@ function spoken(rng: Rng, gap: number, k: number): number[] {
   return Array.from({ length: k }, (_, i) => gap - 2 * (k - i));
 }
 
-/** A line's rhythm: onsets (absolute steps) with stress, and where its last (held) note ends. */
-interface LineRhythm { onsets: { g: number; stress: boolean }[]; end: number }
+/** A line's rhythm: onsets (absolute steps) with stress (`quick`: a light syllable on a 16th, see `fine`), and where its last (held) note ends. */
+interface LineRhythm { onsets: { g: number; stress: boolean; quick?: boolean }[]; end: number }
 
 type HoldLen = 'short' | 'mid' | 'long';
-interface PhraseOpts { busy: number; start: Start; sync: number; flow: number; syncop: number; hold: number; holdLen: HoldLen; changes: number[] }
+interface PhraseOpts { busy: number; start: Start; sync: number; flow: number; syncop: number; hold: number; holdLen: HoldLen; changes: number[]; fine: boolean; slow: number }
 
 /**
  * A sung line's rhythm over one to four bars: words from the top (or a pickup, or after the beat) up to
@@ -324,7 +324,7 @@ interface PhraseOpts { busy: number; start: Start; sync: number; flow: number; s
  * by the singer's ways: how busy, pushed, drawn out. A four-bar line catches a quick breath halfway.
  */
 function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
-  const onsets: { g: number; stress: boolean }[] = [];
+  const onsets: { g: number; stress: boolean; quick?: boolean }[] = [];
   const b1 = bars[0], bl = bars[bars.length - 1];
   const g1 = groupStarts(b1.groups), gl = groupStarts(bl.groups);
   const nl = bl.groups.length;
@@ -344,7 +344,8 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
     hold = b1.start + g1[Math.max(1, b1.groups.length - (o.holdLen === 'short' ? 1 : 2))];
     end = o.holdLen === 'short' ? hold + Math.min(3, b1.start + b1.len - hold) : b1.start + b1.len - (rng.chance(0.5) ? 2 : 0);
   } else {
-    const sung = Math.max(0, Math.min(nl - 2, rng.weighted([[0, 2], [1, 3], [2, 1]])));
+    // (a slow song: more of the line sung, the held note later)
+    const sung = Math.max(0, Math.min(nl - 2, rng.weighted([[0, 2 * (1 - o.slow * 0.6)], [1, 3], [2, 1 + 3 * o.slow]])));
     hold = bl.start + gl[sung];
     end = o.holdLen === 'short' ? hold + bl.groups[sung] : bl.start + bl.len - breath;
   }
@@ -364,8 +365,12 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
   bars.forEach((b) => groupStarts(b.groups).forEach((x, gi) => {
     const g = b.start + x;
     if (g < hold && !(mid > 0 && g < mid && g + b.groups[gi] >= mid)) beats.push({ g, strong: gi === 0 || (b.groups.length >= 4 && gi === b.groups.length / 2) });
+    // (a fine line is sung in double time: its 8ths are its beats, the light syllables on the 16ths)
+    const h = g + 2;
+    if (o.fine && b.groups[gi] >= 4 && h < hold && !(mid > 0 && h < mid && g + b.groups[gi] >= mid)) beats.push({ g: h, strong: false });
   }));
-  const pWeak = Math.max(0.1, Math.min(0.6, 0.3 + 0.4 * (o.busy - 1)));
+  beats.sort((a, c) => a.g - c.g);
+  const pWeak = Math.max(0.1, Math.min(0.6, 0.3 + 0.4 * (o.busy - 1))) * (o.fine ? 1.3 : 1);
   const stresses: number[] = [];
   let drawn = false;
   for (const bt of beats) {
@@ -387,6 +392,13 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
   const setLight = (from: number, to: number, lead: boolean) => {
     const gap = to - from;
     if (gap < 2) return;
+    // a fine line (a slow song): the light syllables on 16ths, said twice as quick
+    if (o.fine) {
+      const k = rng.weighted(kWeights(gap * 2).filter(([x]) => x <= Math.min(3, gap - 1)));
+      const ps = [...new Set(spoken(rng, gap * 2, k).map((p) => Math.round(p / 2)))].filter((p) => p > 0 && p < gap);
+      for (const p of ps) onsets.push({ g: from + p, stress: false, quick: p % 2 === 1 });
+      return;
+    }
     const most = Math.min(3, Math.floor(gap / 2) - 1);
     if (most < 0) return;
     const k = rng.weighted(kWeights(gap).filter(([x]) => x <= most));
@@ -426,7 +438,7 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
  * One note of a tune; `tie`: sung on the last note's vowel (a sigh, a turn, a run), no new syllable;
  * `slide`: scooped up into from so many semitones below; `fall`: falls off its end by so many; `belt`: a wail.
  */
-export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean }
+export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean }
 /** A melody block (one section's worth), before its words. */
 export interface Tune { notes: TuneNote[]; lines: number }
 
@@ -490,7 +502,12 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   const contour: Contour = kind === 'verse' ? style.verse : kind === 'prechorus' ? 'climb' : kind === 'bridge' ? style.bridge : style.chorus;
   // (by tempo: singers phrase in longer notes over a fast band and fill a slow one with words, so the
   // syllables per second stay singable)
-  const pace = Math.max(0.7, Math.min(1.2, (110 / song.bpm) ** 0.6));
+  const pace = Math.max(0.7, Math.min(1.35, (110 / song.bpm) ** 0.6));
+  // (a slow song isn't sung slowly: now and then a line's words come on 16ths, the way a singer
+  // phrases over a ballad; more in verses, not every line; Paul: "some inherent base energy")
+  const eighth = 30 / song.bpm;
+  const slow = Math.max(0, Math.min(1, (eighth - 0.3) / 0.14));
+  const fineChance = slow * 0.8 * (kind === 'verse' || kind === 'prechorus' ? 1 : 0.6);
   const busy = P.busy * G.busy * (kind === 'verse' || kind === 'prechorus' ? style.busyVerse : style.busyChorus) * (kind === 'prechorus' ? 1.1 : 1) * pace;
   const start: Start = kind === 'verse' ? style.verseStart : big ? style.chorusStart : rng.pick<Start>(['down', 'pickup']);
   const height0 = (kind === 'verse' ? (contour === 'recite' ? 1 : 2.5) : kind === 'prechorus' ? 3 : rng.pick([3, 4, 4, 5])) * Math.min(1.35, style.span);
@@ -536,7 +553,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       // (a pre-chorus's last line breaks off busier: the motif fragmenting into the chorus)
       const opts = (st: Start, b: number): PhraseOpts => ({
         busy: b, start: st, sync: style.sync, flow: singer.flow * (kind === 'verse' ? 1 : 0.5), syncop: singer.syncop, hold: singer.hold,
-        changes: H.changes, holdLen: L.length === 1 && li < lines.length - 1 && singer.holdLen.length > 1 ? 'short' : rng.weighted(singer.holdLen),
+        changes: H.changes, fine: rng.chance(fineChance), slow,
+        // (a slow song: held notes shorter more often, so the line doesn't stall)
+        holdLen: rng.chance(slow * 0.45) ? 'short' : L.length === 1 && li < lines.length - 1 && singer.holdLen.length > 1 ? 'short' : rng.weighted(singer.holdLen),
       });
       // the rhythm: a letter that comes back sings the same rhythm; a primed one keeps its first bar
       let rh: LineRhythm;
@@ -621,7 +640,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
         prevIdx = idx;
         shape.push(idx - anchor);
         alt.push(a);
-        lineNotes.push({ step: g, len: Math.max(1, len), midi: pool[idx] + a, stress: o.stress, start: oi === 0, line: li });
+        lineNotes.push({ step: g, len: Math.max(1, len), midi: pool[idx] + a, stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}) });
       });
       return { rh, shape, alt, lineNotes };
     };
@@ -749,6 +768,8 @@ function ornament(rng: Rng, notes: TuneNote[], style: MelodyStyle, pool: number[
   const singer = style.singer;
   // (a run's notes are 16ths, 8ths where 16ths would be too quick to sing)
   const unit = c.step < 0.1 ? 2 : 1;
+  // (a slow song leaves room for more runs: they're sung quicker than its beat, see quicken() in vocal.ts)
+  const slow = 1 + 0.8 * Math.max(0, Math.min(1, (c.step * 2 - 0.3) / 0.15));
   const where = c.kind === 'chorus' || c.kind === 'outro' || c.kind === 'bridge' ? 1.2 : c.kind === 'verse' ? 0.6 : 0.9;
   notes.forEach((n, i) => {
     const lineEnd = !notes[i + 1] || notes[i + 1].line !== n.line;
@@ -761,7 +782,7 @@ function ornament(rng: Rng, notes: TuneNote[], style: MelodyStyle, pool: number[
         return;
       }
     }
-    if (n.len >= 6 && rng.chance(singer.runs * where * (lineEnd ? 1 : 0.4) * (n.belt ? 1.3 : 1))) {
+    if (n.len >= 6 && rng.chance(singer.runs * where * slow * (lineEnd ? 1 : 0.4) * (n.belt ? 1.3 : 1))) {
       const kind = rng.weighted(singer.runKinds);
       const want = rng.int(singer.runLen[0], singer.runLen[1]);
       const inRange = (m: number) => m >= LOW[0] - 3 && m <= wailTop(style) + 1;
@@ -774,21 +795,22 @@ function ornament(rng: Rng, notes: TuneNote[], style: MelodyStyle, pool: number[
         if (k >= 3) {
           const hold = n.len - k * unit;
           out.push({ ...n, len: hold });
-          ms.slice(1).forEach((m, j) => out.push({ ...n, step: n.step + hold + j * unit, len: j === k - 2 ? n.len - hold - j * unit : unit, midi: m, start: false, tie: true, belt: false }));
+          ms.slice(1).forEach((m, j) => out.push({ ...n, step: n.step + hold + j * unit, len: j === k - 2 ? n.len - hold - j * unit : unit, midi: m, start: false, tie: true, run: j < k - 2, belt: false, slide: undefined }));
           return;
         }
       } else {
-        // into the note: the run a unit a note, then the note held for the rest
-        // (a run starting out of the singer's reach starts later, shorter)
-        const ms = runNotes(kind, n.midi, Math.min(want, Math.floor((n.len - 2) / unit) + 1), c.key, c.minorish);
-        // (nor more than an octave over the note before it)
-        const before = out[out.length - 1];
-        while (ms.length && (!inRange(ms[0]) || (before?.line === n.line && ms[0] > before.midi + 12))) ms.shift();
+        // into the note, after it's been held a beat (Paul: no quick turns right after a syllable
+        // starts): the syllable held, then the run a unit a note, landing back on the note for the rest
+        const hold = 4;
+        const ms = runNotes(kind, n.midi, Math.min(want, Math.floor((n.len - hold - 2) / unit) + 1), c.key, c.minorish);
+        // (a run starting out of the singer's reach starts later, shorter; nor more than an octave over the note)
+        while (ms.length && (!inRange(ms[0]) || ms[0] > n.midi + 12)) ms.shift();
         const k = ms.length;
-        if (k >= 3) {
+        if (k >= 3 && ms[0] !== n.midi) {
+          out.push({ ...n, len: hold, belt: false });
           ms.forEach((m, j) => {
             const lastOne = j === k - 1;
-            out.push({ ...n, step: n.step + j * unit, len: lastOne ? n.len - j * unit : unit, midi: m, start: n.start && j === 0, tie: j > 0, belt: lastOne && n.belt });
+            out.push({ ...n, step: n.step + hold + j * unit, len: lastOne ? n.len - hold - j * unit : unit, midi: m, start: false, tie: true, run: !lastOne, belt: lastOne && n.belt, slide: undefined });
           });
           return;
         }

@@ -306,7 +306,27 @@ with the bass about 6% of the time. Built:
 - · Next: riff genres echoing the riff's rhythm and notes; density by section energy; Guitar 2 moving
   out of the singer's range rather than leaving notes out.
 
-## 9. Later
+## 9. Not locked to the band's tempo (2026-10-13)
+Paul: in a slow song the vocal is "super slow and draggy"; runs and melody shouldn't be as tempo-locked
+as the band: "some inherent base energy", runs at half or quarter time, "not all through but sprinkled".
+Measured over 60 songs per tempo, before: at 65 bpm about 1.1 syllables a second (2.1 at 120), the
+quick words held to 8ths (0.46 s apart at 65 bpm), and almost no runs at any tempo (1-3 in 60 songs: the
+rule against quick turns as a syllable starts removed them too).
+- [P] Double-time lines: in a slow song (under about 100 bpm), now and then a line is sung in double
+  time, its 8ths as its beats and its light syllables on 16ths; more in verses, more the slower the song
+  (up to 8 in 10 lines at 65 bpm, 6 in 10 in choruses' share). ✓
+- [P] Held notes shorter more often in slow songs, and more of each line sung before them. ✓
+- [P] Runs are back, once the syllable has been held a beat (Paul's rule: no quick turns right as it
+  starts): a run down or up into the note after a beat's hold, or a tail off its end; a few more of
+  them in slow songs. ✓
+- [P] Runs faster than the grid: a run whose notes would take over 0.2 s each is now and then (about 2
+  in 3) sung two or four times as fast, between the 16ths, landing on its last note sooner and holding
+  it longer (`quicken`, `src/parts/vocal.ts`). The voice, the MIDI file and the lanes take the quick
+  notes; the backing singers hold through them. ✓
+- Result: syllables a second at 65 bpm 1.1 → 1.4, at 80 bpm 1.4 → 1.5, 120 bpm unchanged; runs in 60
+  songs 1-3 → 100-190; run notes at 65 bpm 0.46 s → about 0.19 s on average.
+
+## 10. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the
   beat (the drawl's lag).

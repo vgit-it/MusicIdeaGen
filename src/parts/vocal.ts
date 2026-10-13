@@ -54,7 +54,7 @@ function carried(tune: Tune): boolean[] {
   let lastStep = -99, lastLine = -1;
   return tune.notes.map((n) => {
     if (n.tie) return true;
-    if (!n.stress && n.line === lastLine && n.step - lastStep < 2) return true;
+    if (!n.stress && !n.quick && n.line === lastLine && n.step - lastStep < 2) return true;
     lastStep = n.step; lastLine = n.line;
     return false;
   });
@@ -74,7 +74,8 @@ function settle(tune: Tune): Tune {
   tune.notes.forEach((n, i) => {
     const prev = out[out.length - 1];
     if (!tied[i] || !prev) { sylStep = n.step; out.push({ ...n }); return; }
-    if (n.step - sylStep >= 4 && n.len >= 2 && n.tie) { out.push({ ...n }); return; }
+    // (a run, once the syllable's been held a beat, keeps its quick notes: quicken() sets their pace)
+    if (n.step - sylStep >= 4 && (n.len >= 2 || n.run) && n.tie) { out.push({ ...n }); return; }
     // (merged: the pitch held longest; a fall off the end kept)
     const ownLen = n.step - prev.step;
     if (n.len > ownLen) { prev.midi = n.midi; prev.belt = prev.belt || n.belt; }
@@ -121,6 +122,8 @@ function onEighths(tune: Tune): Tune {
   for (const n of tune.notes) {
     if (n.tie) { out.push(n); continue; }
     const prev = [...out].reverse().find((x) => !x.tie);
+    // (a fine line's quick syllables, and the one after them, keep their 16ths: a slow song's quick words)
+    if (n.quick || prev?.quick) { if (prev && n.step - prev.step < 1) { absorb(n); continue; } out.push(n); continue; }
     const nextStep = syl.find((x) => x.step > n.step)?.step ?? Infinity;
     const room = (g: number) => (!prev || g - prev.step >= 2) && nextStep - g >= 2;
     if (n.step % 2) {
@@ -288,16 +291,51 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     const cleared = clearForSinger(idea);
     leaveRoom(idea);
     breathe(idea.vocal);
+    const quick = quicken(idea.vocal, 15 / idea.song.bpm, new Rng(`${ctx.seed}-quick-${si}`));
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
       if (!told) { idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`); told = true; }
       idea.notes.push(`Vocal (${VOCAL_DESC[as]}): “${words.length > 140 ? `${words.slice(0, 140)}…` : words}”`);
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
       const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
+      if (quick) fitBits.push(`${quick === 1 ? 'a run' : `${quick} runs`} sung quicker than the beat`);
       if (fitBits.length) idea.notes.push(`Vocal fits the band: ${fitBits.join(', ')}`);
       if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);
     }
   });
+}
+
+/**
+ * Runs aren't locked to the band's grid (Paul: in a slow song the vocal is "super slow and draggy";
+ * runs could go at half or quarter time, "not all through but sprinkled in"): a run whose notes take
+ * longer than a quick singer's (over about 0.2 s each) is now and then sung two or four times as fast,
+ * landing on its last note sooner and holding that longer. Its quick notes fall between the 16ths
+ * (fractional steps); its first and last notes stay on the grid. `six`: a 16th in seconds. Returns how
+ * many runs were sped up.
+ */
+function quicken(v: VocalNote[], six: number, rng: Rng): number {
+  let sped = 0;
+  for (let i = 0; i < v.length; i++) {
+    // a run: two or more quick tied notes on one vowel, then the note it lands on
+    let j = i;
+    while (v[j + 1]?.syl.text === '~') j++;
+    const runFrom = i + 1, last = j;
+    if (last - runFrom < 2 || v.slice(runFrom, last).some((x) => x.len > 2)) { i = j; continue; }
+    const unit = v[runFrom].len * six;
+    const most = unit / 4 >= 0.1 ? 4 : unit / 2 >= 0.1 ? 2 : 1;
+    if (unit < 0.2 || most === 1 || !rng.chance(0.65)) { i = j; continue; }
+    const f = most === 4 && rng.chance(0.6) ? 2 : most;
+    const base = v[runFrom].step;
+    for (let k = runFrom; k < last; k++) { v[k].step = base + (v[k].step - base) / f; v[k].len /= f; }
+    const end = v[last].step + v[last].len;
+    const to = Math.ceil(base + (v[last].step - base) / f);
+    v[last - 1].len = to - v[last - 1].step;
+    v[last].step = to;
+    v[last].len = end - to;
+    sped++;
+    i = last;
+  }
+  return sped;
 }
 
 /** A held note stops where Guitar 2's answer starts (the singer breathes, the lead answers; a full beat's room, breathe()); a wail holds on. */

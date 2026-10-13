@@ -10,7 +10,7 @@ import { GENRE_LABEL } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
 import type { Layer } from '../parts/layers';
 import { backingVoice } from '../parts/vocal';
-import { cymbalAccent, groupStarts } from '../rhythm';
+import { cymbalAccent, groupStarts, stepAt } from '../rhythm';
 import { NOTE_NAMES, pianoVoicing } from '../theory';
 import { guitarVoicings, strokeShape } from '../theory/guitar';
 
@@ -106,7 +106,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
     const lastBar = song.bars[song.bars.length - 1];
     // swing: odd 16ths come late, as Tone's transport plays them
     // (and the band's lilt, when the band plays it)
-    const at = (g: number) => offset + g * SIX + (g % 2 ? (song.swing * (2 / 3) + (idea.lilt ?? 0)) * SIX : 0);
+    const at = stepAt((g) => offset + g * SIX + (g % 2 ? (song.swing * (2 / 3) + (idea.lilt ?? 0)) * SIX : 0));
     const gapUntil = (lane: ArrayLike<unknown>, empty: unknown, g: number, cap: number) => {
       let n = 1;
       while (n < cap && g + n < total && lane[g + n] === empty) n++;
@@ -183,10 +183,11 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       for (const h of idea.guitar2) if (h.step === g) hit(g2, h, h.vel, false, idea.g2Feel ?? 0);
       if (o.vocal !== 'off') {
         for (const n of idea.vocal ?? []) {
-          if (n.step !== g) continue;
+          // (a run's quick notes fall between the 16ths: written in the 16th they start in)
+          if (Math.floor(n.step) !== g) continue;
           const voice = o.vocal === 'low' || o.vocal === 'high' ? o.vocal : idea.vocalVoice ?? 'low';
-          note(vocal, n.midi + (voice === 'high' ? 12 : 0), at(g), Math.max(10, at(n.step + n.len) - at(g) - 10), n.vel);
-          midi.header.meta.push({ type: 'lyrics', text: n.syl.wordStart || n === idea.vocal![0] ? n.syl.text : `-${n.syl.text}`, ticks: Math.round(at(g)) });
+          note(vocal, n.midi + (voice === 'high' ? 12 : 0), at(n.step), Math.max(10, at(n.step + n.len) - at(n.step) - 10), n.vel);
+          midi.header.meta.push({ type: 'lyrics', text: n.syl.wordStart || n === idea.vocal![0] ? n.syl.text : `-${n.syl.text}`, ticks: Math.round(at(n.step)) });
         }
         for (const n of idea.backing ?? []) {
           if (n.step !== g || (n.role !== 'adlib' && o.backing === 'off')) continue;
