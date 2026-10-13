@@ -46,6 +46,9 @@ const BY_GENRE: Record<Genre, { colour: MoveId[]; shape: MoveId[]; extra: MoveId
   altmetal: { colour: ['sour', 'phrygian', 'ninth'], shape: ['belt', 'monotone', 'upupdown'], extra: ['falls', 'pedal'] },
 };
 
+/** The moves that hold a line on one note. */
+const ONE_NOTE: MoveId[] = ['monotone', 'pedal'];
+
 /**
  * A song's signature: one colour move, one shape, maybe an extra (half the songs), and now and then the
  * chills at its peak; or the one move chosen in the menu. (The borrowed chord's b6 is always on: it isn't
@@ -58,7 +61,9 @@ export function pickMoves(seed: string, genre: Genre, chosen?: MoveId): MoveId[]
   const out: MoveId[] = [rng.pick(G.colour), rng.pick(G.shape)];
   if (G.extra.length && rng.chance(0.5)) out.push(rng.pick(G.extra));
   if (genre !== 'funk' && rng.chance(0.3)) out.push('appoggiatura');
-  return [...new Set(out)];
+  // (the one-note moves, kept now and then: on top of everything else that held a line on a note, about
+  // a third of the songs sang whole verses on one pitch; Paul: "notes are almost always just repeating")
+  return [...new Set(out)].filter((m) => !ONE_NOTE.includes(m) || rng.chance(0.35));
 }
 
 /** For the notes: "the 6-5 sigh (Bowie, "Space Oddity"), ...". */

@@ -375,16 +375,24 @@ function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: Secti
   if (start === 'pickup') { onsets.push({ g: b1.start - u, stress: false }); if (rng.chance(0.35)) onsets.push({ g: b1.start - 2 * u, stress: false }); }
   // a slot's weight inside its beat: its first (the beat's own), a quarter inside a long group, an 8th, a 16th
   const slotSt = (off: number, st: number) => (off === 0 ? st : off % 4 === 0 ? 1 : off % 2 === 0 ? 0.5 : 0.2);
-  const chanceOf = (w: number) => w >= 2 ? 0.95 : w >= 1 ? 0.8 : w >= 0.5
-    ? Math.min(0.85, Math.max(0.08, u === 1 ? 0.45 * dens : 0.15 + 0.35 * (dens - 0.6))) : Math.min(0.5, 0.12 * dens);
-  const pattern = (bt: { len: number; st: number }) => {
-    const p: boolean[] = [];
-    for (let off = 0; off < bt.len; off += u) {
-      const w = slotSt(off, bt.st);
-      p.push(rng.chance(off > 0 && w >= 1 ? 0.55 * dens : chanceOf(w)));
-    }
-    return p;
+  // a beat's pattern: a cell real vocal lines use, by its size in grid steps (Paul: the grid gave "a bunch
+  // of back to back 1/4 bar length notes": each 8th between the beats was a rare coin toss, so nearly
+  // every beat sang one quarter note): a quarter, two 8ths, the "and" after a rest, held over; in a
+  // three-8th beat, its own cells. Busier sections pick the quicker cells; a strong beat starts on its
+  // beat nearly always. Beats of other sizes are cut into twos and threes.
+  const CELLS: Record<number, [string, number][]> = {
+    2: [['x.', 0.8], ['xx', 1.2 * dens], ['.x', 0.4], ['..', 0.5 / dens]],
+    3: [['x..', 0.8], ['x.x', 0.8], ['xx.', 0.35 * dens], ['xxx', 0.3 * dens], ['..x', 0.2], ['...', 0.3 / dens]],
   };
+  const cell = (slots: number, st: number): boolean[] => {
+    if (!CELLS[slots]) {
+      const a = slots % 2 && slots > 3 ? 3 : 2;
+      return slots <= 1 ? [rng.chance(st >= 2 ? 0.95 : 0.6)] : [...cell(a, st), ...cell(slots - a, 0)];
+    }
+    const ws = CELLS[slots].map(([c, w]): [string, number] => [c, c[0] === '.' ? w * (st >= 3 ? 0.08 : st >= 2 ? 0.2 : 1) : w]);
+    return [...rng.weighted(ws)].map((c) => c === 'x');
+  };
+  const pattern = (bt: { len: number; st: number }) => cell(Math.max(1, Math.ceil(bt.len / u)), bt.st);
   const before = beats.filter((x) => x.g < hold);
   const half = Math.max(1, before.filter((x) => x.g < b1.start + b1.len / 2).length);
   const motif: boolean[][] = [];
@@ -603,9 +611,21 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   }
   // (shaped: verses low and narrow, choruses wide, more so in a dramatic song: spanX above)
   // (never under the floor; a range pushed up off it keeps its width)
-  const lo = Math.max(FLOOR + style.up, LOW[0] + off - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + off - 2, Math.max(center + Math.floor(span / 2), lo + span));
+  let lo = Math.max(FLOOR + style.up, LOW[0] + off - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + off - 2, Math.max(center + Math.floor(span / 2), lo + span));
+  // (at least six notes to sing, seven in a chorus: a pentatonic verse over a 6th had four, two of them
+  // the chord's, so its strong notes could only rock between two pitches; Paul: "notes are almost always
+  // just repeating"): the range widened a scale note at a time, up first, then down, within the voice)
+  const inScale = (m: number) => scale.includes(mod(m - key, 12));
+  const count = () => { let c = 0; for (let m = lo; m <= hi; m++) if (inScale(m)) c++; return c; };
+  const next = (m: number, d: number) => { do m += d; while (!inScale(m)); return m; };
+  for (let k = 0; k < 24 && count() < (big ? 7 : 6); k++) {
+    if (k % 2 === 0 && next(hi, 1) <= PEAK + off) hi = next(hi, 1);
+    else if (next(lo, -1) >= FLOOR + style.up) lo = next(lo, -1);
+    else if (next(hi, 1) <= PEAK + off) hi = next(hi, 1);
+    else break;
+  }
   const pool: number[] = [];
-  for (let m = lo; m <= hi; m++) if (scale.includes(mod(m - key, 12))) pool.push(m);
+  for (let m = lo; m <= hi; m++) if (inScale(m)) pool.push(m);
   const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(Math.max(0, g), total - 1)]].chord;
   const tonesAt = (g: number) => chordTones(key, chordAt(g));
   const isTone = (m: number, g: number) => tonesAt(g).includes(mod(m, 12));
@@ -872,8 +892,18 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
         idx = clampIdx(idx);
         // strong beats on chord notes (by the style: tense songs leave more of them rubbing)
         const want = isLast || len >= 6 || (!copied && o.stress && rng.chance((P.toneStrong + style.stable) / 2));
-        // (snapping back toward the last note: no bigger jump than written)
-        if (want) { idx = nearTone(idx, g, undefined, idx > prevIdx && !hookNote); a = 0; }
+        // (snapping back toward the last note: no bigger jump than written; but a note that moved isn't
+        // snapped back onto the note before: that left a third of the stressed notes singing the last note
+        // again, the line stuck on one pitch (Paul: "notes are almost always just repeating"); the chord
+        // note the other way instead, if it's near)
+        if (want) {
+          const was = idx, moved = oi > 0 && idx !== prevIdx;
+          idx = nearTone(idx, g, undefined, idx > prevIdx && !hookNote); a = 0;
+          if (moved && idx === prevIdx) {
+            const on = nearTone(idx, g, (m) => m !== pool[prevIdx], was < prevIdx);
+            if (on !== prevIdx && Math.abs(on - prevIdx) <= 3) idx = on;
+          }
+        }
         // the line's ending: closed on the root (the key's, if the chord has it), open on the 3rd or 5th
         if (isLast) {
           const tones = tonesAt(g);
@@ -893,11 +923,16 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     };
     const tries = band ? TRIES : 1;
     const seed = rng.next();
+    // (on the grid, a try that sings beat after beat in even quarter notes scores less: every note on a kick
+    // or snare scored, so the try with the most beats sung won, a line of back to back quarter notes; Paul:
+    // the grid gave "a bunch of back to back 1/4 bar length notes")
+    const plodding = (ns: TuneNote[]) => { let r = 0, p = 0; for (let k = 1; k < ns.length; k++) { r = ns[k].step - ns[k - 1].step === 4 && ns[k].line === ns[k - 1].line ? r + 1 : 0; if (r >= 3) p++; } return p; };
+    const score = (ns: TuneNote[]) => bandScore(ns, H, band!, total) - (style.grid ? 1.5 * plodding(ns) : 0);
     let best = attempt(tries > 1 ? new Rng(`${seed}-0`) : rng);
-    let bestScore = band ? bandScore(best.lineNotes, H, band, total) : 0;
+    let bestScore = band ? score(best.lineNotes) : 0;
     for (let c = 1; c < tries; c++) {
       const t = attempt(new Rng(`${seed}-${c}`));
-      const sc = bandScore(t.lineNotes, H, band!, total);
+      const sc = score(t.lineNotes);
       if (sc > bestScore) { best = t; bestScore = sc; }
     }
     const { rh, shape, alt } = best;
@@ -1060,7 +1095,15 @@ function singable(notes: TuneNote[], pool: number[]) {
     if (gapIn > 2 && gapOut > 2) continue;
     const dIn = n.midi - p.midi, dOut = nx.midi - n.midi;
     const zig = dIn !== 0 && Math.sign(dOut) === -Math.sign(dIn);
-    if (zig && (Math.abs(dIn) >= 3 || (gapIn <= 1 && gapOut <= 1))) { n.midi = p.midi; continue; }
+    // (a leap there and back: a step there and back instead, a neighbour note, not the note before again:
+    // that made a moving line one note; between two 16ths, the note before)
+    if (zig && Math.abs(dIn) >= 3) {
+      const j = pool.reduce((b, m, k) => (Math.abs(m - p.midi) < Math.abs(pool[b] - p.midi) ? k : b), 0);
+      const nb = pool[j + Math.sign(dIn)];
+      n.midi = nb !== undefined && nb !== p.midi && Math.abs(nb - p.midi) < Math.abs(dIn) ? nb : p.midi;
+      continue;
+    }
+    if (zig && gapIn <= 1 && gapOut <= 1) { n.midi = p.midi; continue; }
     if (Math.abs(dIn) >= 3) {
       const lo = Math.min(p.midi, nx.midi), hi = Math.max(p.midi, nx.midi);
       const between = pool.filter((m) => m > lo && m < hi);
