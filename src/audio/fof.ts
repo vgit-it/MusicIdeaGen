@@ -77,6 +77,13 @@ export interface FofVoice {
    * voice's darkness kept, its roundness not).
    */
   spread?: number;
+  /**
+   * Soft 0-1 (left out: 0): a singer, not someone shouting (Paul: "there's no softness ... it feels
+   * like someone shouting at you"). Less push (a steeper tilt, less edge), softer-edged pulses, a little
+   * more breath in the tone (through the formants, not the hiss up top). Most in quiet sections, about
+   * half in the loudest.
+   */
+  soft?: number;
   /** The line's section energy, 0 (quiet verse) to 1 (the biggest chorus); left out: 0.5. */
   energy?: number;
   /** Their break (MIDI, about E4) and their way up past it. */
@@ -189,6 +196,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     const crack = expr && n.end - n.t > 0.5 && er() < expr * 0.12 * en ? 0.2 + 0.4 * er() : 0;
     return { onset, ends, key, crack };
   });
+  const softK = (v.soft ?? 0) * (1 - 0.45 * en);
   let bright = v.bright ?? 0, breathNow = breath, roughAdd = 0;
   // (plain: some held notes sung straight, no vibrato; its own random)
   const pr = rng(v.seed * 53 + notes.length * 5 + 2);
@@ -393,12 +401,12 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         if (ex.crack) { const c = Math.max(0, 1 - Math.abs(into - held * ex.crack - 0.04) / 0.04); exAmp -= 7 * c; exBreath += 6 * c; exBright -= 4 * c; }
         exAmp *= expr; exBreath *= expr; exBright *= expr; exEdge *= expr; exEffort *= expr;
       }
-      effort = clamp01(effort + secEffort + exEffort);
+      effort = clamp01(effort * (1 - 0.4 * softK) + secEffort + exEffort);
       // (raw: how far up into the rise: from about an octave under the break, all of it by the break)
       const rise = (v.raw ?? 0) * smooth01((place + 12) / 12);
-      bright = (v.bright ?? 0) + secBright + lnBright + exBright + 1.5 * rise;
+      bright = (v.bright ?? 0) + secBright + lnBright + exBright + 1.5 * rise * (1 - 0.5 * softK) - 2 * softK;
       breathNow = breath + secBreath + lnBreath + exBreath;
-      edgeW = clamp01((v.edge ?? 0) + 0.2 * rise + (expr ? secEdge + lnEdge + exEdge : 0)) * EDGE_VOWEL[note.syl.vowel];
+      edgeW = clamp01((v.edge ?? 0) + 0.2 * rise + (expr ? secEdge + lnEdge + exEdge : 0)) * (1 - 0.5 * softK) * EDGE_VOWEL[note.syl.vowel];
       // (down low: rounder, more relaxed)
       const cover = (1 - spread) * Math.min(1, cover0 + expr * 0.15 * smooth01((-place - 6) / 6)) * (1 - rise);
       for (let k = 0; k < 3; k++) B[k] = bws[k] * (1 + 0.5 * rise);
@@ -491,7 +499,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         // the source: about -6 dB an octave (the folds and the lips together), brighter when louder
         // (falsetto: soft-edged pulses, a steep tilt; belt and scream: sharp ones, flat; the deep notes a touch darker)
         const tiltX = (lerp(1.5, -2.5, effort) + (fal ? 6 : -1.5) * upW + 1.5 * lowW - bright - 4 * edgeW) / 6.02;
-        const tex = Math.round(lerp(lerp(0.0035, 0.0016, effort), fal ? 0.005 : way === 'scream' ? 0.0012 : 0.0014, upW) * (1 - 0.35 * edgeW) * fs);
+        const tex = Math.round(lerp(lerp(0.0035, 0.0016, effort), fal ? 0.005 : way === 'scream' ? 0.0012 : 0.0014, upW) * (1 - 0.35 * edgeW) * (1 + 0.8 * softK) * fs);
         // (a twang up past the break: the 3-4 kHz ring of a belt)
         const twang = db(upW * (fal ? 0 : way === 'squeal' ? 7 : way === 'scream' ? 4 : 3));
         // each formant's level in the vowel: the other formants' resonance at its frequency (a cascade's shape)
@@ -550,7 +558,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     const nz = gauss() * 1.9;
     const open = 0.35 + 0.65 * Math.sin(Math.PI * phase) ** 2;
     raspEnv *= 0.9985;
-    const aIn = nz * (vA * comp * db(breathNow + (fal ? 9 : 2) * upW) * 4 * open + aspA * 1.2 + raspEnv * comp * (0.3 + open));
+    const aIn = nz * (vA * comp * db(breathNow + 3 * softK + (fal ? 9 : 2) * upW) * 4 * open + aspA * 1.2 + raspEnv * comp * (0.3 + open));
     let an = 0;
     for (let k = 0; k < 4; k++) an += aspG[k] * asp[k].run(aIn);
     an += air.run(nz) * vA * comp * db(breathNow - 16) * open * hu * 2.5;
