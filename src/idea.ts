@@ -40,6 +40,8 @@ export interface GenOptions {
   chords?: ChordSheet;
   /** Semitones higher the vocal tunes are written (the Chester voice: a tenor; in key, the tune itself rewritten). */
   vocalLift?: number;
+  /** How the vocal's rhythm is written: classic (speech rhythm, the default) or on the metronome grid (docs/VOCAL-RHYTHM.md). */
+  vocalRhythm?: 'grid';
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */

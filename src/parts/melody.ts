@@ -82,6 +82,8 @@ export interface MelodyStyle {
   top: number;
   /** Their voice on Auto (a deep voice sings a little lower). */
   timbre: Timbre;
+  /** The rhythm written on the metronome grid (docs/VOCAL-RHYTHM.md), not the classic speech rhythm. */
+  grid?: boolean;
 }
 
 type W<T> = [T, number][];
@@ -315,6 +317,89 @@ function spoken(rng: Rng, gap: number, k: number): number[] {
   return Array.from({ length: k }, (_, i) => gap - 2 * (k - i));
 }
 
+/** The grid's step for a song (docs/VOCAL-RHYTHM.md): 8ths; 16ths under about 90 bpm (Paul: the grid tightens in slow songs). */
+export const gridUnit = (bpm: number) => (bpm < 90 ? 1 : 2);
+
+type Cell = 'X.' | 'XX' | '.X' | '..';
+
+/**
+ * A line's rhythm on the metronome grid (docs/VOCAL-RHYTHM.md; Paul: "akin to time signature
+ * metronome's rhythm", a word's syllables "on 1/8ths ... with a nice sounding rhythm"). The bar's beats
+ * ranked like a metronome's accents (beat 1, the middle beat, the others; in a slow song its 8ths are
+ * the beats); one cell per beat: on the beat, on the beat and its "and", the "and" alone (a push into
+ * the next beat, carrying its stress), or a rest; chosen by the beat's strength and how busy the
+ * section is (verses busier, choruses open), the first half-bar's cells coming back through the line as
+ * its motif. Every new syllable on the grid (8ths; 16ths in a slow song). Verses start with a pickup or
+ * just after the downbeat now and then, choruses on 1; the last syllable lands on beat 1 or the middle
+ * beat of the last bar and holds to a beat before the next line (the breath).
+ */
+function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: SectionKind): LineRhythm {
+  const verse = kind === 'verse' || kind === 'prechorus';
+  const dens = o.busy * (verse ? 1.2 : 0.75);
+  // the beats and their strength (3: the downbeat, 2: the middle beat, 1: the others; 0.5: a slow song's in-between 8ths)
+  const beats: { g: number; len: number; st: number }[] = [];
+  for (const b of bars) {
+    const gs = groupStarts(b.groups);
+    gs.forEach((x, gi) => {
+      const st = gi === 0 ? 3 : b.groups.length >= 4 && gi === b.groups.length / 2 ? 2 : 1;
+      if (u === 1) for (let p = 0; p < b.groups[gi]; p += 2) beats.push({ g: b.start + x + p, len: Math.min(2, b.groups[gi] - p), st: p === 0 ? st : 0.5 });
+      else beats.push({ g: b.start + x, len: b.groups[gi], st });
+    });
+  }
+  const b1 = bars[0], bl = bars[bars.length - 1];
+  const lineEnd = bl.start + bl.len;
+  // the held last syllable: beat 1 or the middle beat of the last bar (a one-bar line: its middle beat)
+  const mids = beats.filter((x) => x.g >= bl.start && x.st === 2);
+  let hold = bars.length === 1 ? (mids[0]?.g ?? beats.filter((x) => x.g >= bl.start && x.st >= 1).slice(-1)[0].g)
+    : rng.chance(mids.length ? 0.6 : 1) ? bl.start : mids[0].g;
+  // (now and then pushed: landing an 8th early)
+  const pushedHold = hold - 2 > b1.start + 2 && rng.chance(o.sync * 0.4);
+  if (pushedHold) hold -= 2;
+  // the breath: a beat before the next line
+  const breath = bl.groups[bl.groups.length - 1];
+  const end = Math.max(hold + 2, lineEnd - breath);
+  // where the line starts, by section: verses a pickup or just after the downbeat now and then, choruses on 1
+  const start: Start = verse ? rng.weighted<Start>([['pickup', 2], ['after', 1.5], ['down', 1.5]]) : kind === 'chorus' || kind === 'outro' ? 'down' : o.start;
+  const onsets: { g: number; stress: boolean; quick?: boolean }[] = [];
+  if (start === 'pickup') { onsets.push({ g: b1.start - u, stress: false }); if (rng.chance(0.35)) onsets.push({ g: b1.start - 2 * u, stress: false }); }
+  // the cells, one per beat before the held note: the first half-bar's are the line's motif
+  const before = beats.filter((x) => x.g < hold);
+  const half = Math.max(1, before.filter((x) => x.g < b1.start + b1.len / 2).length);
+  const motif: Cell[] = [];
+  const fresh = (st: number): Cell => rng.weighted<Cell>(st >= 2
+    ? [['X.', 1], ['XX', Math.max(0.05, dens - 0.6)], ['.X', o.syncop * 0.12], ['..', 0.04]]
+    : st >= 1
+      ? [['X.', 1], ['XX', Math.max(0.05, dens - 0.5)], ['.X', 0.15 + o.syncop * 0.2], ['..', 0.3 / dens]]
+      : [['X.', 0.6], ['XX', 0.25 * dens], ['.X', 0.12], ['..', 0.6 / dens]]);
+  let tiedIn = false;
+  before.forEach((bt, i) => {
+    let cell: Cell = i >= half && rng.chance(0.65) ? motif[i % half] : fresh(bt.st);
+    if (i < half) motif.push(cell);
+    // (a beat that was pushed into: its stress came an 8th early, so nothing on the beat itself)
+    if (tiedIn && cell[0] === 'X') cell = cell === 'XX' ? '.X' : '..';
+    tiedIn = false;
+    // (the downbeat after the start: back-heavy verses start on its "and" or the next beat)
+    if (i === 0 && start === 'after') cell = rng.chance(0.5) ? '.X' : '..';
+    if (cell[0] === 'X') onsets.push({ g: bt.g, stress: bt.st >= 1 });
+    if (cell[1] === 'X' && bt.len >= 2 * u) {
+      const g = bt.g + u;
+      const next = before[i + 1] ?? { g: hold, st: 3 };
+      // a push: the "and" right before a strong beat, carrying its stress over it
+      const push = cell === '.X' && next.st >= 2 && next.g === bt.g + bt.len && i > 0;
+      onsets.push({ g, stress: push });
+      if (push) tiedIn = true;
+    }
+  });
+  // the held note, nothing after it, no two notes on one step; off the 8ths (a slow song's 16ths) marked quick
+  // (a push straight into the held note: the held note itself comes on the "and" before it)
+  if (tiedIn) { const k = onsets.findIndex((x) => x.g === hold - u); if (k >= 0) { onsets.splice(k, 1); hold -= u; } }
+  const seen = new Set<number>();
+  const os = [...onsets.filter((x) => x.g < hold), { g: hold, stress: true }]
+    .filter((x) => (seen.has(x.g) ? false : (seen.add(x.g), true))).sort((a, b) => a.g - b.g)
+    .map((x) => (x.g % 2 ? { ...x, quick: true } : x));
+  return { onsets: os, end };
+}
+
 /** A line's rhythm: onsets (absolute steps) with stress (`quick`: a light syllable on a 16th, see `fine`), and where its last (held) note ends. */
 interface LineRhythm { onsets: { g: number; stress: boolean; quick?: boolean }[]; end: number }
 
@@ -528,7 +613,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   // new ending); even lines follow the style's form (one-bar lines in pairs: a call, then its answer, the
   // same start with a new ending)
   const even = plan.every((x) => x === plan[0]);
-  const styleForm = kind === 'verse' ? style.verseForm : big || kind === 'bridge' ? style.chorusForm : 'AAAB';
+  // (the grid: lines in pairs, 1 and 3 one rhythm, 2 and 4 another, or A A B A; Paul's pick)
+  const styleForm = style.grid && (kind === 'verse' || big) ? rng.weighted([['ABAB', 0.7], ['AABA', 0.3]])
+    : kind === 'verse' ? style.verseForm : big || kind === 'bridge' ? style.chorusForm : 'AAAB';
   let form = '';
   if (even && plan[0] === 1) for (let li = 0; li < lines.length; li++) { const x = styleForm[(li >> 1) % styleForm.length]; form += li % 2 ? x.toLowerCase() : x; }
   else if (even) for (let li = 0; li < lines.length; li++) form += styleForm[li % styleForm.length];
@@ -573,12 +660,15 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           keep = rh.onsets.length;
         } else {
           const head = headOf(prev.rh, prev.split).map((o) => ({ ...o, g: o.g + off }));
-          const fresh = phraseRhythm(rng, L, opts('down', busy));
+          const fresh = style.grid ? gridRhythm(rng, L, opts('down', busy), gridUnit(song.bpm), kind) : phraseRhythm(rng, L, opts('down', busy));
           const tail = fresh.onsets.filter((o) => o.g >= split);
           rh = tail.length ? { onsets: [...head, ...tail], end: fresh.end } : { onsets: prev.rh.onsets.map((o) => ({ ...o, g: o.g + off })), end: prev.rh.end + off };
           keep = head.length;
         }
-      } else rh = phraseRhythm(rng, L, opts(li === 0 && start === 'pickup' ? 'down' : start, busy * (kind === 'prechorus' && li === last ? 1.25 : 1)));
+      } else {
+        const o = opts(li === 0 && start === 'pickup' ? 'down' : start, busy * (kind === 'prechorus' && li === last ? 1.25 : 1));
+        rh = style.grid ? gridRhythm(rng, L, o, gridUnit(song.bpm), kind) : phraseRhythm(rng, L, o);
+      }
 
       // the line's anchor: the centre (answer lines a step lower in verses; a call-and-response chorus
       // answers well below), climbing by sequence through a pre-chorus
