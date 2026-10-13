@@ -42,6 +42,8 @@ export interface VocalNote {
   /** A colour note against the chord on purpose (a signature move: a 9th, a sigh, a sour ending): fitting to the band leaves it be. */
   colour?: boolean;
   belt?: boolean;
+  /** A high note held (a belt, or a jump up to the line's top): held half a bar, never falling off, left room by Guitar 2. */
+  peak?: boolean;
 }
 
 export type VoiceType = 'low' | 'high';
@@ -102,7 +104,10 @@ function speak(tune: Tune, rng: Rng, syncop: number): Tune {
     if (n.tie) { run = 0; continue; }
     const even = prev && !prev.tie && prev.line === n.line && n.step - prev.step === 2;
     run = even ? run + 1 : 0;
-    const canPush = n.stress && n.step % 4 === 0 && prev && n.step - prev.step >= 4;
+    // (not into a held high note's half bar: it's held, Paul)
+    let sylBefore = i - 1;
+    while (sylBefore > 0 && ns[sylBefore].tie) sylBefore--;
+    const canPush = n.stress && n.step % 4 === 0 && prev && n.step - prev.step >= 4 && !ns[sylBefore]?.peak;
     if (canPush && rng.chance(run >= 3 ? 1 : 0.15 + 0.35 * syncop)) {
       n.step -= 2; n.len += 2;
       prev.len = Math.min(prev.len, n.step - prev.step);
@@ -161,14 +166,15 @@ function shape(tune: Tune, rng: Rng, syncop: number, grid = false): Tune {
  * through). A new line straight after the last (under a beat) is the same: a beat's breath before it, or
  * sung through, joined to the line before. A 16th's gap is sung through anyway (the singer joins it).
  */
-function breathe(notes: { step: number; len: number; start?: boolean }[]) {
+function breathe(notes: { step: number; len: number; start?: boolean; peak?: boolean }[]) {
   notes.forEach((n, i) => {
     const nx = notes[i + 1];
     if (!nx) return;
     const gap = nx.step - (n.step + n.len);
     // (a new line stops and starts the voice whatever the gap: it gets its beat too, or is sung through)
     if (gap >= 4 || (gap < 2 && !nx.start)) return;
-    if (nx.step - 4 - n.step >= 2) n.len = nx.step - 4 - n.step;
+    // (a held high note isn't cut under half a bar for it: sung through instead, Paul)
+    if (nx.step - 4 - n.step >= (n.peak ? 8 : 2)) n.len = nx.step - 4 - n.step;
     else { n.len = nx.step - n.step; if (nx.start) nx.start = false; }
   });
 }
@@ -291,7 +297,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         if (g >= total || blockSteps <= 0) return;
         // (an outro sings only its first half, then lets the band play out)
         if (kind === 'outro' && g >= Math.max(blockLen / 2, total / 2)) return;
-        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt, ...(t.colour ? { colour: true } : {}) });
+        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt, ...(t.colour ? { colour: true } : {}), ...(t.peak ? { peak: true } : {}) });
       });
     }
     // the tune follows the tension curve, line by line: reaching up as the song builds, settling as it lets go
@@ -305,7 +311,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         const top = PEAK + melody.up + 1 + melody.top;
         let m = held.midi + 3;
         while (m < top && !tones.includes(mod(m, 12))) m++;
-        if (m <= top) { held.midi = m; held.belt = true; held.vel = 0.95; }
+        if (m <= top) { held.midi = m; held.belt = true; held.vel = 0.95; held.fall = undefined; }
       }
     }
     // every section's notes fitted to what its band plays (its own chords, its bass), pushed with the
@@ -373,7 +379,7 @@ function quicken(v: VocalNote[], six: number, rng: Rng): number {
 function leaveRoom(idea: Idea) {
   const lead = idea.guitar2.filter((h) => !h.letRing && !h.swell).map((h) => h.step);
   for (const n of idea.vocal ?? []) {
-    if (n.len < 4 || n.belt) continue;
+    if (n.len < 4 || n.belt || n.peak) continue;
     const hit = lead.find((g) => g >= n.step + 2 && g < n.step + n.len);
     if (hit !== undefined) n.len = hit - n.step;
   }

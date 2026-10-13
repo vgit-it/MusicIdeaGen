@@ -12,7 +12,7 @@ const ONLY = process.env.MODE;
 for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }], ['shaped', { vocalMelody: 'shaped' }], ['grid+shaped', { vocalRhythm: 'grid', vocalMelody: 'shaped' }]] as const) {
   if (ONLY && ONLY !== label) continue;
   const lineRates: number[] = [];
-  let odd = 0, qrun = 0, secs = 0, syls = 0, same = 0, run3 = 0, lines = 0, flatLines = 0;
+  let held = 0, heldTime = 0, voiced = 0, highs = 0, highShort = 0, highFall = 0, odd = 0, qrun = 0, secs = 0, syls = 0, same = 0, run3 = 0, lines = 0, flatLines = 0;
   const lens: Record<number, number> = {};
   let sample = '';
   for (const g of GENRES) for (let i = 0; i < N; i++) {
@@ -27,6 +27,12 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
       for (const n of v) { if (n.start || !L.length) L.push([]); L[L.length - 1].push(n); }
       for (const l of L) {
         lines++;
+        { const top = Math.max(...l.map((n) => n.midi)), bar = 16;
+          // (a held note: a syllable sung half a bar or more, its ties included)
+          const on3 = l.filter((n, k) => k === 0 || n.syl !== l[k - 1].syl && n.syl.text !== '~');
+          on3.forEach((n, k) => { const end = (on3[k + 1]?.step ?? l[l.length - 1].step + l[l.length - 1].len); const d = end - n.step; voiced += d; if (d >= 8) { held++; heldTime += d; }
+            const prev = on3[k - 1];
+            if (n.peak || n.belt) { highs++; if (d < bar / 2) highShort++; const last = l.filter((x) => x.step < end).pop(); if (last?.fall) highFall++; } }); }
         if (l.length > 2) { const on2 = l.filter((n, k) => k === 0 || n.syl !== l[k - 1].syl); lineRates.push((on2.length - 1) / ((on2[on2.length - 1].step - on2[0].step) * 15 / sec.song.bpm)); }
         if (new Set(l.map((n) => n.midi)).size <= 1) flatLines++;
         // syllable onsets only (notes continuing a syllable have the same syl object)
@@ -46,6 +52,7 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   const pct = (x: number) => `${Math.round((100 * x) / syls)}%`;
   const top = Object.entries(lens).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([k, c]) => `${k}:${pct(c)}`).join(' ');
   console.log(`${label.padEnd(12)} syl/s ${(syls / secs).toFixed(2)}  off 8ths(fast songs) ${pct(odd)}  in 4+ quarters ${pct(qrun)}  same-as-prev ${pct(same)}  3-in-a-row ${pct(run3)}  one-note lines ${flatLines}/${lines}  gaps between syllables (16ths) ${top}`);
+  console.log(`   held (half a bar+): ${(100 * held / syls).toFixed(1)}% of syllables, ${(100 * heldTime / voiced).toFixed(0)}% of sung time; high notes (belts, jumps up to the top, as written) ${highs}: ${highShort} under half a bar, ${highFall} falling off`);
   lineRates.sort((a, b) => a - b); console.log(`   line syl/s: median ${lineRates[lineRates.length >> 1].toFixed(1)}, 90th ${lineRates[Math.floor(lineRates.length * 0.9)].toFixed(1)}, max ${lineRates[lineRates.length - 1].toFixed(1)}`);
   if (sample) console.log('   pop verse line:', sample);
 }

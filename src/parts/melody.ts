@@ -553,9 +553,10 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
 
 /**
  * One note of a tune; `tie`: sung on the last note's vowel (a sigh, a turn, a run), no new syllable;
- * `slide`: scooped up into from so many semitones below; `fall`: falls off its end by so many; `belt`: a wail.
+ * `slide`: scooped up into from so many semitones below; `fall`: falls off its end by so many; `belt`: a wail;
+ * `peak`: a high note held (a belt, or a jump up to the line's top: held half a bar, never falling off).
  */
-export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean; colour?: boolean }
+export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean; colour?: boolean; peak?: boolean }
 /** A melody block (one section's worth), before its words. */
 export interface Tune { notes: TuneNote[]; lines: number }
 
@@ -833,6 +834,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       } else {
         const o = opts(li === 0 && start === 'pickup' ? 'down' : start, busy * (kind === 'prechorus' && li === last ? 1.25 : 1));
         rh = style.grid ? gridRhythm(rng, L, o, gridUnit(song.bpm), kind) : phraseRhythm(rng, L, o);
+        rh = holdInside(rng, rh, L, 0.3 + singer.hold);
       }
 
       // the line's anchor: the centre (answer lines a step lower in verses; a call-and-response chorus
@@ -1075,9 +1077,63 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   if (style.shaped) applyMoves(out);
   wail(rng, out, form, kind, style, tonesAt);
   singable(out, pool);
+  out = holdHighs(out, bars, total);
   const sung = ornament(rng, out, style, pool, tonesAt, { key, minorish, kind, step: 60 / song.bpm / 4 });
   deliver(rng, sung, style);
+  // (a held high note never falls off its end: it fades, as held notes do; Paul)
+  let inPeak = false;
+  for (const n of sung) { if (!n.tie) inPeak = !!n.peak; if (inPeak) n.fall = undefined; }
   return { notes: sung, lines: lines.length };
+}
+
+/**
+ * A held note inside a long line (Paul: "some more longer held notes"): now and then a stressed syllable
+ * on a bar's downbeat or middle beat is held half a bar or more, the words after it coming later (those
+ * in its way left out); never the line's first or last note, and leaving the last its own room.
+ */
+function holdInside(rng: Rng, rh: LineRhythm, bars: Bar[], chance: number): LineRhythm {
+  const os = rh.onsets;
+  if (bars.length < 2 || os.length < 5 || !rng.chance(chance)) return rh;
+  const strong = new Set(bars.flatMap((b) => [b.start, ...(b.groups.length >= 4 ? [b.start + groupStarts(b.groups)[Math.floor(b.groups.length / 2)]] : [])]));
+  const lastG = os[os.length - 1].g;
+  const cands = os.map((_, i) => i).filter((i) => i > 0 && i < os.length - 2 && os[i].stress && strong.has(os[i].g) && lastG - os[i].g >= 10);
+  if (!cands.length) return rh;
+  const i = rng.pick(cands), g = os[i].g;
+  const len = Math.min(rng.pick([6, 8, 8, 12]), lastG - 2 - g);
+  if (len < 6) return rh;
+  return { ...rh, onsets: os.filter((o, k) => k <= i || o.g >= g + len) };
+}
+
+/**
+ * High notes held (Paul: a jump up to a pushed scream or a belt "should not fall off immediately -- it
+ * should be held for at least half a bar"): a belt, or a jump of a major 3rd or more up to the line's top
+ * (or within a semitone of it), is held at least half its bar; the words in its way are left out (the
+ * line's next words come after it), a beat's breath before the next line (or, no room, sung into it). Marked `peak`: it never falls off.
+ */
+function holdHighs(notes: TuneNote[], bars: Bar[], total: number): TuneNote[] {
+  const gone = new Set<TuneNote>();
+  const sung = notes.filter((n) => !n.tie);
+  const top = new Map<number, number>();
+  for (const n of sung) top.set(n.line, Math.max(top.get(n.line) ?? -99, n.midi));
+  sung.forEach((n, k) => {
+    if (gone.has(n)) return;
+    const prev = sung[k - 1];
+    const high = n.belt || (prev && prev.line === n.line && !gone.has(prev) && n.midi - prev.midi >= 4 && n.midi >= top.get(n.line)! - 1);
+    if (!high) return;
+    n.peak = true;
+    const bar = bars.find((b) => n.step >= b.start && n.step < b.start + b.len) ?? bars[bars.length - 1];
+    const half = Math.max(4, Math.round(bar.len / 4) * 2);
+    if (n.len >= half) return;
+    const nextLine = sung.find((x) => x.line > n.line && !gone.has(x));
+    // (a beat's breath before the next line; no room for one: sung through into it)
+    const limit = Math.min(total, !nextLine ? total : nextLine.step - 4 >= n.step + half ? nextLine.step - 4 : nextLine.step);
+    const end = Math.min(n.step + half, limit);
+    if (end <= n.step + n.len) return;
+    // (the line's own notes in its way left out, ties and all)
+    for (const x of notes) if (x !== n && x.line === n.line && x.step > n.step && x.step < end) gone.add(x);
+    n.len = end - n.step;
+  });
+  return notes.filter((n) => !gone.has(n));
 }
 
 /**
@@ -1256,7 +1312,7 @@ function deliver(rng: Rng, notes: TuneNote[], style: MelodyStyle) {
     // (scoops sparingly and small, on held notes: one on nearly every syllable bends each word like a
     // tone in a tonal language, part of what sounded Chinese to Paul)
     if (!n.tie && !nx?.tie && n.len >= 4 && rng.chance(Math.min(0.6, 0.5 * s.slide + (n.belt ? 0.2 : 0)))) n.slide = rng.weighted([[1, 3], [2, 3], [3, 1], [5, n.belt ? 0.5 : 0]]);
-    if (lineEnd && n.len >= 3 && rng.chance(s.fall)) n.fall = rng.weighted([[2, 2], [3, 2], [5, 1], [7, n.belt ? 1 : 0.3]]);
+    if (lineEnd && n.len >= 3 && !n.peak && rng.chance(s.fall)) n.fall = rng.weighted([[2, 2], [3, 2], [5, 1], [7, n.belt ? 1 : 0.3]]);
   });
 }
 

@@ -363,6 +363,31 @@ toward the beat; their noise 6 dB down and darker; stops with barely a burst, th
 through p, t, k instead of stopping. Noise in the lines 4.8 s to 1.4 s (vowels alone: 1.2 s), short
 bursts 93 to 31, the words as written. The clear (Klatt) voice is unchanged.
 
+## 9d. Held notes, high notes held, one level (2026-10-13)
+Paul: "i'd like some more longer held notes too"; "if the note jumps to a pushed scream or belt or anything
+at a higher pitch, then it should not fall off immediately -- it should be held for at least half a bar
+... and these should not fall off at the end"; "the max volume of vocals to remain more or less similar
+throughout the song and not jump around wildly".
+- **Held notes inside long lines** (`holdInside`, `src/parts/melody.ts`): now and then a stressed syllable
+  on a downbeat or middle beat is held 6-12 16ths, the words after it coming later. Syllables held half a
+  bar or more: about 9% to 15%; a third of the sung time to about 40%.
+- **High notes held** (`holdHighs`): a belt, or a jump of a major 3rd or more up to the line's top, is held
+  at least half its bar (the words in its way left out; a beat's breath before the next line, or sung into
+  it when there's no room). Marked `peak`: no fall off its end (it fades as held notes do), no speech-rhythm
+  push into it, Guitar 2 doesn't cut it, the breath before the next line doesn't shorten it. High notes
+  under half a bar: about 75% to under 10%; falling off: none (the climax's top note too).
+- **The vocal rider** (`src/audio/level.ts`, on both singers): each line's level ridden against its body
+  before it's set to its level (loud moments brought most of the way down, 4:1; quiet sung notes lifted a
+  little; breaths, consonants and fades left alone). Before, a note up past the break came out up to 15 dB
+  over the rest of its line, and a line was set by its loudest moment, so choruses sounded quieter with
+  spikes. Measured (`npm run level-lab`, 5 songs, whole tracks):
+
+| | Before | After |
+|---|---|---|
+| Sections' loud body, range through the song (as played) | 4.0 dB | 1.5 dB |
+| Notes, 10th to 95th percentile (as played) | 10.4 dB | 4.7 dB |
+| The same, prepared (polished) | 1.7 / 4.2 dB | 1.0 / 2.2 dB |
+
 ## 10. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the

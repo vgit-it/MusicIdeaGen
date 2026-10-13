@@ -17,6 +17,7 @@
 
 import { type FrameParms, Generator } from 'klatt-syn';
 import type { Cons, Syllable, Vowel } from '../parts/lyrics';
+import { ride } from './level';
 import { type VoiceFrame, VoiceBox } from './voicebox';
 
 export const SING_RATE = 22050;
@@ -723,6 +724,8 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     for (let i = 0; i < out.length; i++) out[i] = Math.tanh(k * out[i] * 1.5) / k;
   }
   if (rc.air) biquad(out, highShelf(rate, 8000, rc.air));
+  // (the level ridden, so the line's notes sit at about one level: level.ts)
+  ride(out, rate);
   normalize(out);
   return out;
 
