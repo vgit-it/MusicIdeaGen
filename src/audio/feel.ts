@@ -7,6 +7,9 @@
 // - light syllables after a stressed one a little late (long-short, as English is spoken)
 // - a note reached by a leap up a touch late (the voice takes time to get there)
 // - the line's end slowing: its last notes later (a phrase-final ritardando)
+// - and, in loud sections (`rush`, 0-1), ahead as often as behind (Paul: "micro-delays or
+//   accelerations"): the lag shrinking, some lines pushed ahead of the beat, the climb to a line's top
+//   note hurried
 // Applied to every voice when its lines are made (singer.ts) and in the labs.
 
 import type { SungNote } from './sing';
@@ -19,7 +22,7 @@ export function lagFor(seed: string): number {
 }
 
 /** The line as sung: each note moved off the grid (its end with it, never past the next note's start). */
-export function perform(notes: SungNote[], lag: number, seed: number): SungNote[] {
+export function perform(notes: SungNote[], lag: number, seed: number, rush = 0): SungNote[] {
   let a = (seed * 2654435761 + notes.length) >>> 0;
   const rnd = () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -29,6 +32,12 @@ export function perform(notes: SungNote[], lag: number, seed: number): SungNote[
   };
   // (the wandering part of the lag: a slow random walk, ±15 ms or so)
   let wander = 0;
+  // (rushing: its own random, so a line sung without it is as before)
+  let b = (seed * 40503 + 7) >>> 0;
+  const rr = () => ((b = (Math.imul(b, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const ahead = rush ? lag * 0.7 * rush + (rr() < 0.5 * rush ? 0.006 + 0.012 * rr() : 0) : 0;
+  let top = 0;
+  for (let i = 1; i < notes.length; i++) if (notes[i].midi > notes[top].midi) top = i;
   const shift = notes.map((n, i) => {
     const prev = notes[i - 1];
     wander = wander * 0.7 + (rnd() * 2 - 1) * 0.008;
@@ -37,7 +46,10 @@ export function perform(notes: SungNote[], lag: number, seed: number): SungNote[
     // long-short: a light syllable quickly after a stressed one, later by an eighth of the gap
     if (prev && prev.syl.stress && !n.syl.stress && n.syl.text !== '~' && ioi < 0.4) d += 0.12 * ioi;
     // after a leap up of a 4th or more
-    if (prev && n.midi - prev.midi >= 5) d += 0.012;
+    if (prev && n.midi - prev.midi >= 5) d += 0.012 * (1 - 0.6 * rush);
+    // rushing: the line ahead, and the climb to its top note hurried
+    d -= ahead;
+    if (rush && i > 0 && i <= top && prev && n.midi > prev.midi) d -= 0.01 * rush * (i / Math.max(1, top));
     // the line's end slowing
     const fromEnd = notes.length - 1 - i;
     if (fromEnd === 0) d += 0.025;

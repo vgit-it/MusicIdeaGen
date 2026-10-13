@@ -14,7 +14,7 @@ import { generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 
 /** A seeded rock song's sung lines, by section kind, as notes in seconds (with the singer's feel). */
-function linesOf(seed: string) {
+function linesOf(seed: string, rush = false) {
   const idea = generate({ genre: 'rock', meter: '4/4', weirdness: 0.3 } as Parameters<typeof generate>[0], {
     song: seed, chords: `${seed}c`, drums: `${seed}d`, strum: `${seed}s`, bass: `${seed}b`, vocal: `${seed}v`,
   });
@@ -27,13 +27,13 @@ function linesOf(seed: string) {
     const groups: NonNullable<typeof sec.vocal>[] = [];
     for (const n of sec.vocal!) { if (n.start || !groups.length) groups.push([]); groups[groups.length - 1].push(n); }
     const six = 15 / sec.song.bpm;
-    out[kind] = groups.map((L) => perform(L.map((n) => ({ t: (n.step - L[0].step) * six, end: (n.step + n.len - L[0].step) * six, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lagFor(idea.seeds.vocal ?? idea.seeds.song), L[0].step + L.length * 7));
+    out[kind] = groups.map((L) => perform(L.map((n) => ({ t: (n.step - L[0].step) * six, end: (n.step + n.len - L[0].step) * six, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lagFor(idea.seeds.vocal ?? idea.seeds.song), L[0].step + L.length * 7, rush && kind === 'chorus' ? 0.7 : 0));
   }
   return out;
 }
 
 // the sample: the song (of a few) whose verse and chorus span the widest range, with a long note up top
-let best: SungNote[][] = [], span = 0;
+let best: SungNote[][] = [], span = 0, bestSeed = '';
 for (const seed of ['rasp-1', 'rasp-2', 'rasp-3', 'rasp-4', 'rasp-5', 'flow-1', 'smoke-rock-0']) {
   const L = linesOf(seed);
   if (!L.verse || !L.chorus) continue;
@@ -43,11 +43,16 @@ for (const seed of ['rasp-1', 'rasp-2', 'rasp-3', 'rasp-4', 'rasp-5', 'flow-1', 
   const ms = pick.flat().map((n) => n.midi), lo = Math.min(...ms), hi = Math.max(...ms);
   const longTop = pick.slice(2).flat().some((n) => n.midi >= hi - 2 && n.end - n.t > 0.6);
   const s = hi - lo + (longTop ? 3 : 0);
-  if (s > span) { span = s; best = pick; console.log(seed, 'range', lo, '-', hi, longTop ? '(long top note)' : ''); }
+  if (s > span) { span = s; best = pick; bestSeed = seed; console.log(seed, 'range', lo, '-', hi, longTop ? '(long top note)' : ''); }
 }
 const verseLen = 2;
+// (the same lines sung rushing in the chorus: the "after" take's timing)
+const cutTo = (l: SungNote[], like: SungNote[]) => l.slice(0, like.length);
+const L2 = linesOf(bestSeed, true);
+const rushed = [...L2.verse!.slice(0, 2), ...L2.chorus!.slice(0, 3)].map((l, i) => cutTo(l, best[i]));
 // (the verse sung softer, the chorus pushed: as a band would)
-const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math.min(n.vel, 0.7) : Math.max(n.vel, 0.85) })));
+const loud = (b: SungNote[][]) => b.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math.min(n.vel, 0.7) : Math.max(n.vel, 0.85) })));
+const sample = loud(best), sampleRushed = loud(rushed);
 
 // (the voices as the app sings them: fofFor, with expression and less of the operatic sound)
 // (the voices as the app sings them, low and high)
@@ -56,7 +61,12 @@ const scream = fofFor('rock', 17, false, 'scream');
 // (each genre's voice, polished its genre's way: compression, and the effect on the verse where it has one)
 const COMP: Record<string, VocalComp> = { rock: 'natural', pop: 'radio', funk: 'tight', hardrock: 'heavy', metal: 'heavy', grunge: 'dark', altmetal: 'heavy' };
 const FX: Record<string, VocalFx | undefined> = { pop: 'telephone', grunge: 'megaphone', altmetal: 'radio' };
-const TAKES: [string, FofVoice][] = (['pop', 'rock', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'] as const).map((g) => [g, fofFor(g, 17, false)]);
+// (life: before and after, on the normal voice, Vedder (big & dark) and Staley (dark & nasal))
+const TAKES: [string, FofVoice, boolean][] = [];
+for (const [nm, ch] of [['normal', undefined], ['vedder', 'deep'], ['staley', 'nasal']] as const) {
+  TAKES.push([`life-${nm}-before`, { ...fofFor('rock', 17, false, ch), life: 0 }, false]);
+  TAKES.push([`life-${nm}-after`, fofFor('rock', 17, false, ch), true]);
+}
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
@@ -71,15 +81,15 @@ function wav(samples: Float32Array, rate: number): Buffer {
 mkdirSync('voice-lab', { recursive: true });
 const PRE = 0.3;
 const ffmpeg: string = createRequire(import.meta.url)('ffmpeg-static');
-for (const [name, v] of TAKES) {
+for (const [name, v, rushOn] of TAKES) {
   // (each line its own seed, as the app sings them; the verse's level under the chorus's)
-  for (const pol of [true]) {
-  const parts = sample.map((L, i) => (pol ? (x: Float32Array) => polishVoice(x, FOF_RATE, { comp: COMP[name], fx: i < verseLen ? FX[name] : undefined }) : (x: Float32Array) => x)(renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE)).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
+  for (const pol of [false]) {
+  const parts = (rushOn ? sampleRushed : sample).map((L, i) => (pol ? (x: Float32Array) => polishVoice(x, FOF_RATE, { comp: COMP[name] }) : (x: Float32Array) => x)(renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE)).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
   const gap = Math.round(0.5 * FOF_RATE);
   const out = new Float32Array(parts.reduce((a, p) => a + p.length + gap, 0));
   let at = 0;
   for (const p of parts) { out.set(p, at); at += p.length + gap; }
-  const w = `voice-lab/fx-${name}.wav`;
+  const w = `voice-lab/${name}.wav`;
   writeFileSync(w, wav(out, FOF_RATE));
   execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-i', w, '-b:a', '160k', w.replace('.wav', '.mp3')]);
   unlinkSync(w);

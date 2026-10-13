@@ -206,6 +206,19 @@ button instead of separate for amps and voice". `src/audio/polish.ts`, run once 
   (E4), flipping into falsetto and back note to note (a high A dropping 11 dB). Now chest voice up to G4
   and a mix (belt) past it, not falsetto.
 
+## 9b. Life: the last touches of a performance (2026-10-13)
+Paul asked for humanization (pitch drift, vibrato that grows, timing jitter, formants with pitch,
+smoothing, breath, swells). Most was already in (sections 8 and earlier: drift, jitter, vibrato fading
+in, the laid-back feel, F1 above the pitch, glides, breath with the pulses, phrase arcs). New, in the
+singer before any post (`life` in `src/audio/fof.ts`, on every sung voice; `rush` in `src/audio/feel.ts`):
+- **Vibrato speeding up as it comes in:** about 75% of its rate at first, up to speed as it deepens; it deepens more slowly too.
+- **Rushing:** in loud sections the singer is less laid back, some lines ahead of the beat, the climb to a line's top note hurried (a chorus: about 16-28 ms earlier on average, some notes 10-20 ms ahead of the beat). Quiet sections as before.
+- **Vowels toward a neutral "uh" up high** (from a few semitones under the break; up to about a third of the way): as real singers' do; less of the metallic edge.
+- **Held notes shaped, each its own way:** growing, fading, or growing then fading (2-4.5 dB); growing more in loud sections, fading more in quiet ones.
+- **Each phrase building toward its top note** (about 3 dB), easing after it.
+
+Clips: `npm run timbre-lab` (life-normal / -vedder / -staley, before and after).
+
 ## 10. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
