@@ -124,7 +124,72 @@ settings back. What Paul's mixes showed:
 - "Ah" sounded hollow: almost nothing at 1.5-4 kHz. Edge (the folds closing faster, less tilt)
   filled it: "excellent". Half as much on the front vowels, which have a resonance up there already.
 
-## 8. Next
+## 8. A singer, not a fixed tone (2026-10-13, the timbre lab: `npm run timbre-lab`)
+Paul: "make it more Alice in Chains, or a voice like Eddie Vedder"; "the real singer aspect"; "reduce
+some of that opera voice"; "remove the noise". Tried and dropped first: more rasp and creak (vocal
+fry) at five amounts ("acting weird at different places": the base was better).
+- **Expression** (`expr`, every voice): the tone moves with the moment. By the section's energy
+  (verses closer, breathier, darker; choruses open, brighter, edgier), a little different each line,
+  soft breathy or hard punchy starts, the tone thinning into breath at a line's end, strain up high
+  (edge, a little grit; now and then a small crack on a long pushed note), rounder down low, weight on
+  stressed long words. The singer gets each section's energy.
+- **Plain** (`plain` 0.6, every voice): less operatic. Vibrato only on the longer notes, later and
+  narrower, about a fifth of them straight; the 3-5 kHz ring wider and 2 dB quieter; no swell.
+- **Less noise**: breath 7 dB down on every voice, the rasp's noise 3 dB down, expression's breath
+  smaller (breath noise about -30 dB under the voice, was about -23).
+- **Characters** (the Voice menu, on top of the song's voice): Big & dark (Vedder-like: a longer
+  throat, round covered vowels, a fuller low end, a slow wobble, scoops into notes, sags at their
+  ends, chest voice higher) and Dark & nasal (Staley-like: nasal, a metallic edge, a tight narrow
+  vibrato, bends into notes).
+
+- **Raw** (`raw` 1, every voice; Paul: "in the mid-high range it's sounding like an opera singer, not
+  because of vibrato but timbre"; with raw: "much better"): a trained singer keeps the throat low and
+  the vowels round all the way up; a rock singer's throat rises with the pitch. From an octave under
+  the break: formants up to 7%, no covering, formants up to 1.5x wider, more edge, brighter.
+- **The high voice** nearer the low one ("a bit too different", then "even closer"): nearly the same
+  person (formants x1.04, was 1.17), and its break 10 semitones up with it (it was an octave up and singing past its break most of the time).
+- Dark & nasal breathier (breath -30); Big & dark less operatic in its normal range (a less low
+  throat, little covering, brighter, wider formants, less vibrato); rounder low notes from expression
+  smaller.
+
+- **Spread** (`spread` 0.5, Paul: "medium is ok"; the low voice only; Paul: "reduce the roundedness of the normal voices"):
+  lips spread, not rounded: no covering, F2 up 3-9% (most on the front vowels), F3 up 3%, the throat
+  no longer than 0.97. The high voice is left for its own round of work.
+
+- **Soft** (every voice; Paul: "no softness ... it feels like someone shouting at you"): less push
+  (a steeper tilt, less edge), softer-edged pulses, a little breath through the formants (not the
+  hiss). Medium (0.5) on the normal notes, strong (1) on pushed notes (loud or reaching up) and low
+  ones (Paul's pick from the clips); most in quiet sections, about half in the loudest.
+
+- **Softer across the board** (soft 0.75 on normal notes, 1 on pushed and low ones).
+- **Distortion** (`distort`, on trial for a Chester Bennington-like voice): a scream on pushed notes:
+  the voice into a soft clip against its own level, darkened (two low-passes at 5 kHz), with the
+  folds' turbulence in time with the pulses and every other pulse weaker; more in loud sections.
+
+- **Chester (clean & scream)** (a third character, Chester Bennington-like; Paul: medium distortion): bright,
+  forward, little vibrato, breathy when quiet, the scream (distort 0.65) on pushed notes, and a nasal
+  twang (`twang` 1, Paul's pick: the 2.5-4 kHz ring up 7 dB, F1 down 3 dB, a little of the nose; `nasal` alone
+  mostly muffles); less breathy than the others (breath -39).
+  Then (Paul: "a bunch of cracks and noise in the pushed parts"; "lift his natural voice higher"): no
+  expression cracks on a screaming voice, the scream over a belt (not the rough 'scream' register),
+  half the turbulence, less period-to-period roughness from it; sung 3 semitones up (a tenor), his
+  break with him.
+
+## 9. Polish: prepared with the real amps (2026-10-13)
+Paul: one-time processing like the real amps, "start with 1 and 2" (a vocal chain; a clean-up pass), "one
+button instead of separate for amps and voice". `src/audio/polish.ts`, run once over each rendered line:
+- **Clean-up:** single-sample spikes (clicks, crackle) put back on the line their neighbours draw; the fizz
+  above 7 kHz down 1.4 dB always and more when it flares over -14 dB of the voice; esses (5-9 kHz) brought
+  down where they're over -8 dB of the voice.
+- **Vocal chain:** a tube preamp (gentle, uneven saturation: warmth) and an opto compressor (LA-2A-like:
+  -7 dB under the line's loudest, 3:1, quick to let go after short peaks, slow after long ones).
+  No studio vocal-chain capture in the NAM collection the amps come from (guitar gear only): our own.
+- The line back at its level. Sharp jumps in the sample (second differences over 4000): Chester 448 → 0,
+  rock 40 → 0.
+- **One button: Prepare real sound** (was Prepare real amps): polishes the singer's lines (quick; on any
+  device), then runs the guitars through the real amps. Exports made with it on are polished too.
+
+## 10. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
 - More of Paul's lab mixes (other voices, vowels) to refine REGISTER_MIX and MID_FIT.
