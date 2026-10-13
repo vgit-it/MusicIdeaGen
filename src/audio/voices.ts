@@ -39,7 +39,9 @@ export const VOICES: Record<Genre, GenreVoice> = {
   pop: { label: 'Pop', recipe: { grit: 0.1, drive: 0, airy: -17, air: 4, tilt: -2, speech: 0.6, vib: 0.3, attack: 0.02 }, brk: 65, up: 'falsetto', three: false,
     fof: { grit: 0.12, breath: -28, bw: 1.15, bright: 1, brk: 65, up: 'falsetto', vib: 25 } },
   funk: { label: 'Funk', recipe: { grit: 0.25, drive: 0.1, pressed: 0.2, tilt: -2, speech: 0.6, attack: 0.01, vib: 0.25 }, brk: 64, up: 'falsetto', three: false,
-    fof: { grit: 0.25, breath: -31, bw: 1.15, bright: 1, edge: 0.1, brk: 64, up: 'falsetto', vib: 22 } },
+    // (Paul: "the funk voice breaks at the pushed parts": its pushed notes sat right on its break, flipping
+    // into falsetto and back, a high note dropping 11 dB; now chest voice up to G4 and a mix past it)
+    fof: { grit: 0.25, breath: -31, bw: 1.15, bright: 1, edge: 0.1, brk: 67, up: 'belt', vib: 22 } },
   hardrock: { label: 'Hard rock', recipe: { regMix: 'rock', grit: 0.7, drive: 0.35, pressed: 0.3, tilt: -1, vib: 0.5, vibStart: 0.45 }, brk: 65, up: 'squeal', three: true,
     fof: { grit: 0.6, breath: -33, bw: 1.2, tract: 0.97, bright: 1, edge: 0.3, brk: 65, up: 'squeal', vib: 35 } },
   metal: { label: 'Metal', recipe: { regMix: 'rock', grit: 0.6, drive: 0.4, pressed: 0.4, tilt: -3, vib: 0.6, vibStart: 0.4 }, brk: 65, up: 'belt', three: true,

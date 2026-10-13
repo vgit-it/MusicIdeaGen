@@ -7,7 +7,7 @@ import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { lagFor, perform } from '../src/audio/feel';
 import { type FofVoice, FOF_RATE, renderFof } from '../src/audio/fof';
-import { polishVoice } from '../src/audio/polish';
+import { type VocalComp, type VocalFx, polishVoice } from '../src/audio/polish';
 import type { SungNote } from '../src/audio/sing';
 import { fofFor } from '../src/audio/voices';
 import { generate } from '../src/generator';
@@ -53,7 +53,10 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 // (the voices as the app sings them, low and high)
 // (Clean & scream, Chester Bennington-like: the nasal feel (twang) at three amounts)
 const scream = fofFor('rock', 17, false, 'scream');
-const TAKES: [string, FofVoice][] = [['rock', fofFor('rock', 17, false)], ['chester', scream]];
+// (each genre's voice, polished its genre's way: compression, and the effect on the verse where it has one)
+const COMP: Record<string, VocalComp> = { rock: 'natural', pop: 'radio', funk: 'tight', hardrock: 'heavy', metal: 'heavy', grunge: 'dark', altmetal: 'heavy' };
+const FX: Record<string, VocalFx | undefined> = { pop: 'telephone', grunge: 'megaphone', altmetal: 'radio' };
+const TAKES: [string, FofVoice][] = (['pop', 'rock', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'] as const).map((g) => [g, fofFor(g, 17, false)]);
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
@@ -70,13 +73,13 @@ const PRE = 0.3;
 const ffmpeg: string = createRequire(import.meta.url)('ffmpeg-static');
 for (const [name, v] of TAKES) {
   // (each line its own seed, as the app sings them; the verse's level under the chorus's)
-  for (const pol of [false, true]) {
-  const parts = sample.map((L, i) => (pol ? (x: Float32Array) => polishVoice(x, FOF_RATE) : (x: Float32Array) => x)(renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE)).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
+  for (const pol of [true]) {
+  const parts = sample.map((L, i) => (pol ? (x: Float32Array) => polishVoice(x, FOF_RATE, { comp: COMP[name], fx: i < verseLen ? FX[name] : undefined }) : (x: Float32Array) => x)(renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE)).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
   const gap = Math.round(0.5 * FOF_RATE);
   const out = new Float32Array(parts.reduce((a, p) => a + p.length + gap, 0));
   let at = 0;
   for (const p of parts) { out.set(p, at); at += p.length + gap; }
-  const w = `voice-lab/timbre-${name}${pol ? '-polished' : '-raw'}.wav`;
+  const w = `voice-lab/fx-${name}.wav`;
   writeFileSync(w, wav(out, FOF_RATE));
   execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-i', w, '-b:a', '160k', w.replace('.wav', '.mp3')]);
   unlinkSync(w);

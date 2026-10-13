@@ -13,8 +13,21 @@
 class Biquad {
   private b0 = 1; private b1 = 0; private b2 = 0; private a1 = 0; private a2 = 0;
   private x1 = 0; private x2 = 0; private y1 = 0; private y2 = 0;
-  constructor(type: 'lowpass' | 'highpass' | 'bandpass', f: number, q: number, rate: number) {
-    const w = (2 * Math.PI * f) / rate, cw = Math.cos(w), al = Math.sin(w) / (2 * q), a0 = 1 + al;
+  constructor(type: 'lowpass' | 'highpass' | 'bandpass' | 'peaking' | 'highshelf', f: number, q: number, rate: number, gainDb = 0) {
+    const w = (2 * Math.PI * f) / rate, cw = Math.cos(w), sw = Math.sin(w), al = sw / (2 * q);
+    if (type === 'peaking' || type === 'highshelf') {
+      const A = 10 ** (gainDb / 40);
+      let b0, b1, b2, a0, a1, a2;
+      if (type === 'peaking') { b0 = 1 + al * A; b1 = -2 * cw; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * cw; a2 = 1 - al / A; }
+      else {
+        const k = 2 * Math.sqrt(A) * al;
+        b0 = A * (A + 1 + (A - 1) * cw + k); b1 = -2 * A * (A - 1 + (A + 1) * cw); b2 = A * (A + 1 + (A - 1) * cw - k);
+        a0 = A + 1 - (A - 1) * cw + k; a1 = 2 * (A - 1 - (A + 1) * cw); a2 = A + 1 - (A - 1) * cw - k;
+      }
+      this.b0 = b0 / a0; this.b1 = b1 / a0; this.b2 = b2 / a0; this.a1 = a1 / a0; this.a2 = a2 / a0;
+      return;
+    }
+    const a0 = 1 + al;
     if (type === 'lowpass') { this.b0 = (1 - cw) / 2; this.b1 = 1 - cw; this.b2 = (1 - cw) / 2; }
     else if (type === 'highpass') { this.b0 = (1 + cw) / 2; this.b1 = -(1 + cw); this.b2 = (1 + cw) / 2; }
     else { this.b0 = al; this.b1 = 0; this.b2 = -al; }
@@ -72,9 +85,9 @@ function tame(a: Float32Array, rate: number) {
   }
 }
 
-/** A tube preamp: a gentle, uneven saturation, its offset taken out again. */
-function tube(a: Float32Array, rate: number, peak: number) {
-  const drive = 1.2 / peak;
+/** A tube preamp: a gentle, uneven saturation, its offset taken out again (`hot`: driven harder, tape-like). */
+function tube(a: Float32Array, rate: number, peak: number, hot = 1) {
+  const drive = (1.2 * hot) / peak;
   const hp = new Biquad('highpass', 25, 0.7, rate);
   for (let i = 0; i < a.length; i++) {
     const x = a[i] * drive;
@@ -83,9 +96,9 @@ function tube(a: Float32Array, rate: number, peak: number) {
 }
 
 /** An opto compressor: smooth, quick to let go after short peaks and slow after long ones. */
-function opto(a: Float32Array, rate: number, ref: number) {
-  const thr = ref * db(-7), ratio = 3;
-  const kAtt = coef(0.012, rate), kFast = coef(0.08, rate), kSlow = coef(0.9, rate), kHold = coef(0.5, rate);
+function opto(a: Float32Array, rate: number, ref: number, under = 7, ratio = 3, att = 0.012, fast = 0.08, slow = 0.9) {
+  const thr = ref * db(-under);
+  const kAtt = coef(att, rate), kFast = coef(fast, rate), kSlow = coef(slow, rate), kHold = coef(0.5, rate);
   let env = 0, gr = 1, held = 0;
   for (let i = 0; i < a.length; i++) {
     const x = a[i];
@@ -113,15 +126,61 @@ function levels(a: Float32Array) {
   return { best, peak };
 }
 
-/** A sung line, polished: cleaned up, through the tube preamp and the opto compressor, back at its level. */
-export function polishVoice(pcm: Float32Array, rate: number): Float32Array {
+/**
+ * How a genre's vocals are compressed and coloured (Paul: "compressor vocals ... for specific genre"):
+ * natural (rock: the opto alone), radio (pop: the opto, then a fast peak compressor, as a 1176 after an
+ * LA-2A; bright and loud, up front, with air on top), heavy (hard rock, metal, alt metal: harder and
+ * quicker, the voice flat out in front of the guitars), tight (funk: quick and dry, every syllable
+ * even), dark (grunge: the opto into tape-like saturation, the top rolled off).
+ */
+export type VocalComp = 'natural' | 'radio' | 'heavy' | 'tight' | 'dark';
+/**
+ * An effect on a line, sprinkled (a section of the song, not all of it): telephone (pop: a thin, boxy
+ * small speaker, 400 Hz-3.2 kHz, a little drive), megaphone (grunge: a horn, narrower and honky, a
+ * resonance at 1.8 kHz, driven hard), radio (alt metal: an old radio, wider, gritty).
+ */
+export type VocalFx = 'telephone' | 'megaphone' | 'radio';
+export interface PolishOpts { comp?: VocalComp; fx?: VocalFx }
+
+/** A small speaker: the band (two filters each side), a resonance, and drive. */
+function speaker(a: Float32Array, rate: number, fx: VocalFx, peak: number) {
+  const [lo, hi, res, resDb, drive] = fx === 'telephone' ? [400, 3200, 1500, 4, 2] : fx === 'megaphone' ? [600, 4000, 1800, 9, 4.5] : [300, 4500, 1200, 3, 3];
+  const f = [new Biquad('highpass', lo, 0.7, rate), new Biquad('highpass', lo, 0.7, rate), new Biquad('lowpass', hi, 0.7, rate), new Biquad('lowpass', hi, 0.7, rate), new Biquad('peaking', res, fx === 'megaphone' ? 2 : 1, rate, resDb)];
+  // (the speaker's band again after the drive: its grit stays inside it)
+  const post = [new Biquad('lowpass', hi, 0.7, rate), new Biquad('lowpass', hi, 0.7, rate), new Biquad('highpass', lo * 0.8, 0.7, rate)];
+  const g = drive / peak;
+  for (let i = 0; i < a.length; i++) {
+    let x = a[i];
+    for (const b of f) x = b.run(x);
+    x = Math.tanh(x * g) / g;
+    for (const b of post) x = b.run(x);
+    a[i] = x;
+  }
+}
+
+/** A sung line, polished: cleaned up, through the tube preamp and its genre's compression, an effect if it has one, back at its level. */
+export function polishVoice(pcm: Float32Array, rate: number, opts: PolishOpts = {}): Float32Array {
   const a = pcm.slice();
   const before = levels(a);
   if (before.best <= 0) return a;
+  const comp = opts.comp ?? 'natural';
   declick(a, rate);
   tame(a, rate);
-  tube(a, rate, before.peak);
-  opto(a, rate, levels(a).best);
+  tube(a, rate, before.peak, comp === 'dark' ? 2 : comp === 'heavy' ? 1.4 : 1);
+  if (comp === 'tight') opto(a, rate, levels(a).best, 9, 4, 0.004, 0.05, 0.2);
+  else if (comp === 'heavy') opto(a, rate, levels(a).best, 12, 6, 0.006, 0.06, 0.5);
+  else opto(a, rate, levels(a).best);
+  // (pop: a fast peak compressor after the opto, and air)
+  if (comp === 'radio') {
+    opto(a, rate, levels(a).best, 6, 4, 0.002, 0.05, 0.12);
+    const air = new Biquad('highshelf', 9000, 0.7, rate, 2.5);
+    for (let i = 0; i < a.length; i++) a[i] = air.run(a[i]);
+  }
+  if (comp === 'dark') {
+    const lp = new Biquad('lowpass', 8000, 0.7, rate);
+    for (let i = 0; i < a.length; i++) a[i] = lp.run(a[i]);
+  }
+  if (opts.fx) speaker(a, rate, opts.fx, levels(a).peak);
   const after = levels(a);
   if (after.best <= 0 || after.peak <= 0) return a;
   const g = Math.min(before.best / after.best, 0.95 / after.peak);

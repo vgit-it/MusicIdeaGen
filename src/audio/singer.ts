@@ -16,7 +16,8 @@ import { stepAt } from '../rhythm';
 import { inContext } from './context';
 import { lagFor, perform } from './feel';
 import { FOF_RATE, renderFof } from './fof';
-import { polishVoice } from './polish';
+import { type PolishOpts, type VocalComp, type VocalFx, polishVoice } from './polish';
+import { Rng } from '../rng';
 import { CHARACTERS, type Character, VOICES, fofFor } from './voices';
 import { SING_RATE, type SungNote, renderLine } from './sing';
 
@@ -48,6 +49,22 @@ export const TIMBRE_CHOICES: { id: TimbreChoice; label: string }[] = [
 export type SingerRole = 'lead' | 'backing';
 /** The backing singer: a different person from the lead (another vocal tract length, breathier, less vibrato). */
 const BACKING_PERSON = { tract: 1.06, breath: 5, vibrato: 0.55 };
+
+/** Each genre's vocal compression (polish.ts), and the effect it sprinkles on a section. */
+const VOCAL_COMP: Record<Genre, VocalComp> = { rock: 'natural', pop: 'radio', funk: 'tight', hardrock: 'heavy', metal: 'heavy', grunge: 'dark', altmetal: 'heavy' };
+const VOCAL_FX: Partial<Record<Genre, VocalFx>> = { pop: 'telephone', grunge: 'megaphone', altmetal: 'radio' };
+
+/**
+ * How an idea's lines are polished: its genre's compression; the effect on the first verse's lead lines
+ * in about 6 songs in 10 (sprinkled: the full voice comes in after it).
+ */
+export function polishFor(idea: Idea, lead: boolean): PolishOpts {
+  const g = idea.song.genre;
+  const fx = VOCAL_FX[g];
+  const first = idea.section?.kind === 'verse' && (idea.section.label === 'Verse' || idea.section.label === 'Verse 1');
+  const on = !!fx && lead && first && new Rng(`${idea.seeds.song}-vocalfx`).chance(0.6);
+  return { comp: VOCAL_COMP[g], ...(on ? { fx } : {}) };
+}
 
 /** Seconds of lead-in before a line's first note (onset consonants, a breath). */
 const PRE = 0.3;
@@ -84,6 +101,8 @@ export class Singer {
   private bufs = new Map<string, AudioBuffer>();
   /** Lines polished (polish.ts: cleaned up, through a vocal chain), once the sound is prepared. */
   private pol = new Map<string, AudioBuffer>();
+  /** How each line is polished (its genre's compression, an effect). */
+  private polOpts = new Map<string, PolishOpts>();
   /** Sing the polished lines (on with the Prepare button, and in exports made with it on). */
   polish = false;
   private lines = new WeakMap<Idea, { six: number; voice: VoiceType; timbre: Sung; byStep: Map<number, Line[]> }>();
@@ -157,10 +176,13 @@ export class Singer {
         const t0 = at(L[0].step);
         // (as the singer feels it: laid back, long-short, slowing at the end; feel.ts)
         const notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lag, L[0].step + L.length * 7);
-        const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
+        const popts = polishFor(idea, this.role === 'lead' && stream !== 'adlib');
+        // (an effect is part of the line: the same tune in another verse is another line)
+        const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
         // started a little ahead of its first note, from the step that leaves room for the lead-in
         const first = Math.max(0, L[0].step - Math.ceil(PRE / six));
         const line: Line = { first, key, notes, t0, pan: S.pan, gain: S.gain, delay: S.delay };
+        this.polOpts.set(key, popts);
         (byStep.get(first) ?? byStep.set(first, []).get(first)!).push(line);
         if (!this.bufs.has(key)) this.queue.push({ key, notes, voice, timbre, slides: stream === 'lead' || stream === 'adlib' ? slides : slides * 0.4, variant: S.variant, energy, base });
       }
@@ -196,7 +218,7 @@ export class Singer {
     if (!raw) return undefined;
     const ctx = this.ctx.rawContext as unknown as BaseAudioContext;
     const buf = ctx.createBuffer(1, raw.length, raw.sampleRate);
-    buf.copyToChannel(polishVoice(raw.getChannelData(0), raw.sampleRate) as Float32Array<ArrayBuffer>, 0);
+    buf.copyToChannel(polishVoice(raw.getChannelData(0), raw.sampleRate, this.polOpts.get(key)) as Float32Array<ArrayBuffer>, 0);
     this.pol.set(key, buf);
     return buf;
   }
