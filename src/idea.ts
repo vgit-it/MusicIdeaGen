@@ -7,7 +7,7 @@ import type { Bar, Variant } from './rhythm';
 import type { Chord, Mode, Quality } from './theory';
 import type { BassLine } from './parts/bass';
 import type { Tuning } from './theory/fretboard';
-import type { Timbre } from './parts/singers';
+import type { HighVoice, Timbre } from './parts/singers';
 import type { StrumColour } from './theory/guitar';
 
 export type PartName = 'chords' | 'drums' | 'strum' | 'bass';
@@ -40,6 +40,8 @@ export interface GenOptions {
   chords?: ChordSheet;
   /** Semitones higher the vocal tunes are written (the Chester voice: a tenor; in key, the tune itself rewritten). */
   vocalLift?: number;
+  /** Who sings the vocal high (the tunes kept under their top; singers.ts), if anyone. */
+  vocalSinger?: HighVoice;
   /** How the vocal's rhythm is written: classic (speech rhythm, the default) or on the metronome grid (docs/VOCAL-RHYTHM.md). */
   vocalRhythm?: 'grid';
   /** How the vocal's pitches are written: classic (the default) or shaped (docs/VOCAL-MELODY.md). */
@@ -230,6 +232,8 @@ export interface Idea {
   vocal?: VocalNote[];
   /** Which voice sings it on Auto (the melody is written for the low one; the high one sings it an octave up). */
   vocalVoice?: VoiceType;
+  /** Who sings it when it's sung high (one of the three high singers; missing in older ones: the rock tenor). */
+  vocalHigh?: HighVoice;
   /** The singer's voice on Auto (clear, raspy or deep; missing in older ones: clear). */
   vocalTimbre?: Timbre;
   /** Backing vocals and ad-libs (sung by the same singer, panned around the lead), and whether the lead is double-tracked. */

@@ -1,5 +1,6 @@
 import './style.css';
 import { TIMBRE_CHOICES, type TimbreChoice, type VocalChoice } from './audio/singer';
+import { HIGH_VOICES, type HighVoice, leadHigh } from './parts/singers';
 import { MOOD_LABEL, type MoodChoice } from './tension';
 import * as Tone from 'tone';
 import { Engine, type LayerSettings } from './audio/engine';
@@ -207,6 +208,7 @@ async function buildExport(kind: ExportKind, progress: (msg: string) => void = (
   const base = exportBaseName(idea, !!track);
   if (kind === 'midi') {
     const bytes = toMidi(list, {
+      timbre: engine.vocalTimbre,
       chordIdFor: (i) => engine.chordIdFor(i), guitar2IdFor: (i) => engine.guitar2IdFor(i),
       keysFor: (i) => engine.layerFor(i, 'keys'), padFor: (i) => engine.layerFor(i, 'pad'),
       stringsFor: (i) => engine.layerFor(i, 'strings'), percFor: (i) => engine.layerFor(i, 'perc'),
@@ -379,9 +381,25 @@ function newIdea() {
     if (locks.size || hasPins(idea.opts.chords) || sectionPins) seeds.song = idea.seeds.song;
   }
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
-  // (the vocal's rhythm and the Chester voice's higher tunes carry over to the new idea)
-  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove }, seeds));
+  // (the vocal's rhythm and the singer's lift carry over to the new idea; the lift then set for its own
+  // singer: the new song may sing in the other voice)
+  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove };
+  let next = generate(opts, seeds);
+  const h = singerFor(next);
+  if ((next.opts.vocalLift ?? 0) !== (h ? HIGH_VOICES[h].lift : 0) || next.opts.vocalSinger !== (h ?? undefined)) next = generate({ ...opts, ...singerOpts(h) }, seeds);
+  showIdea(next);
 }
+
+/**
+ * Who sings the lead high, if anyone: the tunes are written for them (in key: the tune rewritten): their
+ * lift (Chester 3 up; the rock tenor 4 down and the woman 3 down, both sung an octave up; singers.ts) and
+ * kept under their top; the low voice's as they are.
+ */
+function singerFor(i: Idea): HighVoice | null {
+  return leadHigh(i, engine.vocal, engine.vocalTimbre);
+}
+/** The options that write the tunes for a singer: their lift, and (high) their top (vocal.ts, fitHigh). */
+const singerOpts = (h: HighVoice | null): Pick<GenOptions, 'vocalLift' | 'vocalSinger'> => ({ vocalLift: (h ? HIGH_VOICES[h].lift : 0) || undefined, vocalSinger: h ?? undefined });
 
 /** One part gets new seeds; everything else stays. Playback carries on from the same spot. */
 function reroll(k: PartKey) {
@@ -575,10 +593,11 @@ addSel.onchange = () => {
 };
 
 const partsPanel = buildPartsPanel($('parts'), engine, () => {
-  // the Chester voice sings higher: its tunes rewritten 3 semitones up (in key; same seeds, only the vocal changes)
-  const lift = engine.vocalTimbre === 'scream' ? 3 : 0;
-  if (idea && (idea.opts.vocalLift ?? 0) !== lift) {
-    showIdea(generate({ ...idea.opts, vocalLift: lift || undefined }, idea.seeds), true);
+  // the Chester voice sings higher, a genre's own high singer elsewhere: the tunes rewritten (in key; same
+  // seeds, only the vocal changes)
+  const h = idea ? singerFor(idea) : null;
+  if (idea && ((idea.opts.vocalLift ?? 0) !== (h ? HIGH_VOICES[h].lift : 0) || idea.opts.vocalSinger !== (h ?? undefined))) {
+    showIdea(generate({ ...idea.opts, ...singerOpts(h) }, idea.seeds), true);
     return;
   }
   // a layer added or removed: the strip labels, lanes, Keep / reroll and the link all follow

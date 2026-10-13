@@ -258,6 +258,20 @@ by ear and is now every genre's voice (`src/audio/fof.ts`; tried in the FOF lab,
 - About 17 ms of rendering per second sung in the browser, in the background ahead of playback. The
   backing singer and the clear voice stay on the formant synth.
 
+### The high singers and the voice creator (2026-10-13)
+- The voice creator (`voice-creator.html`, dev only): every FOF control as a slider, on any genre's
+  voice or character and any singer (low; high as the app sings it; a tenor; a woman), a quick test
+  phrase (low, middle, climb, belt and scream), saved voices, settings to copy back. Paul tuned Cornell,
+  Chester, Dark & nasal, a woman and the rock tenor with it (`src/audio/voices.ts`).
+- Only three singers sing high (Paul): Chester (clean & scream), the rock tenor and the woman. A song
+  sung high gets one at random by its genre (`pickHigh`, `src/parts/singers.ts`: Chester most in alt metal
+  and metal, the woman in pop and funk, the tenor across rock); the tunes are written for each, in key:
+  Chester's 3 semitones higher at the low voice's pitch, the tenor's 4 lower sung an octave up (about a
+  minor 6th over the low voice), the woman's as written an octave up (`liftFor`, `src/main.ts`; MIDI
+  export in the same octave). Chosen in the Voice menu, Chester and the woman always sing; a low
+  character (Cornell, Big & dark, Dark & nasal) sings low on Auto. Songs sung high a little more often
+  where they fit (alt metal, hard rock).
+
 ### Western (English-language) singing only, for now (2026-10-13)
 Paul: the tunes and runs "sound very much like Chinese vocals"; he wants the melody styles and run
 techniques of Western (English-language) music only, and may add other traditions later. What made

@@ -27,7 +27,7 @@ const irCache = new Map<number, AudioBuffer>();
  * recipe as Tone's Reverb. Made once in code and shared: Tone's Reverb renders its own each time,
  * which slowed down audio exports (one per piece).
  */
-function reverbIR(sampleRate: number): AudioBuffer {
+export function reverbIR(sampleRate: number): AudioBuffer {
   let ir = irCache.get(sampleRate);
   if (!ir) {
     const decay = 1.8, pre = 0.01;

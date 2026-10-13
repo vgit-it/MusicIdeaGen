@@ -212,3 +212,51 @@ export const VOICE_DOWN: Record<Genre, number> = { rock: 6, pop: 3, funk: 4, har
 export function pickTimbre(genre: Genre): Timbre {
   return genre;
 }
+
+/**
+ * The high singers (Paul: "only Chester, the high rock and the female to be the higher voices"): every
+ * song sung high has one of them, made in the voice creator. Chester (clean & scream): a tenor singing
+ * at the low voice's pitch, its tunes written 3 semitones higher. The rock tenor: an octave up, its tunes
+ * written 4 lower (about a minor 6th over the low voice). The woman: an octave up, the tunes written 3
+ * lower (Paul: "avoid very high notes consistently"). (The tunes rewritten in key: a shift by anything
+ * but octaves would take them out of the key.) Each has a top they sing to (sung MIDI), and a higher one
+ * only for belted or pushed notes: over it the voice thins into a whistle (Paul: "sounding like a
+ * whistle at points"); the tunes are kept under them (vocal.ts, fitHigh).
+ */
+export type HighVoice = 'chester' | 'tenor' | 'woman';
+export const HIGH_VOICES: Record<HighVoice, { label: string; lift: number; octave: boolean; top: number; beltTop: number }> = {
+  // (G4 sung clean, A#4 belted or screamed)
+  chester: { label: 'Chester (clean & scream)', lift: 3, octave: false, top: 67, beltTop: 70 },
+  // (A4, C5)
+  tenor: { label: 'the rock tenor', lift: -4, octave: true, top: 69, beltTop: 72 },
+  // (C5, D#5)
+  woman: { label: 'a woman (soaring)', lift: -3, octave: true, top: 72, beltTop: 75 },
+};
+/** Who sings high in each genre, by how well they fit it. */
+const HIGH_BY_GENRE: Record<Genre, W<HighVoice>> = {
+  rock: [['tenor', 3], ['chester', 2], ['woman', 2]],
+  pop: [['woman', 3], ['tenor', 2], ['chester', 0.5]],
+  funk: [['woman', 3], ['tenor', 2]],
+  hardrock: [['tenor', 3], ['chester', 2], ['woman', 1]],
+  metal: [['chester', 3], ['tenor', 2], ['woman', 0.5]],
+  grunge: [['tenor', 3], ['chester', 1], ['woman', 1]],
+  altmetal: [['chester', 4], ['tenor', 1], ['woman', 0.5]],
+};
+/** A song's high singer (used when it's sung high), at random by its genre. */
+export function pickHigh(seed: string, genre: Genre): HighVoice {
+  return new Rng(`${seed}-high`).weighted(HIGH_BY_GENRE[genre]);
+}
+/** The low singers among the characters: chosen with the voice on Auto, they sing low. */
+const LOW_CHARACTERS = ['deep', 'nasal', 'cornell'];
+/**
+ * Who sings the lead high, if anyone: Chester or the woman when chosen as the voice; otherwise, sung
+ * high (the voice type High, or Auto and the song's own), the song's high singer. The clear voice keeps
+ * its own high voice; a low character on Auto sings low.
+ */
+export function leadHigh(i: { vocalVoice?: 'low' | 'high'; vocalHigh?: HighVoice }, voice: string, timbre: string): HighVoice | null {
+  if (voice === 'off' || timbre === 'clear') return null;
+  if (timbre === 'scream') return 'chester';
+  if (timbre === 'woman') return 'woman';
+  const high = voice === 'high' || (voice !== 'low' && !LOW_CHARACTERS.includes(timbre) && i.vocalVoice === 'high');
+  return high ? i.vocalHigh ?? 'tenor' : null;
+}
