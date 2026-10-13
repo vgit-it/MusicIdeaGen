@@ -42,6 +42,8 @@ export interface GenOptions {
   vocalLift?: number;
   /** How the vocal's rhythm is written: classic (speech rhythm, the default) or on the metronome grid (docs/VOCAL-RHYTHM.md). */
   vocalRhythm?: 'grid';
+  /** How the vocal's pitches are written: classic (the default) or shaped (docs/VOCAL-MELODY.md). */
+  vocalMelody?: 'shaped';
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */

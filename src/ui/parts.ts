@@ -23,10 +23,10 @@ export interface PartsPanel {
 }
 
 /** `onChange`: something changed what plays or what's shown (instrument, a layer added or removed). */
-/** The vocal's rhythm (Classic / Grid): a choice of how the tune is written, kept with the idea. */
-export interface VocalRhythmControl { get(): 'classic' | 'grid'; set(v: 'classic' | 'grid'): void }
+/** How the tune is written, kept with the idea: its rhythm (Classic / Grid) and its pitches (Classic / Shaped). */
+export interface VocalWriteControl { get(k: 'rhythm' | 'melody'): string; set(k: 'rhythm' | 'melody', v: string): void }
 
-export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () => void, rhythm?: VocalRhythmControl): PartsPanel {
+export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () => void, write?: VocalWriteControl): PartsPanel {
   const defs: PartDef[] = [
     {
       part: 'vocal', label: 'Vocal (demo)', volume: 75, options: VOCAL_CHOICES,
@@ -86,7 +86,7 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       <span class="name">${d.label}</span>
       <span class="picks">
         <select aria-label="${d.label} ${d.layer ? 'style' : 'instrument'}">${d.options.map((o) => `<option value="${o.id}">${o.label}</option>`).join('')}</select>
-        ${d.part === 'vocal' ? `<select class="timbre" aria-label="Vocal voice" title="The singer's voice: each genre has its own (made by ear: a warm rock voice that blends from low to high and changes gear past its break, grittier the harder it sings), or the clear first voice. Auto: the song's genre's voice.">${TIMBRE_CHOICES.map((o) => `<option value="${o.id}">${o.id === 'auto' ? 'Voice: Auto' : o.label}</option>`).join('')}</select><select class="vrhythm" aria-label="Vocal rhythm" title="How the vocal's rhythm is written. Classic: like speech. Grid: on the metronome's beats and 8ths (a word's syllables on 8ths; 16ths in slow songs), lines in pairs, verses busier than choruses."><option value="classic">Rhythm: Classic</option><option value="grid">Rhythm: Grid</option></select>` : ''}
+        ${d.part === 'vocal' ? `<select class="timbre" aria-label="Vocal voice" title="The singer's voice: each genre has its own (made by ear: a warm rock voice that blends from low to high and changes gear past its break, grittier the harder it sings), or the clear first voice. Auto: the song's genre's voice.">${TIMBRE_CHOICES.map((o) => `<option value="${o.id}">${o.id === 'auto' ? 'Voice: Auto' : o.label}</option>`).join('')}</select><select class="vrhythm" aria-label="Vocal rhythm" title="How the vocal's rhythm is written. Classic: like speech. Grid: on the metronome's beats and 8ths (a word's syllables on 8ths; 16ths in slow songs), lines in pairs, verses busier than choruses."><option value="classic">Rhythm: Classic</option><option value="grid">Rhythm: Grid</option></select><select class="vmelody" aria-label="Vocal melody" title="How the vocal's notes are chosen. Classic: the first way. Shaped: a path of the chords' own notes with a short idea repeated and varied on it, low verses and choruses that lift, each genre's own moves."><option value="classic">Melody: Classic</option><option value="shaped">Melody: Shaped</option></select>` : ''}
         ${d.layer ? `<select class="use" aria-label="Where the ${d.label.toLowerCase()} plays" title="Comes and goes: the ${d.label.toLowerCase()} plays some sections and moments, not others, to suit the song. Throughout: every bar."><option value="auto">Comes and goes</option><option value="all">Throughout</option></select>` : ''}
       </span>
       <input type="range" min="0" max="100" value="${d.volume}" aria-label="${d.label} volume">
@@ -140,8 +140,10 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       const timbre = row.querySelector<HTMLSelectElement>('.timbre')!;
       timbre.onchange = () => { engine.setVocalTimbre(timbre.value as TimbreChoice); onChange(); };
       const vr = row.querySelector<HTMLSelectElement>('.vrhythm')!;
-      vr.onchange = () => rhythm?.set(vr.value as 'classic' | 'grid');
-      const sync = () => { select.value = engine.vocal; timbre.value = engine.vocalTimbre; vr.value = rhythm?.get() ?? 'classic'; };
+      const vm = row.querySelector<HTMLSelectElement>('.vmelody')!;
+      vr.onchange = () => write?.set('rhythm', vr.value);
+      vm.onchange = () => write?.set('melody', vm.value);
+      const sync = () => { select.value = engine.vocal; timbre.value = engine.vocalTimbre; vr.value = write?.get('rhythm') ?? 'classic'; vm.value = write?.get('melody') ?? 'classic'; };
       sync();
       syncs.push(sync);
     }

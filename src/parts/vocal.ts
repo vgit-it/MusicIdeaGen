@@ -19,7 +19,7 @@ import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import type { Timbre } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
-import { LOW, PEAK, type Tune, type TuneNote, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
+import { LOW, PEAK, type Tune, type TuneNote, floorDown, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -217,6 +217,8 @@ export interface SingContext {
   lift?: number;
   /** The rhythm on the metronome grid (docs/VOCAL-RHYTHM.md) instead of the classic speech rhythm. */
   grid?: boolean;
+  /** The pitches written the shaped way (docs/VOCAL-MELODY.md) instead of the classic way. */
+  shaped?: boolean;
 }
 
 /**
@@ -231,6 +233,13 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   // the song's melody style: its mood's and genre's ways, with a little chance (docs/VOCAL.md, section 6)
   const melody = melodyStyle(ctx.seed, ctx.mood, ctx.genre, ctx.lift ?? 0);
   if (ctx.grid) melody.grid = true;
+  // (shaped: the chorus's jump above the verse picked per song, subtle, clear or dramatic; Paul: "randomly pick")
+  if (ctx.shaped) {
+    const cr = new Rng(`${ctx.seed}-contrast`);
+    melody.shaped = true;
+    melody.contrast = cr.pick(['subtle', 'clear', 'dramatic'] as const);
+    melody.lift = melody.contrast === 'subtle' ? cr.int(2, 3) : melody.contrast === 'clear' ? cr.int(4, 5) : cr.int(7, 9);
+  }
   const first = sections.find((s) => s.section?.kind === 'verse') ?? sections[0];
   // the song's anchor: the verse centre, the key's root nearest G3 (the low voice's comfortable middle)
   const key = first.song.key;
@@ -292,7 +301,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     }
     // every section's notes fitted to what its band plays (its own chords, its bass), pushed with the
     // band's pushes, and Guitar 2 out of the way of the words
-    const fit = fitToBand(idea, LOW[0] + melody.up - 3, PEAK + melody.up + 1 + melody.top);
+    const fit = fitToBand(idea, LOW[0] + melody.up - 3 - (melody.shaped ? floorDown(melody) : 0), PEAK + melody.up + 1 + melody.top);
     // (on the grid: only pushes that land on it)
     const pushed = pushWithBand(idea, melody.grid ? gridUnit(idea.song.bpm) : 1);
     const cleared = clearForSinger(idea);
@@ -356,9 +365,9 @@ function leaveRoom(idea: Idea) {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false) {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, shaped = false) {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
-  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid }, 0);
+  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped }, 0);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum), mood }, -1);
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;

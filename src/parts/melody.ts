@@ -84,6 +84,10 @@ export interface MelodyStyle {
   timbre: Timbre;
   /** The rhythm written on the metronome grid (docs/VOCAL-RHYTHM.md), not the classic speech rhythm. */
   grid?: boolean;
+  /** The pitches written the shaped way (docs/VOCAL-MELODY.md): a chord-note path, a motif on it, by genre. */
+  shaped?: boolean;
+  /** How far the chorus jumps above the verse, shaped: subtle, clear or dramatic (the song's pick). */
+  contrast?: 'subtle' | 'clear' | 'dramatic';
 }
 
 type W<T> = [T, number][];
@@ -316,6 +320,9 @@ function spoken(rng: Rng, gap: number, k: number): number[] {
   // (other gaps: bunched before the next stress, an 8th apart)
   return Array.from({ length: k }, (_, i) => gap - 2 * (k - i));
 }
+
+/** How much lower a genre's voice's range sits (its tunes are written that much lower: VOICE_DOWN). */
+export const floorDown = (style: MelodyStyle) => (style.timbre !== 'clear' ? VOICE_DOWN[style.timbre] : 0);
 
 /** The grid's step for a song (docs/VOCAL-RHYTHM.md): 8ths; 16ths under about 90 bpm (Paul: the grid tightens in slow songs). */
 export const gridUnit = (bpm: number) => (bpm < 90 ? 1 : 2);
@@ -570,9 +577,21 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   const scale = scaleFor(song, kind);
   const big = kind === 'chorus' || kind === 'outro';
   const lift = big ? style.lift : kind === 'prechorus' ? Math.round(style.lift / 2) : kind === 'bridge' ? style.bridgeLift : 0;
-  const center = Math.max(LOW[0] + style.up + 2, Math.min(PEAK + style.up - 5, base + G.center + style.register + lift));
-  const span = Math.max(5, Math.round(P.span * G.span * style.span));
-  const lo = Math.max(LOW[0] + style.up - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + style.up - 2, center + Math.floor(span / 2));
+  // (shaped: a genre's voice, written lower, has its floor and ceiling lower too: its range not squeezed
+  // against the clear voice's floor, which left a low voice's verse two notes wide)
+  const off = style.up - (style.shaped ? Math.min(3, floorDown(style)) : 0);
+  const spanX = !style.shaped ? 1 : kind === 'verse' ? 0.75 : big ? (style.contrast === 'dramatic' ? 1.5 : style.contrast === 'subtle' ? 1.1 : 1.3) : 1;
+  const span = Math.max(style.shaped ? (big ? 10 : 8) : 5, Math.round(P.span * G.span * style.span * spanX));
+  // (shaped: the centre high enough off the floor for the whole range to fit above it)
+  const floorC = style.shaped ? LOW[0] + off - 3 + Math.ceil(span / 2) : LOW[0] + off + 2;
+  let center = Math.max(floorC, Math.min(PEAK + off - 5, base + G.center + style.register + lift));
+  // (shaped: the lift measured from where the verse really sits, so a floor can't flatten it)
+  if (style.shaped && lift) {
+    const verseC = Math.max(LOW[0] + off - 3 + Math.ceil(Math.max(8, Math.round(P.span * G.span * style.span * 0.75)) / 2), base + G.center + style.register);
+    center = Math.max(center, Math.min(PEAK + off - 5, verseC + lift));
+  }
+  // (shaped: verses low and narrow, choruses wide, more so in a dramatic song: spanX above)
+  const lo = Math.max(LOW[0] + off - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + off - 2, center + Math.floor(span / 2));
   const pool: number[] = [];
   for (let m = lo; m <= hi; m++) if (scale.includes(mod(m - key, 12))) pool.push(m);
   const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(Math.max(0, g), total - 1)]].chord;
@@ -618,7 +637,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   // same start with a new ending)
   const even = plan.every((x) => x === plan[0]);
   // (the grid: lines in pairs, 1 and 3 one rhythm, 2 and 4 another, or A A B A; Paul's pick)
-  const styleForm = style.grid && (kind === 'verse' || big) ? rng.weighted([['ABAB', 0.7], ['AABA', 0.3]])
+  // (shaped: repeat, then vary: the idea, its answer, the idea again on the new chords, the answer with a new ending)
+  const styleForm = style.shaped && (kind === 'verse' || big) ? 'ABAb'
+    : style.grid && (kind === 'verse' || big) ? rng.weighted([['ABAB', 0.7], ['AABA', 0.3]])
     : kind === 'verse' ? style.verseForm : big || kind === 'bridge' ? style.chorusForm : 'AAAB';
   let form = '';
   if (even && plan[0] === 1) for (let li = 0; li < lines.length; li++) { const x = styleForm[(li >> 1) % styleForm.length]; form += li % 2 ? x.toLowerCase() : x; }
@@ -635,6 +656,114 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   const motifs = new Map<string, Motif>();
   const notes: TuneNote[] = [];
   const last = lines.length - 1;
+
+  /**
+   * A line's pitches, shaped (docs/VOCAL-MELODY.md; Paul: melodies "too samey / flat", not fitting the
+   * chords, not genre-like): first a path of chord notes on its strong notes (each the chord's own, moving
+   * smoothly: a common tone, or the nearest new chord note, under the line's arc), then the notes between
+   * by step (passing and neighbour notes); a repeated line's motif moved to sit on the new chord; each
+   * genre's colour (pop's pentatonic sing-song, rock's blue notes, grunge's drone over moving chords, alt
+   * metal's one-note verses, metal's roots and 5ths, funk's chromatic approach notes).
+   */
+  const shapedLine = (rng: Rng, rh: LineRhythm, anchor: number, keep: number, li: number) => {
+    const n = rh.onsets.length;
+    const lens = rh.onsets.map((o, oi) => (oi === n - 1 ? rh.end : rh.onsets[oi + 1].g) - o.g);
+    const idxs: number[] = new Array(n).fill(-1);
+    const alts: number[] = new Array(n).fill(0);
+    const prevM = lineMotif.get(form[li].toUpperCase());
+    // a repeated line: its motif, moved to sit on the new chord (its first strong note on a chord note)
+    if (prevM && keep) {
+      const fs = rh.onsets.findIndex((o, oi) => oi < keep && oi < prevM.shape.length && o.stress);
+      let d0 = 0;
+      if (fs >= 0) d0 = [0, 1, -1, 2, -2].find((d) => isTone(pool[clampIdx(anchor + prevM.shape[fs] + d)], rh.onsets[fs].g)) ?? 0;
+      for (let oi = 0; oi < Math.min(keep, prevM.shape.length, n); oi++) { idxs[oi] = clampIdx(anchor + d0 + prevM.shape[oi]); alts[oi] = prevM.alt[oi]; }
+    }
+    const closed = li === last || (style.ends === 'fall' && li % 2 === 1);
+    const heavy = genre === 'metal' || genre === 'hardrock' || genre === 'altmetal';
+    // a drone (grunge; alt metal's verses): the strong notes held on one note as the chords move under it
+    // (short lines only: a long one on one note wears thin)
+    const drone = n <= 10 && rng.chance(genre === 'grunge' ? 0.4 : genre === 'altmetal' && kind === 'verse' ? 0.55 : 0)
+      ? nearestIdx(pool.reduce((b, m) => ([7, minorish ? 3 : 4].includes(mod(m - key, 12)) && Math.abs(m - pool[anchor]) < Math.abs(b - pool[anchor]) ? m : b), pool[anchor])) : -1;
+    // the path: the strong notes (and the first, the last, the long ones) on chord notes
+    let prevStrong = anchor, prevG = rh.onsets[0]?.g ?? 0, sameRun = 0;
+    for (let oi = 0; oi < n; oi++) {
+      if (idxs[oi] >= 0) { prevStrong = idxs[oi]; prevG = rh.onsets[oi].g; continue; }
+      const o = rh.onsets[oi], isLast = oi === n - 1;
+      if (!(o.stress || isLast || oi === 0 || lens[oi] >= 4)) continue;
+      if (drone >= 0 && !isLast) { idxs[oi] = drone; prevStrong = drone; continue; }
+      const x = n > 1 ? oi / (n - 1) : 1;
+      const target = anchor + contourAt(contour, x, height0 * (big ? 1.3 : 1), peak);
+      const tones = tonesAt(o.g);
+      let best = -1, bestC = Infinity;
+      for (let j = 0; j < pool.length; j++) {
+        const pc = mod(pool[j], 12), deg = mod(pool[j] - key, 12);
+        if (!tones.includes(pc)) continue;
+        // (moving a step or two is the norm, a leap costs more by its size (less in a heavy chorus); the same note
+        // again only pays off as a common tone over a new chord, or in grunge's drones: a line that moves, not one note)
+        const dist = Math.abs(j - prevStrong);
+        const newChord = tonesAt(prevG).join() !== tones.join();
+        let c = Math.abs(j - target) * 0.6 + Math.max(0, dist - 2) * (heavy && big ? 0.22 : 0.45);
+        if (dist === 0) c += (genre === 'grunge' ? -0.4 : newChord ? 0.15 : 0.9) + sameRun * 0.8;
+        if (heavy && (deg === 0 || deg === 7)) c -= 0.35;
+        if (isLast) c += closed ? (deg === 0 ? -2 : 1) : deg === 0 ? 0.8 : genre === 'pop' && (deg === 4 || deg === 7) ? -0.6 : 0;
+        c += rng.next() * 0.5;
+        if (c < bestC) { bestC = c; best = j; }
+      }
+      idxs[oi] = best >= 0 ? best : clampIdx(Math.round(target));
+      sameRun = idxs[oi] === prevStrong ? sameRun + 1 : 0;
+      prevStrong = idxs[oi];
+      prevG = o.g;
+    }
+    // pop's hook: the chorus's first line sings 5-6-5-3 on its first notes now and then
+    if (genre === 'pop' && big && li === 0 && !minorish && rng.chance(0.5)) {
+      const degs = [7, 9, 7, 4];
+      let k = 0;
+      for (let oi = 0; oi < n - 1 && k < degs.length; oi++) {
+        if (oi >= 1 && !rh.onsets[oi].stress && k === 0) continue;
+        const want = degs[k++];
+        const near = pool.reduce((b, m, j) => (mod(m - key, 12) === want && (b < 0 || Math.abs(j - anchor) < Math.abs(b - anchor)) ? j : b), -1);
+        if (near >= 0) { idxs[oi] = near; alts[oi] = 0; }
+      }
+    }
+    // the notes between: by step, passing toward the next path note, or a neighbour and back
+    let lastTurn = '';
+    for (let oi = 0; oi < n; oi++) {
+      if (idxs[oi] >= 0) continue;
+      const before = oi > 0 ? idxs[oi - 1] : anchor;
+      let ni = oi + 1;
+      while (ni < n && idxs[ni] < 0) ni++;
+      const to = ni < n ? idxs[ni] : before;
+      const d = Math.sign(to - before);
+      // (between two of the same note: the note again, the one above or below; never the same turn twice running: no zig-zag)
+      let j = before;
+      if (d) j = before + d;
+      else {
+        const opts = ([['same', 0.35], ['up', 0.4], ['down', 0.25]] as [string, number][]).filter(([k]) => k !== lastTurn);
+        const t = rng.weighted(opts);
+        lastTurn = t;
+        j = t === 'up' ? before + 1 : t === 'down' ? before - 1 : before;
+      }
+      // (arriving early on the next path note would sing it twice: a neighbour instead, past it or back)
+      if (d && (j - to) * d >= 0) j = rng.chance(0.5) ? to + d : before - d;
+      j = clampIdx(j);
+      const deg = mod(pool[j] - key, 12);
+      // pop: sing-song, the pentatonic (and the 6th) between the path notes
+      if (genre === 'pop' && !minorish && (deg === 5 || deg === 11)) j = clampIdx(j + (d || 1));
+      idxs[oi] = j;
+      const short = lens[oi] <= 2;
+      // rock and grunge: a blue 3rd or 7th in passing over major chords
+      if ((genre === 'rock' || genre === 'grunge' || genre === 'hardrock') && short && !minorish && (deg === 4 || deg === 11) && rng.chance(Math.min(0.6, style.blue * 1.6))) alts[oi] = -1;
+      // funk: a chromatic step into the next strong note
+      if (genre === 'funk' && short && ni === oi + 1 && ni < n && rng.chance(0.35)) { idxs[oi] = idxs[ni]; alts[oi] = rng.chance(0.6) ? -1 : 1; }
+    }
+    // one clear high point: a later note matching the line's top (not the path's) steps down
+    const top = Math.max(...idxs.map((x, k) => pool[x] + alts[k]));
+    let seenTop = false;
+    idxs.forEach((x, k) => { if (pool[x] + alts[k] !== top) return; if (seenTop && !rh.onsets[k].stress && k !== n - 1) idxs[k] = clampIdx(x - 1); seenTop = true; });
+    const lineNotes: TuneNote[] = rh.onsets.map((o, oi) => ({ step: o.g, len: Math.max(1, lens[oi]), midi: pool[idxs[oi]] + alts[oi], stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}) }));
+    return { rh, shape: idxs.map((x) => x - anchor), alt: alts, lineNotes };
+  };
+  const lineMotif = motifs;
 
   lines.forEach((L, li) => {
     const letter = form[li];
@@ -678,6 +807,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       // answers well below), climbing by sequence through a pre-chorus
       const call = style.twist === 'call' && big && li % 2 === 1 ? -4 : 0;
       const anchor = clampIdx(nearestIdx(center + (kind === 'verse' && li % 2 === 1 ? -1 : 0)) + seq * li + call);
+      if (style.shaped) return shapedLine(rng, rh, anchor, keep, li);
       const n = rh.onsets.length;
       const shape: number[] = [];
       const alt: number[] = [];

@@ -380,7 +380,7 @@ function newIdea() {
   }
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
   // (the vocal's rhythm and the Chester voice's higher tunes carry over to the new idea)
-  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalRhythm: idea?.opts.vocalRhythm }, seeds));
+  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody }, seeds));
 }
 
 /** One part gets new seeds; everything else stays. Playback carries on from the same spot. */
@@ -587,9 +587,14 @@ const partsPanel = buildPartsPanel($('parts'), engine, () => {
   lockPanel.update(idea);
   updateLink();
 }, {
-  // the vocal's rhythm: Classic or Grid (docs/VOCAL-RHYTHM.md); rewrites the vocal, same seeds, the band unchanged
-  get: () => (idea?.opts.vocalRhythm === 'grid' ? 'grid' : 'classic'),
-  set: (v) => { if (idea) showIdea(generate({ ...idea.opts, vocalRhythm: v === 'grid' ? 'grid' : undefined }, idea.seeds), true); },
+  // how the vocal is written: its rhythm (Classic / Grid, docs/VOCAL-RHYTHM.md) and its pitches (Classic /
+  // Shaped, docs/VOCAL-MELODY.md); rewrites the vocal, same seeds, the band unchanged
+  get: (k) => (k === 'rhythm' ? (idea?.opts.vocalRhythm ?? 'classic') : (idea?.opts.vocalMelody ?? 'classic')),
+  set: (k, v) => {
+    if (!idea) return;
+    const opts = k === 'rhythm' ? { ...idea.opts, vocalRhythm: v === 'grid' ? ('grid' as const) : undefined } : { ...idea.opts, vocalMelody: v === 'shaped' ? ('shaped' as const) : undefined };
+    showIdea(generate(opts, idea.seeds), true);
+  },
 });
 
 // dev-only handle for debugging in the browser console
