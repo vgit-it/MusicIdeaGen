@@ -8,6 +8,7 @@
 // Sundberg's rules of sung performance on top: vibrato only on held notes (in after a moment), pitch
 // glides between legato notes, F1 kept above the pitch, brighter and sharper-edged when louder.
 
+import { ride } from './level';
 import { type ConsSpec, EDGE_VOWEL, type F3, type Seg, type SungNote, joinNotes, layout } from './sing';
 
 export const FOF_RATE = 44100;
@@ -717,6 +718,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     dc += (y - dc) * 0.002;
     out[i] = y - dc;
   }
+  // (the level ridden, so the line's notes sit at about one level: level.ts)
+  ride(out, fs);
   normalize(out);
   return out;
 }
