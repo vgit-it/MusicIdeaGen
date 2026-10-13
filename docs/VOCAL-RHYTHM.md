@@ -71,3 +71,29 @@ where they land on the grid.
 `gridRhythm` in `src/parts/melody.ts` (beside the classic `phraseRhythm`), chosen by `vocalRhythm:
 'grid'` in the idea's options (`src/idea.ts`); the vocal row's **Rhythm** select (`src/ui/parts.ts`,
 `src/main.ts`) rewrites the vocal with the same seeds (the band unchanged) and carries over to new ideas.
+
+## Fix: repeated notes and plodding quarters (2026-10-13)
+Paul: "notes are almost always just repeating over and over and the grid based structure is also barely
+working leading to a bunch of back to back 1/4th bar length notes". Found (`npm run melody-lab`):
+- **The grid's 8ths were a rare coin toss** (about 1 in 4 per beat), so nearly every beat sang one quarter
+  note. Now each beat picks a cell real vocal lines use: a quarter, two 8ths, the "and" after a rest, held
+  over (three-8th beats: their own cells).
+- **The best-of-six tries rewarded every note on a kick or snare**, so the try with the most beats sung
+  won: the all-quarters one. On the grid, a string of even quarters now scores less.
+- **Stressed notes snapped back onto the note before** (a third of them) when moved onto the chord.
+  Now the chord note the other way, if near.
+- **Zig-zags flattened to one note** (`singable`): now a step there and back.
+- **Verses had 3-4 notes to sing** (a pentatonic over a 6th: two of them the chord's). Now at least six
+  (seven in a chorus), within the voice.
+- **One-note moves** (monotone, pedal) were in about a third of Shaped songs; now about one in eight.
+
+| 42 songs, 4/4 | Classic | Grid | Shaped | Grid + Shaped |
+|---|---|---|---|---|
+| The same note again (before / after) | 34% / 24% | 43% / 24% | 29% / 22% | 39% / 26% |
+| Three the same running | 15% / 8% | 21% / 8% | 14% / 9% | 19% / 11% |
+| Syllables in strings of 4+ even quarters | 2% / 2% | 25% / 1% | 3% / 4% | 32% / 2% |
+| One-note lines | 28 / 14 | 94 / 33 | 49 / 28 | 83 / 50 |
+| Syllables per second | 1.55 / 1.55 | 1.59 / 1.66 | 1.59 / 1.59 | 1.62 / 1.73 |
+
+Classic changes too (the snap, the zig-zags, the range are shared). Other meters on the grid: 6/8 the
+same note again 40% to 26%; nothing off the 8ths.

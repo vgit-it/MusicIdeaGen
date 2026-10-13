@@ -42,3 +42,6 @@ row, next to Rhythm; works with either rhythm). Same seeds: switching rewrites o
 | One-note lines | 88 of 708 | 56 of 685 |
 
 Classic unchanged (checked: the same notes as before).
+
+## Fix: repeated notes (2026-10-13)
+See docs/VOCAL-RHYTHM.md (the same fix, measured for all four ways).
