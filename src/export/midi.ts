@@ -11,6 +11,7 @@ import type { GuitarHit, Idea } from '../idea';
 import type { Layer } from '../parts/layers';
 import { backingVoice } from '../parts/vocal';
 import { cymbalAccent, groupStarts, stepAt } from '../rhythm';
+import { HIGH_VOICES, leadHigh } from '../parts/singers';
 import { NOTE_NAMES, pianoVoicing } from '../theory';
 import { guitarVoicings, strokeShape } from '../theory/guitar';
 
@@ -46,6 +47,8 @@ export interface MidiOptions {
   percFor?: (idea: Idea) => Layer | null;
   /** The singer: off, or which voice (the high one sings an octave up). */
   vocal?: 'off' | 'low' | 'high' | 'auto';
+  /** The lead's voice (the Voice menu; left out: auto): who sings it high, and so in which octave. */
+  timbre?: string;
   /** The backing singer: off, or which voice (Auto: a second singer around the lead). Ad-libs are the lead's. */
   backing?: 'off' | 'low' | 'high' | 'auto';
 }
@@ -186,7 +189,8 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
           // (a run's quick notes fall between the 16ths: written in the 16th they start in)
           if (Math.floor(n.step) !== g) continue;
           const voice = o.vocal === 'low' || o.vocal === 'high' ? o.vocal : idea.vocalVoice ?? 'low';
-          note(vocal, n.midi + (voice === 'high' ? 12 : 0), at(n.step), Math.max(10, at(n.step + n.len) - at(n.step) - 10), n.vel);
+          const h = leadHigh(idea, o.vocal ?? 'auto', o.timbre ?? 'auto');
+          note(vocal, n.midi + ((h ? HIGH_VOICES[h].octave : voice === 'high') ? 12 : 0), at(n.step), Math.max(10, at(n.step + n.len) - at(n.step) - 10), n.vel);
           midi.header.meta.push({ type: 'lyrics', text: n.syl.wordStart || n === idea.vocal![0] ? n.syl.text : `-${n.syl.text}`, ticks: Math.round(at(n.step)) });
         }
         for (const n of idea.backing ?? []) {

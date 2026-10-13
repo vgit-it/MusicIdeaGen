@@ -29,6 +29,7 @@ import { SOUND_NAME, type SoundId, type SoundSlot, describeSounds, orchestrate }
 import { type Bar, type Variant, groupStarts, zeros } from './rhythm';
 import { type Chord, type Mode, NOTE_NAMES, QUALITIES, type Quality, SCALES, chordPc, degreeChord } from './theory';
 import { lowestOf, powerChord } from './theory/fretboard';
+import { pickHigh } from './parts/singers';
 
 export type Choice = 'auto' | 'on' | 'off';
 export type IntroChoice = 'auto' | 'alone' | 'layered' | 'long' | 'band';
@@ -1668,9 +1669,10 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
   const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
-  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', shaped: src.opts.vocalMelody === 'shaped', move: src.opts.vocalMove as MoveId | undefined }, arc.climax);
+  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', shaped: src.opts.vocalMelody === 'shaped', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger }, arc.climax);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
-  for (const x of sections) x.vocalVoice = voice;
+  const high = pickHigh(vocalSeed, src.song.partGenres.strum);
+  for (const x of sections) { x.vocalVoice = voice; x.vocalHigh = high; }
   // backing vocals: doubled choruses, harmonies (or oohs) by the mood, ad-libs over the climax
   const backing = pickBacking(vocalSeed, mood, src.song.partGenres.strum);
   arrangeBacking(sections, { seed: vocalSeed, backing, mood }, arc.climax);

@@ -18,6 +18,7 @@ import { carryOver, developStrum, generateStrum, naturalStrokes } from './parts/
 import { Rng, newSeed } from './rng';
 import { type Bar, METERS, lcm, phrasePlan, pickMeters } from './rhythm';
 import { TUNINGS, type Tuning } from './theory/fretboard';
+import { pickHigh } from './parts/singers';
 
 
 export function randomSeeds(): Seeds {
@@ -102,8 +103,9 @@ export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
   idea.notes.splice(at, 0, ...notes);
   // the singer: the idea is a chorus, so it sings the chorus tune and its hook
   const vs = seeds.vocal ?? `${seeds.chords}-vocal`;
-  singIdea(idea, vs, autoMood(song, seeds.song), opts.vocalLift ?? 0, opts.vocalRhythm === 'grid', opts.vocalMelody === 'shaped', opts.vocalMove as MoveId | undefined);
+  singIdea(idea, vs, autoMood(song, seeds.song), opts.vocalLift ?? 0, opts.vocalRhythm === 'grid', opts.vocalMelody === 'shaped', opts.vocalMove as MoveId | undefined, opts.vocalSinger);
   idea.vocalVoice = autoVoice(vs, song.partGenres.strum);
+  idea.vocalHigh = pickHigh(vs, song.partGenres.strum);
   return idea;
 }
 

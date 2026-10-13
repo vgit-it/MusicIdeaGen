@@ -45,12 +45,13 @@
 <body>
   <main>
     <h1>Voice creator</h1>
-    <p class="lead">Start from a voice, move the sliders, listen. Changed sliders turn orange. When you like it, save it here, or copy the settings and paste them to Claude to make it a voice in the app.</p>
+    <p class="lead">Start from a voice and a singer (the low voice, or a high one), move the sliders, listen. Changed sliders turn orange. When you like it, save it here, or copy the settings and paste them to Claude to make it a voice in the app.</p>
 
     <section class="card">
       <h2>Start from</h2>
       <div class="row">
         <label class="f">Voice <select id="preset"></select></label>
+        <label class="f">Singer <select id="singer"></select></label>
         <button id="reset">Reset to it</button>
       </div>
     </section>
@@ -59,6 +60,7 @@
       <h2>Listen to</h2>
       <div class="row">
         <label class="f">What <select id="material">
+          <option value="quick">Quick test: low, middle, climb, belt and scream (10 s)</option>
           <option value="song">A song: soft verse, loud chorus, a high note</option>
           <option value="held">One held note</option>
           <option value="climb">A climb, low to high and back</option>
@@ -73,7 +75,8 @@
               <option value="0.7">Soft</option><option value="0.8" selected>Normal</option><option value="0.9">Pushed</option><option value="0.97">Belted</option></select></label>
           </div>
         </div>
-        <label class="f"><span><input type="checkbox" id="polish" checked /> Mixed (compressed, as in the app)</span></label>
+        <label class="f"><span><input type="checkbox" id="polish" checked /> Mixed as in the app (its compression, EQ, room and echo)</span></label>
+        <label class="f"><span><input type="checkbox" id="double" /> Chorus double (a second take beside it, as in some choruses)</span></label>
       </div>
     </section>
 

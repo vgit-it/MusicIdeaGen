@@ -10,7 +10,7 @@
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
 import type { Idea } from '../idea';
-import type { Timbre } from '../parts/singers';
+import { type HighVoice, type Timbre, leadHigh } from '../parts/singers';
 import { type VoiceType, backingVoice } from '../parts/vocal';
 import { stepAt } from '../rhythm';
 import { inContext } from './context';
@@ -18,7 +18,7 @@ import { lagFor, perform } from './feel';
 import { FOF_RATE, renderFof } from './fof';
 import { type PolishOpts, type VocalComp, type VocalFx, polishVoice } from './polish';
 import { Rng } from '../rng';
-import { CHARACTERS, type Character, VOICES, fofFor } from './voices';
+import { CHARACTERS, type Character, VOICES, fofFor, fofHighVoice } from './voices';
 import { SING_RATE, type SungNote, renderLine } from './sing';
 
 export type VocalChoice = 'auto' | VoiceType | 'off';
@@ -37,7 +37,7 @@ export const BACKING_CHOICES: { id: VocalChoice; label: string }[] = [
 
 export type TimbreChoice = 'auto' | Timbre | Character;
 /** The voice a line is sung in: the clear voice, a genre's, or a character on top of the song's. */
-type Sung = Timbre | Character;
+type Sung = Timbre | Character | 'tenor';
 const isCharacter = (t: Sung): t is Character => t in CHARACTERS;
 export const TIMBRE_CHOICES: { id: TimbreChoice; label: string }[] = [
   { id: 'auto', label: 'Auto (the genre’s voice)' },
@@ -51,18 +51,20 @@ export type SingerRole = 'lead' | 'backing';
 const BACKING_PERSON = { tract: 1.06, breath: 5, vibrato: 0.55 };
 
 /** Each genre's vocal compression (polish.ts), and the effect it sprinkles on a section. */
-const VOCAL_COMP: Record<Genre, VocalComp> = { rock: 'natural', pop: 'radio', funk: 'tight', hardrock: 'heavy', metal: 'heavy', grunge: 'dark', altmetal: 'heavy' };
+export const VOCAL_COMP: Record<Genre, VocalComp> = { rock: 'natural', pop: 'radio', funk: 'tight', hardrock: 'heavy', metal: 'heavy', grunge: 'dark', altmetal: 'heavy' };
 const VOCAL_FX: Partial<Record<Genre, VocalFx>> = { pop: 'telephone', grunge: 'megaphone', altmetal: 'radio' };
 
 /**
  * How an idea's lines are polished: its genre's compression; the effect on the first verse's lead lines
- * in about 6 songs in 10 (sprinkled: the full voice comes in after it).
+ * in about 6 songs in 10 (sprinkled: the full voice comes in after it), but not on a pushed line (`loud`):
+ * the effect's drive over a belt or a scream turned it into noise (Paul: "the screams and all are
+ * becoming noise"; its clarity measured 5-9 dB down).
  */
-export function polishFor(idea: Idea, lead: boolean): PolishOpts {
+export function polishFor(idea: Idea, lead: boolean, loud = false): PolishOpts {
   const g = idea.song.genre;
   const fx = VOCAL_FX[g];
   const first = idea.section?.kind === 'verse' && (idea.section.label === 'Verse' || idea.section.label === 'Verse 1');
-  const on = !!fx && lead && first && new Rng(`${idea.seeds.song}-vocalfx`).chance(0.6);
+  const on = !!fx && lead && !loud && first && new Rng(`${idea.seeds.song}-vocalfx`).chance(0.6);
   return { comp: VOCAL_COMP[g], ...(on ? { fx } : {}) };
 }
 
@@ -128,7 +130,15 @@ export class Singer {
 
   private voiceOf(idea: Idea): VoiceType {
     if (this.role === 'backing') return backingVoice(idea, this.leadChoice, this.choice);
+    // (a high singer: the tenor an octave up as the high voice; Chester at the written pitch, the woman her own octave)
+    const h = this.highOf(idea);
+    if (h) return h === 'tenor' ? 'high' : 'low';
     return this.choice === 'low' || this.choice === 'high' ? this.choice : idea.vocalVoice ?? 'low';
+  }
+
+  /** The lead's high singer, if it's sung high (singers.ts: Chester, the rock tenor or the woman). */
+  private highOf(idea: Idea): HighVoice | null {
+    return this.role === 'lead' ? leadHigh(idea, this.choice, this.timbre) : null;
   }
 
   /** The genre voice a character sings on top of: the song's singer's own, or rock. */
@@ -138,6 +148,8 @@ export class Singer {
 
   private timbreOf(idea: Idea): Sung {
     if (this.role === 'backing') return 'clear';
+    const h = this.highOf(idea);
+    if (h) return h === 'chester' ? 'scream' : h;
     return this.timbre === 'auto' ? idea.vocalTimbre ?? 'clear' : this.timbre;
   }
 
@@ -178,7 +190,7 @@ export class Singer {
         const t0 = at(L[0].step);
         // (as the singer feels it: laid back, long-short, slowing at the end; feel.ts)
         const notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lag, L[0].step + L.length * 7, rush);
-        const popts = polishFor(idea, this.role === 'lead' && stream !== 'adlib');
+        const popts = polishFor(idea, this.role === 'lead' && stream !== 'adlib', notes.some((n) => n.vel >= 0.85));
         // (an effect is part of the line: the same tune in another verse is another line)
         const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
         // started a little ahead of its first note, from the step that leaves room for the lead-in
@@ -243,7 +255,7 @@ export class Singer {
     // (a genre's voice: the FOF singer; the clear voice and the backing singer: the formant synth, as they were)
     const v = (seed + job.variant * 13) % 97;
     const fof = job.timbre !== 'clear' && this.role === 'lead';
-    const pcm = fof ? renderFof(job.notes, { ...(isCharacter(job.timbre) ? fofFor(job.base, v, job.voice === 'high', job.timbre) : fofFor(job.timbre as Genre, v, job.voice === 'high')), energy: job.energy }, PRE)
+    const pcm = fof ? renderFof(job.notes, { ...(job.timbre === 'tenor' ? fofHighVoice('tenor', job.base, v) : isCharacter(job.timbre) ? fofFor(job.base, v, job.voice === 'high', job.timbre) : fofFor(job.timbre as Genre, v, job.voice === 'high')), energy: job.energy }, PRE)
       : renderLine(job.notes, { high: job.voice === 'high', slides: job.slides, seed: v, person }, PRE);
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
     const buf = raw.createBuffer(1, pcm.length, fof ? FOF_RATE : SING_RATE);

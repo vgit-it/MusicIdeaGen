@@ -18,7 +18,7 @@ import { Rng } from '../rng';
 import { type MoveId, movesDesc, pickMoves } from './moves';
 import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
-import type { Timbre } from './singers';
+import { HIGH_VOICES, type HighVoice, type Timbre } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
 import { FLOOR, PEAK, type Tune, type TuneNote, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
@@ -224,6 +224,8 @@ export interface SingContext {
   genre: Genre;
   /** Semitones higher the tunes are written (a higher singer: the Chester voice). */
   lift?: number;
+  /** A high singer: the tunes kept under their top (fitHigh). */
+  high?: HighVoice;
   /** The rhythm on the metronome grid (docs/VOCAL-RHYTHM.md) instead of the classic speech rhythm. */
   grid?: boolean;
   /** The pitches written the shaped way (docs/VOCAL-MELODY.md) instead of the classic way. */
@@ -324,6 +326,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     const cleared = clearForSinger(idea);
     leaveRoom(idea);
     breathe(idea.vocal);
+    if (ctx.high) fitHigh(idea, ctx.high);
     const quick = quicken(idea.vocal, 15 / idea.song.bpm, new Rng(`${ctx.seed}-quick-${si}`));
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
@@ -375,6 +378,26 @@ function quicken(v: VocalNote[], six: number, rng: Rng): number {
   return sped;
 }
 
+/**
+ * A high singer kept out of the whistle (Paul: "avoid very high notes consistently or without scream or
+ * belt ... it's sounding like a whistle at points"): no note sung over their top (Chester G4, the tenor
+ * A4, the woman C5) unless it's belted or pushed (then up to their belt top, a minor 3rd higher); a note
+ * over it sung instead on the highest note of the chord under it.
+ */
+function fitHigh(idea: Idea, h: HighVoice) {
+  const H = HIGH_VOICES[h], off = H.octave ? 12 : 0;
+  const { key, total } = idea.song;
+  const tl = idea.chords.timeline, idx = idea.chords.chordIdx;
+  for (const n of idea.vocal ?? []) {
+    const lim = (n.belt || n.vel >= 0.95 ? H.beltTop : H.top) - off;
+    if (n.midi <= lim) continue;
+    const tones = chordTones(key, tl[idx[Math.min(Math.max(0, Math.floor(n.step)), total - 1)]].chord);
+    let m = lim;
+    while (m > lim - 12 && !tones.includes(mod(m, 12))) m--;
+    n.midi = m;
+  }
+}
+
 /** A held note stops where Guitar 2's answer starts (the singer breathes, the lead answers; a full beat's room, breathe()); a wail holds on. */
 function leaveRoom(idea: Idea) {
   const lead = idea.guitar2.filter((h) => !h.letRing && !h.swell).map((h) => h.step);
@@ -386,9 +409,9 @@ function leaveRoom(idea: Idea) {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, shaped = false, move?: MoveId) {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, shaped = false, move?: MoveId, high?: HighVoice) {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
-  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped, move }, 0);
+  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped, move, high }, 0);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum), mood }, -1);
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;
@@ -398,7 +421,8 @@ export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = 
 
 /** The voice for a song on Auto: low for heavier genres, either for pop. */
 export function autoVoice(seed: string, genre: Genre): VoiceType {
-  const high = genre === 'pop' ? 0.5 : genre === 'funk' ? 0.4 : genre === 'rock' ? 0.25 : 0.12;
+  // (sung high: by one of the high singers, singers.ts; more where they fit: Chester in alt metal and hard rock)
+  const high = genre === 'pop' ? 0.5 : genre === 'funk' ? 0.4 : genre === 'altmetal' ? 0.35 : genre === 'rock' || genre === 'hardrock' ? 0.3 : genre === 'metal' ? 0.2 : 0.15;
   return new Rng(`${seed}-voice`).chance(high) ? 'high' : 'low';
 }
 
