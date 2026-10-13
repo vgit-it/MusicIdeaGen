@@ -170,6 +170,10 @@ fry) at five amounts ("acting weird at different places": the base was better).
   forward, little vibrato, breathy when quiet, the scream (distort 0.65) on pushed notes, and a nasal
   twang (`twang` 1, Paul's pick: the 2.5-4 kHz ring up 7 dB, F1 down 3 dB, a little of the nose; `nasal` alone
   mostly muffles); less breathy than the others (breath -39).
+  Then (Paul: "a bunch of cracks and noise in the pushed parts"; "lift his natural voice higher"): no
+  expression cracks on a screaming voice, the scream over a belt (not the rough 'scream' register),
+  half the turbulence, less period-to-period roughness from it; sung 3 semitones up (a tenor), his
+  break with him.
 
 ## 9. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.

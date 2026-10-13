@@ -216,7 +216,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     // (a key word: stressed and long)
     const key = n.syl.stress && n.end - n.t > 0.4;
     // (now and then a little crack on a long, high, pushed note)
-    const crack = expr && n.end - n.t > 0.5 && er() < expr * 0.12 * en ? 0.2 + 0.4 * er() : 0;
+    // (not on a screaming voice: there it sounds broken, Paul: "a bunch of cracks and noise in the pushed parts")
+    const crack = expr && !v.distort && n.end - n.t > 0.5 && er() < expr * 0.12 * en ? 0.2 + 0.4 * er() : 0;
     return { onset, ends, key, crack };
   });
   const soft0 = v.soft ?? 0, softPushed = v.softPushed ?? soft0;
@@ -528,7 +529,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       phase -= 1;
       // the next period: a little jitter; on rasp, every other period a touch longer and weaker
       alt = -alt;
-      const rough = Math.min(1, roughAdd + 0.8 * scr + grit * effort * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8)));
+      const rough = Math.min(1, roughAdd + 0.25 * scr + grit * effort * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8)));
       periodK = 1 + (0.003 + 0.004 * hu) * gauss() + 0.015 * rough * alt;
       if (vA > 1e-4) {
         const shimmer = (1 + (0.04 + 0.03 * hu) * gauss() + 0.2 * rough * gauss()) * (1 - 0.18 * rough * (alt > 0 ? 1 : 0));
@@ -605,9 +606,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       scr += (scrT - scr) * kScr;
       ms += (y * y - ms) * kMs;
       if (scr > 0.003) {
-        const lvl = Math.sqrt(ms) + 1e-9, g = 1 + 9 * scr;
+        const lvl = Math.sqrt(ms) + 1e-9, g = 1 + 8 * scr;
         const d = (1.4 * lvl * Math.tanh((g * y) / (lvl * 1.4))) / g ** 0.6;
-        const turb = gauss() * lvl * 0.9 * scr * (0.3 + Math.sin(Math.PI * phase) ** 2);
+        const turb = gauss() * lvl * 0.45 * scr * (0.3 + Math.sin(Math.PI * phase) ** 2);
         dLp += (d + turb - dLp) * kLp;
         dLp2 += (dLp - dLp2) * kLp;
         y = y * (1 - scr) + dLp2 * scr;
