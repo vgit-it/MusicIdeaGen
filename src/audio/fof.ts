@@ -147,8 +147,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   const rnd = rng(v.seed * 7 + notes.length);
   const gauss = () => rnd() + rnd() + rnd() - 1.5;
 
-  const fscale = (v.high ? 1.17 : 1) * (v.tract ?? 1);
-  const high = (v.high ? [4000, 4600, 5600] : [3250, 3700, 4950]).map((f) => f * (v.tract ?? 1));
+  // (the high voice: a smaller person, but not too far from the low one: Paul, "a bit too different";
+  // was 1.17 and its break an octave up with the voice, so it sang past it most of the time)
+  const fscale = (v.high ? 1.1 : 1) * (v.tract ?? 1);
+  const high = (v.high ? [3600, 4150, 5250] : [3250, 3700, 4950]).map((f) => f * (v.tract ?? 1));
   const plain = v.plain ?? 0;
   const bws = [90, 110, 160, 200, 230, 500].map((b, k) => b * (v.bw ?? 1) * (k >= 3 ? 1 + 0.6 * plain : 1));
   const vibC = v.vib ?? 30, driftC = (v.drift ?? 4) + 3 * hu, grit = v.grit ?? 0, breath = v.breath ?? -24;
@@ -187,7 +189,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     const chance = scoop * (n.syl.stress ? 0.8 : 0.4) * (i === 0 || n.t - notes[i - 1].end > 0.1 ? 1.3 : 1);
     return !n.slide && n.syl.text !== '~' && sr() < chance ? { by: 0.6 + 1.4 * scoop * sr(), len: 0.09 + 0.08 * scoop } : null;
   });
-  const brk = v.brk ?? 64, way = v.up ?? 'belt', fal = way === 'falsetto';
+  const brk = (v.brk ?? 64) + (v.high ? 7 : 0), way = v.up ?? 'belt', fal = way === 'falsetto';
 
   // the formant track: each consonant's place, each vowel's target, a diphthong's glide at its end.
   // (Paul: "a lot of 'dwo', 'wo', 'ye'": slow, full glides between sounds heard as extra w's and y's.
@@ -390,7 +392,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       breathNow = breath + secBreath + lnBreath + exBreath;
       edgeW = clamp01((v.edge ?? 0) + 0.2 * rise + (expr ? secEdge + lnEdge + exEdge : 0)) * EDGE_VOWEL[note.syl.vowel];
       // (down low: rounder, more relaxed)
-      const cover = Math.min(1, cover0 + expr * 0.35 * smooth01((-place - 6) / 6)) * (1 - rise);
+      const cover = Math.min(1, cover0 + expr * 0.15 * smooth01((-place - 6) / 6)) * (1 - rise);
       for (let k = 0; k < 3; k++) B[k] = bws[k] * (1 + 0.5 * rise);
       // (a held note swells a little in and eases at its end)
       const swell = held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;

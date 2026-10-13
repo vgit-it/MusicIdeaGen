@@ -142,6 +142,16 @@ fry) at five amounts ("acting weird at different places": the base was better).
   ends, chest voice higher) and Dark & nasal (Staley-like: nasal, a metallic edge, a tight narrow
   vibrato, bends into notes).
 
+- **Raw** (`raw` 1, every voice; Paul: "in the mid-high range it's sounding like an opera singer, not
+  because of vibrato but timbre"; with raw: "much better"): a trained singer keeps the throat low and
+  the vowels round all the way up; a rock singer's throat rises with the pitch. From an octave under
+  the break: formants up to 7%, no covering, formants up to 1.5x wider, more edge, brighter.
+- **The high voice** nearer the low one ("a bit too different"): a smaller person by 1.1 (was 1.17),
+  and its break 7 semitones up with it (it was an octave up and singing past its break most of the time).
+- Dark & nasal breathier (breath -30); Big & dark less operatic in its normal range (a less low
+  throat, little covering, brighter, wider formants, less vibrato); rounder low notes from expression
+  smaller.
+
 ## 9. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
