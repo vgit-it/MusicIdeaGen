@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { lagFor, perform } from '../src/audio/feel';
 import { type FofVoice, FOF_RATE, renderFof } from '../src/audio/fof';
 import type { SungNote } from '../src/audio/sing';
-import { fofHigh } from '../src/audio/voices';
+import { fofFor } from '../src/audio/voices';
 import { generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 
@@ -50,12 +50,17 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 
 // (the voices as the app sings them: fofFor, with expression and less of the operatic sound)
 // (the voices as the app sings them, low and high)
-// (the high voice on trial: a tenor, a woman; each voice)
-const TAKES: [string, FofVoice][] = (['tenor', 'female'] as const).flatMap((who): [string, FofVoice][] => [
-  [`${who}-rock`, fofHigh('rock', 17, who)],
-  [`${who}-big-dark`, fofHigh('rock', 17, who, 'deep')],
-  [`${who}-dark-nasal`, fofHigh('rock', 17, who, 'nasal')],
-]);
+// (a Chester Bennington-like voice on the normal rock voice: clean, bright and forward, little vibrato,
+// breathy when quiet; options with the scream on pushed notes, and a few semitones higher)
+const CLEAN: Partial<FofVoice> = { tract: 0.98, nasal: 0.25, edge: 0.5, bright: 1, breath: -32, vib: 15, vibHz: 5.8, scoop: 0.3, sag: 0.1, grit: 0.3, brk: 66 };
+const SCREAM: Partial<FofVoice> = { ...CLEAN, up: 'scream', grit: 0.7, brk: 64, softPushed: 0.3 };
+const base = fofFor('rock', 17, false);
+const TAKES: [string, FofVoice][] = [
+  ['chester-1-clean', { ...base, ...CLEAN }],
+  ['chester-2-scream-pushed', { ...base, ...SCREAM }],
+  ['chester-3-scream-harder', { ...base, ...SCREAM, grit: 0.95, brk: 62, softPushed: 0, edge: 0.6 }],
+  ['chester-4-scream-higher', { ...base, ...SCREAM, shift: 3, size: 1.02, brkUp: 2 }],
+];
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
