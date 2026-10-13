@@ -26,6 +26,10 @@ export interface FofVoice {
   breath?: number;
   /** Rasp 0-1 (grows on loud notes). */
   grit?: number;
+  /** How much of the rasp stays on quiet notes, 0-1 (left out: 0, rasp only as the singer pushes). */
+  gritFloor?: number;
+  /** Creak 0-1: a gravelly crackle (vocal fry) into some lines' first note and off some lines' last; the chance and how long. */
+  fry?: number;
   /** Brightness (dB per octave; + brighter). */
   bright?: number;
   /** Low end: the glottal formant's level (dB). */
@@ -120,6 +124,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   const vibC = v.vib ?? 30, driftC = (v.drift ?? 4) + 3 * hu, grit = v.grit ?? 0, breath = v.breath ?? -24;
   const vibHz = 5.4 + (v.seed % 5) * 0.12;
   const brk = v.brk ?? 64, way = v.up ?? 'belt', fal = way === 'falsetto';
+  // (creak: into the line's first note, off its last; each by chance, as real singers do now and then)
+  const fryV = v.fry ?? 0, gritFloor = v.gritFloor ?? 0;
+  const fryIn = fryV > 0 && nr() < fryV ? 0.06 + 0.1 * fryV : 0;
+  const fryOut = fryV > 0 && nr() < fryV * 0.8 ? 0.1 + 0.15 * fryV : 0;
 
   // the formant track: each consonant's place, each vowel's target, a diphthong's glide at its end.
   // (Paul: "a lot of 'dwo', 'wo', 'ye'": slow, full glides between sounds heard as extra w's and y's.
@@ -242,7 +250,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   // the control values (per CT samples)
   let f0 = 110, vT = 0, nasalT = 0, barT = 0, aspT = 0, effort = 0.5;
   // (the register: how far up past the break, 0-1; how deep below it, 0-1)
-  let upW = 0, lowW = 0, edgeW = 0;
+  let upW = 0, lowW = 0, edgeW = 0, fryW = 0;
   // (the singer's ear: the level they hear, kept steady from note to note whatever the vowel and pitch do to it)
   let comp = 1;
   // (as heard on an "ah" at G3: no correction)
@@ -296,6 +304,12 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       upW = smooth01((place + 1) / 4);
       lowW = smooth01((-place - 14) / 6);
       edgeW = (v.edge ?? 0) * EDGE_VOWEL[note.syl.vowel];
+      {
+        const first = notes[0], last = notes[notes.length - 1];
+        const a = fryIn && !first.slide ? 1 - smooth01((t - first.t) / fryIn) : 0;
+        const b = fryOut && ni === notes.length - 1 ? smooth01((t - (last.end - fryOut)) / fryOut) : 0;
+        fryW = Math.min(1, Math.max(a, b)) * Math.min(1, 0.6 + fryV * 0.6);
+      }
       // (a held note swells a little in and eases at its end)
       const swell = held > 0.35 ? hu * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
       const amp = levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? 12 * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0);
@@ -366,10 +380,12 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       phase -= 1;
       // the next period: a little jitter; on rasp, every other period a touch longer and weaker
       alt = -alt;
-      const rough = Math.min(1, grit * effort * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8)));
+      const rough = Math.min(1, grit * (gritFloor + (1 - gritFloor) * effort) * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8)));
       periodK = 1 + (0.003 + 0.004 * hu) * gauss() + 0.015 * rough * alt;
+      // (creak: slow, uneven pulses under the note, some skipped)
+      if (fryW > 0) periodK = lerp(periodK, f0 / (35 + 45 * rnd()), fryW * fryW);
       if (vA > 1e-4) {
-        const shimmer = (1 + (0.04 + 0.03 * hu) * gauss() + 0.2 * rough * gauss()) * (1 - 0.18 * rough * (alt > 0 ? 1 : 0));
+        const shimmer = (1 + (0.04 + 0.03 * hu) * gauss() + 0.2 * rough * gauss()) * (1 - 0.18 * rough * (alt > 0 ? 1 : 0)) * (1 + fryW * (0.5 * gauss() + 0.6));
         // the source: about -6 dB an octave (the folds and the lips together), brighter when louder
         // (falsetto: soft-edged pulses, a steep tilt; belt and scream: sharp ones, flat; the deep notes a touch darker)
         const tiltX = (lerp(1.5, -2.5, effort) + (fal ? 6 : -1.5) * upW + 1.5 * lowW - (v.bright ?? 0) - 4 * edgeW) / 6.02;
