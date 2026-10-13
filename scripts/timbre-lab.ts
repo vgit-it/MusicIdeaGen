@@ -53,13 +53,15 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 // (a Chester Bennington-like voice on the normal rock voice: clean, bright and forward, little vibrato,
 // breathy when quiet; options with the scream on pushed notes, and a few semitones higher)
 const CLEAN: Partial<FofVoice> = { tract: 0.98, nasal: 0.25, edge: 0.5, bright: 1, breath: -32, vib: 15, vibHz: 5.8, scoop: 0.3, sag: 0.1, grit: 0.3, brk: 66 };
-const SCREAM: Partial<FofVoice> = { ...CLEAN, up: 'scream', grit: 0.7, brk: 64, softPushed: 0.3 };
+const SCREAM: Partial<FofVoice> = { ...CLEAN, up: 'scream', grit: 0.5, brk: 64 };
 const base = fofFor('rock', 17, false);
+// (softer across the board; the scream from distortion on pushed notes, at three amounts)
 const TAKES: [string, FofVoice][] = [
-  ['chester-1-clean', { ...base, ...CLEAN }],
-  ['chester-2-scream-pushed', { ...base, ...SCREAM }],
-  ['chester-3-scream-harder', { ...base, ...SCREAM, grit: 0.95, brk: 62, softPushed: 0, edge: 0.6 }],
-  ['chester-4-scream-higher', { ...base, ...SCREAM, shift: 3, size: 1.02, brkUp: 2 }],
+  ['rock-softer', base],
+  ['chester-clean', { ...base, ...CLEAN }],
+  ['chester-scream-light', { ...base, ...SCREAM, distort: 0.35 }],
+  ['chester-scream-medium', { ...base, ...SCREAM, distort: 0.65 }],
+  ['chester-scream-heavy', { ...base, ...SCREAM, distort: 1 }],
 ];
 
 function wav(samples: Float32Array, rate: number): Buffer {

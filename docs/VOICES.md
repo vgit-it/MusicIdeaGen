@@ -161,6 +161,11 @@ fry) at five amounts ("acting weird at different places": the base was better).
   hiss). Medium (0.5) on the normal notes, strong (1) on pushed notes (loud or reaching up) and low
   ones (Paul's pick from the clips); most in quiet sections, about half in the loudest.
 
+- **Softer across the board** (soft 0.75 on normal notes, 1 on pushed and low ones).
+- **Distortion** (`distort`, on trial for a Chester Bennington-like voice): a scream on pushed notes:
+  the voice into a soft clip against its own level, darkened (two low-passes at 5 kHz), with the
+  folds' turbulence in time with the pulses and every other pulse weaker; more in loud sections.
+
 ## 9. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).

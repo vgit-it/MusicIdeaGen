@@ -86,6 +86,13 @@ export interface FofVoice {
   soft?: number;
   /** Soft on pushed notes and low ones (left out: as `soft`; Paul: medium on the normal notes, strong pushed and low). */
   softPushed?: number;
+  /**
+   * Distortion 0-1 (left out: 0): a real scream on pushed notes (loud, or reaching up past the break):
+   * the voice driven into a soft clip, level by level so it's the same at any loudness, darkened (no
+   * fizz), with the folds' turbulence (noise in time with the pulses) and every other pulse weaker.
+   * More in loud sections. Paul: "the stronger scream with distortion".
+   */
+  distort?: number;
   /** The line's section energy, 0 (quiet verse) to 1 (the biggest chorus); left out: 0.5. */
   energy?: number;
   /**
@@ -259,6 +266,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
 
   // the state: smoothed levels (linear), the pitch's phase, the grains sounding
   let vA = 0, vNasal = 0, vBar = 0, aspA = 0, raspEnv = 0;
+  // (the scream: its target and smoothed amount, the level it drives against, its tone filter)
+  const distort = v.distort ?? 0;
+  let scrT = 0, scr = 0, ms = 1e-6, dLp = 0, dLp2 = 0;
+  const kMs = 1 - Math.exp(-1 / (0.012 * fs)), kScr = 1 - Math.exp(-1 / (0.03 * fs)), kLp = 1 - Math.exp(-2 * Math.PI * 5000 / fs);
   const fricA = SHAPES.map(() => 0);
   let phase = 0.999, periodK = 1, alt = 1;
   let drift = 0, driftTo = 0;
@@ -413,6 +424,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         exAmp *= expr; exBreath *= expr; exBright *= expr; exEdge *= expr; exEffort *= expr;
       }
       // (soft: the note's own, more on a pushed note (loud or reaching up) and on a low one)
+      // (the scream: how pushed this note is, by the distortion amount and the section)
+      const pushedN = Math.max(clamp01((note.vel - 0.75) / 0.15), smooth01((place + 4) / 4) * clamp01((note.vel - 0.6) / 0.2));
+      scrT = distort * pushedN * (0.4 + 0.6 * en) * (s.vowel ? 1 : 0.5);
       if (softPushed !== soft0) {
         const pushed = Math.max(clamp01((note.vel - 0.75) / 0.15), smooth01((place + 4) / 4) * clamp01((note.vel - 0.6) / 0.2));
         softK = lerp(soft0, softPushed, Math.max(pushed, smooth01((-place - 8) / 6))) * (1 - 0.45 * en);
@@ -508,7 +522,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       phase -= 1;
       // the next period: a little jitter; on rasp, every other period a touch longer and weaker
       alt = -alt;
-      const rough = Math.min(1, roughAdd + grit * effort * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8)));
+      const rough = Math.min(1, roughAdd + 0.8 * scr + grit * effort * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8)));
       periodK = 1 + (0.003 + 0.004 * hu) * gauss() + 0.015 * rough * alt;
       if (vA > 1e-4) {
         const shimmer = (1 + (0.04 + 0.03 * hu) * gauss() + 0.2 * rough * gauss()) * (1 - 0.18 * rough * (alt > 0 ? 1 : 0));
@@ -579,6 +593,19 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     for (let k = 0; k < 4; k++) an += aspG[k] * asp[k].run(aIn);
     an += air.run(nz) * vA * comp * db(breathNow - 16) * open * hu * 2.5;
     y += an;
+    // the scream: driven into a soft clip against its own level, darkened; the folds' turbulence in time with the pulses
+    if (distort) {
+      scr += (scrT - scr) * kScr;
+      ms += (y * y - ms) * kMs;
+      if (scr > 0.003) {
+        const lvl = Math.sqrt(ms) + 1e-9, g = 1 + 9 * scr;
+        const d = (1.4 * lvl * Math.tanh((g * y) / (lvl * 1.4))) / g ** 0.6;
+        const turb = gauss() * lvl * 0.9 * scr * (0.3 + Math.sin(Math.PI * phase) ** 2);
+        dLp += (d + turb - dLp) * kLp;
+        dLp2 += (dLp - dLp2) * kLp;
+        y = y * (1 - scr) + dLp2 * scr;
+      }
+    }
     // the consonants' noise
     for (let k = 0; k < SHAPES.length; k++) {
       const bands = bank[k];
