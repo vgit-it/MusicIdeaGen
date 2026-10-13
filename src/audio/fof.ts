@@ -46,6 +46,12 @@ export interface FofVoice {
   cover?: number;
   /** Nasal 0-1: a little of the nose in every vowel (a pinched, sneering tone). */
   nasal?: number;
+  /**
+   * Nasal twang 0-1: the nasal, forward sound of a rock singer (Paul: "a bit of nasal feel"): the 2.5-4
+   * kHz ring up (a narrowed throat above the folds), F1 a little down, a little of the nose. `nasal`
+   * alone mostly muffles (the nose's coupling); this is the bright, honky kind.
+   */
+  twang?: number;
   /** Scoops 0-1: notes started from under the pitch and slid up into, more often and from further. */
   scoop?: number;
   /** Sags 0-1: held notes let droop a little at their end. */
@@ -479,7 +485,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         }
       }
       vT = voice === -Infinity ? 0 : db(voice);
-      nasalT = Math.max(nas, nasal * 0.3 * (voice === -Infinity ? 0 : 1)); barT = bar;
+      nasalT = Math.max(nas, (nasal * 0.3 + (v.twang ?? 0) * 0.15) * (voice === -Infinity ? 0 : 1)); barT = bar;
       aspT = aspir === -Infinity ? 0 : db(aspir);
       // the formants: F1 kept above the pitch, a little up on loud notes (the mouth opens)
       const f3 = formantsAt(t).slice() as F3;
@@ -536,7 +542,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         const amps = F.map((_, k) => {
           let a = formantLevel(F, B, k, tiltX);
           if (k > 0) a *= db(-16 * vNasal) * db(-28 * vBar);
-          if (k === 2 || k === 3) a *= twang * db(4 * edgeW);
+          if (k === 2 || k === 3) a *= twang * db(4 * edgeW + 7 * (v.twang ?? 0));
+          if (k === 0) a *= db(-3 * (v.twang ?? 0));
           if (k >= 3) a *= db(-3 * plain);
           if (k === 1) a *= db(2 * edgeW);
           return a;

@@ -166,6 +166,11 @@ fry) at five amounts ("acting weird at different places": the base was better).
   the voice into a soft clip against its own level, darkened (two low-passes at 5 kHz), with the
   folds' turbulence in time with the pulses and every other pulse weaker; more in loud sections.
 
+- **Clean & scream** (a third character, Chester Bennington-like; Paul: medium distortion): bright,
+  forward, little vibrato, breathy when quiet, the scream (distort 0.65) on pushed notes, and a nasal
+  twang (`twang` 0.7: the 2.5-4 kHz ring up 5 dB, F1 down 2 dB, a little of the nose; `nasal` alone
+  mostly muffles).
+
 ## 9. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).

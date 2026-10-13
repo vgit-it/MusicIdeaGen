@@ -50,18 +50,13 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 
 // (the voices as the app sings them: fofFor, with expression and less of the operatic sound)
 // (the voices as the app sings them, low and high)
-// (a Chester Bennington-like voice on the normal rock voice: clean, bright and forward, little vibrato,
-// breathy when quiet; options with the scream on pushed notes, and a few semitones higher)
-const CLEAN: Partial<FofVoice> = { tract: 0.98, nasal: 0.25, edge: 0.5, bright: 1, breath: -32, vib: 15, vibHz: 5.8, scoop: 0.3, sag: 0.1, grit: 0.3, brk: 66 };
-const SCREAM: Partial<FofVoice> = { ...CLEAN, up: 'scream', grit: 0.5, brk: 64 };
-const base = fofFor('rock', 17, false);
-// (softer across the board; the scream from distortion on pushed notes, at three amounts)
+// (Clean & scream, Chester Bennington-like: the nasal feel (twang) at three amounts)
+const scream = fofFor('rock', 17, false, 'scream');
 const TAKES: [string, FofVoice][] = [
-  ['rock-softer', base],
-  ['chester-clean', { ...base, ...CLEAN }],
-  ['chester-scream-light', { ...base, ...SCREAM, distort: 0.35 }],
-  ['chester-scream-medium', { ...base, ...SCREAM, distort: 0.65 }],
-  ['chester-scream-heavy', { ...base, ...SCREAM, distort: 1 }],
+  ['scream-nasal-none', { ...scream, twang: 0 }],
+  ['scream-nasal-light', { ...scream, twang: 0.4 }],
+  ['scream-nasal-medium', scream],
+  ['scream-nasal-strong', { ...scream, twang: 1 }],
 ];
 
 function wav(samples: Float32Array, rate: number): Buffer {
