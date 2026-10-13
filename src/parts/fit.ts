@@ -135,7 +135,7 @@ export function fitToBand(idea: Idea, lo: number, hi: number): { moved: number; 
   for (let i = 0; i < v.length; i++) {
     const n = v[i];
     // (a sigh or a turn's first note leans on purpose: left as written)
-    const leaning = v[i + 1]?.syl.text === '~' && v[i + 1].midi !== n.midi && n.len <= 4;
+    const leaning = (v[i + 1]?.syl.text === '~' && v[i + 1].midi !== n.midi && n.len <= 4) || !!n.colour;
     const firm = n.len >= 4 || n.syl.stress;
     if (!leaning && grinds(n.midi, n.step, firm, H, bass)) {
       const m = nearestFit(n.midi, [n.step], firm, H, bass, lo, hi) ?? nearestFit(n.midi, [n.step], false, H, bass, lo, hi);

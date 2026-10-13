@@ -44,6 +44,8 @@ export interface GenOptions {
   vocalRhythm?: 'grid';
   /** How the vocal's pitches are written: classic (the default) or shaped (docs/VOCAL-MELODY.md). */
   vocalMelody?: 'shaped';
+  /** Shaped: one signature move chosen (src/parts/moves.ts); left out: each song its own, by genre. */
+  vocalMove?: string;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */
