@@ -166,7 +166,7 @@ fry) at five amounts ("acting weird at different places": the base was better).
   the voice into a soft clip against its own level, darkened (two low-passes at 5 kHz), with the
   folds' turbulence in time with the pulses and every other pulse weaker; more in loud sections.
 
-- **Clean & scream** (a third character, Chester Bennington-like; Paul: medium distortion): bright,
+- **Chester (clean & scream)** (a third character, Chester Bennington-like; Paul: medium distortion): bright,
   forward, little vibrato, breathy when quiet, the scream (distort 0.65) on pushed notes, and a nasal
   twang (`twang` 1, Paul's pick: the 2.5-4 kHz ring up 7 dB, F1 down 3 dB, a little of the nose; `nasal` alone
   mostly muffles); less breathy than the others (breath -39).
