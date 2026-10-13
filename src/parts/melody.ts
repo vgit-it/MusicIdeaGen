@@ -49,6 +49,8 @@ export interface MelodyStyle {
   bridgeLift: number;
   /** Semitones the whole melody moves; how wide it goes (x). */
   register: number;
+  /** Semitones a higher singer's range sits above the low voice's (its floor, ceiling and wail move with it). */
+  up: number;
   span: number;
   /** Chances: a leap (a 4th or more), a repeated note, a strong beat on a chord note. */
   leap: number;
@@ -192,14 +194,14 @@ const jitter = (rng: Rng, x: number, by = 0.15) => x * (1 - by + rng.next() * 2 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 /** A song's melody style: its mood's ways, leaned by its genre, a little chance, and maybe a twist. */
-export function melodyStyle(seed: string, mood: Mood, genre: Genre): MelodyStyle {
+export function melodyStyle(seed: string, mood: Mood, genre: Genre, lift = 0): MelodyStyle {
   const rng = new Rng(`${seed}-melody`);
   const M = MOOD_MELODY[mood], G = GENRE_MELODY[genre];
   const singer = pickSinger(seed, mood, genre);
   const s: MelodyStyle = {
     verse: rng.weighted(M.verse), chorus: rng.weighted(M.chorus), bridge: rng.weighted(M.bridge),
     verseForm: rng.weighted(VERSE_FORMS), chorusForm: rng.weighted(CHORUS_FORMS),
-    lift: rng.int(M.lift[0], M.lift[1]) + G.lift, bridgeLift: 0,
+    lift: rng.int(M.lift[0], M.lift[1]) + G.lift, bridgeLift: 0, up: 0,
     register: M.register + G.register, span: jitter(rng, M.span * G.span, 0.1),
     leap: clamp01(jitter(rng, M.leap)), leaps: M.leaps, repeat: clamp01(jitter(rng, M.repeat + G.repeat)), stable: clamp01(jitter(rng, M.stable, 0.08)),
     lean: clamp01(jitter(rng, M.lean, 0.3)), melisma: clamp01(M.melisma + G.melisma),
@@ -214,6 +216,9 @@ export function melodyStyle(seed: string, mood: Mood, genre: Genre): MelodyStyle
   s.register += singer.register;
   // (a genre's voice: its tunes written where it sits best, lower than the clear voice's)
   if (s.timbre !== 'clear') s.register -= VOICE_DOWN[s.timbre];
+  // (a higher singer chosen: the tunes written that much higher, in key)
+  s.register += lift;
+  s.up = lift;
   s.repeat = clamp01(s.repeat + singer.repeat);
   s.leap = clamp01(s.leap + singer.leap);
   s.busyVerse *= singer.density[0];
@@ -476,9 +481,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   const scale = scaleFor(song, kind);
   const big = kind === 'chorus' || kind === 'outro';
   const lift = big ? style.lift : kind === 'prechorus' ? Math.round(style.lift / 2) : kind === 'bridge' ? style.bridgeLift : 0;
-  const center = Math.max(LOW[0] + 2, Math.min(PEAK - 5, base + G.center + style.register + lift));
+  const center = Math.max(LOW[0] + style.up + 2, Math.min(PEAK + style.up - 5, base + G.center + style.register + lift));
   const span = Math.max(5, Math.round(P.span * G.span * style.span));
-  const lo = Math.max(LOW[0] - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK - 2, center + Math.floor(span / 2));
+  const lo = Math.max(LOW[0] + style.up - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + style.up - 2, center + Math.floor(span / 2));
   const pool: number[] = [];
   for (let m = lo; m <= hi; m++) if (scale.includes(mod(m - key, 12))) pool.push(m);
   const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(Math.max(0, g), total - 1)]].chord;
@@ -699,7 +704,7 @@ function singable(notes: TuneNote[], pool: number[]) {
 }
 
 /** The highest a song's wails go (the climax gets a little more). */
-export const wailTop = (style: MelodyStyle) => PEAK - 2 + style.top;
+export const wailTop = (style: MelodyStyle) => PEAK + style.up - 2 + style.top;
 
 /**
  * Wails: a big line (chorus, bridge, outro; now and then a pre-chorus's last line) peaking on a high
@@ -785,7 +790,7 @@ function ornament(rng: Rng, notes: TuneNote[], style: MelodyStyle, pool: number[
     if (n.len >= 6 && rng.chance(singer.runs * where * slow * (lineEnd ? 1 : 0.4) * (n.belt ? 1.3 : 1))) {
       const kind = rng.weighted(singer.runKinds);
       const want = rng.int(singer.runLen[0], singer.runLen[1]);
-      const inRange = (m: number) => m >= LOW[0] - 3 && m <= wailTop(style) + 1;
+      const inRange = (m: number) => m >= LOW[0] + style.up - 3 && m <= wailTop(style) + 1;
       if (kind === 'tail') {
         // the note held for at least half its length, then down off its end a unit a note (the last two
         // units), no deeper than the singer goes
@@ -889,7 +894,7 @@ export function followTension(idea: Idea, ref: number, mood: Mood, style: Melody
       for (let s = 2; s <= 5; s++) {
         const m = n.midi + (d > 0 ? s : -s);
         // (the song's top notes kept for its climax)
-        if (!tones.includes(mod(m, 12)) || m > wailTop(style) || m < LOW[0] - 3) continue;
+        if (!tones.includes(mod(m, 12)) || m > wailTop(style) || m < LOW[0] + style.up - 3) continue;
         n.midi = m;
         if (d > 0) out.up++; else out.down++;
         break;
@@ -904,7 +909,7 @@ export function followTension(idea: Idea, ref: number, mood: Mood, style: Melody
       const cont = (coda: Syllable['coda']): Syllable => ({ onset: [], vowel: n.syl.vowel, coda, stress: false, text: '~', wordStart: false });
       v.splice(last, 1,
         { ...n, len: 4, syl: { ...n.syl, coda: [] } },
-        { ...n, step: n.step + 4, len: 2, midi: Math.min(up, PEAK), start: false, syl: cont([]) },
+        { ...n, step: n.step + 4, len: 2, midi: Math.min(up, PEAK + style.up), start: false, syl: cont([]) },
         { ...n, step: n.step + 6, len: n.len - 6, start: false, syl: cont(n.syl.coda) });
       out.turns++;
     }

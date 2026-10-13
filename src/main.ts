@@ -574,6 +574,12 @@ addSel.onchange = () => {
 };
 
 const partsPanel = buildPartsPanel($('parts'), engine, () => {
+  // the Chester voice sings higher: its tunes rewritten 3 semitones up (in key; same seeds, only the vocal changes)
+  const lift = engine.vocalTimbre === 'scream' ? 3 : 0;
+  if (idea && (idea.opts.vocalLift ?? 0) !== lift) {
+    showIdea(generate({ ...idea.opts, vocalLift: lift || undefined }, idea.seeds), true);
+    return;
+  }
   // a layer added or removed: the strip labels, lanes, Keep / reroll and the link all follow
   if (track) drawTrack(track);
   render();

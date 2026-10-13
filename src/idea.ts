@@ -38,6 +38,8 @@ export interface GenOptions {
   bpm?: number;
   /** Chords you set (strummed genres); the generator writes the rest around them. */
   chords?: ChordSheet;
+  /** Semitones higher the vocal tunes are written (the Chester voice: a tenor; in key, the tune itself rewritten). */
+  vocalLift?: number;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */

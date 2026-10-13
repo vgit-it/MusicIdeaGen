@@ -175,6 +175,10 @@ fry) at five amounts ("acting weird at different places": the base was better).
   half the turbulence, less period-to-period roughness from it; his break 3 semitones up (a tenor's).
   He sang 3 semitones up at first: out of the song's key (Paul: "out of tune"). A pitch shift on the
   rendered voice can't lift a singer's range; only writing the tune higher can (in key).
+  Now picking the Chester voice rewrites the vocal tunes 3 semitones higher (`vocalLift` in the idea's
+  options: the melody's register, floor, ceiling and wail all up 3; same seeds, so only the vocal
+  changes; in key). Measured on 20 alt metal songs: 3.0 semitones higher on average, the band
+  unchanged in all 20.
 
 ## 9. Polish: prepared with the real amps (2026-10-13)
 Paul: one-time processing like the real amps, "start with 1 and 2" (a vocal chain; a clean-up pass), "one
