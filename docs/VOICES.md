@@ -146,8 +146,8 @@ fry) at five amounts ("acting weird at different places": the base was better).
   because of vibrato but timbre"; with raw: "much better"): a trained singer keeps the throat low and
   the vowels round all the way up; a rock singer's throat rises with the pitch. From an octave under
   the break: formants up to 7%, no covering, formants up to 1.5x wider, more edge, brighter.
-- **The high voice** nearer the low one ("a bit too different"): a smaller person by 1.1 (was 1.17),
-  and its break 7 semitones up with it (it was an octave up and singing past its break most of the time).
+- **The high voice** nearer the low one ("a bit too different", then "even closer"): nearly the same
+  person (formants x1.04, was 1.17), and its break 10 semitones up with it (it was an octave up and singing past its break most of the time).
 - Dark & nasal breathier (breath -30); Big & dark less operatic in its normal range (a less low
   throat, little covering, brighter, wider formants, less vibrato); rounder low notes from expression
   smaller.

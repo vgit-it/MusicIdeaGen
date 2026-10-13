@@ -147,10 +147,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   const rnd = rng(v.seed * 7 + notes.length);
   const gauss = () => rnd() + rnd() + rnd() - 1.5;
 
-  // (the high voice: a smaller person, but not too far from the low one: Paul, "a bit too different";
-  // was 1.17 and its break an octave up with the voice, so it sang past it most of the time)
-  const fscale = (v.high ? 1.1 : 1) * (v.tract ?? 1);
-  const high = (v.high ? [3600, 4150, 5250] : [3250, 3700, 4950]).map((f) => f * (v.tract ?? 1));
+  // (the high voice: nearly the same person as the low one, Paul: "a bit too different", then "even
+  // closer"; was 1.17, then 1.1, and its break an octave up with the voice, so it sang past it most of the time)
+  const fscale = (v.high ? 1.04 : 1) * (v.tract ?? 1);
+  const high = (v.high ? [3380, 3850, 5100] : [3250, 3700, 4950]).map((f) => f * (v.tract ?? 1));
   const plain = v.plain ?? 0;
   const bws = [90, 110, 160, 200, 230, 500].map((b, k) => b * (v.bw ?? 1) * (k >= 3 ? 1 + 0.6 * plain : 1));
   const vibC = v.vib ?? 30, driftC = (v.drift ?? 4) + 3 * hu, grit = v.grit ?? 0, breath = v.breath ?? -24;
@@ -189,7 +189,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     const chance = scoop * (n.syl.stress ? 0.8 : 0.4) * (i === 0 || n.t - notes[i - 1].end > 0.1 ? 1.3 : 1);
     return !n.slide && n.syl.text !== '~' && sr() < chance ? { by: 0.6 + 1.4 * scoop * sr(), len: 0.09 + 0.08 * scoop } : null;
   });
-  const brk = (v.brk ?? 64) + (v.high ? 7 : 0), way = v.up ?? 'belt', fal = way === 'falsetto';
+  const brk = (v.brk ?? 64) + (v.high ? 10 : 0), way = v.up ?? 'belt', fal = way === 'falsetto';
 
   // the formant track: each consonant's place, each vowel's target, a diphthong's glide at its end.
   // (Paul: "a lot of 'dwo', 'wo', 'ye'": slow, full glides between sounds heard as extra w's and y's.
