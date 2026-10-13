@@ -87,3 +87,22 @@ export function recipeFor(g: Genre): VoiceRecipe {
 export function autoShares(voice: GenreVoice, midi: number, vowel: Vowel, vel: number): [number, number, number] {
   return autoRegisters(voice.recipe.regMix ?? 'grunge', midi - voice.brk, vowel, vel);
 }
+
+/** The singers on trial for the high voice (Paul: "both"): a tenor, or a woman. */
+export type HighSinger = 'tenor' | 'female';
+/**
+ * A high singer's voice. The tenor: the same kind of singer, a 4th up (a touch smaller, his break with
+ * him). The woman: her own voice an octave up: a smaller person (formants about 16% up), breathier (a
+ * glottal chink), a softer buzz (a steeper tilt, more of the first harmonic), less grit, a quicker,
+ * lighter vibrato, her break a little higher than his in the melody's terms (she belts and mixes up there).
+ */
+export function fofHigh(g: Genre, seed: number, who: HighSinger, character?: Character): FofVoice {
+  const v = fofFor(g, seed, false, character);
+  if (who === 'tenor') return { ...v, shift: 5, size: 1.03, brkUp: 4 };
+  return {
+    ...v, shift: 12, size: 1.16, brkUp: 6, spread: 0.5,
+    breath: (v.breath ?? -24) + 5, grit: (v.grit ?? 0) * 0.4, bright: (v.bright ?? 0) - 1, body: (v.body ?? 5) + 2,
+    vib: (v.vib ?? 30) * 0.8, vibHz: (v.vibHz ?? 5.5) + 0.4, sag: (v.sag ?? 0) * 0.5,
+  };
+}
+

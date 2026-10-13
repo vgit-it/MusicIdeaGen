@@ -88,6 +88,13 @@ export interface FofVoice {
   softPushed?: number;
   /** The line's section energy, 0 (quiet verse) to 1 (the biggest chorus); left out: 0.5. */
   energy?: number;
+  /**
+   * Another singer than the low voice: semitones up (`shift`), a smaller person (`size`: formants x),
+   * and their break that much higher (`brkUp`). Left out: as `high` says (an octave up, 1.04, 10).
+   */
+  shift?: number;
+  size?: number;
+  brkUp?: number;
   /** Their break (MIDI, about E4) and their way up past it. */
   brk?: number;
   up?: 'belt' | 'falsetto' | 'scream' | 'squeal';
@@ -166,8 +173,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   // closer"; was 1.17, then 1.1, and its break an octave up with the voice, so it sang past it most of the time)
   const spread = v.spread ?? 0;
   const tract = lerp(v.tract ?? 1, Math.max(v.tract ?? 1, 0.97), spread);
-  const fscale = (v.high ? 1.04 : 1) * tract;
-  const high = (v.high ? [3380, 3850, 5100] : [3250, 3700, 4950]).map((f) => f * tract);
+  const shift = v.shift ?? (v.high ? 12 : 0), size = v.size ?? (v.high ? 1.04 : 1);
+  const fscale = size * tract;
+  const high = [3250, 3700, 4950].map((f) => f * fscale);
   const plain = v.plain ?? 0;
   const bws = [90, 110, 160, 200, 230, 500].map((b, k) => b * (v.bw ?? 1) * (k >= 3 ? 1 + 0.6 * plain : 1));
   const vibC = v.vib ?? 30, driftC = (v.drift ?? 4) + 3 * hu, grit = v.grit ?? 0, breath = v.breath ?? -24;
@@ -208,7 +216,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     const chance = scoop * (n.syl.stress ? 0.8 : 0.4) * (i === 0 || n.t - notes[i - 1].end > 0.1 ? 1.3 : 1);
     return !n.slide && n.syl.text !== '~' && sr() < chance ? { by: 0.6 + 1.4 * scoop * sr(), len: 0.09 + 0.08 * scoop } : null;
   });
-  const brk = (v.brk ?? 64) + (v.high ? 10 : 0), way = v.up ?? 'belt', fal = way === 'falsetto';
+  const brk = (v.brk ?? 64) + (v.brkUp ?? (v.high ? 10 : 0)), way = v.up ?? 'belt', fal = way === 'falsetto';
 
   // the formant track: each consonant's place, each vowel's target, a diphthong's glide at its end.
   // (Paul: "a lot of 'dwo', 'wo', 'ye'": slow, full glides between sounds heard as extra w's and y's.
@@ -355,7 +363,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       let ni = 0;
       for (let k = 0; k < notes.length; k++) if (notes[k].t - 0.03 <= t) ni = k;
       const note = notes[ni], prev = notes[ni - 1];
-      let midi = pitchLine[Math.floor(i / CT)] + (v.high ? 12 : 0);
+      let midi = pitchLine[Math.floor(i / CT)] + shift;
       const into = t - note.t, held = note.end - note.t;
       // vibrato on held notes only, in after a moment (Sundberg); a slow drift
       if (held > 0.4 + 0.35 * plain && !straight[ni]) {
@@ -386,7 +394,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       effort = clamp01((note.vel - 0.55) / 0.4) * 0.7 + clamp01((note.midi - 52) / 14) * 0.3;
       // the register (docs/VOICES.md): chest below the break, blending over about four semitones into
       // their way up past it; the deep notes fuller
-      const place = note.midi + (v.high ? 12 : 0) - brk;
+      const place = note.midi + shift - brk;
       upW = smooth01((place + 1) / 4);
       lowW = smooth01((-place - 14) / 6);
       // (expression: the section, the line, the note's start and end, a key word, the reach up high)
@@ -399,7 +407,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         if (ex.ends && held > 0.2) { const k = smooth01((into - held * 0.6) / (held * 0.4)); exBreath += 4 * k; exBright -= 1.5 * k; exEffort -= 0.15 * k; }
         if (ex.key) { exAmp += 1.2; exEdge += 0.08; }
         // (reaching: past the break and pushed, the strain shows)
-        const reach = smooth01((note.midi + (v.high ? 12 : 0) - brk + 2) / 5) * clamp01((note.vel - 0.6) / 0.3);
+        const reach = smooth01((note.midi + shift - brk + 2) / 5) * clamp01((note.vel - 0.6) / 0.3);
         exEdge += 0.15 * reach; exBright += 1 * reach; roughAdd = 0.15 * reach * expr;
         if (ex.crack) { const c = Math.max(0, 1 - Math.abs(into - held * ex.crack - 0.04) / 0.04); exAmp -= 7 * c; exBreath += 6 * c; exBright -= 4 * c; }
         exAmp *= expr; exBreath *= expr; exBright *= expr; exEdge *= expr; exEffort *= expr;

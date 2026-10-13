@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { lagFor, perform } from '../src/audio/feel';
 import { type FofVoice, FOF_RATE, renderFof } from '../src/audio/fof';
 import type { SungNote } from '../src/audio/sing';
-import { fofFor } from '../src/audio/voices';
+import { fofHigh } from '../src/audio/voices';
 import { generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 
@@ -50,12 +50,12 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 
 // (the voices as the app sings them: fofFor, with expression and less of the operatic sound)
 // (the voices as the app sings them, low and high)
-// (the voices as the app sings them)
-const TAKES: [string, FofVoice][] = [
-  ['rock', fofFor('rock', 17, false)],
-  ['big-dark', fofFor('rock', 17, false, 'deep')],
-  ['dark-nasal', fofFor('rock', 17, false, 'nasal')],
-];
+// (the high voice on trial: a tenor, a woman; each voice)
+const TAKES: [string, FofVoice][] = (['tenor', 'female'] as const).flatMap((who): [string, FofVoice][] => [
+  [`${who}-rock`, fofHigh('rock', 17, who)],
+  [`${who}-big-dark`, fofHigh('rock', 17, who, 'deep')],
+  [`${who}-dark-nasal`, fofHigh('rock', 17, who, 'nasal')],
+]);
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
