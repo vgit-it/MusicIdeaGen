@@ -197,6 +197,10 @@ button instead of separate for amps and voice". `src/audio/polish.ts`, run once 
   (a horn: narrow, a 1.8 kHz resonance, driven), alt metal an old radio (wider, gritty). The band is
   applied again after the drive, so the grit stays inside it. Part of the Prepare real sound pass.
 
+- **Funk** (Paul: "the funk voice breaks at the pushed parts"): its pushed notes sat right on its break
+  (E4), flipping into falsetto and back note to note (a high A dropping 11 dB). Now chest voice up to G4
+  and a mix (belt) past it, not falsetto.
+
 ## 10. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
