@@ -62,6 +62,17 @@ function harmonyFor(idea: Idea, n: VocalNote, up: boolean): number | null {
 }
 
 /** The sung lines of a section: groups of lead notes, each starting with a `start` note. */
+/** The lead as the backing singers follow it: a run's quick notes between the 16ths left to the lead (the note before held through them). */
+function onGrid(v: VocalNote[]): VocalNote[] {
+  const out: VocalNote[] = [];
+  for (const n of v) {
+    const p = out[out.length - 1];
+    if (Number.isInteger(n.step)) out.push(n);
+    else if (p) out[out.length - 1] = { ...p, len: n.step + n.len - p.step };
+  }
+  return out;
+}
+
 function linesOf(v: VocalNote[]): VocalNote[][] {
   const out: VocalNote[][] = [];
   for (const n of v) {
@@ -87,7 +98,7 @@ export function arrangeBacking(sections: Idea[], ctx: BackingContext, climax: nu
   sections.forEach((idea, si) => {
     idea.backing = [];
     idea.vocalDouble = false;
-    const lead = idea.vocal ?? [];
+    const lead = onGrid(idea.vocal ?? []);
     if (!lead.length) return;
     const kind = idea.section!.kind as SectionKind;
     const rng = new Rng(`${ctx.seed}-backing-${si}`);

@@ -12,6 +12,7 @@ import type { Genre } from '../genres';
 import type { Idea } from '../idea';
 import type { Timbre } from '../parts/singers';
 import { type VoiceType, backingVoice } from '../parts/vocal';
+import { stepAt } from '../rhythm';
 import { inContext } from './context';
 import { lagFor, perform } from './feel';
 import { FOF_RATE, renderFof } from './fof';
@@ -115,7 +116,7 @@ export class Singer {
     if (got && got.six === six && got.voice === voice && got.timbre === timbre) return got;
     const { song } = idea;
     // the band's swing and lilt move the off-beat 16ths, as the engine plays them
-    const at = (g: number) => g * six + (g % 2 ? (song.swing * (2 / 3) + (idea.lilt ?? 0)) * six : 0);
+    const at = stepAt((g) => g * six + (g % 2 ? (song.swing * (2 / 3) + (idea.lilt ?? 0)) * six : 0));
     const byStep = new Map<number, Line[]>();
     const lag = lagFor(idea.seeds.vocal ?? idea.seeds.song);
     const slides = SLIDES[song.partGenres.strum];

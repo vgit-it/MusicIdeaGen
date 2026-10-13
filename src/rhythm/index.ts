@@ -82,6 +82,15 @@ export function phrasePlan(rng: Rng, w: number): Variant[] {
   return [...first, ...second];
 }
 
+/**
+ * A step's time for a step between the 16ths too (a vocal run sung quicker than the grid): `at` gives
+ * the whole steps (with their swing); in between, the time runs straight from one to the next.
+ */
+export const stepAt = (at: (g: number) => number) => (g: number) => {
+  const w = Math.floor(g);
+  return w === g ? at(g) : at(w) + (g - w) * (at(w + 1) - at(w));
+};
+
 export const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 export const lcm = (a: number, b: number) => (a * b) / gcd(a, b);
 export const zeros = (n: number) => new Array<number>(n).fill(0);
