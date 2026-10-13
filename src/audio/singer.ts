@@ -50,7 +50,7 @@ const PRE = 0.3;
 /** How much each style slides into and off notes. */
 const SLIDES: Record<Genre, number> = { rock: 0.6, pop: 0.4, funk: 0.3, hardrock: 0.5, metal: 0.3, grunge: 0.7, altmetal: 0.5 };
 
-interface Job { key: string; notes: SungNote[]; voice: VoiceType; timbre: Timbre; slides: number; variant: number }
+interface Job { key: string; notes: SungNote[]; voice: VoiceType; timbre: Timbre; slides: number; variant: number; energy: number }
 interface Line { first: number; key: string; notes: SungNote[]; t0: number; pan: number; gain: number; delay: number }
 
 /** The voices around the lead: where each sits (pan), how loud, how late (a double is a second take), which take. */
@@ -120,6 +120,8 @@ export class Singer {
     const byStep = new Map<number, Line[]>();
     const lag = lagFor(idea.seeds.vocal ?? idea.seeds.song);
     const slides = SLIDES[song.partGenres.strum];
+    // (the section's energy, 0-1: the singer's tone moves with it)
+    const energy = idea.section ? (idea.section.energy - 1) / 4 : 0.5;
     // the lead, its double (choruses) and ad-libs; or the backing vocals by role; each as its own lines
     const mine = ROLE_STREAMS[this.role];
     const streams: [Stream, NonNullable<Idea['vocal']>][] = [];
@@ -140,12 +142,12 @@ export class Singer {
         const t0 = at(L[0].step);
         // (as the singer feels it: laid back, long-short, slowing at the end; feel.ts)
         const notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lag, L[0].step + L.length * 7);
-        const key = `${voice}|${S.variant}|${timbre}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
+        const key = `${voice}|${S.variant}|${timbre}|${energy}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
         // started a little ahead of its first note, from the step that leaves room for the lead-in
         const first = Math.max(0, L[0].step - Math.ceil(PRE / six));
         const line: Line = { first, key, notes, t0, pan: S.pan, gain: S.gain, delay: S.delay };
         (byStep.get(first) ?? byStep.set(first, []).get(first)!).push(line);
-        if (!this.bufs.has(key)) this.queue.push({ key, notes, voice, timbre, slides: stream === 'lead' || stream === 'adlib' ? slides : slides * 0.4, variant: S.variant });
+        if (!this.bufs.has(key)) this.queue.push({ key, notes, voice, timbre, slides: stream === 'lead' || stream === 'adlib' ? slides : slides * 0.4, variant: S.variant, energy });
       }
     }
     const entry = { six, voice, timbre, byStep };
@@ -178,7 +180,7 @@ export class Singer {
     // (a genre's voice: the FOF singer; the clear voice and the backing singer: the formant synth, as they were)
     const v = (seed + job.variant * 13) % 97;
     const fof = job.timbre !== 'clear' && this.role === 'lead';
-    const pcm = fof ? renderFof(job.notes, fofFor(job.timbre as Genre, v, job.voice === 'high'), PRE)
+    const pcm = fof ? renderFof(job.notes, { ...fofFor(job.timbre as Genre, v, job.voice === 'high'), energy: job.energy }, PRE)
       : renderLine(job.notes, { high: job.voice === 'high', slides: job.slides, seed: v, person }, PRE);
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
     const buf = raw.createBuffer(1, pcm.length, fof ? FOF_RATE : SING_RATE);
@@ -200,7 +202,7 @@ export class Singer {
       // (not rendered yet: render it now, it's short)
       let buf = this.bufs.get(line.key);
       if (!buf) {
-        buf = this.render({ key: line.key, notes: line.notes, voice: entry.voice, timbre: entry.timbre, slides: SLIDES[idea.song.partGenres.strum], variant: Number(line.key.split('|')[1]) });
+        buf = this.render({ key: line.key, notes: line.notes, voice: entry.voice, timbre: entry.timbre, slides: SLIDES[idea.song.partGenres.strum], variant: Number(line.key.split('|')[1]), energy: Number(line.key.split('|')[3]) });
         this.bufs.set(line.key, buf);
       }
       const start = time + (line.t0 - PRE - at(g)) + line.delay;

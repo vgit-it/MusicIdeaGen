@@ -49,14 +49,16 @@ const verseLen = 2;
 const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math.min(n.vel, 0.7) : Math.max(n.vel, 0.85) })));
 
 const ROCK = VOICES.rock.fof;
+const BIG_DARK: Partial<FofVoice> = { tract: 0.9, bw: 1.3, body: 7, bright: -0.5, breath: -28, edge: 0.2, cover: 0.7, vib: 45, vibHz: 4.6, drift: 6, scoop: 0.6, sag: 0.5, brk: 66 };
+const DARK_NASAL: Partial<FofVoice> = { tract: 0.93, bw: 1.15, bright: 0.5, edge: 0.55, nasal: 0.5, cover: 0.3, vib: 15, vibHz: 6, breath: -29, scoop: 0.4, sag: 0.2, brk: 65 };
 const TAKES: [string, Partial<FofVoice>][] = [
   ['0-now', {}],
+  // the singer's tone moving with the moment (expression)
+  ['1-now-expressive', { expr: 1 }],
   // a big, dark baritone: a long throat, covered round vowels, a slow wide wobble, scoops and sags
-  ['1-big-dark', { tract: 0.9, bw: 1.3, body: 7, bright: -0.5, breath: -28, edge: 0.2, cover: 0.7, vib: 45, vibHz: 4.6, drift: 6, scoop: 0.6, sag: 0.5, brk: 66 }],
+  ['2-big-dark-expressive', { ...BIG_DARK, expr: 1 }],
   // dark and heavy but pinched: nasal, a metallic edge, a tight narrow vibrato, bends into notes
-  ['2-dark-nasal', { tract: 0.93, bw: 1.15, bright: 0.5, edge: 0.55, nasal: 0.5, cover: 0.3, vib: 15, vibHz: 6, breath: -29, scoop: 0.4, sag: 0.2, brk: 65 }],
-  // between the two
-  ['3-blend', { tract: 0.91, bw: 1.22, body: 6, bright: 0, edge: 0.4, nasal: 0.25, cover: 0.5, vib: 30, vibHz: 5.2, breath: -28, scoop: 0.5, sag: 0.35, brk: 66 }],
+  ['3-dark-nasal-expressive', { ...DARK_NASAL, expr: 1 }],
 ];
 
 function wav(samples: Float32Array, rate: number): Buffer {
@@ -75,7 +77,7 @@ const ffmpeg: string = createRequire(import.meta.url)('ffmpeg-static');
 for (const [name, change] of TAKES) {
   const v: FofVoice = { ...ROCK, ...change, seed: 17 };
   // (each line its own seed, as the app sings them; the verse's level under the chorus's)
-  const parts = sample.map((L, i) => renderFof(L, { ...v, seed: 17 + i }, PRE).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
+  const parts = sample.map((L, i) => renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
   const gap = Math.round(0.5 * FOF_RATE);
   const out = new Float32Array(parts.reduce((a, p) => a + p.length + gap, 0));
   let at = 0;
