@@ -170,14 +170,14 @@ export function fitToBand(idea: Idea, lo: number, hi: number): { moved: number; 
  * When the band pushes a chord change (an 8th or a 16th before the beat, with the kick or the bass on
  * it), the singer pushes with it: a held or stressed note starting on that beat comes in on the push.
  */
-export function pushWithBand(idea: Idea): number {
+export function pushWithBand(idea: Idea, unit = 1): number {
   const v = idea.vocal;
   if (!v?.length) return 0;
   const band = bandOf(idea);
   const H = harmonyOf(idea.song, idea.chords);
   let pushed = 0;
   for (const c of H.changes) {
-    if (band.beats.has(c) || !(band.kick[c] || band.bass[c])) continue;
+    if (band.beats.has(c) || !(band.kick[c] || band.bass[c]) || c % unit) continue;
     const beat = [c + 1, c + 2].find((g) => band.beats.has(g));
     if (beat === undefined) continue;
     const i = v.findIndex((n) => n.step === beat && n.syl.text !== '~');

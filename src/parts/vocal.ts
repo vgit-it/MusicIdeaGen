@@ -19,7 +19,7 @@ import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import type { Timbre } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
-import { LOW, PEAK, type Tune, type TuneNote, followTension, melodyDesc, melodyStyle, writeTune } from './melody';
+import { LOW, PEAK, type Tune, type TuneNote, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -144,8 +144,9 @@ function onEighths(tune: Tune): Tune {
 }
 
 /** A tune as sung: settled (no quick turns), spoken (speech rhythm), with room to breathe. */
-function shape(tune: Tune, rng: Rng, syncop: number): Tune {
-  const t = onEighths(speak(settle(tune), rng, syncop));
+function shape(tune: Tune, rng: Rng, syncop: number, grid = false): Tune {
+  // (the grid's rhythm has its own pushes, on the grid: no speech-rhythm pushes on top)
+  const t = onEighths(grid ? settle(tune) : speak(settle(tune), rng, syncop));
   breathe(t.notes);
   return t;
 }
@@ -212,6 +213,10 @@ export interface SingContext {
   seed: string;
   mood: Mood;
   genre: Genre;
+  /** Semitones higher the tunes are written (a higher singer: the Chester voice). */
+  lift?: number;
+  /** The rhythm on the metronome grid (docs/VOCAL-RHYTHM.md) instead of the classic speech rhythm. */
+  grid?: boolean;
 }
 
 /**
@@ -224,7 +229,8 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   const rng = new Rng(`${ctx.seed}-vocal`);
   const style: LyricStyle = { mood: ctx.mood, genre: ctx.genre };
   // the song's melody style: its mood's and genre's ways, with a little chance (docs/VOCAL.md, section 6)
-  const melody = melodyStyle(ctx.seed, ctx.mood, ctx.genre);
+  const melody = melodyStyle(ctx.seed, ctx.mood, ctx.genre, ctx.lift ?? 0);
+  if (ctx.grid) melody.grid = true;
   const first = sections.find((s) => s.section?.kind === 'verse') ?? sections[0];
   // the song's anchor: the verse centre, the key's root nearest G3 (the low voice's comfortable middle)
   const key = first.song.key;
@@ -246,7 +252,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     let b = blocks.get(as);
     if (!b) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
-      const tune = shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, melody, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}`), melody.singer.syncop);
+      const tune = shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, melody, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}`), melody.singer.syncop, melody.grid);
       const words = writeWords(new Rng(`${ctx.seed}-words-${as}`), tune, style, as === 'chorus' ? hook : null, base + 6);
       const t = idea.section?.tension ?? [];
       b = { tune, key: src.song.key, bars: src.song.bars.length, words, tag: as, ref: t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0.5 };
@@ -256,7 +262,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     const words = as === 'verse' && n > 1 ? writeWords(new Rng(`${ctx.seed}-words-verse-${n}`), b.tune, style, null, base + 6) : b.words;
     let shift = mod(idea.song.key - b.key + 6, 12) - 6;
     // (a key change that would take the tune out of reach: sung an octave down)
-    if (Math.max(...b.tune.notes.map((x) => x.midi)) + shift > PEAK + 2) shift -= 12;
+    if (Math.max(...b.tune.notes.map((x) => x.midi)) + shift > PEAK + melody.up + 2) shift -= 12;
     const blockSteps = b.tune.notes.length ? Math.max(...b.tune.notes.map((x) => x.step + x.len)) : 0;
     const blockLen = sections.find((s) => s.section?.kind === as)?.song.total ?? idea.song.total;
     const total = idea.song.total;
@@ -278,7 +284,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const held = [...v].reverse().find((x, k) => x.len >= 4 && x.syl.text !== '~' && v[v.length - k]?.syl.text !== '~');
       if (held) {
         const tones = chordTones(idea.song.key, idea.chords.timeline[idea.chords.chordIdx[held.step]].chord);
-        const top = PEAK + 1 + melody.top;
+        const top = PEAK + melody.up + 1 + melody.top;
         let m = held.midi + 3;
         while (m < top && !tones.includes(mod(m, 12))) m++;
         if (m <= top) { held.midi = m; held.belt = true; held.vel = 0.95; }
@@ -286,8 +292,9 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     }
     // every section's notes fitted to what its band plays (its own chords, its bass), pushed with the
     // band's pushes, and Guitar 2 out of the way of the words
-    const fit = fitToBand(idea, LOW[0] - 3, PEAK + 1 + melody.top);
-    const pushed = pushWithBand(idea);
+    const fit = fitToBand(idea, LOW[0] + melody.up - 3, PEAK + melody.up + 1 + melody.top);
+    // (on the grid: only pushes that land on it)
+    const pushed = pushWithBand(idea, melody.grid ? gridUnit(idea.song.bpm) : 1);
     const cleared = clearForSinger(idea);
     leaveRoom(idea);
     breathe(idea.vocal);
@@ -349,9 +356,9 @@ function leaveRoom(idea: Idea) {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood) {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false) {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
-  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum }, 0);
+  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid }, 0);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum), mood }, -1);
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;

@@ -1667,7 +1667,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
   const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
-  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum }, arc.climax);
+  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid' }, arc.climax);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
   for (const x of sections) x.vocalVoice = voice;
   // backing vocals: doubled choruses, harmonies (or oohs) by the mood, ad-libs over the climax

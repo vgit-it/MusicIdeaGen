@@ -379,7 +379,8 @@ function newIdea() {
     if (locks.size || hasPins(idea.opts.chords) || sectionPins) seeds.song = idea.seeds.song;
   }
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
-  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords }, seeds));
+  // (the vocal's rhythm and the Chester voice's higher tunes carry over to the new idea)
+  showIdea(generate({ genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalRhythm: idea?.opts.vocalRhythm }, seeds));
 }
 
 /** One part gets new seeds; everything else stays. Playback carries on from the same spot. */
@@ -574,11 +575,21 @@ addSel.onchange = () => {
 };
 
 const partsPanel = buildPartsPanel($('parts'), engine, () => {
+  // the Chester voice sings higher: its tunes rewritten 3 semitones up (in key; same seeds, only the vocal changes)
+  const lift = engine.vocalTimbre === 'scream' ? 3 : 0;
+  if (idea && (idea.opts.vocalLift ?? 0) !== lift) {
+    showIdea(generate({ ...idea.opts, vocalLift: lift || undefined }, idea.seeds), true);
+    return;
+  }
   // a layer added or removed: the strip labels, lanes, Keep / reroll and the link all follow
   if (track) drawTrack(track);
   render();
   lockPanel.update(idea);
   updateLink();
+}, {
+  // the vocal's rhythm: Classic or Grid (docs/VOCAL-RHYTHM.md); rewrites the vocal, same seeds, the band unchanged
+  get: () => (idea?.opts.vocalRhythm === 'grid' ? 'grid' : 'classic'),
+  set: (v) => { if (idea) showIdea(generate({ ...idea.opts, vocalRhythm: v === 'grid' ? 'grid' : undefined }, idea.seeds), true); },
 });
 
 // dev-only handle for debugging in the browser console

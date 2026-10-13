@@ -49,6 +49,8 @@ export interface MelodyStyle {
   bridgeLift: number;
   /** Semitones the whole melody moves; how wide it goes (x). */
   register: number;
+  /** Semitones a higher singer's range sits above the low voice's (its floor, ceiling and wail move with it). */
+  up: number;
   span: number;
   /** Chances: a leap (a 4th or more), a repeated note, a strong beat on a chord note. */
   leap: number;
@@ -80,6 +82,8 @@ export interface MelodyStyle {
   top: number;
   /** Their voice on Auto (a deep voice sings a little lower). */
   timbre: Timbre;
+  /** The rhythm written on the metronome grid (docs/VOCAL-RHYTHM.md), not the classic speech rhythm. */
+  grid?: boolean;
 }
 
 type W<T> = [T, number][];
@@ -192,14 +196,14 @@ const jitter = (rng: Rng, x: number, by = 0.15) => x * (1 - by + rng.next() * 2 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 /** A song's melody style: its mood's ways, leaned by its genre, a little chance, and maybe a twist. */
-export function melodyStyle(seed: string, mood: Mood, genre: Genre): MelodyStyle {
+export function melodyStyle(seed: string, mood: Mood, genre: Genre, lift = 0): MelodyStyle {
   const rng = new Rng(`${seed}-melody`);
   const M = MOOD_MELODY[mood], G = GENRE_MELODY[genre];
   const singer = pickSinger(seed, mood, genre);
   const s: MelodyStyle = {
     verse: rng.weighted(M.verse), chorus: rng.weighted(M.chorus), bridge: rng.weighted(M.bridge),
     verseForm: rng.weighted(VERSE_FORMS), chorusForm: rng.weighted(CHORUS_FORMS),
-    lift: rng.int(M.lift[0], M.lift[1]) + G.lift, bridgeLift: 0,
+    lift: rng.int(M.lift[0], M.lift[1]) + G.lift, bridgeLift: 0, up: 0,
     register: M.register + G.register, span: jitter(rng, M.span * G.span, 0.1),
     leap: clamp01(jitter(rng, M.leap)), leaps: M.leaps, repeat: clamp01(jitter(rng, M.repeat + G.repeat)), stable: clamp01(jitter(rng, M.stable, 0.08)),
     lean: clamp01(jitter(rng, M.lean, 0.3)), melisma: clamp01(M.melisma + G.melisma),
@@ -214,6 +218,9 @@ export function melodyStyle(seed: string, mood: Mood, genre: Genre): MelodyStyle
   s.register += singer.register;
   // (a genre's voice: its tunes written where it sits best, lower than the clear voice's)
   if (s.timbre !== 'clear') s.register -= VOICE_DOWN[s.timbre];
+  // (a higher singer chosen: the tunes written that much higher, in key)
+  s.register += lift;
+  s.up = lift;
   s.repeat = clamp01(s.repeat + singer.repeat);
   s.leap = clamp01(s.leap + singer.leap);
   s.busyVerse *= singer.density[0];
@@ -308,6 +315,93 @@ function spoken(rng: Rng, gap: number, k: number): number[] {
   if (T[gap]?.[k]) return rng.weighted(T[gap][k]);
   // (other gaps: bunched before the next stress, an 8th apart)
   return Array.from({ length: k }, (_, i) => gap - 2 * (k - i));
+}
+
+/** The grid's step for a song (docs/VOCAL-RHYTHM.md): 8ths; 16ths under about 90 bpm (Paul: the grid tightens in slow songs). */
+export const gridUnit = (bpm: number) => (bpm < 90 ? 1 : 2);
+
+/**
+ * A line's rhythm on the metronome grid (docs/VOCAL-RHYTHM.md; Paul: "akin to time signature
+ * metronome's rhythm", a word's syllables "on 1/8ths ... with a nice sounding rhythm"; "if the song has
+ * a different complex time signature, it may have to adapt to that"). The beats are the bar's own
+ * groups, as its metronome counts them (4/4: four quarters; 6/8: two dotted quarters; 7/8: 2+2+3 or
+ * another grouping; 7/4: 4+3+4+3 8ths), ranked like a metronome's accents: beat 1, the middle beat, the
+ * others. Each beat is cut into its 8ths (16ths in a slow song): two in a quarter, three in a dotted
+ * quarter, four in a half; a beat's own pattern of which ones are sung: its first nearly always on a
+ * strong beat, a quarter inside a long group often, the 8ths between by how busy the section is
+ * (verses busier, choruses open); now and then the last 8th before a strong beat sung as a push,
+ * carrying its stress over the beat. The first half-bar's patterns come back through the line (its
+ * motif) where the beats are the same size. Every new syllable on the grid. Verses start with a pickup
+ * or just after the downbeat now and then, choruses on 1; the last syllable lands on beat 1 or the
+ * middle beat of the last bar and holds to a beat before the next line (the breath).
+ */
+function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: SectionKind): LineRhythm {
+  const verse = kind === 'verse' || kind === 'prechorus';
+  const dens = o.busy * (verse ? 1.2 : 0.75);
+  // the beats: the bar's groups, by strength (3: the downbeat, 2: the middle beat, 1: the others)
+  const beats: { g: number; len: number; st: number }[] = [];
+  for (const b of bars) {
+    const gs = groupStarts(b.groups);
+    const mid = b.groups.length >= 4 && b.groups.length % 2 === 0 ? b.groups.length / 2 : -1;
+    gs.forEach((x, gi) => beats.push({ g: b.start + x, len: b.groups[gi], st: gi === 0 ? 3 : gi === mid ? 2 : 1 }));
+  }
+  const b1 = bars[0], bl = bars[bars.length - 1];
+  const lineEnd = bl.start + bl.len;
+  // the held last syllable: beat 1 or the middle beat of the last bar (a one-bar line: its middle beat, or its last beat)
+  const mids = beats.filter((x) => x.g >= bl.start && x.st === 2);
+  let hold = bars.length === 1 ? (mids[0]?.g ?? beats.filter((x) => x.g >= bl.start).slice(-1)[0].g)
+    : rng.chance(mids.length ? 0.6 : 1) ? bl.start : mids[0].g;
+  if (hold - 2 > b1.start + 2 && rng.chance(o.sync * 0.4)) hold -= 2;
+  const breath = bl.groups[bl.groups.length - 1];
+  const end = Math.max(hold + 2, lineEnd - breath);
+  // where the line starts, by section: verses a pickup or just after the downbeat now and then, choruses on 1
+  const start: Start = verse ? rng.weighted<Start>([['pickup', 2], ['after', 1.5], ['down', 1.5]]) : kind === 'chorus' || kind === 'outro' ? 'down' : o.start;
+  const onsets: { g: number; stress: boolean; quick?: boolean }[] = [];
+  if (start === 'pickup') { onsets.push({ g: b1.start - u, stress: false }); if (rng.chance(0.35)) onsets.push({ g: b1.start - 2 * u, stress: false }); }
+  // a slot's weight inside its beat: its first (the beat's own), a quarter inside a long group, an 8th, a 16th
+  const slotSt = (off: number, st: number) => (off === 0 ? st : off % 4 === 0 ? 1 : off % 2 === 0 ? 0.5 : 0.2);
+  const chanceOf = (w: number) => w >= 2 ? 0.95 : w >= 1 ? 0.8 : w >= 0.5
+    ? Math.min(0.85, Math.max(0.08, u === 1 ? 0.45 * dens : 0.15 + 0.35 * (dens - 0.6))) : Math.min(0.5, 0.12 * dens);
+  const pattern = (bt: { len: number; st: number }) => {
+    const p: boolean[] = [];
+    for (let off = 0; off < bt.len; off += u) {
+      const w = slotSt(off, bt.st);
+      p.push(rng.chance(off > 0 && w >= 1 ? 0.55 * dens : chanceOf(w)));
+    }
+    return p;
+  };
+  const before = beats.filter((x) => x.g < hold);
+  const half = Math.max(1, before.filter((x) => x.g < b1.start + b1.len / 2).length);
+  const motif: boolean[][] = [];
+  let tiedIn = false;
+  before.forEach((bt, i) => {
+    const m = motif[i % half];
+    let p = i >= half && m && m.length === Math.floor(bt.len / u) + (bt.len % u ? 1 : 0) && rng.chance(0.65) ? [...m] : pattern(bt);
+    if (i < half) motif.push([...p]);
+    // (a beat pushed into: its stress came early, nothing on the beat itself)
+    if (tiedIn) p[0] = false;
+    tiedIn = false;
+    // (back-heavy verses: nothing on the downbeat they start after)
+    if (i === 0 && start === 'after') p[0] = false;
+    const next = before[i + 1] ?? { g: hold, st: 3, len: 0 };
+    // (a push: the last 8th before a strong beat, now and then)
+    const lastSlot = p.length - 1;
+    if (lastSlot > 0 && next.st >= 2 && next.g === bt.g + bt.len && !p[lastSlot] && i > 0 && rng.chance(o.syncop * 0.25)) p[lastSlot] = true;
+    p.forEach((on, j) => {
+      if (!on) return;
+      const off = j * u;
+      const push = j === lastSlot && j > 0 && next.st >= 2 && next.g === bt.g + bt.len && rng.chance(0.5);
+      onsets.push({ g: bt.g + off, stress: push || slotSt(off, bt.st) >= 1 });
+      if (push) tiedIn = true;
+    });
+  });
+  // (a push straight into the held note: the held note itself comes on the 8th before it)
+  if (tiedIn) { const k = onsets.findIndex((x) => x.g === hold - u); if (k >= 0) { onsets.splice(k, 1); hold -= u; } }
+  const seen = new Set<number>();
+  const os = [...onsets.filter((x) => x.g < hold), { g: hold, stress: true }]
+    .filter((x) => (seen.has(x.g) ? false : (seen.add(x.g), true))).sort((a, b) => a.g - b.g)
+    .map((x) => (x.g % 2 ? { ...x, quick: true } : x));
+  return { onsets: os, end };
 }
 
 /** A line's rhythm: onsets (absolute steps) with stress (`quick`: a light syllable on a 16th, see `fine`), and where its last (held) note ends. */
@@ -476,9 +570,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   const scale = scaleFor(song, kind);
   const big = kind === 'chorus' || kind === 'outro';
   const lift = big ? style.lift : kind === 'prechorus' ? Math.round(style.lift / 2) : kind === 'bridge' ? style.bridgeLift : 0;
-  const center = Math.max(LOW[0] + 2, Math.min(PEAK - 5, base + G.center + style.register + lift));
+  const center = Math.max(LOW[0] + style.up + 2, Math.min(PEAK + style.up - 5, base + G.center + style.register + lift));
   const span = Math.max(5, Math.round(P.span * G.span * style.span));
-  const lo = Math.max(LOW[0] - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK - 2, center + Math.floor(span / 2));
+  const lo = Math.max(LOW[0] + style.up - 3, center - Math.ceil(span / 2)), hi = Math.min(PEAK + style.up - 2, center + Math.floor(span / 2));
   const pool: number[] = [];
   for (let m = lo; m <= hi; m++) if (scale.includes(mod(m - key, 12))) pool.push(m);
   const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(Math.max(0, g), total - 1)]].chord;
@@ -523,7 +617,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   // new ending); even lines follow the style's form (one-bar lines in pairs: a call, then its answer, the
   // same start with a new ending)
   const even = plan.every((x) => x === plan[0]);
-  const styleForm = kind === 'verse' ? style.verseForm : big || kind === 'bridge' ? style.chorusForm : 'AAAB';
+  // (the grid: lines in pairs, 1 and 3 one rhythm, 2 and 4 another, or A A B A; Paul's pick)
+  const styleForm = style.grid && (kind === 'verse' || big) ? rng.weighted([['ABAB', 0.7], ['AABA', 0.3]])
+    : kind === 'verse' ? style.verseForm : big || kind === 'bridge' ? style.chorusForm : 'AAAB';
   let form = '';
   if (even && plan[0] === 1) for (let li = 0; li < lines.length; li++) { const x = styleForm[(li >> 1) % styleForm.length]; form += li % 2 ? x.toLowerCase() : x; }
   else if (even) for (let li = 0; li < lines.length; li++) form += styleForm[li % styleForm.length];
@@ -568,12 +664,15 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           keep = rh.onsets.length;
         } else {
           const head = headOf(prev.rh, prev.split).map((o) => ({ ...o, g: o.g + off }));
-          const fresh = phraseRhythm(rng, L, opts('down', busy));
+          const fresh = style.grid ? gridRhythm(rng, L, opts('down', busy), gridUnit(song.bpm), kind) : phraseRhythm(rng, L, opts('down', busy));
           const tail = fresh.onsets.filter((o) => o.g >= split);
           rh = tail.length ? { onsets: [...head, ...tail], end: fresh.end } : { onsets: prev.rh.onsets.map((o) => ({ ...o, g: o.g + off })), end: prev.rh.end + off };
           keep = head.length;
         }
-      } else rh = phraseRhythm(rng, L, opts(li === 0 && start === 'pickup' ? 'down' : start, busy * (kind === 'prechorus' && li === last ? 1.25 : 1)));
+      } else {
+        const o = opts(li === 0 && start === 'pickup' ? 'down' : start, busy * (kind === 'prechorus' && li === last ? 1.25 : 1));
+        rh = style.grid ? gridRhythm(rng, L, o, gridUnit(song.bpm), kind) : phraseRhythm(rng, L, o);
+      }
 
       // the line's anchor: the centre (answer lines a step lower in verses; a call-and-response chorus
       // answers well below), climbing by sequence through a pre-chorus
@@ -699,7 +798,7 @@ function singable(notes: TuneNote[], pool: number[]) {
 }
 
 /** The highest a song's wails go (the climax gets a little more). */
-export const wailTop = (style: MelodyStyle) => PEAK - 2 + style.top;
+export const wailTop = (style: MelodyStyle) => PEAK + style.up - 2 + style.top;
 
 /**
  * Wails: a big line (chorus, bridge, outro; now and then a pre-chorus's last line) peaking on a high
@@ -785,7 +884,7 @@ function ornament(rng: Rng, notes: TuneNote[], style: MelodyStyle, pool: number[
     if (n.len >= 6 && rng.chance(singer.runs * where * slow * (lineEnd ? 1 : 0.4) * (n.belt ? 1.3 : 1))) {
       const kind = rng.weighted(singer.runKinds);
       const want = rng.int(singer.runLen[0], singer.runLen[1]);
-      const inRange = (m: number) => m >= LOW[0] - 3 && m <= wailTop(style) + 1;
+      const inRange = (m: number) => m >= LOW[0] + style.up - 3 && m <= wailTop(style) + 1;
       if (kind === 'tail') {
         // the note held for at least half its length, then down off its end a unit a note (the last two
         // units), no deeper than the singer goes
@@ -889,7 +988,7 @@ export function followTension(idea: Idea, ref: number, mood: Mood, style: Melody
       for (let s = 2; s <= 5; s++) {
         const m = n.midi + (d > 0 ? s : -s);
         // (the song's top notes kept for its climax)
-        if (!tones.includes(mod(m, 12)) || m > wailTop(style) || m < LOW[0] - 3) continue;
+        if (!tones.includes(mod(m, 12)) || m > wailTop(style) || m < LOW[0] + style.up - 3) continue;
         n.midi = m;
         if (d > 0) out.up++; else out.down++;
         break;
@@ -904,7 +1003,7 @@ export function followTension(idea: Idea, ref: number, mood: Mood, style: Melody
       const cont = (coda: Syllable['coda']): Syllable => ({ onset: [], vowel: n.syl.vowel, coda, stress: false, text: '~', wordStart: false });
       v.splice(last, 1,
         { ...n, len: 4, syl: { ...n.syl, coda: [] } },
-        { ...n, step: n.step + 4, len: 2, midi: Math.min(up, PEAK), start: false, syl: cont([]) },
+        { ...n, step: n.step + 4, len: 2, midi: Math.min(up, PEAK + style.up), start: false, syl: cont([]) },
         { ...n, step: n.step + 6, len: n.len - 6, start: false, syl: cont(n.syl.coda) });
       out.turns++;
     }
