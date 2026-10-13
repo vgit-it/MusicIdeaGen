@@ -5,15 +5,19 @@
 import { generate } from '../src/generator';
 import type { Genre } from '../src/genres';
 import { buildTrack, defaultTrackOptions } from '../src/track';
+import { chordTones } from '../src/parts/guitar2';
 
 const GENRES: Genre[] = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'];
 const N = Number(process.env.N ?? 6);
 const ONLY = process.env.MODE;
-for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }], ['shaped', { vocalMelody: 'shaped' }], ['grid+shaped', { vocalRhythm: 'grid', vocalMelody: 'shaped' }]] as const) {
+for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }], ['shaped', { vocalMelody: 'shaped' }], ['grid+shaped', { vocalRhythm: 'grid', vocalMelody: 'shaped' }], ['first', { vocalMelody: 'first' }], ['grid+first', { vocalRhythm: 'grid', vocalMelody: 'first' }]] as const) {
   if (ONLY && ONLY !== label) continue;
   const lineRates: number[] = [];
   let held = 0, heldTime = 0, voiced = 0, highs = 0, highShort = 0, highFall = 0, odd = 0, qrun = 0, secs = 0, syls = 0, same = 0, run3 = 0, lines = 0, flatLines = 0;
   const lens: Record<number, number> = {};
+  // pitch measures (docs/VOCAL-FIRST.md): strong notes on chord notes, off-chord ones resolving by step, steps and leaps, gap-fill, 4-note shapes heard across songs
+  let strongN = 0, strongOn = 0, offRes = 0, ints = 0, steps = 0, leaps = 0, leapN = 0, filled = 0;
+  const shapes = new Map<string, Set<string>>();
   let sample = '';
   for (const g of GENRES) for (let i = 0; i < N; i++) {
     const s = `${g}-${i}`;
@@ -45,6 +49,23 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
           if (k && on[k].midi === on[k - 1].midi) same++;
           if (k > 1 && on[k].midi === on[k - 1].midi && on[k - 1].midi === on[k - 2].midi) run3++;
         }
+        { const tonesAt = (g: number) => chordTones(sec.song.key, sec.chords.timeline[sec.chords.chordIdx[Math.min(sec.song.total - 1, Math.max(0, g))]].chord);
+          l.forEach((n, k) => {
+            if (n.syl.text === '~' || !(n.syl.stress || n.len >= 4)) return;
+            strongN++;
+            if (tonesAt(n.step).includes(((n.midi % 12) + 12) % 12)) { strongOn++; return; }
+            const nx = l[k + 1];
+            if (nx && Math.abs(nx.midi - n.midi) <= 2 && nx.midi !== n.midi && tonesAt(nx.step).includes(((nx.midi % 12) + 12) % 12)) offRes++;
+          });
+          const on4 = l.filter((n, k) => k === 0 || n.syl !== l[k - 1].syl);
+          for (let k = 1; k < on4.length; k++) {
+            const d = on4[k].midi - on4[k - 1].midi;
+            if (!d) continue;
+            ints++;
+            if (Math.abs(d) <= 2) steps++;
+            if (Math.abs(d) >= 5) { leaps++; const e = on4[k + 1] ? on4[k + 1].midi - on4[k].midi : 0; if (on4[k + 1]) { leapN++; if (e && Math.sign(e) !== Math.sign(d)) filled++; } }
+          }
+          for (let k = 3; k < on4.length; k++) { const key = [1, 2, 3].map((j) => on4[k - 3 + j].midi - on4[k - 3 + j - 1].midi).join(','); if (!shapes.has(key)) shapes.set(key, new Set()); shapes.get(key)!.add(s); } }
         if (!sample && sec.section?.kind === 'verse' && g === 'pop' && l.length > 5) sample = l.map((n) => `${n.midi}@${n.step}/${n.len}`).join(' ');
       }
     }
@@ -53,6 +74,9 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   const top = Object.entries(lens).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([k, c]) => `${k}:${pct(c)}`).join(' ');
   console.log(`${label.padEnd(12)} syl/s ${(syls / secs).toFixed(2)}  off 8ths(fast songs) ${pct(odd)}  in 4+ quarters ${pct(qrun)}  same-as-prev ${pct(same)}  3-in-a-row ${pct(run3)}  one-note lines ${flatLines}/${lines}  gaps between syllables (16ths) ${top}`);
   console.log(`   held (half a bar+): ${(100 * held / syls).toFixed(1)}% of syllables, ${(100 * heldTime / voiced).toFixed(0)}% of sung time; high notes (belts, jumps up to the top, as written) ${highs}: ${highShort} under half a bar, ${highFall} falling off`);
+  { const songs = GENRES.length * N; const common = [...shapes.values()].filter((x) => x.size >= songs / 3).length;
+    const pc = (a: number, b: number) => `${Math.round((100 * a) / Math.max(1, b))}%`;
+    console.log(`   strong notes on chord notes ${pc(strongOn, strongN)}, off-chord ones resolving by step ${pc(offRes, strongN - strongOn)}; steps ${pc(steps, ints)}, leaps ${pc(leaps, ints)}, gap-fill after leaps ${pc(filled, leapN)}; 4-note shapes ${shapes.size} (in a third of the songs or more: ${common})`); }
   lineRates.sort((a, b) => a - b); console.log(`   line syl/s: median ${lineRates[lineRates.length >> 1].toFixed(1)}, 90th ${lineRates[Math.floor(lineRates.length * 0.9)].toFixed(1)}, max ${lineRates[lineRates.length - 1].toFixed(1)}`);
   if (sample) console.log('   pop verse line:', sample);
 }

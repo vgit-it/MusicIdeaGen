@@ -25,6 +25,7 @@ import { MINORISH, chordTones } from './guitar2';
 import { type Band, bandScore, harmonyOf } from './fit';
 import type { Syllable } from './lyrics';
 import type { MoveId } from './moves';
+import { type FirstStyle, spineAt } from './first';
 import { type RunKind, type Singer, type Timbre, VOICE_DOWN, phrasePlan, pickSinger, pickTimbre } from './singers';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -92,6 +93,8 @@ export interface MelodyStyle {
   grid?: boolean;
   /** The pitches written the shaped way (docs/VOCAL-MELODY.md): a chord-note path, a motif on it, by genre. */
   shaped?: boolean;
+  /** Melody first (docs/VOCAL-FIRST.md, src/parts/first.ts): the tune's own spine and idea, fitted to the chords last (on shaped's range and moves). */
+  first?: FirstStyle;
   /** How far the chorus jumps above the verse, shaped: subtle, clear or dramatic (the song's pick). */
   contrast?: 'subtle' | 'clear' | 'dramatic';
   /** Shaped: the song's signature moves (src/parts/moves.ts, docs/VOCAL-MOVES.md). */
@@ -627,7 +630,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   const inScale = (m: number) => scale.includes(mod(m - key, 12));
   const count = () => { let c = 0; for (let m = lo; m <= hi; m++) if (inScale(m)) c++; return c; };
   const next = (m: number, d: number) => { do m += d; while (!inScale(m)); return m; };
-  for (let k = 0; k < 24 && count() < (big ? 7 : 6); k++) {
+  // (melody first: two more, room for the tune's own line: its idea's leap and the spine's travel)
+  for (let k = 0; k < 24 && count() < (big ? 7 : 6) + (style.first ? 2 : 0); k++) {
     if (k % 2 === 0 && next(hi, 1) <= PEAK + off) hi = next(hi, 1);
     else if (next(lo, -1) >= FLOOR + style.up) lo = next(lo, -1);
     else if (next(hi, 1) <= PEAK + off) hi = next(hi, 1);
@@ -806,6 +810,210 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   };
   const lineMotif = motifs;
 
+  // Melody first (docs/VOCAL-FIRST.md): the section's spine, the song's idea, now and then a loop
+  const fs = style.first;
+  const spine = fs ? fs.spine[kind === 'outro' ? 'chorus' : kind === 'prechorus' || kind === 'bridge' || kind === 'chorus' ? kind : 'verse'] : 'arch';
+  const home = clampIdx(nearestIdx(center));
+  const spineX = big ? 1.2 : 1;
+  const spineIdx = (t: number) => clampIdx(home + Math.round(spineAt(spine, t) * spineX));
+  // (scale steps a leap of so many semitones spans, in this section's scale)
+  const leapSteps = (semis: number) => Math.sign(semis) * Math.max(2, Math.round((Math.abs(semis) * scale.length) / 12));
+  /** The idea from pool index `from` (inverted: the answer, its leap the other way), kept inside the range. */
+  const realize = (from: number, inv: boolean): number[] => {
+    const a = realizeAs(from, inv), b = realizeAs(from, !inv);
+    // (an answer that won't fit the range its way round leaps the idea's way instead: moved whole, it started far from the spine)
+    return Math.abs(a[0] - from) <= 1 || Math.abs(b[0] - from) >= Math.abs(a[0] - from) ? a : b;
+  };
+  const realizeAs = (from: number, inv: boolean, steps = pool.length) => {
+    const f = inv ? -1 : 1;
+    const out = [from];
+    let cur = from;
+    for (const d of fs!.idea.pre) out.push((cur += f * d));
+    out.push((cur += f * leapSteps(fs!.idea.sig)));
+    for (const d of fs!.idea.post) out.push((cur += f * d));
+    const top = Math.max(...out), bot = Math.min(...out);
+    const shift = top > steps - 1 ? steps - 1 - top : bot < 0 ? -bot : 0;
+    return out.map((x) => x + shift);
+  };
+  // the loop (rock genres, now and then: Temperley's melodic-harmonic divorce): the idea on the pentatonic,
+  // the same notes every bar whatever the chord
+  const looping = !!fs && (kind === 'verse' || big) && rng.chance(fs.loop);
+  const pent = pool.map((m, i) => [m, i] as const).filter(([m]) => (minorish ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9]).includes(mod(m - key, 12))).map(([, i]) => i);
+  // (the cell in pentatonic steps, from the root or 5th nearest the centre, kept inside the range)
+  const loopCell: number[] = [0];
+  if (looping) {
+    const ps = (semis: number) => Math.sign(semis) * Math.max(1, Math.round((Math.abs(semis) * 5) / 12));
+    let cur = 0;
+    for (const d of fs.idea.pre) loopCell.push((cur += d));
+    loopCell.push((cur += ps(fs.idea.sig)));
+    for (const d of fs.idea.post) loopCell.push((cur += d));
+  }
+  const loopFrom = (() => {
+    if (!looping || !pent.length) return 0;
+    let f = pent.reduce((b, i, k) => ([0, 7].includes(mod(pool[i] - key, 12)) && (b < 0 || Math.abs(i - home) < Math.abs(pent[b] - home)) ? k : b), -1);
+    if (f < 0) f = 0;
+    const top = Math.max(...loopCell), bot = Math.min(...loopCell);
+    return Math.max(-bot, Math.min(pent.length - 1 - top, f));
+  })();
+  // (a real clash: a half step against a chord note, or a tritone off the root)
+  const grindsAt = (m: number, g: number) => !isTone(m, g) && (tonesAt(g).some((c) => [1, 11].includes(mod(m - c, 12))) || mod(m - chordPc(key, chordAt(g)), 12) === 6);
+
+  /**
+   * A line's pitches, melody first (docs/VOCAL-FIRST.md): its head the song's idea (an answer line: the idea
+   * inverted; a repeated line: its motif, moved to where the spine now is), then by step toward the spine's
+   * next note (gap-fill after a leap, a neighbour when there already); only then fitted to the chords: the
+   * strong notes, the first and the last moved to the nearest chord note (keeping the line's direction),
+   * now and then a 9th or 4th left as a colour; the line's end closed on the root, or open.
+   */
+  const firstLine = (rng: Rng, rh: LineRhythm, keep: number, li: number) => {
+    const n = rh.onsets.length;
+    const lens = rh.onsets.map((o, oi) => (oi === n - 1 ? rh.end : rh.onsets[oi + 1].g) - o.g);
+    const idxs: number[] = new Array(n).fill(0);
+    const colour: boolean[] = new Array(n).fill(false);
+    const nl = lines.length;
+    const s0 = spineIdx(li / nl);
+    // (a closed section's last line comes home: its spine's end, the root nearest it)
+    let goal = spineIdx((li + 1) / nl);
+    const closed = li === last || (style.ends === 'fall' && li % 2 === 1);
+    const prevM = lineMotif.get(form[li].toUpperCase());
+    if (looping) {
+      // the loop: the cell from the bar's first note, the same pitches every bar
+      let k = 0, bar = -1;
+      rh.onsets.forEach((o, oi) => {
+        const b = bars.findIndex((x) => o.g >= x.start && o.g < x.start + x.len);
+        if (b !== bar) { bar = b; k = 0; }
+        const pi = Math.max(0, Math.min(pent.length - 1, loopFrom + loopCell[k++ % loopCell.length]));
+        idxs[oi] = pent[pi] ?? home;
+      });
+    } else {
+      // the head: the motif moved to the spine, or the idea (an answer: inverted)
+      const letter = 'ABCDEFGH'.indexOf(form[li].toUpperCase());
+      const head = prevM && keep ? prevM.shape.slice(0, Math.min(keep, n)).map((x) => s0 + x) : realize(s0, letter % 2 === 1).slice(0, Math.max(1, n - 1));
+      head.forEach((x, k) => { idxs[k] = clampIdx(x); });
+      // the rest: by step toward the spine's next note (Narmour: steps keep going, a leap turns back)
+      let cur = idxs[head.length - 1], same = 0, lastTurn = 0;
+      let leapBack = head.length >= 2 && Math.abs(idxs[head.length - 1] - idxs[head.length - 2]) >= 2 && !fs!.idea.post.length ? -Math.sign(idxs[head.length - 1] - idxs[head.length - 2]) : 0;
+      for (let oi = head.length; oi < n; oi++) {
+        const left = n - 1 - oi;
+        const dist = goal - cur;
+        let move: number;
+        if (leapBack) { move = leapBack; leapBack = 0; }
+        else if (Math.abs(dist) > left + 1) move = Math.sign(dist) * 2;
+        else if (dist && (left === 0 || rng.chance(0.75))) move = Math.sign(dist);
+        else if (!dist && left > 0) {
+          // (there already: a neighbour above or below and back, never the same turn twice, no long one-note runs)
+          const t = same < 1 && rng.chance(0.35) ? 0 : lastTurn > 0 ? -1 : lastTurn < 0 ? 1 : rng.pick([1, -1]);
+          move = t; if (t) lastTurn = t;
+        } else move = same >= 1 ? (rng.pick([1, -1])) : 0;
+        if (oi === n - 1) move = goal - cur;
+        // (against the range's edge: the other way, not the same note again)
+        else if (move && clampIdx(cur + move) === cur) move = -move;
+        const nx = clampIdx(cur + move);
+        same = nx === cur ? same + 1 : 0;
+        cur = nx;
+        idxs[oi] = cur;
+      }
+    }
+    // fitted to the chords, last: the strong notes (and the first, the long ones) on chord notes, moving the
+    // way the line moves; now and then a 9th or 4th on a strong beat left as a colour (pop, dreamy songs)
+    for (let oi = 0; oi < n; oi++) {
+      const o = rh.onsets[oi], m = pool[idxs[oi]], isLast = oi === n - 1;
+      const strong = o.stress || lens[oi] >= 4 || oi === 0 || isLast;
+      if (looping) {
+        // (a loop keeps its notes: only real clashes on held or strong notes move, to the nearest pentatonic note that doesn't grind)
+        if (!isLast && (strong || lens[oi] >= 3) && grindsAt(m, o.g)) {
+          const alt = [1, -1, 2, -2].map((d) => clampIdx(idxs[oi] + d)).find((j) => !grindsAt(pool[j], o.g));
+          if (alt !== undefined) idxs[oi] = alt;
+        }
+        if (!isTone(pool[idxs[oi]], o.g)) colour[oi] = true;
+        if (!isLast) continue;
+      }
+      if (!strong) { if (lens[oi] >= 4 && rubs(m, o.g)) idxs[oi] = clampIdx(idxs[oi] - 1); continue; }
+      if (isLast) {
+        // the ending: closed on the root (the key's, if the chord has it), open on another chord note
+        const tones = tonesAt(o.g);
+        const homePc = tones.includes(mod(key, 12)) ? mod(key, 12) : tones[0];
+        let best = idxs[oi], bc = Infinity;
+        pool.forEach((x, j) => {
+          if (!tones.includes(mod(x, 12))) return;
+          const c = Math.abs(j - idxs[oi]) + (closed ? (mod(x, 12) === homePc ? -1.2 : 0.5) : mod(x, 12) === mod(key, 12) && tones.length >= 3 ? 1.5 : 0);
+          if (c < bc) { bc = c; best = j; }
+        });
+        idxs[oi] = best;
+        continue;
+      }
+      // (over a power chord, two notes only, any scale note that doesn't grind will do: snapped to its two, the line sat on one)
+      if (isTone(m, o.g) || (tonesAt(o.g).length < 3 && !grindsAt(m, o.g))) continue;
+      const deg = mod(m - chordPc(key, chordAt(o.g)), 12);
+      if (fs!.colour && [2, 5].includes(deg) && lens[oi] <= 6 && !grindsAt(m, o.g) && rng.chance(fs!.colour)) { colour[oi] = true; continue; }
+      const up = oi > 0 && idxs[oi] >= idxs[oi - 1];
+      const order = up ? [1, -1, 2, -2] : [-1, 1, -2, 2];
+      const prev = oi > 0 ? idxs[oi - 1] : -1;
+      const cands = [...order, 3, -3].map((d) => idxs[oi] + d).filter((j) => j >= 0 && j < pool.length && isTone(pool[j], o.g));
+      // (the chord note that isn't the last note again; only that one near: a passing note that doesn't grind stays, the line moving on)
+      const fresh = cands.find((j) => j !== prev && Math.abs(j - idxs[oi]) <= 2);
+      if (fresh !== undefined) idxs[oi] = fresh;
+      else if (grindsAt(m, o.g) || !o.stress) idxs[oi] = cands[0] ?? idxs[oi];
+    }
+    // one clear high point: a later weak note matching the line's top steps down
+    const top = Math.max(...idxs);
+    let seenTop = false;
+    idxs.forEach((x, k) => { if (x !== top) return; if (seenTop && !rh.onsets[k].stress && k !== n - 1 && !colour[k]) idxs[k] = clampIdx(x - 1); seenTop = true; });
+    const lineNotes: TuneNote[] = rh.onsets.map((o, oi) => ({ step: o.g, len: Math.max(1, lens[oi]), midi: pool[idxs[oi]], stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}), ...(colour[oi] ? { colour: true } : {}) }));
+    return { rh, shape: idxs.map((x) => x - s0), alt: new Array(n).fill(0), lineNotes };
+  };
+
+  /**
+   * Planned clashes (melody first, by mood; docs/VOCAL-FIRST.md): on some strong chord notes, a note against
+   * the chord that steps into it: from a step above (a sigh: 4-3, 9-8, 6-5), held over from the last chord,
+   * from a half step below (a lean), or a 9th left hanging. A long note sings both on one vowel; a short
+   * one leans, the next note resolving it. Marked `colour`: fitting to the band leaves them be.
+   */
+  const planClashes = (ns: TuneNote[]) => {
+    const full = SCALES[mode].map((x) => mod(key + x, 12));
+    const above = (m: number) => (full.includes(mod(m + 1, 12)) ? m + 1 : m + 2);
+    const rootOf = (g: number) => mod(chordPc(key, chordAt(g)), 12);
+    const nearPc = (m: number, pc: number) => { for (let d = 0; d < 7; d++) for (const x of [m - d, m + d]) if (mod(x, 12) === mod(pc, 12)) return x; return m; };
+    const harsh = fs!.kinds.some(([k]) => k === 'lean');
+    const extra: TuneNote[] = [];
+    const byLine: TuneNote[][] = [];
+    for (const n of ns) if (!n.tie) (byLine[n.line] ??= []).push(n);
+    byLine.forEach((L) => {
+      if (!L?.length) return;
+      // (the mood's rate is for a two-bar line: a one-bar line about half as likely)
+      const barsIn = (L[L.length - 1].step + L[L.length - 1].len - L[0].step) / 16;
+      let count = Math.min(2, Math.floor(fs!.clash * Math.max(0.5, Math.min(1.5, barsIn / 2)) + rng.next()));
+      const cands = rng.shuffle(L.filter((n, k) => (n.stress || n.len >= 3) && !n.colour && isTone(n.midi, n.step) && (k < L.length - 1 || n.len >= 6)));
+      for (const n of cands) {
+        if (count <= 0) break;
+        const k = L.indexOf(n), last = k === L.length - 1, prev = L[k - 1], next = L[k + 1];
+        let kind = rng.weighted(fs!.kinds);
+        const res = n.midi;
+        if (kind === 'ninth') {
+          if (last) kind = 'sigh';
+          else { const m = nearPc(res, rootOf(n.step) + 2); if (Math.abs(m - res) <= 2) { n.midi = m; n.colour = true; count--; } continue; }
+        }
+        let clash = kind === 'lean' ? res - 1 : above(res);
+        if (kind === 'held') {
+          if (prev && chordAt(prev.step) !== chordAt(n.step) && [1, 2].includes(prev.midi - res)) clash = prev.midi;
+          else clash = above(res);
+        }
+        // (a half step above the chord's root, the flat 9th, only in the dark and tense songs: elsewhere it sounds wrong, not sad)
+        if (mod(clash - rootOf(n.step), 12) === 1 && !harsh) continue;
+        // (a long note: the clash held a quarter, then the resolution on its vowel: a quicker turn is merged away, settle() in vocal.ts)
+        if (n.len >= 6) {
+          const h = Math.max(4, Math.floor(n.len / 2));
+          extra.push({ step: n.step + h, len: n.len - h, midi: res, stress: false, start: false, line: n.line, tie: true });
+          n.len = h; n.midi = clash; n.colour = true; count--;
+        } else if (next && next.step - n.step <= 4 && isTone(res, next.step) && !next.colour) {
+          n.midi = clash; n.colour = true; next.midi = res; count--;
+        }
+      }
+    });
+    ns.push(...extra);
+    ns.sort((a, b) => a.step - b.step || (a.tie ? 1 : 0) - (b.tie ? 1 : 0));
+  };
+
   lines.forEach((L, li) => {
     const letter = form[li];
     const name = letter.toUpperCase();
@@ -849,6 +1057,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       // answers well below), climbing by sequence through a pre-chorus
       const call = style.twist === 'call' && big && li % 2 === 1 ? -4 : 0;
       const anchor = clampIdx(nearestIdx(center + (kind === 'verse' && li % 2 === 1 ? -1 : 0)) + seq * li + call);
+      if (style.first) return firstLine(rng, rh, keep, li);
       if (style.shaped) return shapedLine(rng, rh, anchor, keep, li);
       const n = rh.onsets.length;
       const shape: number[] = [];
@@ -1082,6 +1291,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const nx = out[i + 1];
     if (nx && nx.line === n.line && n.len >= 2 && n.len < 6) n.len = Math.max(1, Math.round(n.len * style.legato));
   });
+  if (fs) planClashes(out);
   if (style.shaped) applyMoves(out);
   wail(rng, out, form, kind, style, tonesAt);
   singable(out, pool);

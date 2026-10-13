@@ -45,8 +45,8 @@ export interface GenOptions {
   vocalSinger?: HighVoice;
   /** How the vocal's rhythm is written: classic (speech rhythm, the default) or on the metronome grid (docs/VOCAL-RHYTHM.md). */
   vocalRhythm?: 'grid';
-  /** How the vocal's pitches are written: classic (the default) or shaped (docs/VOCAL-MELODY.md). */
-  vocalMelody?: 'shaped';
+  /** How the vocal's pitches are written: classic (the default), shaped (docs/VOCAL-MELODY.md) or melody first (docs/VOCAL-FIRST.md). */
+  vocalMelody?: 'shaped' | 'first';
   /** Shaped: one signature move chosen (src/parts/moves.ts); left out: each song its own, by genre. */
   vocalMove?: string;
   /** How the singer carries the energy (src/parts/energy.ts): a style chosen, 'off' (as before), or left out: Auto. */

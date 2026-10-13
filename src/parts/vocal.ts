@@ -21,6 +21,7 @@ import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import { HIGH_VOICES, type HighVoice, type Timbre } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
+import { firstDesc, firstStyle } from './first';
 import { FLOOR, PEAK, type Tune, type TuneNote, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
@@ -255,6 +256,8 @@ export interface SingContext {
   grid?: boolean;
   /** The pitches written the shaped way (docs/VOCAL-MELODY.md) instead of the classic way. */
   shaped?: boolean;
+  /** Melody first (docs/VOCAL-FIRST.md; on top of shaped's range and moves): the tune's own spine and idea, fitted to the chords last. */
+  first?: boolean;
   /** Shaped: the one signature move chosen in the menu (left out: the song's own, by genre). */
   move?: MoveId;
   /** How the singer carries the energy (src/parts/energy.ts): a style chosen, 'off', or left out: Auto. */
@@ -277,10 +280,13 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   if (ctx.shaped) {
     const cr = new Rng(`${ctx.seed}-contrast`);
     melody.shaped = true;
+    if (ctx.first) melody.first = firstStyle(ctx.seed, ctx.mood, ctx.genre);
     melody.contrast = cr.pick(['subtle', 'clear', 'dramatic'] as const);
     melody.lift = melody.contrast === 'subtle' ? cr.int(2, 3) : melody.contrast === 'clear' ? cr.int(4, 5) : cr.int(7, 9);
     // the song's signature moves (docs/VOCAL-MOVES.md); two of them set its whole shape
     melody.moves = pickMoves(ctx.seed, ctx.genre, ctx.move);
+    // (melody first: Auto keeps the moves that colour the tune, not the ones that reshape it, so the tune keeps its own line)
+    if (ctx.first && !ctx.move) melody.moves = melody.moves.filter((m) => !['pedal', 'monotone', 'sequence', 'upupdown', 'flip'].includes(m));
     if (melody.moves.includes('flip')) { const up = cr.chance(0.7); melody.verse = up ? 'fall' : 'climb'; melody.chorus = up ? 'rise' : 'tumble'; }
     if (melody.moves.includes('belt')) { melody.contrast = 'dramatic'; melody.lift = cr.int(7, 9); }
   }
@@ -374,6 +380,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       if (!told) {
         idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`);
         if (es) idea.notes.push(`Energy (${ctx.energy ? 'chosen' : 'this song\'s'}): ${ENERGY[es].label}, like ${ENERGY[es].like}: ${ENERGY[es].desc}`);
+        if (melody.first) idea.notes.push(`Melody: ${firstDesc(melody.first)}`);
         if (melody.moves?.length) idea.notes.push(`Melody moves (${ctx.move ? 'chosen' : 'this song\'s signature'}): ${movesDesc(melody.moves)}`);
         told = true;
       }
@@ -452,9 +459,9 @@ function leaveRoom(idea: Idea) {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, shaped = false, move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off') {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, melody?: 'shaped' | 'first', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off') {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
-  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped, move, high, energy }, 0);
+  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped: !!melody, first: melody === 'first', move, high, energy }, 0);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum, fake.vocalEnergy), mood, energy: fake.vocalEnergy }, -1);
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;
