@@ -133,6 +133,12 @@ export interface FofVoice {
    * sections); and each phrase building toward its top note, easing after it.
    */
   life?: number;
+  /**
+   * The stops (p t k, b d g; left out: as before): their burst (dB, added), a voiced stop's burst on top
+   * (dB, added), the breath after p/t/k (dB, added), the burst's length (share of the stop, default
+   * 0.12), and the voice kept through a p/t/k's closure (dB under the vowel; left out: silent).
+   */
+  stops?: { burst?: number; voiced?: number; asp?: number; len?: number; hold?: number };
 }
 
 const lerp = (a: number, b: number, x: number) => a + (b - a) * Math.max(0, Math.min(1, x));
@@ -534,10 +540,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
             break;
           }
           case 'stop': {
-            const closeEnd = c.voiced ? 0.7 : 0.5, burstEnd = closeEnd + 0.12;
-            if (x < closeEnd) { if (c.voiced) { voice = amp - 22; bar = 1; } else lastVoiceless = true; break; }
-            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : -6)); lastVoiceless = !c.voiced; if (c.voiced) { voice = amp - 14; bar = 1; } break; }
-            if (!c.voiced) { aspir = amp - 10; lastVoiceless = true; } else voice = amp - 3;
+            const st = v.stops ?? {};
+            const closeEnd = c.voiced ? 0.7 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12);
+            if (x < closeEnd) { if (c.voiced) { voice = amp - 22; bar = 1; } else if (st.hold !== undefined) voice = amp - st.hold; else lastVoiceless = true; break; }
+            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : -6) + (st.burst ?? 0) + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && st.hold === undefined; if (c.voiced) { voice = amp - 14; bar = 1; } break; }
+            if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0); lastVoiceless = st.hold === undefined; } else voice = amp - 3;
             break;
           }
         }
