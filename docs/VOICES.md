@@ -175,7 +175,21 @@ fry) at five amounts ("acting weird at different places": the base was better).
   half the turbulence, less period-to-period roughness from it; sung 3 semitones up (a tenor), his
   break with him.
 
-## 9. Next
+## 9. Polish: prepared with the real amps (2026-10-13)
+Paul: one-time processing like the real amps, "start with 1 and 2" (a vocal chain; a clean-up pass), "one
+button instead of separate for amps and voice". `src/audio/polish.ts`, run once over each rendered line:
+- **Clean-up:** single-sample spikes (clicks, crackle) put back on the line their neighbours draw; the fizz
+  above 7 kHz down 1.4 dB always and more when it flares over -14 dB of the voice; esses (5-9 kHz) brought
+  down where they're over -8 dB of the voice.
+- **Vocal chain:** a tube preamp (gentle, uneven saturation: warmth) and an opto compressor (LA-2A-like:
+  -7 dB under the line's loudest, 3:1, quick to let go after short peaks, slow after long ones).
+  No studio vocal-chain capture in the NAM collection the amps come from (guitar gear only): our own.
+- The line back at its level. Sharp jumps in the sample (second differences over 4000): Chester 448 → 0,
+  rock 40 → 0.
+- **One button: Prepare real sound** (was Prepare real amps): polishes the singer's lines (quick; on any
+  device), then runs the guitars through the real amps. Exports made with it on are polished too.
+
+## 10. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
 - More of Paul's lab mixes (other voices, vowels) to refine REGISTER_MIX and MID_FIT.

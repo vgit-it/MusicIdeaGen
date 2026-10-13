@@ -7,6 +7,7 @@ import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { lagFor, perform } from '../src/audio/feel';
 import { type FofVoice, FOF_RATE, renderFof } from '../src/audio/fof';
+import { polishVoice } from '../src/audio/polish';
 import type { SungNote } from '../src/audio/sing';
 import { fofFor } from '../src/audio/voices';
 import { generate } from '../src/generator';
@@ -52,10 +53,7 @@ const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math
 // (the voices as the app sings them, low and high)
 // (Clean & scream, Chester Bennington-like: the nasal feel (twang) at three amounts)
 const scream = fofFor('rock', 17, false, 'scream');
-const TAKES: [string, FofVoice][] = [
-  ['clean-and-scream-up3', scream],
-  ['clean-and-scream-up5', { ...scream, shift: 5, size: 1.03, brkUp: 5 }],
-];
+const TAKES: [string, FofVoice][] = [['rock', fofFor('rock', 17, false)], ['chester', scream]];
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
@@ -72,15 +70,17 @@ const PRE = 0.3;
 const ffmpeg: string = createRequire(import.meta.url)('ffmpeg-static');
 for (const [name, v] of TAKES) {
   // (each line its own seed, as the app sings them; the verse's level under the chorus's)
-  const parts = sample.map((L, i) => renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
+  for (const pol of [false, true]) {
+  const parts = sample.map((L, i) => (pol ? (x: Float32Array) => polishVoice(x, FOF_RATE) : (x: Float32Array) => x)(renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE)).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
   const gap = Math.round(0.5 * FOF_RATE);
   const out = new Float32Array(parts.reduce((a, p) => a + p.length + gap, 0));
   let at = 0;
   for (const p of parts) { out.set(p, at); at += p.length + gap; }
-  const w = `voice-lab/timbre-${name}.wav`;
+  const w = `voice-lab/timbre-${name}${pol ? '-polished' : '-raw'}.wav`;
   writeFileSync(w, wav(out, FOF_RATE));
-  execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-i', w, '-b:a', '160k', `voice-lab/timbre-${name}.mp3`]);
+  execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-i', w, '-b:a', '160k', w.replace('.wav', '.mp3')]);
   unlinkSync(w);
-  console.log(name, `${(out.length / FOF_RATE).toFixed(1)} s`);
+  console.log(name, pol ? 'polished' : 'raw', `${(out.length / FOF_RATE).toFixed(1)} s`);
+  }
 }
 console.log('lines:', sample.map((l) => l.map((n) => n.syl.text).join(' ')).join(' / '));

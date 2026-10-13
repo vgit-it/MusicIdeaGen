@@ -30,6 +30,8 @@ export interface EngineSettings {
   layers: LayerSettings;
   /** Real amps (Neural Amp Modeler) for driven electric guitars: prepared ahead live, and in exports. */
   realAmps?: boolean;
+  /** The singer's lines polished (polish.ts: cleaned up, through a vocal chain): prepared with the real amps. */
+  realVoice?: boolean;
   /** The demo singer: Auto (the song's own voice), a low or high voice, or off (missing: off). */
   vocal?: VocalChoice;
   /** The backing singer: Auto (a second singer around the lead), a low or high voice, or off (missing: Auto). */
@@ -139,6 +141,8 @@ export class Engine {
   prepBass = false;
   /** Real amps: driven guitars play from prepared buffers (see prepareRealAmps) where they're ready. */
   private realAmps = false;
+  /** The singer's lines polished (with the same Prepare button as the real amps). */
+  private realVoice = false;
   private prep: GuitarPrep | null = null;
   /** Prepared guitars playing now, and which parts they cover (those parts don't play live). */
   private realSrcs: { src: AudioBufferSourceNode; gain: GainNode }[] = [];
@@ -155,7 +159,7 @@ export class Engine {
   settings(): EngineSettings {
     return {
       chord: this.chordChoice, guitar2: this.g2Choice, bass: this.bassChoice, drumSynth: this.drums.useSynth,
-      mix: this.mixer.state(), layers: this.layerSettings, realAmps: this.realAmps, vocal: this.vocalChoice,
+      mix: this.mixer.state(), layers: this.layerSettings, realAmps: this.realAmps, realVoice: this.realVoice, vocal: this.vocalChoice,
       backing: this.backingChoice, timbre: this.timbreChoice,
     };
   }
@@ -165,6 +169,7 @@ export class Engine {
     this.chordChoice = s.chord;
     this.g2Choice = s.guitar2;
     this.realAmps = !!s.realAmps;
+    this.realVoice = !!s.realVoice;
     this.setBass(s.bass);
     this.drums.useSynth = s.drumSynth;
     const mix = openAll
@@ -197,6 +202,8 @@ export class Engine {
   setVocal(choice: VocalChoice) {
     this.vocalChoice = choice;
     this.syncSingers();
+    // (the Prepare button covers the singer too)
+    this.onRealChange();
   }
 
   /** The lead singer's voice: Auto (the song's singer's own), clear, raspy or deep. */
@@ -226,12 +233,14 @@ export class Engine {
       this.singer ??= inContext(this.ctx, () => new Singer(this.mixer.input('vocal')));
       this.singer.choice = this.vocalChoice;
       this.singer.timbre = this.timbreChoice;
+      this.singer.polish = this.realVoice;
       if (this.list.length) this.singer.prepare(this.list, six);
     }
     if (!this.backingOn) { this.backer?.releaseAll(); if (this.backer) this.backer.choice = 'off'; return; }
     this.backer ??= inContext(this.ctx, () => new Singer(this.mixer.input('backing'), 'backing'));
     this.backer.choice = this.backingChoice;
     this.backer.leadChoice = this.vocalChoice;
+    this.backer.polish = this.realVoice;
     if (this.list.length) this.backer.prepare(this.list, six);
   }
 
@@ -470,8 +479,9 @@ export class Engine {
 
   /* ---- real amps: electric guitars prepared ahead */
 
+  /** The prepared sound is on: real amps for the guitars, the polished voice for the singer. */
   get realAmpsOn(): boolean {
-    return this.realAmps;
+    return this.realAmps || this.realVoice;
   }
 
   /** What can change whether real amps are ready (a new idea, another sound, the tempo): the UI checks again. */
@@ -480,6 +490,9 @@ export class Engine {
   /** Back to the app's own amp (prepared guitars are kept, for turning them back on). */
   setRealAmps(on: boolean) {
     this.realAmps = on && realAmpsSupported();
+    this.realVoice = on;
+    if (this.singer) this.singer.polish = on;
+    if (this.backer) this.backer.polish = on;
     if (!this.realAmps && this.realSrcs.length) this.endPrepared(this.ctx.now() + 0.05);
     if (!this.realAmps) this.prep?.cancel();
     this.onRealChange();
@@ -496,6 +509,15 @@ export class Engine {
    * (every section with them is prepared), 'failed' (they can't run here) or 'todo'.
    */
   realStateFor(list: Idea[]): 'none' | 'ready' | 'failed' | 'todo' {
+    const amps = this.ampStateFor(list);
+    // (the singer, polished: quick, and possible anywhere)
+    const voice = this.singsIn(list) ? (this.realVoice ? 'ready' : 'todo') : 'none';
+    if (amps === 'none' || amps === 'failed') return voice === 'none' ? amps : voice;
+    return voice === 'todo' ? 'todo' : amps;
+  }
+
+  /** Whether the list has guitars for the real amps (see realStateFor), and they're ready. */
+  ampStateFor(list: Idea[]): 'none' | 'ready' | 'failed' | 'todo' {
     if (!realAmpsSupported()) return 'failed';
     const items = this.prepItems(list, false, 0);
     if (!items.length) return 'none';
@@ -504,12 +526,22 @@ export class Engine {
     return got.some((p) => p === null) ? 'failed' : 'todo';
   }
 
+  /** Whether the list has someone singing (their lines get polished). */
+  singsIn(list: Idea[]): boolean {
+    return this.vocalChoice !== 'off' && list.some((i) => i.vocal?.length || i.backing?.length);
+  }
+
   /**
    * Prepare real amps for a list (a track, or one idea), then play with them: every section with
    * crunch or distortion, up front (nothing is prepared while music plays).
    */
   async prepareRealAmps(list: Idea[], onProgress: (p: number) => void = () => {}) {
-    if (!realAmpsSupported()) return 'failed' as const;
+    // the singer's lines polished first (quick), then the guitars through the real amps
+    this.realVoice = true;
+    if (this.singer) { this.singer.polish = true; await this.singer.polishAll(); }
+    if (this.backer) { this.backer.polish = true; await this.backer.polishAll(); }
+    const amps = this.ampStateFor(list);
+    if (amps === 'failed' || amps === 'none') { this.onRealChange(); return this.realStateFor(list); }
     this.realAmps = true;
     await this.prepareFor(list, onProgress);
     this.onRealChange();

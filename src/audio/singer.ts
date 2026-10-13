@@ -16,6 +16,7 @@ import { stepAt } from '../rhythm';
 import { inContext } from './context';
 import { lagFor, perform } from './feel';
 import { FOF_RATE, renderFof } from './fof';
+import { polishVoice } from './polish';
 import { CHARACTERS, type Character, VOICES, fofFor } from './voices';
 import { SING_RATE, type SungNote, renderLine } from './sing';
 
@@ -81,6 +82,10 @@ export class Singer {
   private ctx = Tone.getContext();
   private input!: Tone.Gain;
   private bufs = new Map<string, AudioBuffer>();
+  /** Lines polished (polish.ts: cleaned up, through a vocal chain), once the sound is prepared. */
+  private pol = new Map<string, AudioBuffer>();
+  /** Sing the polished lines (on with the Prepare button, and in exports made with it on). */
+  polish = false;
   private lines = new WeakMap<Idea, { six: number; voice: VoiceType; timbre: Sung; byStep: Map<number, Line[]> }>();
   private sources = new Set<AudioBufferSourceNode>();
   private queue: Job[] = [];
@@ -176,10 +181,34 @@ export class Singer {
     while (this.queue.length) {
       const job = this.queue.shift()!;
       if (!this.bufs.has(job.key)) this.bufs.set(job.key, this.render(job));
+      if (this.polish) this.polished(job.key);
       // (a breather between lines, so playback never waits on it)
       await new Promise((r) => setTimeout(r, 0));
     }
     this.working = null;
+  }
+
+  /** A line's polished buffer (made now if it isn't yet: about a millisecond a second of audio). */
+  private polished(key: string): AudioBuffer | undefined {
+    const got = this.pol.get(key);
+    if (got) return got;
+    const raw = this.bufs.get(key);
+    if (!raw) return undefined;
+    const ctx = this.ctx.rawContext as unknown as BaseAudioContext;
+    const buf = ctx.createBuffer(1, raw.length, raw.sampleRate);
+    buf.copyToChannel(polishVoice(raw.getChannelData(0), raw.sampleRate) as Float32Array<ArrayBuffer>, 0);
+    this.pol.set(key, buf);
+    return buf;
+  }
+
+  /** Polish every line rendered so far (the rest are polished as they're rendered); with breathers. */
+  async polishAll() {
+    for (const key of [...this.bufs.keys()]) {
+      if (this.pol.has(key)) continue;
+      this.polished(key);
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    await this.working;
   }
 
   private render(job: Job): AudioBuffer {
@@ -215,6 +244,7 @@ export class Singer {
         buf = this.render({ key: line.key, notes: line.notes, voice: entry.voice, timbre: entry.timbre, slides: SLIDES[idea.song.partGenres.strum], variant: Number(line.key.split('|')[1]), energy: Number(line.key.split('|')[3]), base: line.key.split('|')[4] as Genre });
         this.bufs.set(line.key, buf);
       }
+      if (this.polish) buf = this.polished(line.key) ?? buf;
       const start = time + (line.t0 - PRE - at(g)) + line.delay;
       const src = raw.createBufferSource();
       src.buffer = buf;
