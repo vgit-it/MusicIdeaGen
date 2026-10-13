@@ -1,4 +1,4 @@
-# Vocal melody: Melody first (plan, 2026-10-13)
+# Vocal melody: Melody first (2026-10-13; steps 1 and 2 built)
 
 A third way of choosing the vocal's pitches, beside **Classic** and **Shaped** (both kept).
 Paul: the melody "seems generic and not really saying anything on its own"; it outlines the chords (it
@@ -86,10 +86,54 @@ Numbers are only a check: Paul judges by ear.
 3. The sentence form; contrary motion to the bass.
 4. The score and best of several tries; the lab numbers.
 
-## Questions for Paul
-| Question | Options |
+## Decisions (Paul)
+| Question | Choice |
 |---|---|
-| How often against the chord | Subtle (a clash a line) / Clear (2-3 a line) / By mood |
-| Rock loop over the chords | Often / Now and then / Off |
-| Replace Shaped later if better? | Yes / Keep all three |
-| Start with | Step 1 only, to hear it early / Steps 1-2 together |
+| How often against the chord | By mood |
+| Rock loop over the chords | Now and then |
+| Replace Shaped later if better? | Decide once it's ready |
+| Start with | Steps 1 and 2 together |
+
+## Built (steps 1 and 2: `src/parts/first.ts`, `firstLine` and `planClashes` in `src/parts/melody.ts`)
+- **Menu:** Melody: Melody first. Uses Shaped's range, verse-to-chorus contrast and ABAb form, with two
+  more notes of range (room for the idea's leap and the spine's travel).
+- **Spine** per kind of section, by mood (genre leans: grunge drones verses, metal holds choruses high,
+  pop arches); verse and chorus never on the same one. Each line starts and ends on it.
+- **Idea** per song: a step or repeat into one signature leap (genre: pop a 6th, rock a 4th, metal a 5th,
+  funk a 3rd; up in brighter moods, down in sadder ones), then a step or two back (gap-fill). Answer
+  lines sing it inverted (or its own way round when that won't fit the range); repeated lines move it
+  to where the spine now is.
+- **The rest of the line:** by step toward the spine's next note; a neighbour and back when there;
+  away from the range's edge, not stuck on it.
+- **Fitted to the chords last:** strong notes to the nearest chord note that isn't the last note again
+  (else a passing note that doesn't grind stays); over power chords any scale note that doesn't grind;
+  now and then a 9th or 4th left as a colour (pop, dreamy); endings closed on the root or open.
+- **Planned clashes, by mood** (per two-bar line: sad 1.4, nostalgic and dreamy 1.1, dark and tense 1,
+  angry 0.8, triumphant 0.6, happy 0.5; at most 2): a sigh from a step above, a note held over the chord
+  change, a lean from a half step below, a hanging 9th. A long note holds the clash a quarter, then
+  resolves on its vowel (quicker turns get merged away); a short one leans and the next note resolves
+  it. The flat 9th (a half step over the root) only in dark and tense songs.
+- **Rock loop, now and then** (rock and hard rock 25%, grunge 35%, alt metal 30%, metal 20% of verses
+  and choruses): the idea on the pentatonic, the same notes every bar whatever the chord; only real
+  clashes on held or strong notes move.
+- **Moves:** Auto keeps the colour moves, drops the ones that reshape the tune (one note, pedal, sequence,
+  up-up-down, flip); a move chosen in the menu still applies.
+- Classic and Shaped unchanged (checked: the same notes as before).
+
+## Measured (`npm run melody-lab`: 42 songs, all genres, 4/4)
+| | Classic | Shaped | Melody first |
+|---|---|---|---|
+| Strong notes on chord notes | 85% | 87% | 72% |
+| Off-chord strong notes resolving by step | 45% | 46% | 49% |
+| The same note again | 24% | 22% | 18% |
+| One-note lines | 17 of 885 | 43 of 911 | 10 of 854 |
+| Gap-fill after leaps | 63% | 60% | 67% |
+| Different 4-note shapes across songs | 1038 | 1054 | 1409 |
+
+6/8, 7/8 and 3/4 checked too (strong on chord notes 72-74%, resolving 63-66%).
+Below the 75-85% target on chord notes: loops and signature moves sit off the chord on purpose; to judge
+by ear.
+
+## Next
+- Step 3: the sentence form; contrary motion to the bass.
+- Step 4: a musical score for each try (spine reached, gap-fill, one high point, surprise in the middle).

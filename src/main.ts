@@ -607,15 +607,15 @@ const partsPanel = buildPartsPanel($('parts'), engine, () => {
   updateLink();
 }, {
   // how the vocal is written: its rhythm (Classic / Grid, docs/VOCAL-RHYTHM.md) and its pitches (Classic /
-  // Shaped, docs/VOCAL-MELODY.md); rewrites the vocal, same seeds, the band unchanged
+  // Shaped, docs/VOCAL-MELODY.md / Melody first, docs/VOCAL-FIRST.md); rewrites the vocal, same seeds, the band unchanged
   get: (k) => (k === 'rhythm' ? (idea?.opts.vocalRhythm ?? 'classic') : k === 'melody' ? (idea?.opts.vocalMelody ?? 'classic') : k === 'energy' ? (idea?.opts.vocalEnergy ?? 'auto') : (idea?.opts.vocalMove ?? 'auto')),
   set: (k, v) => {
     if (!idea) return;
     // (a move chosen: the melody goes Shaped, where the moves live)
     const opts = k === 'rhythm' ? { ...idea.opts, vocalRhythm: v === 'grid' ? ('grid' as const) : undefined }
-      : k === 'melody' ? { ...idea.opts, vocalMelody: v === 'shaped' ? ('shaped' as const) : undefined }
+      : k === 'melody' ? { ...idea.opts, vocalMelody: v === 'shaped' || v === 'first' ? (v as 'shaped' | 'first') : undefined }
       : k === 'energy' ? { ...idea.opts, vocalEnergy: v === 'auto' ? undefined : v }
-      : { ...idea.opts, vocalMove: v === 'auto' ? undefined : v, ...(v !== 'auto' ? { vocalMelody: 'shaped' as const } : {}) };
+      : { ...idea.opts, vocalMove: v === 'auto' ? undefined : v, ...(v !== 'auto' && !idea.opts.vocalMelody ? { vocalMelody: 'shaped' as const } : {}) };
     showIdea(generate(opts, idea.seeds), true);
     partsPanel.sync();
   },
