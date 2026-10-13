@@ -124,7 +124,25 @@ settings back. What Paul's mixes showed:
 - "Ah" sounded hollow: almost nothing at 1.5-4 kHz. Edge (the folds closing faster, less tilt)
   filled it: "excellent". Half as much on the front vowels, which have a resonance up there already.
 
-## 8. Next
+## 8. A singer, not a fixed tone (2026-10-13, the timbre lab: `npm run timbre-lab`)
+Paul: "make it more Alice in Chains, or a voice like Eddie Vedder"; "the real singer aspect"; "reduce
+some of that opera voice"; "remove the noise". Tried and dropped first: more rasp and creak (vocal
+fry) at five amounts ("acting weird at different places": the base was better).
+- **Expression** (`expr`, every voice): the tone moves with the moment. By the section's energy
+  (verses closer, breathier, darker; choruses open, brighter, edgier), a little different each line,
+  soft breathy or hard punchy starts, the tone thinning into breath at a line's end, strain up high
+  (edge, a little grit; now and then a small crack on a long pushed note), rounder down low, weight on
+  stressed long words. The singer gets each section's energy.
+- **Plain** (`plain` 0.6, every voice): less operatic. Vibrato only on the longer notes, later and
+  narrower, about a fifth of them straight; the 3-5 kHz ring wider and 2 dB quieter; no swell.
+- **Less noise**: breath 7 dB down on every voice, the rasp's noise 3 dB down, expression's breath
+  smaller (breath noise about -30 dB under the voice, was about -23).
+- **Characters** (the Voice menu, on top of the song's voice): Big & dark (Vedder-like: a longer
+  throat, round covered vowels, a fuller low end, a slow wobble, scoops into notes, sags at their
+  ends, chest voice higher) and Dark & nasal (Staley-like: nasal, a metallic edge, a tight narrow
+  vibrato, bends into notes).
+
+## 9. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
 - More of Paul's lab mixes (other voices, vowels) to refine REGISTER_MIX and MID_FIT.

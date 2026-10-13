@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { lagFor, perform } from '../src/audio/feel';
 import { type FofVoice, FOF_RATE, renderFof } from '../src/audio/fof';
 import type { SungNote } from '../src/audio/sing';
-import { VOICES } from '../src/audio/voices';
+import { fofFor } from '../src/audio/voices';
 import { generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 
@@ -48,17 +48,11 @@ const verseLen = 2;
 // (the verse sung softer, the chorus pushed: as a band would)
 const sample = best.map((L, i) => L.map((n) => ({ ...n, vel: i < verseLen ? Math.min(n.vel, 0.7) : Math.max(n.vel, 0.85) })));
 
-const ROCK = VOICES.rock.fof;
-const BIG_DARK: Partial<FofVoice> = { tract: 0.9, bw: 1.3, body: 7, bright: -0.5, breath: -28, edge: 0.2, cover: 0.7, vib: 45, vibHz: 4.6, drift: 6, scoop: 0.6, sag: 0.5, brk: 66 };
-const DARK_NASAL: Partial<FofVoice> = { tract: 0.93, bw: 1.15, bright: 0.5, edge: 0.55, nasal: 0.5, cover: 0.3, vib: 15, vibHz: 6, breath: -29, scoop: 0.4, sag: 0.2, brk: 65 };
-const TAKES: [string, Partial<FofVoice>][] = [
-  ['0-now', {}],
-  // the singer's tone moving with the moment (expression)
-  ['1-now-expressive', { expr: 1 }],
-  // a big, dark baritone: a long throat, covered round vowels, a slow wide wobble, scoops and sags
-  ['2-big-dark-expressive', { ...BIG_DARK, expr: 1 }],
-  // dark and heavy but pinched: nasal, a metallic edge, a tight narrow vibrato, bends into notes
-  ['3-dark-nasal-expressive', { ...DARK_NASAL, expr: 1 }],
+// (the voices as the app sings them: fofFor, with expression and less of the operatic sound)
+const TAKES: [string, FofVoice][] = [
+  ['rock', fofFor('rock', 17, false)],
+  ['big-dark', fofFor('rock', 17, false, 'deep')],
+  ['dark-nasal', fofFor('rock', 17, false, 'nasal')],
 ];
 
 function wav(samples: Float32Array, rate: number): Buffer {
@@ -74,8 +68,7 @@ function wav(samples: Float32Array, rate: number): Buffer {
 mkdirSync('voice-lab', { recursive: true });
 const PRE = 0.3;
 const ffmpeg: string = createRequire(import.meta.url)('ffmpeg-static');
-for (const [name, change] of TAKES) {
-  const v: FofVoice = { ...ROCK, ...change, seed: 17 };
+for (const [name, v] of TAKES) {
   // (each line its own seed, as the app sings them; the verse's level under the chorus's)
   const parts = sample.map((L, i) => renderFof(L, { ...v, seed: 17 + i, energy: i < verseLen ? 0.3 : 0.85 }, PRE).map((x) => x * (i < verseLen ? 0.6 : 0.85)));
   const gap = Math.round(0.5 * FOF_RATE);

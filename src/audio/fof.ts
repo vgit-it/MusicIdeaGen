@@ -57,6 +57,12 @@ export interface FofVoice {
    * a line's end, straining up high (now and then a little crack), rounder down low, weight on key words.
    */
   expr?: number;
+  /**
+   * Plain 0-1 (left out: 0): less of the trained, operatic sound (Paul: "reduce some of that opera
+   * voice"): vibrato only on the longer notes, later and narrower, some held straight; less ring up
+   * top (the 3-5 kHz "singer's formant" cluster wider and quieter); no swell on held notes.
+   */
+  plain?: number;
   /** The line's section energy, 0 (quiet verse) to 1 (the biggest chorus); left out: 0.5. */
   energy?: number;
   /** Their break (MIDI, about E4) and their way up past it. */
@@ -135,7 +141,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
 
   const fscale = (v.high ? 1.17 : 1) * (v.tract ?? 1);
   const high = (v.high ? [4000, 4600, 5600] : [3250, 3700, 4950]).map((f) => f * (v.tract ?? 1));
-  const bws = [90, 110, 160, 200, 230, 500].map((b) => b * (v.bw ?? 1));
+  const plain = v.plain ?? 0;
+  const bws = [90, 110, 160, 200, 230, 500].map((b, k) => b * (v.bw ?? 1) * (k >= 3 ? 1 + 0.6 * plain : 1));
   const vibC = v.vib ?? 30, driftC = (v.drift ?? 4) + 3 * hu, grit = v.grit ?? 0, breath = v.breath ?? -24;
   const vibHz = v.vibHz ?? 5.4 + (v.seed % 5) * 0.12;
   const cover0 = v.cover ?? 0, nasal = v.nasal ?? 0, scoop = v.scoop ?? 0, sag = v.sag ?? 0;
@@ -146,7 +153,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   const er = rng(v.seed * 41 + notes.length * 3 + 1);
   const eg = () => er() + er() + er() - 1.5;
   // (the section: verses closer and breathier, darker; choruses open, brighter, edgier, pushed)
-  const secBreath = expr * lerp(4, -2, en), secBright = expr * lerp(-1.5, 1.5, en), secEdge = expr * lerp(-0.08, 0.15, en), secEffort = expr * lerp(-0.12, 0.12, en);
+  const secBreath = expr * lerp(2, -2, en), secBright = expr * lerp(-1.5, 1.5, en), secEdge = expr * lerp(-0.08, 0.15, en), secEffort = expr * lerp(-0.12, 0.12, en);
   // (the line: never quite the same voice twice)
   const lnBreath = expr * 1.6 * eg(), lnBright = expr * 0.6 * eg(), lnEdge = expr * 0.05 * eg(), lnVib = 1 + expr * 0.25 * eg();
   const exNotes = notes.map((n, i) => {
@@ -165,6 +172,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     return { onset, ends, key, crack };
   });
   let bright = v.bright ?? 0, breathNow = breath, roughAdd = 0;
+  // (plain: some held notes sung straight, no vibrato; its own random)
+  const pr = rng(v.seed * 53 + notes.length * 5 + 2);
+  const straight = notes.map(() => !!plain && pr() < 0.35 * plain);
   const scoops = notes.map((n, i) => {
     const chance = scoop * (n.syl.stress ? 0.8 : 0.4) * (i === 0 || n.t - notes[i - 1].end > 0.1 ? 1.3 : 1);
     return !n.slide && n.syl.text !== '~' && sr() < chance ? { by: 0.6 + 1.4 * scoop * sr(), len: 0.09 + 0.08 * scoop } : null;
@@ -319,8 +329,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       let midi = pitchLine[Math.floor(i / CT)] + (v.high ? 12 : 0);
       const into = t - note.t, held = note.end - note.t;
       // vibrato on held notes only, in after a moment (Sundberg); a slow drift
-      if (held > 0.4) {
-        const on = smooth01((into - Math.min(0.35, held * 0.35)) / 0.3);
+      if (held > 0.4 + 0.35 * plain && !straight[ni]) {
+        const on = smooth01((into - Math.min(0.35 + 0.25 * plain, held * (0.35 + 0.2 * plain))) / 0.3) * (1 - 0.35 * plain);
         const nv = noteVib[ni];
         // (the rate drifting a little through the note, the depth breathing)
         const vph = 2 * Math.PI * vibHz * nv.hz * (into + hu * 0.03 * Math.sin(1.3 * into + ni));
@@ -355,14 +365,14 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       roughAdd = 0;
       if (expr) {
         const ex = exNotes[ni];
-        if (ex.onset === 1) { const k = 1 - smooth01((into + 0.02) / 0.12); exBreath += 12 * k; exAmp -= 4 * k; exBright -= 2 * k; }
+        if (ex.onset === 1) { const k = 1 - smooth01((into + 0.02) / 0.12); exBreath += 7 * k; exAmp -= 4 * k; exBright -= 2 * k; }
         if (ex.onset === 2) { const k = 1 - smooth01(into / 0.08); exEdge += 0.25 * k; exBright += 2 * k; exAmp += 1.5 * k; }
-        if (ex.ends && held > 0.2) { const k = smooth01((into - held * 0.6) / (held * 0.4)); exBreath += 7 * k; exBright -= 1.5 * k; exEffort -= 0.15 * k; }
+        if (ex.ends && held > 0.2) { const k = smooth01((into - held * 0.6) / (held * 0.4)); exBreath += 4 * k; exBright -= 1.5 * k; exEffort -= 0.15 * k; }
         if (ex.key) { exAmp += 1.2; exEdge += 0.08; }
         // (reaching: past the break and pushed, the strain shows)
         const reach = smooth01((note.midi + (v.high ? 12 : 0) - brk + 2) / 5) * clamp01((note.vel - 0.6) / 0.3);
-        exEdge += 0.15 * reach; exBright += 1 * reach; roughAdd = 0.25 * reach * expr;
-        if (ex.crack) { const c = Math.max(0, 1 - Math.abs(into - held * ex.crack - 0.04) / 0.04); exAmp -= 7 * c; exBreath += 10 * c; exBright -= 4 * c; }
+        exEdge += 0.15 * reach; exBright += 1 * reach; roughAdd = 0.15 * reach * expr;
+        if (ex.crack) { const c = Math.max(0, 1 - Math.abs(into - held * ex.crack - 0.04) / 0.04); exAmp -= 7 * c; exBreath += 6 * c; exBright -= 4 * c; }
         exAmp *= expr; exBreath *= expr; exBright *= expr; exEdge *= expr; exEffort *= expr;
       }
       effort = clamp01(effort + secEffort + exEffort);
@@ -372,7 +382,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // (down low: rounder, more relaxed)
       const cover = Math.min(1, cover0 + expr * 0.35 * smooth01((-place - 6) / 6));
       // (a held note swells a little in and eases at its end)
-      const swell = held > 0.35 ? hu * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
+      const swell = held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
       const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? 12 * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0);
       // (a word starting on a vowel: a small dip so the words don't slur together)
       const dip = ni > 0 && note.syl.wordStart && !note.syl.onset.length && note.syl.text !== '~' ? 5 * Math.max(0, 1 - Math.abs(t - note.t) / 0.05) : 0;
@@ -463,6 +473,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
           let a = formantLevel(F, B, k, tiltX);
           if (k > 0) a *= db(-16 * vNasal) * db(-28 * vBar);
           if (k === 2 || k === 3) a *= twang * db(4 * edgeW);
+          if (k >= 3) a *= db(-3 * plain);
           if (k === 1) a *= db(2 * edgeW);
           return a;
         });
@@ -491,7 +502,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
           const durS = Math.min(0.035 * fs, (5.3 / (Math.PI * bg)) * fs) + tex;
           grains.push({ re: a * m * Math.cos(w * d), im: a * m * Math.sin(w * d), cr: Math.exp(-alpha) * Math.cos(w), ci: Math.exp(-alpha) * Math.sin(w), n: d, tex, dur: durS, rel: durS * 0.25 });
         }
-        raspEnv = 0.25 * rough * vA;
+        raspEnv = 0.18 * rough * vA;
       }
     }
 
