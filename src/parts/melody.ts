@@ -320,78 +320,82 @@ function spoken(rng: Rng, gap: number, k: number): number[] {
 /** The grid's step for a song (docs/VOCAL-RHYTHM.md): 8ths; 16ths under about 90 bpm (Paul: the grid tightens in slow songs). */
 export const gridUnit = (bpm: number) => (bpm < 90 ? 1 : 2);
 
-type Cell = 'X.' | 'XX' | '.X' | '..';
-
 /**
  * A line's rhythm on the metronome grid (docs/VOCAL-RHYTHM.md; Paul: "akin to time signature
- * metronome's rhythm", a word's syllables "on 1/8ths ... with a nice sounding rhythm"). The bar's beats
- * ranked like a metronome's accents (beat 1, the middle beat, the others; in a slow song its 8ths are
- * the beats); one cell per beat: on the beat, on the beat and its "and", the "and" alone (a push into
- * the next beat, carrying its stress), or a rest; chosen by the beat's strength and how busy the
- * section is (verses busier, choruses open), the first half-bar's cells coming back through the line as
- * its motif. Every new syllable on the grid (8ths; 16ths in a slow song). Verses start with a pickup or
- * just after the downbeat now and then, choruses on 1; the last syllable lands on beat 1 or the middle
- * beat of the last bar and holds to a beat before the next line (the breath).
+ * metronome's rhythm", a word's syllables "on 1/8ths ... with a nice sounding rhythm"; "if the song has
+ * a different complex time signature, it may have to adapt to that"). The beats are the bar's own
+ * groups, as its metronome counts them (4/4: four quarters; 6/8: two dotted quarters; 7/8: 2+2+3 or
+ * another grouping; 7/4: 4+3+4+3 8ths), ranked like a metronome's accents: beat 1, the middle beat, the
+ * others. Each beat is cut into its 8ths (16ths in a slow song): two in a quarter, three in a dotted
+ * quarter, four in a half; a beat's own pattern of which ones are sung: its first nearly always on a
+ * strong beat, a quarter inside a long group often, the 8ths between by how busy the section is
+ * (verses busier, choruses open); now and then the last 8th before a strong beat sung as a push,
+ * carrying its stress over the beat. The first half-bar's patterns come back through the line (its
+ * motif) where the beats are the same size. Every new syllable on the grid. Verses start with a pickup
+ * or just after the downbeat now and then, choruses on 1; the last syllable lands on beat 1 or the
+ * middle beat of the last bar and holds to a beat before the next line (the breath).
  */
 function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: SectionKind): LineRhythm {
   const verse = kind === 'verse' || kind === 'prechorus';
   const dens = o.busy * (verse ? 1.2 : 0.75);
-  // the beats and their strength (3: the downbeat, 2: the middle beat, 1: the others; 0.5: a slow song's in-between 8ths)
+  // the beats: the bar's groups, by strength (3: the downbeat, 2: the middle beat, 1: the others)
   const beats: { g: number; len: number; st: number }[] = [];
   for (const b of bars) {
     const gs = groupStarts(b.groups);
-    gs.forEach((x, gi) => {
-      const st = gi === 0 ? 3 : b.groups.length >= 4 && gi === b.groups.length / 2 ? 2 : 1;
-      if (u === 1) for (let p = 0; p < b.groups[gi]; p += 2) beats.push({ g: b.start + x + p, len: Math.min(2, b.groups[gi] - p), st: p === 0 ? st : 0.5 });
-      else beats.push({ g: b.start + x, len: b.groups[gi], st });
-    });
+    const mid = b.groups.length >= 4 && b.groups.length % 2 === 0 ? b.groups.length / 2 : -1;
+    gs.forEach((x, gi) => beats.push({ g: b.start + x, len: b.groups[gi], st: gi === 0 ? 3 : gi === mid ? 2 : 1 }));
   }
   const b1 = bars[0], bl = bars[bars.length - 1];
   const lineEnd = bl.start + bl.len;
-  // the held last syllable: beat 1 or the middle beat of the last bar (a one-bar line: its middle beat)
+  // the held last syllable: beat 1 or the middle beat of the last bar (a one-bar line: its middle beat, or its last beat)
   const mids = beats.filter((x) => x.g >= bl.start && x.st === 2);
-  let hold = bars.length === 1 ? (mids[0]?.g ?? beats.filter((x) => x.g >= bl.start && x.st >= 1).slice(-1)[0].g)
+  let hold = bars.length === 1 ? (mids[0]?.g ?? beats.filter((x) => x.g >= bl.start).slice(-1)[0].g)
     : rng.chance(mids.length ? 0.6 : 1) ? bl.start : mids[0].g;
-  // (now and then pushed: landing an 8th early)
-  const pushedHold = hold - 2 > b1.start + 2 && rng.chance(o.sync * 0.4);
-  if (pushedHold) hold -= 2;
-  // the breath: a beat before the next line
+  if (hold - 2 > b1.start + 2 && rng.chance(o.sync * 0.4)) hold -= 2;
   const breath = bl.groups[bl.groups.length - 1];
   const end = Math.max(hold + 2, lineEnd - breath);
   // where the line starts, by section: verses a pickup or just after the downbeat now and then, choruses on 1
   const start: Start = verse ? rng.weighted<Start>([['pickup', 2], ['after', 1.5], ['down', 1.5]]) : kind === 'chorus' || kind === 'outro' ? 'down' : o.start;
   const onsets: { g: number; stress: boolean; quick?: boolean }[] = [];
   if (start === 'pickup') { onsets.push({ g: b1.start - u, stress: false }); if (rng.chance(0.35)) onsets.push({ g: b1.start - 2 * u, stress: false }); }
-  // the cells, one per beat before the held note: the first half-bar's are the line's motif
+  // a slot's weight inside its beat: its first (the beat's own), a quarter inside a long group, an 8th, a 16th
+  const slotSt = (off: number, st: number) => (off === 0 ? st : off % 4 === 0 ? 1 : off % 2 === 0 ? 0.5 : 0.2);
+  const chanceOf = (w: number) => w >= 2 ? 0.95 : w >= 1 ? 0.8 : w >= 0.5
+    ? Math.min(0.85, Math.max(0.08, u === 1 ? 0.45 * dens : 0.15 + 0.35 * (dens - 0.6))) : Math.min(0.5, 0.12 * dens);
+  const pattern = (bt: { len: number; st: number }) => {
+    const p: boolean[] = [];
+    for (let off = 0; off < bt.len; off += u) {
+      const w = slotSt(off, bt.st);
+      p.push(rng.chance(off > 0 && w >= 1 ? 0.55 * dens : chanceOf(w)));
+    }
+    return p;
+  };
   const before = beats.filter((x) => x.g < hold);
   const half = Math.max(1, before.filter((x) => x.g < b1.start + b1.len / 2).length);
-  const motif: Cell[] = [];
-  const fresh = (st: number): Cell => rng.weighted<Cell>(st >= 2
-    ? [['X.', 1], ['XX', Math.max(0.05, dens - 0.6)], ['.X', o.syncop * 0.12], ['..', 0.04]]
-    : st >= 1
-      ? [['X.', 1], ['XX', Math.max(0.05, dens - 0.5)], ['.X', 0.15 + o.syncop * 0.2], ['..', 0.3 / dens]]
-      : [['X.', 0.6], ['XX', 0.25 * dens], ['.X', 0.12], ['..', 0.6 / dens]]);
+  const motif: boolean[][] = [];
   let tiedIn = false;
   before.forEach((bt, i) => {
-    let cell: Cell = i >= half && rng.chance(0.65) ? motif[i % half] : fresh(bt.st);
-    if (i < half) motif.push(cell);
-    // (a beat that was pushed into: its stress came an 8th early, so nothing on the beat itself)
-    if (tiedIn && cell[0] === 'X') cell = cell === 'XX' ? '.X' : '..';
+    const m = motif[i % half];
+    let p = i >= half && m && m.length === Math.floor(bt.len / u) + (bt.len % u ? 1 : 0) && rng.chance(0.65) ? [...m] : pattern(bt);
+    if (i < half) motif.push([...p]);
+    // (a beat pushed into: its stress came early, nothing on the beat itself)
+    if (tiedIn) p[0] = false;
     tiedIn = false;
-    // (the downbeat after the start: back-heavy verses start on its "and" or the next beat)
-    if (i === 0 && start === 'after') cell = rng.chance(0.5) ? '.X' : '..';
-    if (cell[0] === 'X') onsets.push({ g: bt.g, stress: bt.st >= 1 });
-    if (cell[1] === 'X' && bt.len >= 2 * u) {
-      const g = bt.g + u;
-      const next = before[i + 1] ?? { g: hold, st: 3 };
-      // a push: the "and" right before a strong beat, carrying its stress over it
-      const push = cell === '.X' && next.st >= 2 && next.g === bt.g + bt.len && i > 0;
-      onsets.push({ g, stress: push });
+    // (back-heavy verses: nothing on the downbeat they start after)
+    if (i === 0 && start === 'after') p[0] = false;
+    const next = before[i + 1] ?? { g: hold, st: 3, len: 0 };
+    // (a push: the last 8th before a strong beat, now and then)
+    const lastSlot = p.length - 1;
+    if (lastSlot > 0 && next.st >= 2 && next.g === bt.g + bt.len && !p[lastSlot] && i > 0 && rng.chance(o.syncop * 0.25)) p[lastSlot] = true;
+    p.forEach((on, j) => {
+      if (!on) return;
+      const off = j * u;
+      const push = j === lastSlot && j > 0 && next.st >= 2 && next.g === bt.g + bt.len && rng.chance(0.5);
+      onsets.push({ g: bt.g + off, stress: push || slotSt(off, bt.st) >= 1 });
       if (push) tiedIn = true;
-    }
+    });
   });
-  // the held note, nothing after it, no two notes on one step; off the 8ths (a slow song's 16ths) marked quick
-  // (a push straight into the held note: the held note itself comes on the "and" before it)
+  // (a push straight into the held note: the held note itself comes on the 8th before it)
   if (tiedIn) { const k = onsets.findIndex((x) => x.g === hold - u); if (k >= 0) { onsets.splice(k, 1); hold -= u; } }
   const seen = new Set<number>();
   const os = [...onsets.filter((x) => x.g < hold), { g: hold, stress: true }]

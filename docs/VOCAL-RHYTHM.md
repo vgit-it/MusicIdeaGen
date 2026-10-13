@@ -19,12 +19,16 @@ syllables then the syllables should fall on 1/8ths (not that there's got to be o
 | Trying it | A switch in the app; Classic stays the default |
 
 ## How it works
-1. **The metronome grid.** Each bar's beats (its groups: 4/4 four beats; 6/8 two; odd meters by their
-   groups) ranked like a metronome's accents: beat 1 strongest, the middle beat next, the other beats,
-   then the 8ths between ("and"s). Slow songs: everything one level finer (8ths are beats, 16ths the "and"s).
-2. **Rhythm cells, one per beat:** on the beat; on the beat and its "and"; the "and" only (a push into
-   the next beat); or a rest. Chosen by the beat's strength and how busy the section is; strong beats
-   nearly always sung.
+1. **The metronome grid, by the time signature** (Paul: "if the song has a different complex time
+   signature, it may have to adapt to that"). The beats are the bar's own groups, as its metronome
+   counts them: 4/4 four quarters; 3/4 three; 6/8 two dotted quarters; 5/8 3+2; 7/8 2+2+3 (or 3+2+2,
+   2+3+2); 9/8 2+2+2+3 or 3+3+3; 7/4 4+3+4+3 8ths; 11/8 by its groups. Ranked like a metronome's accents:
+   beat 1 strongest, the middle beat next, the other beats. Each beat is cut into its 8ths: two in a
+   quarter, three in a dotted quarter, four in a half (its middle 8th a beat of its own). Slow songs:
+   everything one level finer (16ths).
+2. **A pattern per beat:** which of its 8ths are sung. The first nearly always on a strong beat, a
+   quarter inside a long group often, the 8ths between by how busy the section is; now and then the
+   last 8th before a strong beat sung as a push.
 3. **A motif inside the line:** the first half-bar's cells come back in the later half-bars, now and
    then varied, so the line has a rhythm of its own rather than random notes.
 4. **Every new syllable on the grid** (8ths; 16ths in slow songs), so a word's syllables always fall on
@@ -39,7 +43,19 @@ syllables then the syllables should fall on 1/8ths (not that there's got to be o
 Everything after the rhythm is shared with Classic: the pitches (contours, chord tones, the hook), the
 words, fitting to the band, expression and the singer's voice.
 
-## Measured (28 songs, all genres, 4/4)
+## Measured by meter (14 songs each, all genres)
+| Meter | Off the grid | On a beat | Third 8th of 3-8th beats used | Syllables/s |
+|---|---|---|---|---|
+| 4/4 | 0 | 83% | (none) | 1.51 |
+| 3/4 | 0 | 80% | (none) | 1.57 |
+| 6/8 | 0 | 64% | 494 of 1951 | 1.32 |
+| 5/8 | 0 | 73% | 265 of 959 | 1.39 |
+| 7/8 | 0 | 70% | 287 of 1017 | 1.46 |
+| 9/8 | 0 | 62% | 667 of 2168 | 1.47 |
+| 7/4 | 0 | 66% | 300 of 1001 | 1.23 |
+| 11/8 | 0 | 72% | 387 of 1586 | 1.47 |
+
+## Measured (28 songs, all genres, 4/4; the first version)
 | | Classic | Grid |
 |---|---|---|
 | New syllables off the grid | 0 | 0 |
