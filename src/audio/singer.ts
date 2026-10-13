@@ -156,6 +156,8 @@ export class Singer {
     // (the section's energy, 0-1: the singer's tone moves with it)
     const energy = idea.section ? (idea.section.energy - 1) / 4 : 0.5;
     const base = this.baseOf(idea);
+    // (in loud sections the singer rushes now and then, ahead of the beat; feel.ts)
+    const rush = Math.max(0, Math.min(1, (energy - 0.5) * 2));
     // the lead, its double (choruses) and ad-libs; or the backing vocals by role; each as its own lines
     const mine = ROLE_STREAMS[this.role];
     const streams: [Stream, NonNullable<Idea['vocal']>][] = [];
@@ -175,7 +177,7 @@ export class Singer {
       for (const L of groups) {
         const t0 = at(L[0].step);
         // (as the singer feels it: laid back, long-short, slowing at the end; feel.ts)
-        const notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lag, L[0].step + L.length * 7);
+        const notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall })), lag, L[0].step + L.length * 7, rush);
         const popts = polishFor(idea, this.role === 'lead' && stream !== 'adlib');
         // (an effect is part of the line: the same tune in another verse is another line)
         const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''}`).join(';')}`;
