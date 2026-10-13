@@ -20,7 +20,7 @@ import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import type { Timbre } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
-import { LOW, PEAK, type Tune, type TuneNote, floorDown, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
+import { FLOOR, PEAK, type Tune, type TuneNote, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -310,7 +310,9 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     }
     // every section's notes fitted to what its band plays (its own chords, its bass), pushed with the
     // band's pushes, and Guitar 2 out of the way of the words
-    const fit = fitToBand(idea, LOW[0] + melody.up - 3 - (melody.shaped ? floorDown(melody) : 0), PEAK + melody.up + 1 + melody.top);
+    const fit = fitToBand(idea, FLOOR + melody.up, PEAK + melody.up + 1 + melody.top);
+    // (and nothing left under the floor: an octave up)
+    for (const n of idea.vocal) while (n.midi < FLOOR + melody.up) n.midi += 12;
     // (on the grid: only pushes that land on it)
     const pushed = pushWithBand(idea, melody.grid ? gridUnit(idea.song.bpm) : 1);
     const cleared = clearForSinger(idea);

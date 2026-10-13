@@ -43,7 +43,11 @@ export interface Singer {
   hold: number;
   /** How long the last note of a line is held: a beat, to the breath, or through the bar line (a bar and a half). */
   holdLen: W<'short' | 'mid' | 'long'>;
-  /** Chance a held note gets a run on its vowel; how many notes; which kinds. */
+  /**
+   * Chance a held note gets a run on its vowel; how many notes; which kinds. Long runs, and runs from
+   * high above the note, are the wailer's own (Paul: "too many long runs ... this could be a singer
+   * characteristic rather than giving this to all songs"); the others' are few and short.
+   */
   runs: number;
   runLen: [number, number];
   runKinds: W<RunKind>;
@@ -82,7 +86,7 @@ const SINGERS: Record<SingerKind, Singer> = {
       prechorus: [['22', 2], ['2211', 1]], bridge: [['224', 1], ['44', 1]],
     },
     density: [1.4, 0.9], flow: 0.45, syncop: 0.3, hold: 0.08, holdLen: [['short', 2], ['mid', 3], ['long', 1]],
-    runs: 0.075, runLen: [3, 5], runKinds: [['cascade', 2], ['tail', 1], ['blues', 1]],
+    runs: 0.05, runLen: [3, 4], runKinds: [['cascade', 2], ['tail', 1], ['blues', 1]],
     belt: 0.35, top: 1, span: 1.2, register: 0, slide: 0.15, fall: 0.2, repeat: 0.05, leap: 0.03,
     contours: { verse: [['tumble', 4], ['fall', 1]] },
   },
@@ -93,7 +97,7 @@ const SINGERS: Record<SingerKind, Singer> = {
       prechorus: [['22', 2], ['4', 1]], bridge: [['44', 2]],
     },
     density: [0.6, 0.5], flow: 0, syncop: 0.4, hold: 0.45, holdLen: [['mid', 2], ['long', 3]],
-    runs: 0.175, runLen: [3, 6], runKinds: [['tail', 5], ['cascade', 1]],
+    runs: 0.08, runLen: [3, 4], runKinds: [['tail', 5], ['cascade', 1]],
     belt: 0.35, top: 1, span: 1.1, register: -1, slide: 0.55, fall: 0.5, repeat: 0.05, leap: 0.05,
     contours: { verse: [['fall', 2], ['arch', 2]], chorus: [['arch', 2], ['rise', 1]] },
   },
@@ -104,9 +108,9 @@ const SINGERS: Record<SingerKind, Singer> = {
       prechorus: [['22', 1], ['1111', 1]], bridge: [['44', 2], ['2222', 1]],
     },
     density: [0.75, 0.55], flow: 0.03, syncop: 0.3, hold: 0.4, holdLen: [['mid', 2], ['long', 4]],
-    runs: 0.09, runLen: [3, 4], runKinds: [['tail', 4]],
+    runs: 0.05, runLen: [3, 4], runKinds: [['tail', 4]],
     belt: 0.35, top: 1, span: 0.85, register: 0, slide: 0.65, fall: 0.35, repeat: 0.2, leap: -0.03,
-    contours: { verse: [['recite', 2], ['valley', 1]], chorus: [['arch', 2], ['valley', 1]] },
+    contours: { verse: [['recite', 1], ['valley', 2]], chorus: [['arch', 2], ['valley', 1]] },
   },
   popvoice: {
     kind: 'popvoice', desc: 'a pop voice: tight syncopated hooks said twice, little runs at the line ends',
@@ -115,7 +119,7 @@ const SINGERS: Record<SingerKind, Singer> = {
       prechorus: [['1111', 2], ['2211', 1]], bridge: [['224', 1], ['2222', 1]],
     },
     density: [1.1, 1], flow: 0.3, syncop: 0.5, hold: 0.1, holdLen: [['short', 2], ['mid', 3], ['long', 1]],
-    runs: 0.175, runLen: [3, 6], runKinds: [['cascade', 2], ['tail', 4]],
+    runs: 0.1, runLen: [3, 4], runKinds: [['cascade', 2], ['tail', 4]],
     belt: 0.3, top: 1, span: 1.1, register: 0, slide: 0.15, fall: 0.1, repeat: 0.05, leap: 0.03,
   },
   chanter: {
@@ -127,7 +131,7 @@ const SINGERS: Record<SingerKind, Singer> = {
     density: [1.3, 1], flow: 0.35, syncop: 0.55, hold: 0.05, holdLen: [['short', 4], ['mid', 2]],
     runs: 0.01, runLen: [3, 3], runKinds: [['tail', 1]],
     belt: 0.15, top: 0, span: 0.7, register: 0, slide: 0.1, fall: 0.15, repeat: 0.25, leap: -0.05,
-    contours: { verse: [['recite', 3]] },
+    contours: { verse: [['recite', 2], ['wave', 1]] },
   },
   crooner: {
     kind: 'crooner', desc: 'a crooner: long legato arcs, gentle wide leaps, few words, turns on the held notes',
@@ -136,7 +140,7 @@ const SINGERS: Record<SingerKind, Singer> = {
       prechorus: [['22', 1]], bridge: [['44', 1]],
     },
     density: [0.7, 0.55], flow: 0, syncop: 0.2, hold: 0.3, holdLen: [['short', 1], ['mid', 3], ['long', 2]],
-    runs: 0.125, runLen: [3, 5], runKinds: [['cascade', 2], ['tail', 3]],
+    runs: 0.08, runLen: [3, 4], runKinds: [['cascade', 2], ['tail', 3]],
     belt: 0.25, top: 1, span: 1.25, register: 0, slide: 0.3, fall: 0.1, repeat: -0.05, leap: 0.1,
     contours: { verse: [['arch', 3], ['wave', 1]], chorus: [['arch', 3], ['rise', 1]] },
   },
