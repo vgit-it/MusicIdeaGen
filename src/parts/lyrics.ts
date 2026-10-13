@@ -119,6 +119,38 @@ const BLOCKED = /fuck|shit|cunt|nig|fag|slut|whor|rape|dick|cock|piss|bitch|twat
 const weighted = <T>(rng: Rng, items: W<T>, f: (x: T) => number = () => 1): T =>
   rng.weighted(items.map(([x, w]) => [x, w * f(x)] as [T, number]));
 
+// where one syllable meets the next: the end of one and the start of the next are sung as one run
+// of consonants, so some meetings smear or trip the tongue ("-st str-", "-t t-", "-s sh-", "-ng g-").
+// A nudge on the odds while picking, and the line with the fewest bad meetings is kept.
+const SIBILANT: Cons[] = ['S', 'Z', 'SH', 'CH', 'JH'];
+const PAIRS: Cons[][] = [['P', 'B'], ['T', 'D'], ['K', 'G'], ['F', 'V'], ['TH', 'DH'], ['S', 'Z'], ['CH', 'JH'], ['M', 'N']];
+const AWKWARD = new Set(['NG G', 'NG K', 'TH S', 'TH Z', 'S TH', 'Z TH', 'DH S', 'S DH', 'TH DH', 'DH TH', 'F TH', 'TH F', 'V DH', 'L R', 'R L', 'T TH', 'D DH']);
+
+/** How well `next` follows `prev` (1: fine, toward 0: hard to sing or smeared). */
+function seam(prev: Syllable | undefined, next: { onset: Cons[]; vowel: Vowel; coda: Cons[] }): number {
+  if (!prev) return 1;
+  const a = prev.coda[prev.coda.length - 1], b = next.onset[0];
+  let f = 1;
+  const run = prev.coda.length + next.onset.length;
+  if (run > 3) f *= 0.05;
+  else if (run === 3) f *= 0.4;
+  if (a && b) {
+    if (a === b) f *= 0.1;
+    else if (PAIRS.some((p) => p.includes(a) && p.includes(b))) f *= 0.3;
+    else if (SIBILANT.includes(a) && SIBILANT.includes(b)) f *= 0.25;
+    if (AWKWARD.has(`${a} ${b}`)) f *= 0.2;
+  }
+  // two vowels meeting (a-I, my-a): fine now and then, not often
+  if (!a && !b) f *= 0.5;
+  // the same vowel twice in a row (not the light "a"), or the same syllable again
+  if (next.vowel === prev.vowel && next.vowel !== 'AX') f *= 0.4;
+  if (next.vowel === prev.vowel && next.onset.join() === prev.onset.join() && next.coda.join() === prev.coda.join()) f *= 0.1;
+  return f;
+}
+
+/** How rough a line is: the bad meetings in it, worst counted most. */
+const roughness = (line: Syllable[]) => line.reduce((sum, s, i) => sum + (i ? 1 - seam(line[i - 1], s) : 0), 0);
+
 // spelling: consonants, and vowels as they'd be written open (no coda) or closed
 const CONS_TEXT: Record<Cons, string> = {
   P: 'p', B: 'b', T: 't', D: 'd', K: 'k', G: 'g', M: 'm', N: 'n', NG: 'ng', F: 'f', V: 'v', TH: 'th', DH: 'th', S: 's', Z: 'z', SH: 'sh',
@@ -144,13 +176,14 @@ const syl = (onset: Cons[], vowel: Vowel, coda: Cons[], stress: boolean, wordSta
   ({ onset, vowel, coda, stress, wordStart, text: text ?? spellSyl(onset, vowel, coda) });
 
 /** A stressed (content) syllable: an onset, a full vowel, usually a coda; open and sonorant on long and high notes. */
-function strong(rng: Rng, slot: LyricSlot, style: LyricStyle, avoid?: Vowel): Syllable {
+function strong(rng: Rng, slot: LyricSlot, style: LyricStyle, avoid?: Vowel, prev?: Syllable): Syllable {
   const mv = MOOD_VOWELS[style.mood], mc = MOOD_CONS[style.mood];
   const funk = style.genre === 'funk';
   const consBias = (cs: Cons[]) => (cs.length > 1 ? mc.cluster : 1) * (HARD.includes(cs[0]) ? mc.hard * (funk ? 1.3 : 1) : SOFT.includes(cs[0]) ? 1 / mc.hard : 1);
-  const onset = rng.chance(0.88) ? weighted(rng, ONSETS, consBias) : [];
+  // (no onset after an open syllable would make two vowels meet: rarer)
+  const onset = rng.chance(prev && !prev.coda.length ? 0.94 : 0.88) ? weighted(rng, ONSETS, (cs) => consBias(cs) * seam(prev, { onset: cs, vowel: 'AX', coda: [] })) : [];
   const sustain = slot.long || slot.high;
-  let vowel = weighted(rng, VOWELS, (v) => (mv[v] ?? 1) * (sustain && !OPEN.includes(v) ? 0.15 : 1) * (v === avoid ? 0.2 : 1));
+  let vowel = weighted(rng, VOWELS, (v) => (mv[v] ?? 1) * (sustain && !OPEN.includes(v) ? 0.15 : 1) * (v === avoid ? 0.2 : 1) * (prev && v === prev.vowel ? 0.4 : 1));
   if (sustain && (vowel === 'IY' || vowel === 'UW')) vowel = vowel === 'IY' ? 'EY' : 'OW';
   // held notes end on a sung consonant (n, m, l, nd) or none; quick ones close more often
   let coda: Cons[] = [];
@@ -162,6 +195,9 @@ function strong(rng: Rng, slot: LyricSlot, style: LyricStyle, avoid?: Vowel): Sy
 }
 
 const fromList = (e: [Cons[], Vowel, Cons[], string], stress: boolean, wordStart: boolean) => syl(e[0], e[1], e[2], stress, wordStart, e[3]);
+/** A light syllable from a list, leaning away from ones that meet `prev` badly. */
+const pick = (rng: Rng, list: W<[Cons[], Vowel, Cons[], string]>, prev: Syllable | undefined, stress: boolean, wordStart: boolean) =>
+  fromList(weighted(rng, list, (e) => seam(prev, { onset: e[0], vowel: e[1], coda: e[2] })), stress, wordStart);
 
 /** The rhyme of a syllable (its vowel and what follows). */
 export interface Rhyme { vowel: Vowel; coda: Cons[] }
@@ -177,8 +213,10 @@ export const rhymeOf = (line: Syllable[]): Rhyme | null => {
  * syllables go first, exactly (the chorus title).
  */
 export function lyricLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts: { rhyme?: Rhyme | null; hook?: Syllable[] } = {}): Syllable[] {
+  let best: Syllable[] | null = null, bestRough = Infinity;
   for (let tries = 0; tries < 6; tries++) {
     const out: Syllable[] = [];
+    const prev = () => out[out.length - 1];
     let i = 0;
     if (opts.hook) {
       for (const h of opts.hook) if (i < slots.length) out.push({ ...h }), i++;
@@ -187,7 +225,7 @@ export function lyricLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts:
     // words by feet: a strong note and the weak ones after it make a word (BA-by, NE-ver-the) or a
     // word and a light syllable; weak notes before the first strong one are pickups (the, a, my)
     const content = (k: number, stress: boolean, start: boolean) => {
-      const w = strong(rng, { ...slots[k], stress }, style, lastV);
+      const w = strong(rng, { ...slots[k], stress }, style, lastV, prev());
       w.stress = stress;
       w.wordStart = start;
       lastV = w.vowel;
@@ -200,7 +238,7 @@ export function lyricLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts:
           out.push(syl([], 'AX', [], false, true, 'a'));
           out.push(content(i + 1, true, false));
           i += 2;
-        } else { out.push(fromList(weighted(rng, FUNCTION), false, true)); i++; }
+        } else { out.push(pick(rng, FUNCTION, prev(), false, true)); i++; }
         continue;
       }
       let j = i + 1;
@@ -214,11 +252,11 @@ export function lyricLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts:
         // (often opened into the next syllable, but not always: English keeps many syllables closed,
         // and all-open ones, "ly ni ry", sound less like it)
         if (w.coda.length && rng.chance(0.45)) { w.coda = []; w.text = spellSyl(w.onset, w.vowel, []); }
-        out.push(fromList(weighted(rng, WEAK_END), false, false));
-      } else out.push(fromList(weighted(rng, FUNCTION), false, true));
+        out.push(pick(rng, WEAK_END, prev(), false, false));
+      } else out.push(pick(rng, FUNCTION, prev(), false, true));
       // longer runs of weak notes: alternate a light syllable and a lightly stressed word
       for (let k = i + 2; k < j; k++) {
-        out.push((k - i) % 2 === 0 && k + 1 < j ? fromList(weighted(rng, FUNCTION), false, true) : content(k, false, true));
+        out.push((k - i) % 2 === 0 && k + 1 < j ? pick(rng, FUNCTION, prev(), false, true) : content(k, false, true));
       }
       i = j;
     }
@@ -231,8 +269,13 @@ export function lyricLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts:
         last.text = spellSyl(last.onset, last.vowel, last.coda);
       }
     }
-    if (!BLOCKED.test(spell(out).toLowerCase().replace(/[^a-z]/g, ''))) return out;
+    if (BLOCKED.test(spell(out).toLowerCase().replace(/[^a-z]/g, ''))) continue;
+    // smooth enough: keep it; else try again and keep the smoothest
+    const r = roughness(out);
+    if (r < 0.75) return out;
+    if (r < bestRough) best = out, bestRough = r;
   }
+  if (best) return best;
   return slots.map((s) => syl([], s.long ? 'OW' : 'AX', [], s.stress, true, s.long ? 'oh' : 'a'));
 }
 
