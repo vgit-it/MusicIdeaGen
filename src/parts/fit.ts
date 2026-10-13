@@ -65,7 +65,8 @@ export function harmonyOf(song: Song, chords: ChordPart): Harmony {
 const rubs = (m: number, tones: number[]) => !tones.includes(mod(m, 12)) && tones.some((t) => [1, 11].includes(mod(m - t, 12)));
 
 /** The bass note sounding at a step (0: none). */
-const bassAt = (bass: number[], g: number) => { for (let x = Math.min(g, bass.length - 1); x >= 0; x--) if (bass[x]) return bass[x]; return 0; };
+/** The bass note sounding at step g (the last one played), 0: none yet. */
+export const bassAt = (bass: number[], g: number) => { for (let x = Math.min(g, bass.length - 1); x >= 0; x--) if (bass[x]) return bass[x]; return 0; };
 
 /**
  * Whether a sung note grinds against the band at step g. `firm`: a held or stressed note (passing notes

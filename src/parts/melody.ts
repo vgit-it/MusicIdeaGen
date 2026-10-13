@@ -22,7 +22,7 @@ import { type Bar, groupStarts } from '../rhythm';
 import type { Mood } from '../tension';
 import { SCALES, chordPc } from '../theory';
 import { MINORISH, chordTones } from './guitar2';
-import { type Band, bandScore, harmonyOf } from './fit';
+import { type Band, bandScore, bassAt, harmonyOf } from './fit';
 import type { Syllable } from './lyrics';
 import type { MoveId } from './moves';
 import { type FirstStyle, spineAt } from './first';
@@ -683,7 +683,10 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   const even = plan.every((x) => x === plan[0]);
   // (the grid: lines in pairs, 1 and 3 one rhythm, 2 and 4 another, or A A B A; Paul's pick)
   // (shaped: repeat, then vary: the idea, its answer, the idea again on the new chords, the answer with a new ending)
-  const styleForm = style.shaped && (kind === 'verse' || big) ? 'ABAb'
+  // (melody first, now and then: the sentence (Caplin): the idea, the idea again, broken up and quicker, the cadence)
+  const sentence = !!style.first && even && (kind === 'verse' || big) && lines.length >= 4 && rng.chance(0.45);
+  const styleForm = sentence ? 'AABC'
+    : style.shaped && (kind === 'verse' || big) ? 'ABAb'
     : style.grid && (kind === 'verse' || big) ? rng.weighted([['ABAB', 0.7], ['AABA', 0.3]])
     : kind === 'verse' ? style.verseForm : big || kind === 'bridge' ? style.chorusForm : 'AAAB';
   let form = '';
@@ -696,6 +699,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       form += j < 0 ? 'ABCDEFGH'[nextLetter++] : rng.chance(0.65) ? form[j].toUpperCase() : form[j].toLowerCase();
     });
   }
+  /** Where a line sits in the sentence: 0 the idea, 1 the idea again, 2 the continuation, 3 the cadence; -1: not a sentence. */
+  const sPos = (li: number) => (sentence ? (plan[0] === 1 ? li >> 1 : li) % 4 : -1);
   // a pre-chorus climbs by sequence: the same line, a step higher each time
   const seq = kind === 'prechorus' ? rng.pick([1, 1, 2]) : 0;
   const motifs = new Map<string, Motif>();
@@ -874,7 +879,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const s0 = spineIdx(li / nl);
     // (a closed section's last line comes home: its spine's end, the root nearest it)
     let goal = spineIdx((li + 1) / nl);
-    const closed = li === last || (style.ends === 'fall' && li % 2 === 1);
+    const pos = sPos(li);
+    const closed = li === last || pos === 3 || (pos < 0 && style.ends === 'fall' && li % 2 === 1);
     const prevM = lineMotif.get(form[li].toUpperCase());
     if (looping) {
       // the loop: the cell from the bar's first note, the same pitches every bar
@@ -885,6 +891,19 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
         const pi = Math.max(0, Math.min(pent.length - 1, loopFrom + loopCell[k++ % loopCell.length]));
         idxs[oi] = pent[pi] ?? home;
       });
+    } else if (pos === 2) {
+      // the sentence's continuation: the idea broken up, its first two or three notes again and again,
+      // each time a step nearer the spine's next note (a sequence), then there
+      const A = lineMotif.get('A')?.shape ?? realize(0, false);
+      const cl = n >= 8 ? 3 : 2;
+      const cell = A.slice(0, cl).map((x) => x - A[0]);
+      let from = s0;
+      for (let oi = 0; oi < n - 1; oi++) {
+        const w = oi % cell.length;
+        if (w === 0 && oi > 0) from += Math.sign(goal - from) || (from > home ? -1 : 1);
+        idxs[oi] = clampIdx(from + cell[w]);
+      }
+      idxs[n - 1] = goal;
     } else {
       // the head: the motif moved to the spine, or the idea (an answer: inverted)
       const letter = 'ABCDEFGH'.indexOf(form[li].toUpperCase());
@@ -955,12 +974,61 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       if (fresh !== undefined) idxs[oi] = fresh;
       else if (grindsAt(m, o.g) || !o.stress) idxs[oi] = cands[0] ?? idxs[oi];
     }
+    // against the bass (counterpoint): strong notes moving the same way as the bass into a 5th or an octave
+    // with it (parallels: the tune swallowed by the bass) move to a chord note the other way; now and then
+    // any similar motion does, so the tune stands apart from the band
+    if (band) {
+      let pv = -1, pb = 0;
+      const perfect = (x: number) => [0, 7].includes(mod(x, 12));
+      for (let oi = 0; oi < n; oi++) {
+        const o = rh.onsets[oi];
+        if (!(o.stress || lens[oi] >= 4)) continue;
+        const b = bassAt(band.bass, o.g);
+        if (!b) continue;
+        if (pv >= 0 && pb && oi < n - 1 && !colour[oi]) {
+          const was = pool[idxs[pv]], dv = pool[idxs[oi]] - was, db = b - pb;
+          const same = dv && db && Math.sign(dv) === Math.sign(db);
+          if (same && ((perfect(was - pb) && perfect(pool[idxs[oi]] - b)) || rng.chance(0.35))) {
+            const alt = [1, 2, 3, -1, -2, -3].map((d) => idxs[oi] + d)
+              .filter((j) => j >= 0 && j < pool.length && isTone(pool[j], o.g) && Math.sign(pool[j] - was) === -Math.sign(db) && j !== idxs[oi - 1])
+              .sort((x, y) => Math.abs(x - idxs[oi]) - Math.abs(y - idxs[oi]))[0];
+            if (alt !== undefined && Math.abs(alt - idxs[oi]) <= 3) idxs[oi] = alt;
+          }
+        }
+        pv = oi; pb = b;
+      }
+    }
     // one clear high point: a later weak note matching the line's top steps down
     const top = Math.max(...idxs);
     let seenTop = false;
     idxs.forEach((x, k) => { if (x !== top) return; if (seenTop && !rh.onsets[k].stress && k !== n - 1 && !colour[k]) idxs[k] = clampIdx(x - 1); seenTop = true; });
     const lineNotes: TuneNote[] = rh.onsets.map((o, oi) => ({ step: o.g, len: Math.max(1, lens[oi]), midi: pool[idxs[oi]], stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}), ...(colour[oi] ? { colour: true } : {}) }));
-    return { rh, shape: idxs.map((x) => x - s0), alt: new Array(n).fill(0), lineNotes };
+    return { rh, shape: idxs.map((x) => x - s0), alt: new Array(n).fill(0), lineNotes, goalM: pool[goal] };
+  };
+
+  /**
+   * How musical a line is, melody first (docs/VOCAL-FIRST.md, step 4): it reaches its spine note; a leap
+   * turns back (gap-fill); one high point; no long runs on one note; a few different intervals, not too
+   * many leaps (mostly expected, a few surprises: Pearce, Huron). Added to the band's score for each try.
+   */
+  const musicScore = (ns: TuneNote[], goalM?: number) => {
+    const sy = ns.filter((x) => !x.tie);
+    if (sy.length < 2) return 0;
+    let sc = 0;
+    if (goalM !== undefined) sc += Math.abs(sy[sy.length - 1].midi - goalM) <= 2 ? 1.5 : -0.5;
+    const ints = sy.slice(1).map((x, k) => x.midi - sy[k].midi);
+    ints.forEach((d, k) => { const e = ints[k + 1]; if (Math.abs(d) >= 5 && e !== undefined) sc += e && Math.sign(e) !== Math.sign(d) ? 0.6 : -0.6; });
+    const top = Math.max(...sy.map((x) => x.midi));
+    sc -= 0.8 * Math.max(0, sy.filter((x, k) => x.midi === top && (k === 0 || sy[k - 1].midi !== top)).length - 1);
+    let run = 0;
+    for (const d of ints) { run = d ? 0 : run + 1; if (run >= 2) sc -= 0.7; }
+    if (ints.length >= 5) {
+      const kinds = new Set(ints.filter(Boolean).map(Math.abs)).size;
+      sc -= 0.4 * Math.abs(kinds - 4);
+      const leapShare = ints.filter((d) => Math.abs(d) >= 5).length / ints.length;
+      sc -= leapShare > 0.4 ? (leapShare - 0.4) * 4 : leapShare === 0 ? 0.5 : 0;
+    }
+    return 1.5 * sc;
   };
 
   /**
@@ -1048,7 +1116,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           keep = head.length;
         }
       } else {
-        const o = opts(li === 0 && start === 'pickup' ? 'down' : start, busy * (kind === 'prechorus' && li === last ? 1.25 : 1));
+        // (the sentence's continuation: quicker, the idea broken up)
+        const o = opts(li === 0 && start === 'pickup' ? 'down' : start, busy * (kind === 'prechorus' && li === last ? 1.25 : 1) * (sPos(li) === 2 ? 1.2 : 1));
         rh = style.grid ? gridRhythm(rng, L, o, gridUnit(song.bpm), kind) : phraseRhythm(rng, L, o);
         rh = holdInside(rng, rh, L, 0.3 + singer.hold);
       }
@@ -1147,11 +1216,13 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     // the grid gave "a bunch of back to back 1/4 bar length notes")
     const plodding = (ns: TuneNote[]) => { let r = 0, p = 0; for (let k = 1; k < ns.length; k++) { r = ns[k].step - ns[k - 1].step === 4 && ns[k].line === ns[k - 1].line ? r + 1 : 0; if (r >= 3) p++; } return p; };
     const score = (ns: TuneNote[]) => bandScore(ns, H, band!, total, style.grip) - (style.grid ? 1.5 * plodding(ns) : 0);
+    // (melody first: how musical the try is counts too)
+    const music = (t: ReturnType<typeof attempt>) => (style.first ? musicScore(t.lineNotes, 'goalM' in t ? t.goalM : undefined) : 0);
     let best = attempt(tries > 1 ? new Rng(`${seed}-0`) : rng);
-    let bestScore = band ? score(best.lineNotes) : 0;
+    let bestScore = band ? score(best.lineNotes) + music(best) : 0;
     for (let c = 1; c < tries; c++) {
       const t = attempt(new Rng(`${seed}-${c}`));
-      const sc = score(t.lineNotes);
+      const sc = score(t.lineNotes) + music(t);
       if (sc > bestScore) { best = t; bestScore = sc; }
     }
     const { rh, shape, alt } = best;
