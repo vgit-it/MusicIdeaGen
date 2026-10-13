@@ -189,6 +189,14 @@ button instead of separate for amps and voice". `src/audio/polish.ts`, run once 
 - **One button: Prepare real sound** (was Prepare real amps): polishes the singer's lines (quick; on any
   device), then runs the guitars through the real amps. Exports made with it on are polished too.
 
+- **By genre** (Paul: "compressor vocals, or telephone vocals for specific genre like pop"): each genre's
+  compression: rock natural (the opto), pop radio (the opto, then a fast peak compressor, air on top),
+  hard rock / metal / alt metal heavy (6:1, quick), funk tight (quick and dry), grunge dark (tape-like
+  saturation, top rolled off). And an effect sprinkled on the first verse's lead lines in about 6
+  songs in 10 (the full voice comes in after it): pop a telephone (400 Hz-3.2 kHz), grunge a megaphone
+  (a horn: narrow, a 1.8 kHz resonance, driven), alt metal an old radio (wider, gritty). The band is
+  applied again after the drive, so the grit stays inside it. Part of the Prepare real sound pass.
+
 ## 10. Next
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
