@@ -56,7 +56,11 @@ const scream = fofFor('rock', 17, false, 'scream');
 // (each genre's voice, polished its genre's way: compression, and the effect on the verse where it has one)
 const COMP: Record<string, VocalComp> = { rock: 'natural', pop: 'radio', funk: 'tight', hardrock: 'heavy', metal: 'heavy', grunge: 'dark', altmetal: 'heavy' };
 const FX: Record<string, VocalFx | undefined> = { pop: 'telephone', grunge: 'megaphone', altmetal: 'radio' };
-const TAKES: [string, FofVoice][] = (['pop', 'rock', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'] as const).map((g) => [g, fofFor(g, 17, false)]);
+// (ONLY=name,name: just those takes; cornell: the Chris Cornell-like character on the rock voice)
+COMP.cornell = 'natural';
+const ALL: [string, FofVoice][] = [...(['pop', 'rock', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'] as const).map((g): [string, FofVoice] => [g, fofFor(g, 17, false)]), ['cornell', fofFor('rock', 17, false, 'cornell')]];
+const only = process.env.ONLY?.split(',');
+const TAKES = only ? ALL.filter(([n]) => only.includes(n)) : ALL;
 
 function wav(samples: Float32Array, rate: number): Buffer {
   const b = Buffer.alloc(44 + samples.length * 2);
