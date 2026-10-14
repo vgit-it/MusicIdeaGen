@@ -27,7 +27,7 @@ export const FLICK_LEVELS: [Flicks, string][] = [['off', 'Off'], ['sparse', 'Spa
 /** A quick note on a held one: `at` steps into it, `len` steps long (an 8th), then back. */
 export interface Flick {
   at: number; len: number; midi: number;
-  /** A split-second silence (steps) after it before the held note comes back. */
+  /** A 16th's silence (in steps) after it before the held note comes back (the quick note then a 16th itself). */
   gap?: number;
   /** At the held note's end: bent up (or down) to, and the line moves on from there. */
   bend?: boolean;
@@ -108,14 +108,14 @@ const MOODS: Record<Mood, GuideMood> = {
 };
 
 /** Quick notes per bar of a held note, by how many; and how often they're a 16th (else an 8th), by mood. */
-const FLICK_RATE: Record<Flicks, number> = { off: 0, sparse: 0.25, some: 0.6, lots: 1.5 };
+const FLICK_RATE: Record<Flicks, number> = { off: 0, sparse: 0.25, some: 0.6, lots: 4 };
 /** They come in clusters of 2 bars, frequent, then moderate, then sparse (Paul): how many in each, times the rate. */
 type Cluster = 'frequent' | 'moderate' | 'sparse';
 const CLUSTERS: Cluster[] = ['frequent', 'moderate', 'sparse'];
 const CLUSTER_RATE: Record<Cluster, number> = { frequent: 2.2, moderate: 1, sparse: 0.3 };
 const CLUSTER_BARS = 2;
-/** How often the held note comes back after a split second's silence (a 32nd), not straight on. */
-const GAP_P = 0.35, GAP = 0.5;
+/** How often a quick note is a 16th with a 16th's silence after it (an 8th in all), then the held note again. */
+const GAP_P = 0.35;
 
 /** How much longer notes are held than the first version's pace. */
 const STEADY = 2.5;
@@ -274,7 +274,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       i += n; beatNo += n;
     }
     // quick notes on the long ones (Paul): one note up or down a step or two, for an 8th, on the 8th-note
-    // grid, then back to the line, like a drum hit (now and then after a split second's silence); at a held
+    // grid, then back to the line, like a drum hit (now and then a 16th and a 16th's silence); at a held
     // note's very end, a bend to it instead (and on from there). They come in 2-bar clusters: frequent,
     // moderate, sparse. Not on notes in a bend, never the song's last note's end.
     const barOf = (g: number) => barBase + Math.max(0, song.bars.findIndex((b) => b.start + b.len > g));
@@ -284,23 +284,25 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const songLast = lastSection && k === out.length - 1;
       const barLen = song.bars.find((b) => b.start + b.len > n.step)?.len ?? 16;
       const fl: Flick[] = [];
-      for (let at = 4; at < n.len; at += 2) {
+      for (let at = flicks === 'lots' ? 2 : 4; at < n.len; at += 2) {
         const r = frng.next(), up = frng.chance(0.55), two = frng.chance(0.25), gap = frng.chance(GAP_P);
         const cl = clusterAt(barOf(n.step + at));
         const pOn = (FLICK_RATE[flicks] * CLUSTER_RATE[cl] * 2) / barLen;
-        // (apart: a beat, an 8th in a frequent cluster)
+        // (apart: a beat, an 8th in a frequent cluster or on Lots (Paul: "much more frequent"))
         const last = fl[fl.length - 1];
-        if (last && at < last.at + last.len + (last.gap ? 1 : 0) + (cl === 'frequent' ? 2 : 4)) continue;
+        if (last && at < last.at + last.len + (last.gap ?? 0) + (cl === 'frequent' || flicks === 'lots' ? 2 : 4)) continue;
         if (r >= pOn) continue;
-        const len = 2;
+        // (with a pause: a 16th, a 16th's silence, then the line again on the 8th)
+        const len = gap ? 1 : 2;
         if (at + len > n.len) continue;
         const end = at + len === n.len;
         if (end && songLast) continue;
         const m = midiOf(n.deg + (up ? 1 : -1) * (two ? 2 : 1));
         if (m === n.midi) continue;
-        // (a split second's silence before the note comes back: only with room after it)
+        // (a 16th's silence before the note comes back: only with room after it)
         const rest = !end && gap && at + len + 1 < n.len;
-        fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}), ...(rest ? { gap: GAP } : {}) });
+        if (gap && !rest) continue;
+        fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}), ...(rest ? { gap: 1 } : {}) });
         if (rest) stat.flickGaps++;
         stat.byCluster[cl]++;
         stat.flicks++;
@@ -324,7 +326,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}`,
     `Moves: steps ${pc(stat.step)}, 3rds ${pc(stat.third)}, held on ${pc(stat.same)}, leaps after a pause ${pc(stat.leap)} (${stat.leap})`,
     `Bends: ${stat.bends} (into a step: ${stat.bendLens[0]} over an 8th, ${stat.bendLens[1]} over a quarter, ${stat.bendLens[2]} over half a bar)`,
-    ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} in 2-bar clusters (frequent ${stat.byCluster.frequent}, moderate ${stat.byCluster.moderate}, sparse ${stat.byCluster.sparse}); ${stat.flickGaps} with a split-second pause before the note comes back, ${stat.flickBends} bent to at a note's end`]),
+    ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} in 2-bar clusters (frequent ${stat.byCluster.frequent}, moderate ${stat.byCluster.moderate}, sparse ${stat.byCluster.sparse}); ${stat.flickGaps} as a 16th with a 16th's pause before the note comes back, ${stat.flickBends} bent to at a note's end`]),
     `${stat.notes} notes, about ${(songBeats / Math.max(1, stat.notes)).toFixed(1)} beats each; ${stat.pauses} pauses`,
     `Chords: ${lean === 'in' ? 'leaning in' : 'leaning out (key only)'}: strong beats on a chord note ${Math.round((100 * stat.strongTone) / Math.max(1, stat.strong))}%`,
     M.colour ? `Out of key: ${colourWord[M.colour]} (${stat.colour}${stat.colour === 1 ? ' time' : ' times'})` : 'Out of key: none (this mood stays in the scale)',
