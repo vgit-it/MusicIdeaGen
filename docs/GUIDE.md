@@ -151,6 +151,15 @@ and they come in clusters of about 2 bars: frequent, then moderate, then sparse.
 About 30% come back after a pause; about 10% are bent to at a note's end. The readout lists the
 count per cluster type.
 
+## Quick notes: more on Lots, 16th pauses (2026-10-14)
+Paul: Lots much more frequent; the ones with a pause a 16th long, then a 16th's pause, so the line
+comes back in time.
+- **Lots:** about 2.2 times as many (13 per 8 bars, was 6). They may start an 8th into a note (else a
+  beat) and come an 8th apart in every cluster. In a frequent cluster nearly every other 8th.
+- **With a pause:** the quick note is a 16th, then a 16th of silence, then the held note again on the
+  next 8th (was an 8th and a 32nd). About a third of them.
+- Sparse and Some unchanged (1.3 and 2.9 per 8 bars).
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
