@@ -301,6 +301,18 @@ Paul: never more than 4 quick notes, pushes and pulls together in any one second
 - In a busy spot the later ones are left out. The readout shows how many.
 - Rarely needed: about 0.3% left out on Some, 0.6% on Lots (the busiest spots in fast songs).
 
+## Sung: words on the line, the Cornell voice (2026-10-14)
+
+Paul: use the guide line's tune to write words (the same tune exactly), sung by the Cornell voice, on and off.
+
+- **The tune stays exactly the same.** The words only decide which syllable sits on each sound (`src/guide/words.ts`).
+- **Where words go:** each note's start, a push and the note back after a pull start a word. A pull ends one softly into its silence (a soft last sound: n, m, l, s).
+- **Quick notes:** a jump there and back carries the light end of a word (NEV-er) or stays on the vowel (oh-oh). One with a pause is a quick light word (the, a, in). A bend at a note's end is a soft ending or stays one sound. How often they carry words, by genre: funk most, grunge least.
+- **Lines** break at the pauses (a beat or more), or after two bars at the next word. Every other line rhymes. Choruses sing the same words each time; verses get new ones. Long notes open their vowels.
+- **Words:** the vocals' pseudo-English (`src/parts/lyrics.ts`). About 2 syllables a bar on Some.
+- **The voice:** the FOF singer in the Cornell voice (the woman's when the line is sung High), polished like the vocals, each line rendered once in the background (`src/guide/voice.ts`). Sing: Off / Cornell, Off by default; on, it sings instead of the synth.
+- **Shown** under the drawing, section by section; in the MIDI file as lyrics.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

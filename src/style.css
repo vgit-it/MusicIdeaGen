@@ -202,3 +202,6 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .guidedraw .gpull { stroke: #94a3b8; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .guidedraw .gquiet { fill: var(--card); }
 .glegend .k.gpushk { background: #f1f5f9; } .glegend .k.gpullk { background: #94a3b8; }
+.guidewords { margin: 8px 0 4px; font-size: 13px; color: var(--mute); }
+.guidewords p { margin: 2px 0; }
+.guidewords b { color: var(--text); font-weight: 600; margin-right: 4px; }
