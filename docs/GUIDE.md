@@ -340,6 +340,21 @@ Paul: C2-C4 was super low; keep it around E3 without making it monotonous.
 - **Result** (80 songs): middle note F3 (was Eb4 before the octave drop); verses around D3, choruses around G3 (a 4th apart; was 2 semitones); the song's span (13 semitones) and different pitches per song (8) the same as before, so no flatter.
 - Leaps after pauses, quick notes, pushes and pulls unchanged.
 
+## Lifted: C3 to E4 (2026-10-14)
+
+Paul: still a bit weird; lift the range further, as limits the line is written within (not a shift afterwards).
+
+- The voice's limits raised: C3 to E4 (was A2 to C4), home C3 to B3 by the key, the song's peaks to F#4 (was D4). The line is written inside them from the start.
+- Result (80 songs): middle note Ab3 (was F3); most notes D3 to D4; verses around F#3, choruses around Bb3. Span and variety as before (12-13 semitones, 8 pitches a song).
+- The woman's voice (High) still sings the line an octave up, in her range.
+
+## All the voices (2026-10-14)
+
+Paul: give me the other voices in there too.
+
+- **Sing** is now a menu: Off, Auto (the song's genre voice; the woman's when the line is sung High), Clear (the first voice), each genre's voice, and the characters (Big & dark, Chester, Cornell, Woman, Dark & nasal), the same list as the vocals' Voice menu.
+- The Woman voice sings the line an octave up, in her range; the rest at the line's pitch.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
