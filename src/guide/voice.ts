@@ -63,13 +63,15 @@ export class GuideVoice {
       for (const L of lines) {
         if (!L.notes.length) continue;
         const t0 = GuideVoice.at(idea, L.notes[0].step);
-        const notes: SungNote[] = L.notes.map((n) => ({ t: GuideVoice.at(idea, n.step) - t0, end: GuideVoice.at(idea, n.step + n.len) - t0, midi: n.midi + shift, vel: n.vel, syl: n.syl }));
+        const notes: SungNote[] = L.notes.map((n) => ({ t: GuideVoice.at(idea, n.step) - t0, end: GuideVoice.at(idea, n.step + n.len) - t0, midi: n.midi + shift, vel: n.vel, syl: n.syl,
+          // (a bend: glided into over its length, as the line plays it)
+          ...(n.bend ? { bend: GuideVoice.at(idea, n.step + n.bend) - GuideVoice.at(idea, n.step) } : {}) }));
         // (a short breath between words, Paul: the word before let go a moment early; the tune's timing kept)
         for (let j = 1; j < notes.length; j++) {
           const p = notes[j - 1], q = notes[j];
           if (q.syl.wordStart && q.syl.text !== '~' && Math.abs(p.end - q.t) < 1e-6) p.end -= Math.min(0.05, 0.2 * (p.end - p.t));
         }
-        const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}`;
+        const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ""},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}`;
         const p: Placed = { key, notes, t0, idea, energy, sung };
         const first = Math.max(0, L.notes[0].step - Math.ceil(PRE / six));
         (m.get(first) ?? m.set(first, []).get(first)!).push(p);

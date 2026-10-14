@@ -54,7 +54,7 @@ export const CONS: Record<Cons, ConsSpec> = {
  * A note to sing, in seconds from the line's start (its vowel lands at `t`); `slide`: scooped up into from
  * so many semitones below; `fall`: falls off its end by so many (left out: the line's own way).
  */
-export interface SungNote { t: number; end: number; midi: number; vel: number; syl: Syllable; slide?: number; fall?: number }
+export interface SungNote { t: number; end: number; midi: number; vel: number; syl: Syllable; slide?: number; fall?: number; bend?: number }
 
 export interface VoiceShape {
   high: boolean;
@@ -411,7 +411,10 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     let midi = note.midi + (voice.high ? 12 : 0);
     const prevN = vowelNotes[ni - 1];
     const into = t - note.t, held = note.end - note.t;
-    if (note.slide) {
+    if (note.bend && prevN) {
+      // a bend from the last note, over `bend` seconds (the guide line's bends)
+      midi = lerp(prevN.midi + (voice.high ? 12 : 0), midi, Math.max(0, Math.min(1, into / note.bend)));
+    } else if (note.slide) {
       // a scoop up into the note (easing in), over up to a fifth of a second
       const sd = Math.min(0.22, held * 0.35);
       midi -= note.slide * (1 - Math.max(0, Math.min(1, (into + 0.02) / sd))) ** 2;

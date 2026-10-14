@@ -463,6 +463,15 @@ The fourth idea from the other melody writers (Words first's question and answer
 
 The rest are held back by the other rules (the voice's top, stepping back after a leap, keeping near the section's height).
 
+## Only bends inside a word (2026-10-14)
+Paul: "if there's a new note coming in during a word, it should be a bend. If not for a bend, end the word and start a new one." Part of the line's own words (no switch), with the switches on or off.
+- **A bend carries the word on:** a bent note, or a quick note bent to at a note's end, keeps the syllable before it (no new attack).
+- **Every other new note starts a new word:** a quick note, and the line coming back from it. Before, either one could be the next syllable of the same word (BRO-ken).
+- **Stresses kept:** a light word on the quick note and a stressed one coming back (the / NIGHT), or the other way round (NIGHT / the). Pitch by words still decides which.
+- **Bends sung as bends:** the voice now glides over a bend's own length (an 8th, a quarter or half a bar; most of a bent quick note), as the line plays it. Before, it jumped there in about 90 ms.
+- **The tune is unchanged:** every note, quick note, push and pull is the same. Only the words and the sung glides change, so the reference was saved again.
+- **A new rule in `npm run guide-check`:** a new note inside a word must be a bend.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

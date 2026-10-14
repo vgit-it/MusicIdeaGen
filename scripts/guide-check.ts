@@ -3,7 +3,7 @@
 // taken in turn) and compares each with the saved reference (scripts/guide-reference.json): with every new
 // idea switched off, every note, quick note, push, pull and word must be the same as before.
 // Also checks the rules with whatever is on: the words sit exactly on the tune, at most 4 changes heard in any
-// second, the range.
+// second, the range, a new note inside a word only ever a bend.
 //   npm run guide-check          compare with the reference
 //   npm run guide-check -- save  save a new reference (only when a change to the line is meant)
 
@@ -67,6 +67,11 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
     }
     for (const l of W[si]) for (const x of l.notes) for (let t = 0; t < x.len; t++) got[x.step + t] = x.midi;
     if (want.some((v, t) => v !== got[t])) broken.push(`${id} ${idea.section?.label}: the words are off the tune`);
+    // (a new note inside a word only ever a bend: carried on, gliding there; any other new note starts a word)
+    for (const l of W[si]) l.notes.forEach((x, k) => {
+      const p = l.notes[k - 1];
+      if (p && x.midi !== p.midi && !x.syl.wordStart && !(x.syl.text === '~' && x.bend)) broken.push(`${id} ${idea.section?.label}: a new note inside a word, not bent`);
+    });
     // (at most 4 changes heard in any second; a note start at a step can count once)
     const at = [...new Set(changes)].sort((a, b) => a - b);
     for (let i = 0; i + 4 < at.length; i++) if ((at[i + 4] - at[i]) * six < 1 - 1e-9) { broken.push(`${id} ${idea.section?.label}: over 4 changes in a second`); break; }
