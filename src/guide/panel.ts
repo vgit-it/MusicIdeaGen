@@ -65,7 +65,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label title="Auto: mid, or high if the singer sings high. High: up to its top where the song is high">Voice ${seg('g-voice', [['auto', 'Auto'], ['mid', 'Mid'], ['high', 'High']], voice)}</label>
         <label title="Sing the line's words (the same tune) in one of the singer's voices, instead of the synth">Sing <select id="g-sing" class="gsing"><option value="off" selected>Off</option>${TIMBRE_CHOICES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('')}</select></label>
         <label title="A short idea repeated: each section's phrases in the form A B A b (the first phrase comes back, moved to suit the height and chords; the second comes back with a new ending)">Repeat idea ${seg('g-motif', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Quick notes on the long ones: a step or two up or down for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
+        <label title="A slow shape under each section that the line follows, by mood: verses falling (rising when happy, around one note when dark), pre-choruses climbing, choruses arching; phrases end on it">Slow line ${seg('g-spine', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+        <label title="Quick notes on the long ones: a scale step up or down (in the key) for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
         <label class="grow">Volume <input type="range" id="g-vol" min="0" max="100" value="${level}"></label>
@@ -130,7 +131,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
     // the quick notes: a dash at their height (a slope when bent to at a note's end)
     for (const n of all) for (const f of n.flicks ?? []) {
       if (f.bend) parts.push(`<line x1="${x(n.at + f.at)}" x2="${x(n.at + f.at + f.len)}" y1="${y(n.midi)}" y2="${y(f.midi)}" class="gfbend"/>`);
-      else parts.push(`<rect x="${x(n.at + f.at)}" y="${y(f.midi) - 2}" width="${Math.max(2, x(f.len))}" height="4" class="${f.outKey ? 'gflickout' : 'gflick'}"><title>${noteName(f.midi)}${f.outKey ? ' (a half step, out of key)' : ''}</title></rect>`);
+      else parts.push(`<rect x="${x(n.at + f.at)}" y="${y(f.midi) - 2}" width="${Math.max(2, x(f.len))}" height="4" class="gflick"><title>${noteName(f.midi)}</title></rect>`);
     }
     // pushes (a tick up) and pulls (a tick down) on the held notes
     for (const n of all) for (const m of n.marks ?? []) {
@@ -142,7 +143,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         : `<line x1="${xx}" x2="${xx}" y1="${yy + 3}" y2="${yy + 9}" class="gpull"><title>pull</title></line>`);
     }
     draw.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="The guide line over the song">${parts.join('')}<line id="g-cur" x1="-5" x2="-5" y1="0" y2="${H}" class="gcur"/></svg>
-      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend <span class="k gflickk"></span>quick note <span class="k gflickoutk"></span>quick note, a half step (out of key) <span class="k gpushk"></span>push <span class="k gpullk"></span>pull (then silence to the next beat)</div>`;
+      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend <span class="k gflickk"></span>quick note <span class="k gpushk"></span>push <span class="k gpullk"></span>pull (then silence to the next beat)</div>`;
     cursor = draw.querySelector('#g-cur');
     drawnTotal = total;
   };
@@ -203,6 +204,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   pickSeg('g-lean', (v) => { lean = v as Lean; rewrite(); });
   pickSeg('g-voice', (v) => { voice = v as typeof voice; rewrite(); });
   pickSeg('g-motif', (v) => { ideas.motif = v === 'on'; rewrite(); });
+  pickSeg('g-spine', (v) => { ideas.spine = v === 'on'; rewrite(); });
   pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
   $('g-sing').addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;

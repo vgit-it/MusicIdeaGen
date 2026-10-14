@@ -26,7 +26,7 @@ const HIGH: (HighVoice | null)[] = [null, null, 'tenor', 'woman'];
 const hash = (s: string) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0; return h.toString(16); };
 
 /** Each new idea switched on alone (the rules checked with it on too). */
-const IDEAS: [string, GuideIdeas][] = [['all off', {}], ['Repeat idea', { motif: true }]];
+const IDEAS: [string, GuideIdeas][] = [['all off', {}], ['Repeat idea', { motif: true }], ['Slow line', { spine: true }], ['both', { motif: true, spine: true }]];
 
 const out: Record<string, string> = {};
 const broken: string[] = [];

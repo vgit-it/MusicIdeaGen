@@ -20,15 +20,15 @@ export interface GuideSungLine { notes: GuideSyl[]; text: string }
 /**
  * Every quick note is a word's end or a new word's start (Paul), its stresses to suit: a word's end is a
  * light last syllable and the line coming back starts a new, stressed word (BRO-ken / NIGHT); a word's start
- * is a stressed new word, the line coming back its light second syllable (the NIGHT / FAL-len). Two-step
- * jumps start words; one with a pause after it, or bent to at a note's end, ends one; the rest by chance,
+ * is a stressed new word, the line coming back its light second syllable (the NIGHT / FAL-len). One with
+ * a pause after it, or bent to at a note's end, ends one; the rest by chance,
  * a little more often starting words where the genre is busier.
  */
 const STARTS: Record<Genre, number> = { funk: 0.6, hardrock: 0.55, rock: 0.5, pop: 0.5, metal: 0.5, altmetal: 0.5, grunge: 0.4 };
 
 /** What starts a stretch of sound: a note, a push, the note back after a pull or a quick note's pause, a quick note, a bend. */
 type Role = 'note' | 'bent' | 'push' | 'resume' | 'back' | 'after' | 'flick' | 'flickGap' | 'flickBend';
-interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; two?: boolean; stress?: boolean; ws?: boolean }
+interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; stress?: boolean; ws?: boolean }
 
 const SOFT = new Set<Cons>(['N', 'M', 'L', 'S', 'Z', 'NG', 'R']);
 
@@ -67,8 +67,6 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
         const f = (e as { f: Flick }).f;
         emit(n.step + cur, f.at - cur, n.midi, role);
         emit(n.step + f.at, f.len, f.midi, f.bend ? 'flickBend' : f.gap ? 'flickGap' : 'flick', !!f.gap);
-        // (a jump of two steps: always a new word, Paul)
-        if (Math.abs(f.midi - n.midi) >= 3) segs[segs.length - 1].two = true;
         cur = f.bend ? n.len : f.at + f.len + (f.gap ?? 0);
         role = f.gap ? 'back' : 'after';
       }
@@ -81,7 +79,7 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
       s.sung = s.role !== 'bent';
       s.ws = true;
       if (s.role === 'flick' || s.role === 'flickGap' || s.role === 'flickBend') {
-        flickStarts = s.role === 'flick' ? !!s.two || rng.chance(starts) : s.role === 'flickBend' ? !!s.two : false;
+        flickStarts = s.role === 'flick' ? rng.chance(starts) : false;
         s.stress = flickStarts;
         s.ws = flickStarts;
       } else if (s.role === 'after') {
