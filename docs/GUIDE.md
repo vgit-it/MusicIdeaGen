@@ -355,6 +355,16 @@ Paul: give me the other voices in there too.
 - **Sing** is now a menu: Off, Auto (the song's genre voice; the woman's when the line is sung High), Clear (the first voice), each genre's voice, and the characters (Big & dark, Chester, Cornell, Woman, Dark & nasal), the same list as the vocals' Voice menu.
 - The Woman voice sings the line an octave up, in her range; the rest at the line's pitch.
 
+## A real cap, held a beat, words at the quick notes, limits on runs (2026-10-14)
+
+Paul: the 4-a-second cap didn't feel enforced; too many short held bits with quick notes right at a note's start; every quick note a word's end or a new word's start; held runs going on for bars in some places and no pause in others.
+
+- **The cap counts everything you hear:** every note's start, a quick note out and back again, a push, a pull and the note back after it. At most 4 in any second; the note starts stay, later quick notes, pushes and pulls in a busy spot are left out. (Before it counted only quick notes, pushes and pulls: up to 9 changes and 7 syllables a second.) Quick notes now about 5 per 8 bars on Some (was 8).
+- **A beat held first:** no quick note, push or pull in a note's first beat.
+- **Held runs:** a note held at most a bar (the same note again is struck again); never more than 4 bars sung without a pause (one comes at the next note, or the note stops early at a section's end). No section of more than 4 bars without a pause.
+- **Words at the quick notes:** every quick note ends a word (a light last syllable; the line coming back starts a new, stressed word) or starts one (stressed; the line coming back is its light second syllable). Two-step jumps start words; with a pause after, or bent to at a note's end, end one; the rest by chance (funk a little more starts, grunge fewer). Nothing carried on the vowel any more except notes bent into.
+- **A short breath between words** in the singing (the word before let go up to 50 ms early; the tune's timing kept).
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
