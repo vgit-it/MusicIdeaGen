@@ -532,6 +532,22 @@ scream), soft ones breathier. The tune and the words don't change; the synth lin
 Measured (168 songs): verses 0.77 → 0.73 on average, choruses 0.77 → 0.88; high notes sung hard: verses
 14%, pre-choruses 47%, choruses 64%; about 5 belted lines a song; 114 quiet sections sung soft.
 
+## Range by hand (2026-10-14)
+
+Paul: a slider for the lowest and highest notes the line is written within, "to see how far I can
+stretch it without breaking it". **Range** in the guide card: Auto (as tuned by ear: C3 to E4, peaks to
+F#4, Voice setting the high part) or Custom, with two sliders, Lowest and Highest (C1 to F#6).
+
+- Written within, not shifted afterwards: home is the lowest home note at or above Lowest; the usual top
+  2 semitones under Highest, the song's peaks up to Highest; heights by section spread across it.
+- Custom replaces Voice's high part (the line's own top is Highest); the woman's voice (Sing) still sings
+  it an octave up.
+- At least an octave apart: narrower, the home note can fall outside the range (the check found notes
+  out of range with a 7-semitone range; none from an octave up).
+- Auto: the line exactly as before. `npm run guide-check` also writes every song in 7 ranges (an octave
+  at the very bottom and the very top, narrow, wide, C1 to F#6), with the switches off and all on, and
+  checks every rule with the range's own limits.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
