@@ -17,6 +17,7 @@ import { type Mood, MOOD_LABEL, autoMood } from '../tension';
 import { SCALES, chordPc } from '../theory';
 import { chordTones } from '../parts/guitar2';
 import { HIGH_VOICES, type HighVoice } from '../parts/singers';
+import type { Genre } from '../genres';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -50,6 +51,8 @@ export interface GuideNote {
 export interface GuideLine {
   /** Notes per section, in play order. */
   parts: GuideNote[][];
+  /** Sections the line sits out (intros, solos, and some interludes, bridges, breakdowns and outros). */
+  silent: boolean[];
   mood: Mood;
   /** What it did, in plain words. */
   notes: string[];
@@ -120,6 +123,30 @@ const CLUSTER_RATE: Record<Cluster, number> = { frequent: 2.2, moderate: 1, spar
 const CLUSTER_BARS = 2;
 /** How often a quick note is a 16th with a 16th's silence after it (an 8th in all), then the held note again. */
 const GAP_P = 0.35;
+
+/**
+ * Where the line sits out (Paul): intros (no note at all) and solos always; interludes, bridges,
+ * breakdowns and outros by chance, per song. Missing kinds always play.
+ */
+const PLAY_CHANCE: Partial<Record<string, number>> = { intro: 0, solo: 0, interlude: 0.5, bridge: 0.7, breakdown: 0.5, outro: 0.5 };
+
+/**
+ * What Sparse, Some and Lots mean in each genre (Paul): the levels keep their order, the genre scales them
+ * (`rate`) and gives the quick notes its own feel: how many have a pause after them (`gap`), how many jump
+ * two steps (`two`), how much they like the offbeat 8ths (`off`: 1 even, above 1 more), how much more often
+ * the end of a note is bent to (`endBend`), the clusters' own weights (`clusters`), and whether they may
+ * come an 8th apart at every level (`close`).
+ */
+interface GenreFlicks { rate: number; gap: number; two: number; off: number; endBend: number; clusters?: Record<Cluster, number>; close?: boolean; feel: string }
+const GENRE_FLICKS: Record<Genre, GenreFlicks> = {
+  pop: { rate: 1, gap: GAP_P, two: 0.2, off: 1, endBend: 1, feel: 'as set, smooth' },
+  rock: { rate: 1.2, gap: GAP_P, two: 0.25, off: 1, endBend: 1, feel: 'a little busier' },
+  hardrock: { rate: 1.3, gap: 0.5, two: 0.25, off: 1, endBend: 1, feel: 'busier and punchy (more pauses after them)' },
+  funk: { rate: 1.6, gap: 0.65, two: 0.25, off: 2.2, endBend: 0.6, close: true, feel: 'much busier, stabby, on the offbeats' },
+  grunge: { rate: 0.6, gap: 0.15, two: 0.25, off: 1, endBend: 3, feel: 'lazier, more bent to at a note\'s end' },
+  altmetal: { rate: 1.2, gap: 0.5, two: 0.3, off: 1, endBend: 1, clusters: { frequent: 3.6, moderate: 0.5, sparse: 0.12 }, feel: 'in bursts: busy clusters, little between' },
+  metal: { rate: 1.4, gap: 0.5, two: 0.5, off: 1, endBend: 1, feel: 'busier, more two-step jumps' },
+};
 
 /** How much longer notes are held than the first version's pace. */
 const STEADY = 2.5;
@@ -196,6 +223,16 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   // the first verse, pre-chorus and chorus, kept to sing again (their notes, and each note's colour shift)
   const firstOf = new Map<string, { notes: GuideNote[]; cs: number[]; total: number; bars: number }>();
   const top = high ? Math.max(MID[1], HIGH_VOICES[high].beltTop + HIGH_EXTRA) : MID[1];
+  // where it sits out (its own dice, so the line elsewhere stays put; Reroll rolls again)
+  const srng = new Rng(`guide-silent-${first.seeds.song}-${salt}`);
+  const silent = list.map((i) => {
+    const pc = i.section ? PLAY_CHANCE[i.section.kind] : undefined;
+    return pc !== undefined && !srng.chance(pc);
+  });
+  // (the last section it sings ends the song on home)
+  const lastSung = silent.lastIndexOf(false);
+  const G = GENRE_FLICKS[first.song.genre] ?? GENRE_FLICKS.pop;
+  const clusterRate = G.clusters ?? CLUSTER_RATE;
 
   list.forEach((idea, si) => {
     const { song, chords } = idea;
@@ -212,7 +249,15 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     });
     const tension = (bar: number) => idea.section?.tension?.[bar] ?? 0.3 + 0.3 * Math.sin((Math.PI * (beatNo / Math.max(1, songBeats))));
     const out: GuideNote[] = [];
-    const lastSection = si === list.length - 1;
+    const lastSection = si === lastSung;
+    // sitting out: nothing, and the line comes back after it as after a pause
+    if (silent[si]) {
+      parts.push([]);
+      beatNo += beats.length;
+      barBase += song.bars.length;
+      afterPause = true; lastLeap = 0; sameRun = 0;
+      return;
+    }
     // (the voice: mid, up to the high voice's top where the song is high)
     const ceil = (t: number) => (high && t >= HIGH_T ? top : MID[1]);
     const inVoice = (x: number, t: number) => midiOf(x) >= MID[0] && midiOf(x) <= ceil(t) && x >= lo && x <= hi + (high ? 3 : 0);
@@ -235,6 +280,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       }
       again.notes.forEach((n0, k) => {
         let deg = n0.deg + shift, cs = again.cs[k];
+        let homeLeap = false, homeLate = 0;
         const inner = k > 0 && k < again.notes.length - 1 && !n0.bend && !again.notes[k + 1]?.bend;
         if (inner && rng.chance(VARY)) {
           const to = deg + (rng.chance(0.5) ? 1 : -1);
@@ -250,10 +296,16 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         if (lastSection && k === again.notes.length - 1) {
           deg = [-7, 0, 7, 14].map((h) => h).filter((h) => fit(h)).reduce((b, h) => (Math.abs(h - deg) < Math.abs(b - deg) ? h : b), 0);
           cs = 0;
+          // (a leap home straight on (this chorus ends the song when the outro sits out): a pause before it)
+          const p = out[out.length - 1];
+          if (p && p.step + p.len === n0.step && Math.abs(deg - p.deg) >= 3) {
+            if (p.len >= 8) { cutBeat(p); stat.pauses++; homeLeap = true; }
+            else if (n0.len >= 8) { homeLate = 4; homeLeap = true; }
+          }
         }
         if (cs && (midiOf(deg) + cs > top || midiOf(deg) + cs < MID[0])) cs = 0;
-        const lp = n0.leap || (k === 0 && Math.abs(deg - d) >= 3);
-        const late = k === 0 ? lateIn : 0;
+        const lp = n0.leap || homeLeap || (k === 0 && Math.abs(deg - d) >= 3);
+        const late = k === 0 ? lateIn : homeLate;
         const note: GuideNote = { step: n0.step + late, len: n0.len - late, midi: midiOf(deg) + cs, deg, ...(cs ? { colour: true } : {}), ...(lp ? { leap: true } : {}), ...(n0.bend ? { bend: n0.bend } : {}) };
         // (a bend only into a step: a key change or a changed note can make it more)
         const prev = out[out.length - 1];
@@ -394,13 +446,18 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const songLast = lastSection && k === out.length - 1;
       const barLen = song.bars.find((b) => b.start + b.len > n.step)?.len ?? 16;
       const fl: Flick[] = [];
-      for (let at = DENSE.includes(flicks) ? 2 : 4; at < n.len; at += 2) {
-        const r = frng.next(), up = frng.chance(FLICK_UP), two = frng.chance(0.25), gap = frng.chance(GAP_P);
+      for (let at = DENSE.includes(flicks) || G.close ? 2 : 4; at < n.len; at += 2) {
+        const r = frng.next(), up = frng.chance(FLICK_UP), two = frng.chance(G.two), gap = frng.chance(G.gap);
         const cl = clusterAt(barOf(n.step + at));
-        const pOn = (FLICK_RATE[flicks] * CLUSTER_RATE[cl] * 2) / barLen;
+        // (the genre: how many, offbeats, bends at a note's end)
+        const offbeat = mod(n.step + at, 4) === 2;
+        const atEnd = at + 2 >= n.len;
+        const p0 = Math.min(1, (FLICK_RATE[flicks] * clusterRate[cl] * 2 * (offbeat ? G.off : 1 / Math.sqrt(G.off)) * (atEnd ? G.endBend : 1)) / barLen);
+        // (scaled after the level, so it still counts where the level is near full: fewer, or more of the gaps filled)
+        const pOn = G.rate <= 1 ? p0 * G.rate : 1 - (1 - p0) ** G.rate;
         // (apart: a beat, an 8th in a frequent cluster or on Some and Lots (Paul: "much more frequent"))
         const last = fl[fl.length - 1];
-        if (last && at < last.at + last.len + (last.gap ?? 0) + (cl === 'frequent' || DENSE.includes(flicks) ? 2 : 4)) continue;
+        if (last && at < last.at + last.len + (last.gap ?? 0) + (cl === 'frequent' || DENSE.includes(flicks) || G.close ? 2 : 4)) continue;
         if (r >= pOn) continue;
         // (with a pause: a 16th, a 16th's silence, then the line again on the 8th)
         const len = gap ? 1 : 2;
@@ -433,15 +490,17 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   };
   const notes = [
     `Mood: ${MOOD_LABEL[mood]}${moodIn ? '' : ' (auto)'}: ${M.desc}`,
-    `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}`,
+    stat.notes ? `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}` : 'No notes: the line sits out here',
     `Voice: ${high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])})`}`,
     `Repeats: ${stat.repeats} ${stat.repeats === 1 ? 'section' : 'sections'} sung like the first verse, pre-chorus or chorus (${stat.varied} notes changed a step)`,
     `Moves: steps ${pc(stat.step)}, 3rds ${pc(stat.third)}, held on ${pc(stat.same)}, leaps after a pause ${pc(stat.leap)} (${stat.leap})`,
     `Bends: ${stat.bends} (into a step: ${stat.bendLens[0]} over an 8th, ${stat.bendLens[1]} over a quarter, ${stat.bendLens[2]} over half a bar)`,
+    `Sits out: ${list.map((i, si) => (silent[si] ? i.section?.label ?? '' : '')).filter(Boolean).join(', ') || 'nothing'} (always the intro and solos; interludes, bridges, breakdowns and outros by chance)`,
+    ...(flicks === 'off' ? [] : [`Quick notes for ${first.song.genre}: ${G.feel}`]),
     ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} in 2-bar clusters (frequent ${stat.byCluster.frequent}, moderate ${stat.byCluster.moderate}, sparse ${stat.byCluster.sparse}); ${stat.flickGaps} as a 16th with a 16th's pause before the note comes back, ${stat.flickBends} bent to at a note's end`]),
     `${stat.notes} notes, about ${(songBeats / Math.max(1, stat.notes)).toFixed(1)} beats each; ${stat.pauses} pauses`,
     `Chords: ${lean === 'in' ? 'leaning in' : 'leaning out (key only)'}: strong beats on a chord note ${Math.round((100 * stat.strongTone) / Math.max(1, stat.strong))}%`,
     M.colour ? `Out of key: ${colourWord[M.colour]} (${stat.colour}${stat.colour === 1 ? ' time' : ' times'})` : 'Out of key: none (this mood stays in the scale)',
   ];
-  return { parts, mood, notes };
+  return { parts, silent, mood, notes };
 }

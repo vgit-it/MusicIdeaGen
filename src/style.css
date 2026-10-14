@@ -183,6 +183,8 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .guidedraw .gcol { fill: var(--warn); }
 .guidedraw .gjoin { stroke: var(--accent2); stroke-width: 1; opacity: .5; vector-effect: non-scaling-stroke; }
 .guidedraw .gsec { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.guidedraw .gsilent { fill: var(--mute); opacity: 0.12; }
+.gsilentmsg { color: var(--mute); font-size: 13px; margin: 8px 0; }
 .guidedraw .ghome { stroke: var(--line); stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
 .guidedraw .gcur { stroke: var(--text); stroke-width: 1; opacity: .6; vector-effect: non-scaling-stroke; }
 .guidedraw .glab { fill: var(--mute); font-size: 9px; }

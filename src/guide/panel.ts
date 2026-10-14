@@ -71,7 +71,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     offsets.length = 0;
     for (const i of list) { offsets.push(total); total += i.song.total; }
     const all = line.parts.flatMap((p, si) => p.map((n) => ({ ...n, at: offsets[si] + n.step })));
-    if (!all.length) { draw.innerHTML = ''; return; }
+    if (!all.length) { draw.innerHTML = '<p class="gsilentmsg">The line sits out here (intros and solos always, some interludes, bridges, breakdowns and outros).</p>'; return; }
     const lo = Math.min(...all.map((n) => n.midi)) - 1, hi = Math.max(...all.map((n) => n.midi)) + 1;
     const W = Math.max(300, draw.clientWidth || 700), H = 160, top = 14;
     drawnW = W;
@@ -81,6 +81,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     // sections and their names
     list.forEach((i, si) => {
       const x0 = x(offsets[si]);
+      // (where the line sits out: greyed, marked)
+      if (line!.silent[si]) parts.push(`<rect x="${x0}" y="0" width="${x(offsets[si] + i.song.total) - x0}" height="${H}" class="gsilent"/><text x="${x0 + 3}" y="${H - 4}" class="glab">silent</text>`);
       if (si) parts.push(`<line x1="${x0}" x2="${x0}" y1="0" y2="${H}" class="gsec"/>`);
       if (list.length > 1) parts.push(`<text x="${x0 + 3}" y="10" class="glab">${i.section?.label ?? ''}</text>`);
     });
