@@ -57,7 +57,14 @@ const realHint = $('realhint');
 let preparing = false;
 engine.onBar = highlightBar;
 // the Guide line experiment (src/guide/): its own section, listening to the engine's steps
-const guide = buildGuidePanel($('guide'), engine);
+const guide = buildGuidePanel($('guide'), engine, {
+  async generateAndPlay() {
+    await Tone.start();
+    newIdea();
+    await playIfStopped();
+  },
+  async togglePlay() { playBtn.click(); },
+});
 
 /** The section strip, labelled with the instrument each section's rhythm part plays on. */
 const drawTrack = (t: Track) => renderTrack(t, (s) => SOUND_SHORT[engine.chordIdFor(s)]);
@@ -88,6 +95,7 @@ function render() {
 function setPlaying(on: boolean) {
   playBtn.textContent = on ? 'Stop' : 'Play';
   playBtn.classList.toggle('on', on);
+  guide.setPlaying(on);
 }
 
 /* ---- chords you set: tap a bar to open the editor; the band is rewritten around them */

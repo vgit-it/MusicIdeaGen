@@ -1,5 +1,6 @@
 // The Guide line's own section of the page (experiment): add it, lean in or out of the chords, hear it
-// with or without the band, reroll it, see it drawn over the song, download it as MIDI.
+// with or without the band, reroll it, see it drawn over the song, download it as MIDI. Generate & play and
+// Play from here too, to try new songs quickly (Paul).
 
 import { Midi } from '@tonejs/midi';
 import type { Engine } from '../audio/engine';
@@ -16,12 +17,22 @@ export interface GuidePanel {
   /** New music (an idea, or a track's sections), and the song's mood (undefined: auto). */
   /** `singer`: the vocal's high voice, if it sings high (the Voice's Auto follows it). */
   update(list: Idea[], mood: Mood | undefined, singer?: HighVoice | null): void;
+  /** The Play button's label follows the page's. */
+  setPlaying(on: boolean): void;
+}
+
+/** The page's own Generate and Play, so the line can be tried on new songs without scrolling up. */
+export interface GuideControls {
+  /** A new song (as the page's Generate), then playing it from the start. */
+  generateAndPlay(): Promise<void>;
+  /** Play or stop (as the page's Play). */
+  togglePlay(): Promise<void>;
 }
 
 const seg = (id: string, opts: [string, string][], on: string) =>
   `<div class="seg" id="${id}">${opts.map(([v, l]) => `<button data-v="${v}" class="${v === on ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 
-export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
+export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideControls): GuidePanel {
   let on = false, lean: Lean = 'in', band = true, salt = 0, level = 70, flicks: Flicks = 'some';
   // (the voice: Auto follows the singer; High without a high singer: the rock tenor's range)
   let voice: 'auto' | 'mid' | 'high' = 'auto';
@@ -42,6 +53,10 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     <p class="hint">One note line through the whole song, in its key, shaped by the mood (the track's Mood). Mostly small steps; big leaps only after a pause. Separate from the vocals for now.</p>
     <button id="g-add" class="small">+ Add guide line</button>
     <div id="g-body" hidden>
+      <div class="guiderow">
+        <button id="g-gen" class="primary small" title="A new song (as Generate above), played from the start">Generate &amp; play</button>
+        <button id="g-play" class="secondary small">Play</button>
+      </div>
       <div class="guiderow">
         <label>Chords ${seg('g-lean', [['in', 'Lean in'], ['out', 'Lean out']], lean)}</label>
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
@@ -206,6 +221,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
   $('g-remove').addEventListener('click', () => setOn(false));
   $('g-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); singer2?.setLevel(level); });
   $('g-reroll').addEventListener('click', () => { salt++; rewrite(); });
+  $('g-gen').addEventListener('click', () => { void ctl.generateAndPlay(); });
+  $('g-play').addEventListener('click', () => { void ctl.togglePlay(); });
   $('g-midi').addEventListener('click', () => {
     if (!line) return;
     const midi = new Midi();
@@ -267,6 +284,11 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
   });
 
   return {
+    setPlaying(v) {
+      const b = $('g-play');
+      b.textContent = v ? 'Stop' : 'Play';
+      b.classList.toggle('on', v);
+    },
     update(l, m, h = null) {
       const sing = h ?? null;
       if (sing !== singer) { singer = sing; if (voice !== 'mid') { list = l; mood = m; rewrite(); return; } }
