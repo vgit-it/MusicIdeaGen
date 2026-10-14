@@ -428,6 +428,23 @@ The second idea from the other melody writers (Melody first's "spine"): a slow s
 | The same note again | 13% | 15% |
 | Leaps without a pause | 0 | 0 |
 
+## Pitch by words (switch; 2026-10-14)
+
+The third idea from the other melody writers (Words first's "pitch by speech"): the tune follows how the words are said. **Pitch by words: Off / On** in the card (Off: the line and its words exactly as before).
+
+In the guide line the light syllables live on the quick notes (every note of the line itself starts a stressed word), so this works through them; the line and its notes are the same, only which way each quick note goes and which word it carries are decided together:
+- **A quick note going up starts a new, stressed word**, and the line coming back down is that word's light second syllable: high then low, as English is said (BA-by, FAL-len).
+- **A quick note going down is a word's soft last syllable**, and the line coming back up starts the next stressed word: a light pickup a step under the stress it leads into.
+- **One with a pause after it ends a word, so it falls.**
+- How many start words keeps each genre's lean (funk most, grunge fewest). The words still sit exactly on the tune.
+
+| 80 songs (8 moods, 5 genres, 4/4 and 6/8), Some | Off | On |
+|---|---|---|
+| A line's top note on a stressed syllable | 70% | 96% |
+| Soft word endings falling (or level) | 52% | 95% |
+| A light syllable a step under the stress after it | 42% | 82% |
+| Syllables a bar | 2.52 | 2.52 |
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

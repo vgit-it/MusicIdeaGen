@@ -7,11 +7,10 @@
 // The pseudo-English words are the vocals' own (src/parts/lyrics.ts).
 
 import type { Idea } from '../idea';
-import type { Genre } from '../genres';
 import { groupStarts } from '../rhythm';
 import { Rng } from '../rng';
 import { type Cons, type Rhyme, type Syllable, lyricLine, openUp, rhymeOf, spell } from '../parts/lyrics';
-import type { Flick, GuideLine } from './line';
+import { type Flick, type GuideLine, WORD_STARTS } from './line';
 
 /** One sung sound: a syllable (or the one before carried on, text '~') on a stretch of the line. */
 export interface GuideSyl { step: number; len: number; midi: number; vel: number; syl: Syllable }
@@ -24,11 +23,11 @@ export interface GuideSungLine { notes: GuideSyl[]; text: string }
  * a pause after it, or bent to at a note's end, ends one; the rest by chance,
  * a little more often starting words where the genre is busier.
  */
-const STARTS: Record<Genre, number> = { funk: 0.6, hardrock: 0.55, rock: 0.5, pop: 0.5, metal: 0.5, altmetal: 0.5, grunge: 0.4 };
+const STARTS = WORD_STARTS;
 
 /** What starts a stretch of sound: a note, a push, the note back after a pull or a quick note's pause, a quick note, a bend. */
 type Role = 'note' | 'bent' | 'push' | 'resume' | 'back' | 'after' | 'flick' | 'flickGap' | 'flickBend';
-interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; stress?: boolean; ws?: boolean }
+interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; starts?: boolean; stress?: boolean; ws?: boolean }
 
 const SOFT = new Set<Cons>(['N', 'M', 'L', 'S', 'Z', 'NG', 'R']);
 
@@ -67,6 +66,8 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
         const f = (e as { f: Flick }).f;
         emit(n.step + cur, f.at - cur, n.midi, role);
         emit(n.step + f.at, f.len, f.midi, f.bend ? 'flickBend' : f.gap ? 'flickGap' : 'flick', !!f.gap);
+        // (Pitch by words: the line says which, by the quick note's direction)
+        if (f.starts !== undefined) segs[segs.length - 1].starts = f.starts;
         cur = f.bend ? n.len : f.at + f.len + (f.gap ?? 0);
         role = f.gap ? 'back' : 'after';
       }
@@ -80,6 +81,7 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
       s.ws = true;
       if (s.role === 'flick' || s.role === 'flickGap' || s.role === 'flickBend') {
         flickStarts = s.role === 'flick' ? rng.chance(starts) : false;
+        if (s.starts !== undefined) flickStarts = s.starts;
         s.stress = flickStarts;
         s.ws = flickStarts;
       } else if (s.role === 'after') {
