@@ -73,6 +73,8 @@ export interface GuideIdeas {
   leadIn?: boolean;
   /** Carry over: now and then the last note runs on into a section the line sits out (a solo), held or bent. */
   carry?: boolean;
+  /** Sung hard or soft (dynamics.ts): the words' levels by tension, section and height; soft quiet sections, belted peaks. */
+  dynamics?: boolean;
 }
 
 /**
@@ -250,14 +252,17 @@ export const noteName = (m: number) => `${NAMES[mod(m, 12)]}${Math.floor(m / 12)
 /** A high voice's top, written an octave under where it's sung (the woman's voice sings the line back up an octave, voice.ts). */
 export const DOWN = 12;
 /** Home in the lower middle of the voice: C3 to B3 by the key (was A2 to G#3; Paul: "lift the range further up"). */
-const homeMidi = (key: number) => 48 + mod(key, 12);
+const homeMidi = (key: number, lo = 48) => lo + mod(key - lo, 12);
 /**
  * The voice, C3 to E4, around A3 (Paul: C3-C5 sounded very weird, C2-C4 super low, A2-C4 still a bit weird: lifted);
  * the song's peaks (tension from PEAK_T) reach F#4; a high voice (the singer's high voice, or High) goes up to its own
  * top, an octave down, in the song's high parts. Limits the line is written within, not a shift afterwards.
  */
-const MID: [number, number] = [48, 64];
-const PEAK = 66, PEAK_T = 0.8;
+const MID_AUTO: [number, number] = [48, 64];
+const PEAK_AUTO = 66, PEAK_T = 0.8;
+/** A range set by hand (Paul, to see how far it stretches): its lowest and highest notes, MIDI; at least an octave apart (narrower, the home note can fall outside it). */
+export type GuideRange = [number, number];
+export const RANGE_MIN_SPAN = 12;
 /**
  * Height by section, not wandering (Paul: a narrow range "without making it too monotonous"): where each kind of
  * section sits in the voice (0 its bottom, 1 its top), moved by the tension and the mood's lean; a pre-chorus climbs
@@ -303,8 +308,12 @@ function colourShift(c: Colour, mode: string, d: number, up: boolean): number {
 }
 
 /** Write the line for a list of sections played back to back (one idea, or a track). */
-export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, flicks: Flicks = 'off', high: HighVoice | null = null, ideas: GuideIdeas = {}): GuideLine {
+export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, flicks: Flicks = 'off', high: HighVoice | null = null, ideas: GuideIdeas = {}, range: GuideRange | null = null): GuideLine {
   const first = list[0];
+  // (the voice: as tuned by ear, or a range set by hand: its top the peaks, the usual top 2 under it)
+  const MID: [number, number] = range ? [range[0], Math.max(range[0] + 5, range[1] - 2)] : MID_AUTO;
+  const PEAK = range ? range[1] : PEAK_AUTO;
+  if (range) high = null;
   const mood = moodIn ?? autoMood(first.song, first.seeds.song);
   const M = MOODS[mood];
   const rng = new Rng(`guide-${first.seeds.song}-${mood}-${lean}-${salt}`);
@@ -397,7 +406,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
 
   list.forEach((idea, si) => {
     const { song, chords } = idea;
-    const home = homeMidi(song.key);
+    const home = homeMidi(song.key, MID[0]);
     const scale = SCALES[song.mode] as readonly number[];
     const midiOf = (x: number) => home + 12 * Math.floor(x / 7) + scale[deg7(x)];
     const tonesAt = (g: number) => chordTones(song.key, chords.timeline[chords.chordIdx[Math.min(song.total - 1, g)]].chord);
@@ -424,7 +433,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         for (let k = pv.length - 1; k > 0 && pv[k - 1].step + pv[k - 1].len === pv[k].step; k--) from = pv[k - 1].step;
         const room = Math.min(bar, MAX_RUN * bar - (pIdea.song.total - from), song.bars[0].len);
         const x = Math.min(room, 4 * orng.int(1, Math.max(1, Math.floor(bar / 4))));
-        const pScale = SCALES[pIdea.song.mode] as readonly number[], pHome = homeMidi(pIdea.song.key);
+        const pScale = SCALES[pIdea.song.mode] as readonly number[], pHome = homeMidi(pIdea.song.key, MID[0]);
         const pMidi = (y: number) => pHome + 12 * Math.floor(y / 7) + pScale[deg7(y)];
         const to = last.deg + (orng.chance(0.7) ? -1 : 1);
         // (held, while it stays within a bar; else, or by chance, bent a step (never off the song's last note, home))
@@ -456,7 +465,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       if (idea.section?.kind === 'prechorus') h += 0.3 * (bar / Math.max(1, song.bars.length - 1));
       const m = MID[0] + Math.max(0, Math.min(1, h)) * (MID[1] - MID[0]);
       let best = 0;
-      for (let x = -14; x <= 21; x++) if (Math.abs(midiOf(x) - m) < Math.abs(midiOf(best) - m)) best = x;
+      for (let x = -35; x <= 42; x++) if (Math.abs(midiOf(x) - m) < Math.abs(midiOf(best) - m)) best = x;
       return best;
     };
     // (the section's slow line, if on: the height moved by it, by where in the section)
@@ -552,7 +561,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         while (!fit(deg) && midiOf(deg) < MID[0]) deg++;
         // (the song's last note: home)
         if (lastSection && k === again.notes.length - 1) {
-          deg = [-7, 0, 7, 14].map((h) => h).filter((h) => fit(h)).reduce((b, h) => (Math.abs(h - deg) < Math.abs(b - deg) ? h : b), 0);
+          deg = [-35, -28, -21, -14, -7, 0, 7, 14, 21, 28, 35, 42].map((h) => h).filter((h) => fit(h)).reduce((b, h) => (Math.abs(h - deg) < Math.abs(b - deg) ? h : b), 0);
           cs = 0;
           // (a leap home straight on (this chorus ends the song when the outro sits out): a pause before it)
           const p = out[out.length - 1];
@@ -736,11 +745,11 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const qa = ideas.qa ? qaRole(b.bar) : null;
       const songEnd = lastSection && end;
       // (the song's last two bars head for home, the nearest one)
-      const homes = [-7, 0, 7, 14].filter((h) => midiOf(h) >= MID[0] && midiOf(h) <= MID[1]);
+      const homes = [-35, -28, -21, -14, -7, 0, 7, 14, 21, 28, 35, 42].filter((h) => midiOf(h) >= MID[0] && midiOf(h) <= MID[1]);
       const homeD = (homes.length ? homes : [0]).reduce((bh, h) => (Math.abs(h - d) < Math.abs(bh - d) ? h : bh));
       const closing = lastSection && b.bar >= song.bars.length - 4;
       // (the height the tension asks for, within the voice; a high voice reaches for its top where it's high)
-      const voiceDs = Array.from({ length: 30 }, (_, k) => k - 10).filter((x) => inVoice(x, t));
+      const voiceDs = Array.from({ length: 78 }, (_, k) => k - 35).filter((x) => inVoice(x, t));
       const dBot = Math.min(...voiceDs), dTop = Math.max(...voiceDs);
       let want0 = targetD(t, b.bar);
       if (high && t >= HIGH_T) want0 = Math.max(want0, dTop - 1);
@@ -983,7 +992,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const notes = [
     `Mood: ${MOOD_LABEL[mood]}${moodIn ? '' : ' (auto)'}: ${M.desc}`,
     stat.notes ? `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}` : 'No notes: the line sits out here',
-    `Voice: ${high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}; verses low, choruses lifted)`}`,
+    `Voice: ${range ? `range set by hand: ${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}` : high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}; verses low, choruses lifted)`}`,
     ...(ideas.qa ? [`Question and answer: ${stat.qaPairs} pairs of phrases (${mood}: about ${Math.round(QA_CHANCE[mood] * 100)}% of pairs); ${stat.qUp} of ${stat.qN} questions ending up, ${stat.aDown} of ${stat.aN} answers falling to a settled note`] : []),
     ...(ideas.speech ? [`Pitch by words: quick notes going up start a new stressed word (then the light rest of it, back down); going down, a word's soft last syllable, the line coming back up into the next stress`] : []),
     ...(ideas.spine ? [`Slow line: ${[...spineOf].map(([k, sp]) => `${k === 'prechorus' ? 'pre-chorus' : k} ${SPINES[sp].says}`).join('; ')}; ${stat.spineEnds} of ${stat.phraseEnds} phrases end on it`] : []),

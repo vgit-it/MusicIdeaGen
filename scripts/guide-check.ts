@@ -3,15 +3,16 @@
 // taken in turn) and compares each with the saved reference (scripts/guide-reference.json): with every new
 // idea switched off, every note, quick note, push, pull and word must be the same as before.
 // Also checks the rules with whatever is on: the words sit exactly on the tune, at most 4 changes heard in any
-// second, the range, a new note inside a word only ever a bend, never two notes at once, a note held at most a bar.
+// second, the range, the levels, a new note inside a word only ever a bend, never two notes at once, a note held at most a bar.
 //   npm run guide-check          compare with the reference
 //   npm run guide-check -- save  save a new reference (only when a change to the line is meant)
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
-import { type Flicks, type GuideIdeas, writeGuide } from '../src/guide/line';
+import { type Flicks, type GuideIdeas, type GuideRange, writeGuide } from '../src/guide/line';
 import { guideWords } from '../src/guide/words';
+import { shapeDynamics } from '../src/guide/dynamics';
 import { MOODS } from '../src/tension';
 import type { HighVoice } from '../src/parts/singers';
 
@@ -26,13 +27,18 @@ const HIGH: (HighVoice | null)[] = [null, null, 'tenor', 'woman'];
 const hash = (s: string) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0; return h.toString(16); };
 
 /** Each new idea switched on alone (the rules checked with it on too). */
-const IDEAS: [string, GuideIdeas][] = [['all off', {}], ['Repeat idea', { motif: true }], ['Slow line', { spine: true }], ['Pitch by words', { speech: true }], ['Question and answer', { qa: true }], ['Breaths', { breath: true }], ['Section change', { shift: true }], ['Lead-ins', { leadIn: true }], ['Carry over', { carry: true }],
-  ['all on', { motif: true, spine: true, speech: true, qa: true, breath: true, shift: true, leadIn: true, carry: true }]];
+const IDEAS: [string, GuideIdeas][] = [['all off', {}], ['Repeat idea', { motif: true }], ['Slow line', { spine: true }], ['Pitch by words', { speech: true }], ['Question and answer', { qa: true }], ['Breaths', { breath: true }], ['Section change', { shift: true }], ['Lead-ins', { leadIn: true }], ['Carry over', { carry: true }], ['Hard and soft', { dynamics: true }],
+  ['all on', { motif: true, spine: true, speech: true, qa: true, breath: true, shift: true, leadIn: true, carry: true, dynamics: true }]];
+const ALL_ON = IDEAS[IDEAS.length - 1][1];
+/** Ranges set by hand (the Range sliders), the rules checked within each: off and all on, narrow, wide, very low, very high. */
+const RANGES: GuideRange[] = [[24, 36], [36, 72], [55, 79], [40, 52], [78, 90], [24, 90], [60, 72]];
+const RUNS: [string, GuideIdeas, GuideRange | null][] = [...IDEAS.map(([n, i]): [string, GuideIdeas, null] => [n, i, null]),
+  ...RANGES.flatMap((r): [string, GuideIdeas, GuideRange][] => [[`range ${r.join('-')}`, {}, r], [`range ${r.join('-')}, all on`, ALL_ON, r]])];
 
 const out: Record<string, string> = {};
 const broken: string[] = [];
 let songs = 0;
-for (const [ideaName, ideas] of IDEAS) {
+for (const [ideaName, ideas, range] of RUNS) {
 let k = 0;
 for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS) {
   const s = `gc-${genre}-${meter}-${mood}`;
@@ -41,8 +47,9 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   const idea = generate({ genre, meter, weirdness: 0.3 } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const tr = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never);
   const list = tr.sections;
-  const L = writeGuide(list, tr.mood, lean, 0, flicks, high, ideas);
+  const L = writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range);
   const W = guideWords(list, L);
+  if (ideas.dynamics) shapeDynamics(list, L, W);
   const id = `${ideaName === 'all off' ? '' : `[${ideaName}] `}${mood}|${genre}|${meter}|${flicks}|${lean}|${high ?? 'mid'}`;
   if (ideaName === 'all off') out[id] = hash(JSON.stringify({ parts: L.parts, silent: L.silent, words: W.map((ls) => ls.map((l) => ({ t: l.text, n: l.notes.map((x) => [x.step, x.len, x.midi, x.vel, x.syl.text, x.syl.wordStart, x.syl.stress]) }))) }));
   if (ideaName === 'all off') songs++;
@@ -73,9 +80,12 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
         changes.push(at + m.at);
         if (m.back) { if (m.at + m.back < n.len) changes.push(at + m.at + m.back); for (let t = m.at + 1; t < m.at + m.back && t < n.len; t++) want[at + t] = null; }
       }
-      if (n.midi < 48 || n.midi > 84) broken.push(`${id} ${idea.section?.label}: a note out of range (${n.midi})`);
+      if (range ? n.midi < range[0] || n.midi > range[1] || (n.flicks ?? []).some((f) => f.midi < range[0] - 2 || f.midi > range[1] + 2) : n.midi < 48 || n.midi > 84) broken.push(`${id} ${idea.section?.label}: a note out of range (${n.midi})`);
     }
-    for (const l of W[si]) for (const x of l.notes) for (let t = 0; t < x.len; t++) got[o + x.step + t] = x.midi;
+    for (const l of W[si]) for (const x of l.notes) {
+      for (let t = 0; t < x.len; t++) got[o + x.step + t] = x.midi;
+      if (!(x.vel >= 0.45 && x.vel <= 1)) broken.push(`${id} ${idea.section?.label}: a level out of range (${x.vel})`);
+    }
     // (a new note inside a word only ever a bend: carried on, gliding there; any other new note starts a word)
     for (const l of W[si]) l.notes.forEach((x, k) => {
       const p = l.notes[k - 1];
@@ -98,5 +108,5 @@ if (save) {
   console.log(changed.length ? `CHANGED: ${changed.length} of ${songs} songs differ from the reference, e.g.\n  ${changed.slice(0, 8).join('\n  ')}` : `Same as the reference: all ${songs} songs.`);
   if (changed.length) process.exitCode = 1;
 }
-console.log(broken.length ? `RULES BROKEN: ${broken.length}\n  ${broken.slice(0, 12).join('\n  ')}` : 'Rules: all kept.');
+console.log(broken.length ? `RULES BROKEN: ${broken.length}\n  ${broken.slice(0, process.env.ALL ? 9999 : 12).join('\n  ')}` : 'Rules: all kept.');
 if (broken.length) process.exitCode = 1;
