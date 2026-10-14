@@ -274,6 +274,15 @@ Paul: more pushes and pulls, a bit more pronounced; quick notes at more random t
 - **Quick notes on any 16th:** every 16th of a held note is a possible spot (was the 8ths only). The offbeat 8ths still lead by the genre's taste; the in-between 16ths (the e and the a) about a third of them.
 - **How many:** about the same as before (Some ~8 per 8 bars; a little fewer where pushes and pulls now sit).
 
+## Quick notes come back on the 8th (2026-10-14)
+
+Paul: wherever a quick note starts, the line should come back on the beat grid.
+
+- A quick note on an 8th: an 8th long (or a 16th and a 16th's pause), as before.
+- A quick note on an in-between 16th (the e or the a): a 16th long, so the line is back on the next 8th. No pause on those.
+- The grid is the 8th in every meter (4/4, 6/8, 7/8).
+- Counts back to about where they were (Some ~9 per 8 bars).
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

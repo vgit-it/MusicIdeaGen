@@ -512,7 +512,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         const pos = mod(n.step + at, 4);
         const where = pos === 2 ? G.off : pos === 0 ? 1 / Math.sqrt(G.off) : SIXTEENTH;
         const atEnd = at + 2 >= n.len;
-        const p0 = Math.min(1, (FLICK_RATE[flicks] * clusterRate[cl] * 1.35 * where * (atEnd ? G.endBend : 1)) / barLen);
+        const p0 = Math.min(1, (FLICK_RATE[flicks] * clusterRate[cl] * 1.2 * where * (atEnd ? G.endBend : 1)) / barLen);
         // (scaled after the level, so it still counts where the level is near full: fewer, or more of the gaps filled)
         const pOn = G.rate <= 1 ? p0 * G.rate : 1 - (1 - p0) ** G.rate;
         // (apart: a beat, an 8th in a frequent cluster or on Some and Lots (Paul: "much more frequent"))
@@ -520,7 +520,9 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         if (last && at < last.at + last.len + (last.gap ?? 0) + (cl === 'frequent' || DENSE.includes(flicks) || G.close ? 2 : 4)) continue;
         if (r >= pOn) continue;
         // (with a pause: a 16th, a 16th's silence, then the line again on the 8th)
-        const len = gap ? 1 : 2;
+        // (back to the line on the 8th grid: one started on an in-between 16th is a 16th long, no pause)
+        const odd = mod(n.step + at, 2) === 1;
+        const len = gap || odd ? 1 : 2;
         if (at + len > n.len) continue;
         const end = at + len === n.len;
         if (end && songLast) continue;
@@ -529,8 +531,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         const outKey = half && m !== inKey;
         if (m === n.midi || m < MID[0] - 2 || m > (high ? top : MID[1]) + 2) continue;
         // (a 16th's silence before the note comes back: only with room after it)
-        const rest = !end && gap && at + len + 1 < n.len;
-        if (gap && !rest) continue;
+        const rest = !end && gap && !odd && at + len + 1 < n.len;
+        if (gap && !odd && !rest) continue;
         // (clear of the pushes and pulls)
         if ((n.marks ?? []).some((mk) => mk.at >= at && mk.at < at + len + (rest ? 1 : 0))) continue;
         fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}), ...(rest ? { gap: 1 } : {}), ...(outKey ? { outKey } : {}) });
