@@ -3,7 +3,7 @@
 // taken in turn) and compares each with the saved reference (scripts/guide-reference.json): with every new
 // idea switched off, every note, quick note, push, pull and word must be the same as before.
 // Also checks the rules with whatever is on: the words sit exactly on the tune, at most 4 changes heard in any
-// second, the range, a new note inside a word only ever a bend.
+// second, the range, a new note inside a word only ever a bend, never two notes at once, a note held at most a bar.
 //   npm run guide-check          compare with the reference
 //   npm run guide-check -- save  save a new reference (only when a change to the line is meant)
 
@@ -26,7 +26,8 @@ const HIGH: (HighVoice | null)[] = [null, null, 'tenor', 'woman'];
 const hash = (s: string) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0; return h.toString(16); };
 
 /** Each new idea switched on alone (the rules checked with it on too). */
-const IDEAS: [string, GuideIdeas][] = [['all off', {}], ['Repeat idea', { motif: true }], ['Slow line', { spine: true }], ['Pitch by words', { speech: true }], ['Question and answer', { qa: true }], ['all on', { motif: true, spine: true, speech: true, qa: true }]];
+const IDEAS: [string, GuideIdeas][] = [['all off', {}], ['Repeat idea', { motif: true }], ['Slow line', { spine: true }], ['Pitch by words', { speech: true }], ['Question and answer', { qa: true }], ['Breaths', { breath: true }], ['Section change', { shift: true }], ['Lead-ins', { leadIn: true }], ['Carry over', { carry: true }],
+  ['all on', { motif: true, spine: true, speech: true, qa: true, breath: true, shift: true, leadIn: true, carry: true }]];
 
 const out: Record<string, string> = {};
 const broken: string[] = [];
@@ -45,37 +46,46 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   const id = `${ideaName === 'all off' ? '' : `[${ideaName}] `}${mood}|${genre}|${meter}|${flicks}|${lean}|${high ?? 'mid'}`;
   if (ideaName === 'all off') out[id] = hash(JSON.stringify({ parts: L.parts, silent: L.silent, words: W.map((ls) => ls.map((l) => ({ t: l.text, n: l.notes.map((x) => [x.step, x.len, x.midi, x.vel, x.syl.text, x.syl.wordStart, x.syl.stress]) }))) }));
   if (ideaName === 'all off') songs++;
-  // the rules
+  // the rules, over the whole song (a note may run on past its section's end: a lead-in, a carry over)
+  const offs: number[] = [];
+  let tot = 0;
+  for (const i of list) { offs.push(tot); tot += i.song.total; }
+  const six = 15 / list[0].song.bpm;
+  const want: (number | null)[] = Array(tot + 64).fill(null), got: (number | null)[] = Array(tot + 64).fill(null);
+  const changes: number[] = [];
+  let lastEnd = -1;
   list.forEach((idea, si) => {
-    const total = idea.song.total, six = 15 / idea.song.bpm;
-    const want: (number | null)[] = Array(total).fill(null), got: (number | null)[] = Array(total).fill(null);
-    const changes: number[] = [];
+    const o = offs[si], bar = idea.song.bars[0].len;
     for (const n of L.parts[si]) {
-      if (!n.bend) changes.push(n.step);
-      for (let t = 0; t < n.len; t++) want[n.step + t] = n.midi;
+      const at = o + n.step;
+      if (at < lastEnd) broken.push(`${id} ${idea.section?.label}: two notes at once`);
+      lastEnd = at + n.len;
+      if (n.len > bar) broken.push(`${id} ${idea.section?.label}: a note held over a bar`);
+      if (!n.bend) changes.push(at);
+      for (let t = 0; t < n.len; t++) want[at + t] = n.midi;
       for (const f of n.flicks ?? []) {
-        changes.push(n.step + f.at);
-        if (!f.bend) changes.push(n.step + f.at + f.len + (f.gap ?? 0));
-        for (let t = f.at; t < (f.bend ? n.len : f.at + f.len); t++) want[n.step + t] = f.midi;
-        if (f.gap) for (let t = 0; t < f.gap; t++) want[n.step + f.at + f.len + t] = null;
+        changes.push(at + f.at);
+        if (!f.bend) changes.push(at + f.at + f.len + (f.gap ?? 0));
+        for (let t = f.at; t < (f.bend ? n.len : f.at + f.len); t++) want[at + t] = f.midi;
+        if (f.gap) for (let t = 0; t < f.gap; t++) want[at + f.at + f.len + t] = null;
       }
       for (const m of n.marks ?? []) {
-        changes.push(n.step + m.at);
-        if (m.back) { changes.push(n.step + m.at + m.back); for (let t = m.at + 1; t < m.at + m.back && t < n.len; t++) want[n.step + t] = null; }
+        changes.push(at + m.at);
+        if (m.back) { if (m.at + m.back < n.len) changes.push(at + m.at + m.back); for (let t = m.at + 1; t < m.at + m.back && t < n.len; t++) want[at + t] = null; }
       }
       if (n.midi < 48 || n.midi > 84) broken.push(`${id} ${idea.section?.label}: a note out of range (${n.midi})`);
     }
-    for (const l of W[si]) for (const x of l.notes) for (let t = 0; t < x.len; t++) got[x.step + t] = x.midi;
-    if (want.some((v, t) => v !== got[t])) broken.push(`${id} ${idea.section?.label}: the words are off the tune`);
+    for (const l of W[si]) for (const x of l.notes) for (let t = 0; t < x.len; t++) got[o + x.step + t] = x.midi;
     // (a new note inside a word only ever a bend: carried on, gliding there; any other new note starts a word)
     for (const l of W[si]) l.notes.forEach((x, k) => {
       const p = l.notes[k - 1];
       if (p && x.midi !== p.midi && !x.syl.wordStart && !(x.syl.text === '~' && x.bend)) broken.push(`${id} ${idea.section?.label}: a new note inside a word, not bent`);
     });
-    // (at most 4 changes heard in any second; a note start at a step can count once)
-    const at = [...new Set(changes)].sort((a, b) => a - b);
-    for (let i = 0; i + 4 < at.length; i++) if ((at[i + 4] - at[i]) * six < 1 - 1e-9) { broken.push(`${id} ${idea.section?.label}: over 4 changes in a second`); break; }
   });
+  if (want.some((v, t) => v !== got[t])) broken.push(`${id}: the words are off the tune`);
+  // (at most 4 changes heard in any second; a note start at a step can count once)
+  const at = [...new Set(changes)].sort((a, b) => a - b);
+  for (let i = 0; i + 4 < at.length; i++) if ((at[i + 4] - at[i]) * six < 1 - 1e-9) { broken.push(`${id}: over 4 changes in a second`); break; }
 }
 }
 
