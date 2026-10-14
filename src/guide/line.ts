@@ -246,22 +246,45 @@ const MAX_RUN = 4;
 /** Bends: only into a step (a half or whole step: a guitar's bend, and what MIDI's pitch bend can carry). */
 const BEND_SEMIS = 2;
 
-const NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+export const NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 export const noteName = (m: number) => `${NAMES[mod(m, 12)]}${Math.floor(m / 12) - 1}`;
 
 /** A high voice's top, written an octave under where it's sung (the woman's voice sings the line back up an octave, voice.ts). */
 export const DOWN = 12;
-/** Home in the lower middle of the voice: C3 to B3 by the key (was A2 to G#3; Paul: "lift the range further up"). */
+/** Home at the bottom of the voice: the first home note from its lowest (E3 to D#4 by the key, in Auto). */
 const homeMidi = (key: number, lo = 48) => lo + mod(key - lo, 12);
 /**
- * The voice, C3 to E4, around A3 (Paul: C3-C5 sounded very weird, C2-C4 super low, A2-C4 still a bit weird: lifted);
- * the song's peaks (tension from PEAK_T) reach F#4; a high voice (the singer's high voice, or High) goes up to its own
+ * The voice, E3 to E5 (Paul; was C3 to E4 with peaks to F#4, before that C3-C5, C2-C4, A2-C4): the usual top D5,
+ * the song's peaks (tension from PEAK_T) reach E5; a high voice (the singer's high voice, or High) goes up to its own
  * top, an octave down, in the song's high parts. Limits the line is written within, not a shift afterwards.
  */
-const MID_AUTO: [number, number] = [48, 64];
-const PEAK_AUTO = 66, PEAK_T = 0.8;
+const MID_AUTO: [number, number] = [52, 74];
+const PEAK_AUTO = 76, PEAK_T = 0.8;
 /** A range set by hand (Paul, to see how far it stretches): its lowest and highest notes, MIDI; at least an octave apart (narrower, the home note can fall outside it). */
 export type GuideRange = [number, number];
+
+/**
+ * The line's own key and scale (Paul: "see if I can get away with a different scale for the vocals"): the
+ * scales it can be written in (seven notes each, so steps, quick notes and homes work as in the song's).
+ */
+export const GUIDE_SCALES = {
+  ...SCALES,
+  locrian: [0, 1, 3, 5, 6, 8, 10],
+  harmonic: [0, 2, 3, 5, 7, 8, 11],
+  melodic: [0, 2, 3, 5, 7, 9, 11],
+} as const satisfies Record<string, readonly number[]>;
+export type GuideScale = keyof typeof GUIDE_SCALES;
+export const SCALE_LABEL: Record<GuideScale, string> = { major: 'Major', minor: 'Minor', dorian: 'Dorian', mixolydian: 'Mixolydian', phrygian: 'Phrygian', lydian: 'Lydian', locrian: 'Locrian', harmonic: 'Harmonic minor', melodic: 'Melodic minor' };
+/**
+ * Key: a key (0-11, C to B) for the song's first section, the line moving with the song's key changes from
+ * there; null: the song's. Scale: null, the song's. Guard: steering the held notes and the strong beats away
+ * from a clash with the band (a semitone against a note of the chord playing, or a tritone against its root).
+ */
+export interface GuideTonality { key: number | null; scale: GuideScale | null; guard: boolean }
+/** Notes two scales share, of seven. */
+export const shared = (k1: number, s1: readonly number[], k2: number, s2: readonly number[]) => s1.filter((x) => s2.some((y) => mod(k2 + y, 12) === mod(k1 + x, 12))).length;
+/** A note clashing with a chord (its pitch classes; root first): a semitone off any of its notes, or a tritone off its root. */
+const clashes = (pc: number, tones: number[], root: number) => !tones.includes(pc) && (tones.some((t) => mod(pc - t, 12) === 1 || mod(t - pc, 12) === 1) || mod(pc - root, 12) === 6);
 export const RANGE_MIN_SPAN = 12;
 /**
  * Height by section, not wandering (Paul: a narrow range "without making it too monotonous"): where each kind of
@@ -297,8 +320,7 @@ const MARK_GAPS: { w: number; steps: [number, number] }[] = [
  * the raised 7th pulling up home (tense, triumphant), the flat 6th sighing down to the 5th in a major key
  * (melancholy, nostalgia), the flat 2nd above home (dark, angry), the raised 4th floating up (dreamy).
  */
-function colourShift(c: Colour, mode: string, d: number, up: boolean): number {
-  const s = SCALES[mode as keyof typeof SCALES] as readonly number[];
+function colourShift(c: Colour, s: readonly number[], d: number, up: boolean): number {
   const at = s[deg7(d)];
   if (c === 'lead' && deg7(d) === 6 && at === 10 && up) return 1;
   if (c === 'sigh' && deg7(d) === 5 && at === 9 && !up) return -1;
@@ -308,12 +330,17 @@ function colourShift(c: Colour, mode: string, d: number, up: boolean): number {
 }
 
 /** Write the line for a list of sections played back to back (one idea, or a track). */
-export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, flicks: Flicks = 'off', high: HighVoice | null = null, ideas: GuideIdeas = {}, range: GuideRange | null = null): GuideLine {
+export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, flicks: Flicks = 'off', high: HighVoice | null = null, ideas: GuideIdeas = {}, range: GuideRange | null = null, tonality: GuideTonality | null = null): GuideLine {
   const first = list[0];
   // (the voice: as tuned by ear, or a range set by hand: its top the peaks, the usual top 2 under it)
   const MID: [number, number] = range ? [range[0], Math.max(range[0] + 5, range[1] - 2)] : MID_AUTO;
   const PEAK = range ? range[1] : PEAK_AUTO;
   if (range) high = null;
+  // (the line's key and scale, per section: the song's, or set by hand, moving with the song's key changes)
+  const tone = tonality && (tonality.key !== null || tonality.scale) ? tonality : null;
+  const keyOf = (s: Idea['song']) => (tone?.key != null ? mod(s.key + tone.key - first.song.key, 12) : s.key);
+  const scaleOf = (s: Idea['song']) => GUIDE_SCALES[tone?.scale ?? s.mode] as readonly number[];
+  const guard = !!tone?.guard;
   const mood = moodIn ?? autoMood(first.song, first.seeds.song);
   const M = MOODS[mood];
   const rng = new Rng(`guide-${first.seeds.song}-${mood}-${lean}-${salt}`);
@@ -321,7 +348,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const W = Math.max(2, Math.round(M.span / 2) - 1);
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
-  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, push: 0, pull: 0, capped: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0, ideaA: 0, ideaB: 0, spineEnds: 0, phraseEnds: 0, qaPairs: 0, qN: 0, qUp: 0, aN: 0, aDown: 0 };
+  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, push: 0, pull: 0, capped: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0, ideaA: 0, ideaB: 0, spineEnds: 0, phraseEnds: 0, qaPairs: 0, qN: 0, qUp: 0, aN: 0, aDown: 0, held: 0, clash: 0 };
   let afterPause = false, lastLeap = 0, sameRun = 0;
   const songBeats = list.reduce((n, i) => n + i.song.bars.reduce((b, x) => b + x.groups.length, 0), 0);
   let beatNo = 0;
@@ -406,11 +433,16 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
 
   list.forEach((idea, si) => {
     const { song, chords } = idea;
-    const home = homeMidi(song.key, MID[0]);
-    const scale = SCALES[song.mode] as readonly number[];
+    const home = homeMidi(keyOf(song), MID[0]);
+    const scale = scaleOf(song);
     const midiOf = (x: number) => home + 12 * Math.floor(x / 7) + scale[deg7(x)];
     const tonesAt = (g: number) => chordTones(song.key, chords.timeline[chords.chordIdx[Math.min(song.total - 1, g)]].chord);
     const rootAt = (g: number) => chordPc(song.key, chords.timeline[chords.chordIdx[Math.min(song.total - 1, g)]].chord);
+    /** A pitch class clashing with any chord the band plays from step `a` to `b`. */
+    const clashOver = (pc: number, a: number, b: number) => {
+      for (let g = Math.max(0, a); g < Math.min(b, song.total); g++) if (g === Math.max(0, a) || chords.chordIdx[g] !== chords.chordIdx[g - 1]) { if (clashes(pc, tonesAt(g), rootAt(g))) return true; }
+      return false;
+    };
     // the beats, and which are strong (a bar's first, and the one nearest its middle)
     const beats = song.bars.flatMap((b, bi) => {
       const starts = groupStarts(b.groups);
@@ -433,7 +465,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         for (let k = pv.length - 1; k > 0 && pv[k - 1].step + pv[k - 1].len === pv[k].step; k--) from = pv[k - 1].step;
         const room = Math.min(bar, MAX_RUN * bar - (pIdea.song.total - from), song.bars[0].len);
         const x = Math.min(room, 4 * orng.int(1, Math.max(1, Math.floor(bar / 4))));
-        const pScale = SCALES[pIdea.song.mode] as readonly number[], pHome = homeMidi(pIdea.song.key, MID[0]);
+        const pScale = scaleOf(pIdea.song), pHome = homeMidi(keyOf(pIdea.song), MID[0]);
         const pMidi = (y: number) => pHome + 12 * Math.floor(y / 7) + pScale[deg7(y)];
         const to = last.deg + (orng.chance(0.7) ? -1 : 1);
         // (held, while it stays within a bar; else, or by chance, bent a step (never off the song's last note, home))
@@ -755,6 +787,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       if (high && t >= HIGH_T) want0 = Math.max(want0, dTop - 1);
       const target = closing ? homeD : Math.max(dBot, Math.min(dTop, want0));
       const strong = b.strong || n >= 2;
+      const spanEnd = i + n < beats.length ? beats[i + n].step : song.total;
       // every candidate move, weighted
       const cands: { d: number; w: number }[] = [];
       const reach = afterPause ? M.leapMax : 2;
@@ -780,6 +813,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         w *= M.rest[deg7(x)] ** (strong ? 1.6 : 0.6);
         // with the chords: strong beats on the chord's notes
         if (lean === 'in' && strong) w *= tonesAt(b.step).includes(mod(midiOf(x), 12)) ? 3 : 0.35;
+        // (a key or scale set by hand, guarded: away from a clash with the band, the held notes and strong beats most)
+        if (guard && clashOver(mod(midiOf(x), 12), b.step, spanEnd)) w *= strong || spanEnd - b.step >= 4 ? 0.03 : 0.25;
         // (Question and answer: a question's last note goes up, onto an open note; its answer falls to a settled one)
         if (qa && phraseEnd && !songEnd) {
           if (qa === 'q') w *= (s > 0 ? 8 : 0.08) * (deg7(x) === 0 ? 0.4 : 1);
@@ -818,9 +853,9 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       sameRun = a === 0 ? sameRun + 1 : 0;
       let midi = midiOf(d);
       // a mood's colour note (not on the chord's root, never against a held strong chord note when leaning in)
-      const shift = M.colour && !songEnd ? colourShift(M.colour, song.mode, d, target > d) : 0;
+      const shift = M.colour && !songEnd ? colourShift(M.colour, scale, d, target > d) : 0;
       let colour = false;
-      if (shift && rng.chance(M.colourP) && midi + shift <= ceil(t) && midi + shift >= MID[0] && mod(midi + shift - rootAt(b.step), 12) !== 6 && !(lean === 'in' && b.strong)) { midi += shift; colour = true; stat.colour++; }
+      if (shift && rng.chance(M.colourP) && midi + shift <= ceil(t) && midi + shift >= MID[0] && mod(midi + shift - rootAt(b.step), 12) !== 6 && !(lean === 'in' && b.strong) && !(guard && clashOver(mod(midi + shift, 12), b.step, spanEnd))) { midi += shift; colour = true; stat.colour++; }
       let stepEnd = i + n < beats.length ? beats[i + n].step : song.total;
       // (a run that would pass its limit at the section's end: the note stops there, a pause after it)
       if (stepEnd - runFrom > runMax && !songEnd) stepEnd = Math.max(b.step + 4, runFrom + runMax);
@@ -849,6 +884,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       i += n; beatNo += n;
     }
     // (the first of its kind: kept, to sing again (a lead-in kept as if it started on the 1))
+    // (clashes with the band: held notes, a beat or more, against any chord they're held over)
+    if (tone) for (const nt of out) if (nt.len >= 4) { stat.held++; if (clashOver(mod(nt.midi, 12), nt.step, nt.step + nt.len)) stat.clash++; }
     if (REPEATS.includes(kind) && !firstOf.has(kind) && out.length) firstOf.set(kind, { notes: out.map((n) => (n.step < 0 ? { ...n, step: 0, len: n.len + n.step } : { ...n })), cs: out.map((n) => n.midi - midiOf(n.deg)), total: song.total, bars: song.bars.length });
     // (a lead-in: sung from the section before, so it's that section's note, running on into this one)
     if (out[0] && out[0].step < 0 && pv && pIdea) {
@@ -993,6 +1030,11 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     `Mood: ${MOOD_LABEL[mood]}${moodIn ? '' : ' (auto)'}: ${M.desc}`,
     stat.notes ? `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}` : 'No notes: the line sits out here',
     `Voice: ${range ? `range set by hand: ${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}` : high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}; verses low, choruses lifted)`}`,
+    ...(tone ? [(() => {
+      const k = keyOf(first.song), sc = tone.scale ?? first.song.mode;
+      const same = shared(k, scaleOf(first.song), first.song.key, GUIDE_SCALES[first.song.mode]);
+      return `Key & scale: ${NAMES[k]} ${SCALE_LABEL[sc].toLowerCase()} (the band: ${NAMES[first.song.key]} ${first.song.mode}; ${same} of 7 notes shared)${tone.guard ? ', steered away from clashes' : ''}; ${stat.clash} of ${stat.held} held notes clash with a chord under them`;
+    })()] : []),
     ...(ideas.qa ? [`Question and answer: ${stat.qaPairs} pairs of phrases (${mood}: about ${Math.round(QA_CHANCE[mood] * 100)}% of pairs); ${stat.qUp} of ${stat.qN} questions ending up, ${stat.aDown} of ${stat.aN} answers falling to a settled note`] : []),
     ...(ideas.speech ? [`Pitch by words: quick notes going up start a new stressed word (then the light rest of it, back down); going down, a word's soft last syllable, the line coming back up into the next stress`] : []),
     ...(ideas.spine ? [`Slow line: ${[...spineOf].map(([k, sp]) => `${k === 'prechorus' ? 'pre-chorus' : k} ${SPINES[sp].says}`).join('; ')}; ${stat.spineEnds} of ${stat.phraseEnds} phrases end on it`] : []),

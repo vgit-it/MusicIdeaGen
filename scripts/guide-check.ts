@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
-import { type Flicks, type GuideIdeas, type GuideRange, writeGuide } from '../src/guide/line';
+import { type Flicks, type GuideIdeas, type GuideRange, type GuideTonality, writeGuide } from '../src/guide/line';
 import { guideWords } from '../src/guide/words';
 import { shapeDynamics } from '../src/guide/dynamics';
 import { MOODS } from '../src/tension';
@@ -32,13 +32,16 @@ const IDEAS: [string, GuideIdeas][] = [['all off', {}], ['Repeat idea', { motif:
 const ALL_ON = IDEAS[IDEAS.length - 1][1];
 /** Ranges set by hand (the Range sliders), the rules checked within each: off and all on, narrow, wide, very low, very high. */
 const RANGES: GuideRange[] = [[24, 36], [36, 72], [55, 79], [40, 52], [78, 90], [24, 90], [60, 72]];
-const RUNS: [string, GuideIdeas, GuideRange | null][] = [...IDEAS.map(([n, i]): [string, GuideIdeas, null] => [n, i, null]),
-  ...RANGES.flatMap((r): [string, GuideIdeas, GuideRange][] => [[`range ${r.join('-')}`, {}, r], [`range ${r.join('-')}, all on`, ALL_ON, r]])];
+/** Keys and scales of the line's own (a key as semitones from the song's), the rules checked with each, guarded or not. */
+const TONES: [number | null, GuideTonality['scale'], boolean][] = [[null, 'lydian', true], [1, null, true], [6, 'phrygian', false], [7, 'harmonic', true], [3, 'locrian', false]];
+const RUNS: [string, GuideIdeas, GuideRange | null, [number | null, GuideTonality['scale'], boolean] | null][] = [...IDEAS.map(([n, i]): [string, GuideIdeas, null, null] => [n, i, null, null]),
+  ...RANGES.flatMap((r): [string, GuideIdeas, GuideRange, null][] => [[`range ${r.join('-')}`, {}, r, null], [`range ${r.join('-')}, all on`, ALL_ON, r, null]]),
+  ...TONES.flatMap((t): [string, GuideIdeas, null, [number | null, GuideTonality['scale'], boolean]][] => [[`key +${t[0] ?? 0} ${t[1] ?? 'same'}${t[2] ? ' guarded' : ''}`, {}, null, t], [`key +${t[0] ?? 0} ${t[1] ?? 'same'}${t[2] ? ' guarded' : ''}, all on`, ALL_ON, null, t]])];
 
 const out: Record<string, string> = {};
 const broken: string[] = [];
 let songs = 0;
-for (const [ideaName, ideas, range] of RUNS) {
+for (const [ideaName, ideas, range, tn] of RUNS) {
 let k = 0;
 for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS) {
   const s = `gc-${genre}-${meter}-${mood}`;
@@ -47,7 +50,7 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   const idea = generate({ genre, meter, weirdness: 0.3 } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const tr = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never);
   const list = tr.sections;
-  const L = writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range);
+  const L = writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range, tn && { key: tn[0] === null ? null : (list[0].song.key + tn[0]) % 12, scale: tn[1], guard: tn[2] });
   const W = guideWords(list, L);
   if (ideas.dynamics) shapeDynamics(list, L, W);
   const id = `${ideaName === 'all off' ? '' : `[${ideaName}] `}${mood}|${genre}|${meter}|${flicks}|${lean}|${high ?? 'mid'}`;

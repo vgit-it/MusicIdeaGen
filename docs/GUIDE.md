@@ -548,6 +548,33 @@ F#4, Voice setting the high part) or Custom, with two sliders, Lowest and Highes
   at the very bottom and the very top, narrow, wide, C1 to F#6), with the switches off and all on, and
   checks every rule with the range's own limits.
 
+## Auto range E3 to E5; Key & scale (2026-10-14)
+
+**Auto range** (Paul): E3 to E5 (was C3 to E4, peaks to F#4): the usual top D5, the song's peaks to E5;
+home is the first home note from E3 up (E3 to D#4 by the key). The woman's voice now sings the line an
+octave up only when it's written low enough (its top + an octave at most G5); otherwise as written.
+The reference was saved again.
+
+**Key & scale** (Paul: "see if I can get away with a different scale for the vocals than the rest of the
+instruments"): two menus in the guide card; the band keeps its own key and chords.
+
+- Key: the song's, or any of the 12. It's the key of the song's first section; the line moves with the
+  song's key changes from there (a chorus up a step: the line too).
+- Scale: the song's, or Major, Minor, Dorian, Mixolydian, Phrygian, Lydian, Locrian, Harmonic minor,
+  Melodic minor (seven notes each, so the line's steps, quick notes, homes and colour notes work as before).
+- Each choice shows how many of its 7 notes it shares with the band's scale: the more shared, the fewer
+  clashes (the same key's Dorian or Mixolydian 6/7, a 5th up 6/7, a semitone up 2/7).
+- **Avoid clashes** (on by default): the line is written in its own scale, but each held note and strong
+  beat is steered away from the chord the band plays under it: a semitone against any of the chord's
+  notes, or a tritone against its root (any of the chords it's held over). Weak, short notes may still
+  rub (a passing tension). Off: anything goes.
+- The notes list says the key and scale, the notes shared, and how many held notes still clash.
+
+Measured (84 songs, held notes clashing with a chord under them, guard off → on): the song's own key
+15% → 3%; Dorian 16% → 4%; Lydian 32% → 12%; Phrygian 21% → 8%; Harmonic minor 21% → 7%; a 5th up
+18% → 5%; a semitone up 53% → 28%; a tritone 57% → 31%. (The song's own 15%: held over chord changes.)
+`npm run guide-check` also writes every song in 5 keys and scales, guarded and not, and checks the rules.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
