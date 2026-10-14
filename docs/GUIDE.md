@@ -445,6 +445,24 @@ In the guide line the light syllables live on the quick notes (every note of the
 | A light syllable a step under the stress after it | 42% | 82% |
 | Syllables a bar | 2.52 | 2.52 |
 
+## Question and answer (switch; 2026-10-14)
+
+The fourth idea from the other melody writers (Words first's question and answer pairs). **Question & answer: Off / On** in the card (Off: the line exactly as before).
+
+- **Pairs of phrases:** a section's phrases pair up (1st and 2nd, 3rd and 4th...). Now and then a pair is sung as a question and its answer: the first phrase's last note goes up, onto an open note (not home); the second's falls, onto a settled one (home, the 3rd or the 5th).
+- **How often, by mood** (open, hopeful moods ask; angry and dark ones state): happy and dreamy 60% of pairs, nostalgic and tense 50%, triumphant 45%, melancholic 40%, dark 30%, angry 25%.
+- Never the song's last note (that's home). Sections sung again keep the first one's questions and answers. With Repeat idea, a repeated question comes back as a question, and an answer's new ending is written as an answer.
+- Your rules unchanged (checked with it on, alone and with all four switches). Its own dice.
+
+| 120 songs (8 moods, 5 genres, 4/4, 6/8, 7/8), Some | On |
+|---|---|
+| Questions whose last note goes up | 78% |
+| Answers whose last note falls to a settled note | 81% |
+| The same note again (off: 14%) | 12% |
+| Leaps without a pause | 0 |
+
+The rest are held back by the other rules (the voice's top, stepping back after a leap, keeping near the section's height).
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
