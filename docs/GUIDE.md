@@ -132,6 +132,25 @@ sparse to a lot; at the end of a note, a bend to it instead.
 
 About 40% are 16ths, the rest 8ths; about 6% land at a note's end and are bent to.
 
+## Quick notes: 8ths, pauses, clusters (2026-10-14)
+Paul: quick notes an 8th at least; in some cases a split-second pause before the held note comes back;
+and they come in clusters of about 2 bars: frequent, then moderate, then sparse.
+- **Length:** always an 8th now (no 16ths).
+- **Pause:** about a third of them go silent for a split second (a 32nd) after the quick note, then
+  the held note is struck again. Never on the bent-to ones at a note's end.
+- **Clusters:** the song is cut into 2-bar clusters that cycle frequent, moderate, sparse (the cycle
+  starts at a random place per song). The Quick notes setting scales all three. In a frequent cluster
+  they can come an 8th apart (else a beat).
+
+| 120 tracks, all moods | Quick notes a song | In frequent / moderate / sparse clusters |
+|---|---|---|
+| Sparse | 13 | 64% / 27% / 9% |
+| Some | 28 | 62% / 29% / 9% |
+| Lots | 56 | 60% / 29% / 11% |
+
+About 30% come back after a pause; about 10% are bent to at a note's end. The readout lists the
+count per cluster type.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
