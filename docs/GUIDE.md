@@ -265,6 +265,15 @@ Paul: fewer off-scale quick notes; more of the normal ones going up; and pushes 
     louder or softer
 - About 4 pushes and pulls per 8 bars. Gaps between them: 10% under 4 16ths, half under 14, 10% over 68.
 
+## More pushes and pulls, quick notes on any 16th (2026-10-14)
+
+Paul: more pushes and pulls, a bit more pronounced; quick notes at more random times, not always on the 8ths.
+
+- **Pushes and pulls:** about 7 per 8 bars (was 4); gaps still uneven (short, medium, long), just shorter overall.
+- **Stronger:** a push dips deeper and lifts higher; a pull falls further and comes back slower. In MIDI a pull is re-struck softer (0.3).
+- **Quick notes on any 16th:** every 16th of a held note is a possible spot (was the 8ths only). The offbeat 8ths still lead by the genre's taste; the in-between 16ths (the e and the a) about a third of them.
+- **How many:** about the same as before (Some ~8 per 8 bars; a little fewer where pushes and pulls now sit).
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

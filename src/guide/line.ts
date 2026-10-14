@@ -193,6 +193,8 @@ const VARY = 0.15;
  * still mostly down (Paul earlier: "biased towards lower").
  */
 const FLICK_UP = 0.5;
+/** How likely a quick note lands on an in-between 16th (the e and the a), against an 8th's 1. */
+const SIXTEENTH = 0.8;
 const HALF_UP = 0.35;
 
 /**
@@ -201,7 +203,7 @@ const HALF_UP = 0.35;
  * so some held stretches run long untouched and others are broken up.
  */
 const MARK_GAPS: { w: number; steps: [number, number] }[] = [
-  { w: 0.3, steps: [2, 4] }, { w: 0.35, steps: [8, 12] }, { w: 0.35, steps: [20, 48] },
+  { w: 0.35, steps: [2, 4] }, { w: 0.4, steps: [6, 10] }, { w: 0.25, steps: [12, 28] },
 ];
 
 /**
@@ -491,8 +493,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       }
       if (mk.length) n.marks = mk;
     });
-    // quick notes on the long ones (Paul): one note up or down a step or two, for an 8th, on the 8th-note
-    // grid, then back to the line, like a drum hit (now and then a 16th and a 16th's silence); at a held
+    // quick notes on the long ones (Paul): one note up or down a step or two, for an 8th, on any 16th (random spots),
+    // then back to the line, like a drum hit (now and then a 16th and a 16th's silence); at a held
     // note's very end, a bend to it instead (and on from there). They come in 2-bar clusters: frequent,
     // moderate, sparse. Not on notes in a bend, never the song's last note's end.
     const barOf = (g: number) => barBase + Math.max(0, song.bars.findIndex((b) => b.start + b.len > g));
@@ -502,13 +504,15 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const songLast = lastSection && k === out.length - 1;
       const barLen = song.bars.find((b) => b.start + b.len > n.step)?.len ?? 16;
       const fl: Flick[] = [];
-      for (let at = DENSE.includes(flicks) || G.close ? 2 : 4; at < n.len; at += 2) {
+      for (let at = DENSE.includes(flicks) || G.close ? 2 : 4; at < n.len; at++) {
         const r = frng.next(), two = frng.chance(G.two), gap = frng.chance(G.gap), half = !two && frng.chance(HALF_P), up = frng.chance(half ? HALF_UP : FLICK_UP);
         const cl = clusterAt(barOf(n.step + at));
         // (the genre: how many, offbeats, bends at a note's end)
-        const offbeat = mod(n.step + at, 4) === 2;
+        // (any 16th: the offbeat 8ths by the genre's taste, the in-between 16ths a little less often)
+        const pos = mod(n.step + at, 4);
+        const where = pos === 2 ? G.off : pos === 0 ? 1 / Math.sqrt(G.off) : SIXTEENTH;
         const atEnd = at + 2 >= n.len;
-        const p0 = Math.min(1, (FLICK_RATE[flicks] * clusterRate[cl] * 2 * (offbeat ? G.off : 1 / Math.sqrt(G.off)) * (atEnd ? G.endBend : 1)) / barLen);
+        const p0 = Math.min(1, (FLICK_RATE[flicks] * clusterRate[cl] * 1.35 * where * (atEnd ? G.endBend : 1)) / barLen);
         // (scaled after the level, so it still counts where the level is near full: fewer, or more of the gaps filled)
         const pOn = G.rate <= 1 ? p0 * G.rate : 1 - (1 - p0) ** G.rate;
         // (apart: a beat, an 8th in a frequent cluster or on Some and Lots (Paul: "much more frequent"))
