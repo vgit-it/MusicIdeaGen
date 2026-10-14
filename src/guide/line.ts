@@ -73,6 +73,8 @@ export interface GuideIdeas {
   leadIn?: boolean;
   /** Carry over: now and then the last note runs on into a section the line sits out (a solo), held or bent. */
   carry?: boolean;
+  /** Sung hard or soft (dynamics.ts): the words' levels by tension, section and height; soft quiet sections, belted peaks. */
+  dynamics?: boolean;
 }
 
 /**

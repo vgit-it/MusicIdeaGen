@@ -509,6 +509,29 @@ Paul's notes for the line itself: sing it like a person, mark section changes, b
   - New rules: never two notes at once, a note held at most a bar.
   - A pull at a note's end is no longer counted as a change, as in the line itself.
 
+## Hard and soft (switch; 2026-10-14)
+
+Paul: how hard or soft the line is sung. Before, each sound's level was fixed by what it was (a push loud,
+a held note medium, a quick note light), the same in a verse as in a chorus; a belt happened only when a
+push landed high. With **Hard & soft** on (`src/guide/dynamics.ts`, heard when Sing is on), the same
+levels are shaped the way the vocals shape theirs:
+
+- louder with the bar's tension (as `followTension` in `src/parts/melody.ts`) and the section's energy
+- high notes taking more push than low ones; stressed syllables leaning in, light ones falling back
+  (as the energy styles' accents, `src/parts/energy.ts`)
+- a quiet section (energy 2 or less, not a chorus) sung soft all through half the time: no belting
+  (as the energy styles' holding back)
+- a big line belting its top held note (a beat or more, near the song's top): choruses most, then
+  bridges, outros, a pre-chorus's last line, rarely a verse; more in the heavy genres, less in pop and
+  funk (as the vocals' wails, but the note isn't moved: the tune stays exactly as it is)
+- repeated choruses sung alike
+
+The voice hears a level as effort: loud notes above the singer's break belted (screamed by Clean &
+scream), soft ones breathier. The tune and the words don't change; the synth line plays as before.
+
+Measured (168 songs): verses 0.77 → 0.73 on average, choruses 0.77 → 0.88; high notes sung hard: verses
+14%, pre-choruses 47%, choruses 64%; about 5 belted lines a song; 114 quiet sections sung soft.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
