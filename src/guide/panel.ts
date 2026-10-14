@@ -7,7 +7,7 @@ import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
 import type { Mood } from '../tension';
 import type { HighVoice } from '../parts/singers';
-import { FLICK_LEVELS, type Flicks, type GuideIdeas, type GuideRange, RANGE_MIN_SPAN, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
+import { FLICK_LEVELS, type Flicks, type GuideIdeas, type GuideRange, RANGE_MIN_SPAN, type GuideScale, type GuideTonality, GUIDE_SCALES, NAMES, SCALE_LABEL, shared, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
 import { GuideSynth } from './synth';
 import { type GuideSing, GuideVoice } from './voice';
 import { TIMBRE_CHOICES } from '../audio/singer';
@@ -39,7 +39,9 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   let voice: 'auto' | 'mid' | 'high' = 'auto';
   // (the range set by hand, Paul: to see how far it stretches; null: as tuned by ear)
   let range: GuideRange | null = null;
-  const custom: GuideRange = [48, 66];
+  const custom: GuideRange = [52, 76];
+  // (the line's own key and scale, Paul: "see if I can get away with a different scale for the vocals"; the song's by default)
+  const tonality: GuideTonality = { key: null, scale: null, guard: true };
   let singer: HighVoice | null = null;
   const highNow = (): HighVoice | null => (voice === 'mid' ? null : voice === 'high' ? singer ?? 'tenor' : singer);
   let list: Idea[] = [];
@@ -80,9 +82,14 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label title="Quick notes on the long ones: a scale step up or down (in the key) for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
-        <label title="The lowest and highest notes the line is written within. Auto: as tuned by ear (C3 to E4, peaks to F#4; Voice sets the high part). Custom: set them yourself, to see how far it stretches (the woman's voice still sings it an octave up)">Range ${seg('g-range', [['auto', 'Auto'], ['custom', 'Custom']], 'auto')}</label>
+        <label title="The lowest and highest notes the line is written within. Auto: E3 to E5. Custom: set them yourself, to see how far it stretches (the woman's voice sings it an octave up when it's written low enough)">Range ${seg('g-range', [['auto', 'Auto'], ['custom', 'Custom']], 'auto')}</label>
         <label class="grow grange" hidden>Lowest <input type="range" id="g-lo" min="24" max="78" value="${custom[0]}"><b id="g-lo-n"></b></label>
         <label class="grow grange" hidden>Highest <input type="range" id="g-hi" min="36" max="90" value="${custom[1]}"><b id="g-hi-n"></b></label>
+      </div>
+      <div class="guiderow">
+        <label title="The key the line is written in (the band keeps its own). Each shows how many of its notes it shares with the band's scale: the more, the less it clashes. Moves with the song's key changes">Key <select id="g-key" class="gsing"></select></label>
+        <label title="The scale the line is written in. Each shows how many of its notes it shares with the band's">Scale <select id="g-scale" class="gsing"></select></label>
+        <label title="With a key or scale of its own: held notes and strong beats steered away from clashing with the chord the band is playing (a semitone against one of its notes, or a tritone against its root). Off: anything goes">Avoid clashes ${seg('g-guard', [['on', 'On'], ['off', 'Off']], 'on')}</label>
       </div>
       <div class="guiderow">
         <label class="grow">Volume <input type="range" id="g-vol" min="0" max="100" value="${level}"></label>
@@ -99,9 +106,18 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
 
   const setBand = () => { engine.mixer.master.gain.rampTo(band || !on ? 0.8 : 0, 0.05); };
 
+  /** The Key and Scale menus, each choice with the notes it shares with the band's scale. */
+  const fillKeys = () => {
+    const s = list[0].song, band = GUIDE_SCALES[s.mode];
+    const sc = GUIDE_SCALES[tonality.scale ?? s.mode], k = tonality.key ?? s.key;
+    $('g-key').innerHTML = `<option value="song">Song's (${NAMES[s.key]})</option>` + NAMES.map((n, i) => `<option value="${i}"${tonality.key === i ? ' selected' : ''}>${n} · ${shared(i, sc, s.key, band)}/7</option>`).join('');
+    $('g-scale').innerHTML = `<option value="song">Song's (${SCALE_LABEL[s.mode]})</option>` + (Object.keys(GUIDE_SCALES) as GuideScale[]).map((m) => `<option value="${m}"${tonality.scale === m ? ' selected' : ''}>${SCALE_LABEL[m]} · ${shared(k, GUIDE_SCALES[m], s.key, band)}/7</option>`).join('');
+  };
+
   const rewrite = () => {
     if (!on || !list.length) { line = null; words = null; draw.innerHTML = ''; $('g-notes').innerHTML = ''; $('g-words').innerHTML = ''; return; }
-    line = writeGuide(list, mood, lean, salt, flicks, highNow(), ideas, range);
+    fillKeys();
+    line = writeGuide(list, mood, lean, salt, flicks, highNow(), ideas, range, tonality);
     words = guideWords(list, line, salt);
     if (ideas.dynamics) line.notes.push(...shapeDynamics(list, line, words, salt));
     $('g-words').innerHTML = words.map((lines, si) => (lines.length ? `<p><b>${list[si].section?.label ?? 'Words'}</b> ${lines.map((l) => l.text).join(' / ')}</p>` : '')).join('');
@@ -236,6 +252,9 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   hi.addEventListener('input', () => readRange('hi'));
   lo.addEventListener('change', () => { if (range) { range = [custom[0], custom[1]]; rewrite(); } });
   hi.addEventListener('change', () => { if (range) { range = [custom[0], custom[1]]; rewrite(); } });
+  $('g-key').addEventListener('change', (e) => { const v = (e.target as HTMLSelectElement).value; tonality.key = v === 'song' ? null : +v; rewrite(); });
+  $('g-scale').addEventListener('change', (e) => { const v = (e.target as HTMLSelectElement).value; tonality.scale = v === 'song' ? null : (v as GuideScale); rewrite(); });
+  pickSeg('g-guard', (v) => { tonality.guard = v === 'on'; rewrite(); });
   pickSeg('g-range', (v) => {
     range = v === 'custom' ? [custom[0], custom[1]] : null;
     root.querySelectorAll<HTMLElement>('.grange').forEach((e) => { e.hidden = !range; });

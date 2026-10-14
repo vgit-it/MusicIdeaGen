@@ -18,6 +18,8 @@ import { DOWN } from './line';
 
 /** Seconds of lead-in before a line's first note (onset consonants, a breath). */
 const PRE = 0.3;
+/** The highest the woman's voice sings the line (G5): a line written higher than an octave under it is sung as written. */
+const WOMAN_TOP = 79;
 
 /** Which voice sings the line: Auto (the song's genre voice), the clear voice, a genre's, or a character. */
 export type GuideSing = 'auto' | Timbre | Character;
@@ -51,12 +53,13 @@ export class GuideVoice {
 
   /** The lines to sing, per section of `list`; rendering starts in the background. */
   set(list: Idea[], words: GuideSungLine[][], choice: GuideSing, high: HighVoice | null) {
+    const top = Math.max(0, ...words.flat().flatMap((l) => l.notes.map((n) => n.midi)));
     this.byStep = words.map((lines, si) => {
       const idea = list[si];
       // (Auto: the song's own genre voice, or the woman's when the line is sung high)
       const sung: Timbre | Character = choice !== 'auto' ? choice : high === 'woman' ? 'woman' : idea.song.genre;
-      // (the woman sings the line an octave up, in her own range)
-      const shift = sung === 'woman' ? DOWN : 0;
+      // (the woman sings the line an octave up, in her own range, unless it's already written up there)
+      const shift = sung === 'woman' && top + DOWN <= WOMAN_TOP ? DOWN : 0;
       const six = 15 / idea.song.bpm;
       const energy = idea.section ? (idea.section.energy - 1) / 4 : 0.5;
       const m = new Map<number, Placed[]>();
