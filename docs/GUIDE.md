@@ -365,6 +365,16 @@ Paul: the 4-a-second cap didn't feel enforced; too many short held bits with qui
 - **Words at the quick notes:** every quick note ends a word (a light last syllable; the line coming back starts a new, stressed word) or starts one (stressed; the line coming back is its light second syllable). Two-step jumps start words; with a pause after, or bent to at a note's end, end one; the rest by chance (funk a little more starts, grunge fewer). Nothing carried on the vowel any more except notes bent into.
 - **A short breath between words** in the singing (the word before let go up to 50 ms early; the tune's timing kept).
 
+## Generate & play here; a safety net for new ideas (2026-10-14)
+
+Paul: bring in what the other melody writers learned, without breaking what's here; and a Generate & play button in the Guide line card to experiment quickly.
+
+- **Generate & play** (in the card): a new song, as Generate at the top does (locks kept; a track stays a track), playing from its start. **Play** beside it starts and stops, the same as the page's Play.
+- **A snapshot:** commit `3217f94` on main holds the guide line as it was before any of these ideas, to bring back whole any time.
+- **A reference check** (`npm run guide-check`): the line and its words for 168 songs (every mood, genre, and 4/4, 6/8, 7/8; the quick-note levels, Lean in/out and the voices in turn), compared note for note and word for word with the saved reference (`scripts/guide-reference.json`). It also checks the rules: the words exactly on the tune, at most 4 changes heard in any second, the range. Checked: changing one setting a semitone shows 39 songs changed.
+- **How new ideas come in:** each its own switch in the card (Off: the line exactly as now, the check passing), its own random numbers (so switching one on doesn't reshuffle the rest), the rules checked with it on too, one idea per PR, Paul deciding by ear whether it becomes the default.
+- The ideas lined up from the other writers: a short idea repeated (motif and form), a slow line under each section (verse falling, pre-chorus climbing, chorus arching), pitch by the words (the top on a stressed word, light syllables by step, soft endings falling), question and answer line endings by mood; then later choruses bigger, listening to the bass, phrase lengths with variety, high notes held, pace by tempo.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
