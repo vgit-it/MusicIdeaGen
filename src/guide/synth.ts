@@ -25,7 +25,8 @@ export class GuideSynth {
    * attack (`at` seconds in, over `over` seconds), the way a guitarist bends a string; `over` 0: a jump.
    * `taps`: a little accent at these seconds in (the quick notes, struck like a drum hit). `rests`: a
    * split second of silence (`at` seconds in, `len` long), the note struck again after it. `marks`: pushes
-   * (a quick dip and a lift, like a word starting) and pulls (a dip that comes back softly, like a word ending).
+   * (a quick dip and a lift, like a word starting) and pulls (falling away to silence, like a word ending;
+   * the note comes back with a tap on the next beat).
    */
   play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = [], taps: number[] = [], rests: { at: number; len: number }[] = [], marks: { at: number; kind: 'push' | 'pull' }[] = []) {
     const raw = this.ctx.rawContext as BaseAudioContext;
@@ -48,9 +49,8 @@ export class GuideSynth {
         acc.gain.setValueAtTime(2.2, t);
         acc.gain.setTargetAtTime(1, t + 0.04, 0.18);
       } else if (m.kind === 'pull') {
-        // (falling away, then back softly)
-        acc.gain.setTargetAtTime(0.12, t, 0.035);
-        acc.gain.setTargetAtTime(1, t + 0.2, 0.14);
+        // (falling away to silence; the note is struck again on the next beat)
+        acc.gain.setTargetAtTime(0, t, 0.03);
       } else if (m.rest) {
         // (silence, cut quickly, until the note comes back)
         acc.gain.setTargetAtTime(0, t, 0.006);
