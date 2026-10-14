@@ -313,6 +313,14 @@ Paul: use the guide line's tune to write words (the same tune exactly), sung by 
 - **The voice:** the FOF singer in the Cornell voice (the woman's when the line is sung High), polished like the vocals, each line rendered once in the background (`src/guide/voice.ts`). Sing: Off / Cornell, Off by default; on, it sings instead of the synth.
 - **Shown** under the drawing, section by section; in the MIDI file as lyrics.
 
+## An octave down (2026-10-14)
+
+Paul: the line sounded very weird up at C3-C5; shift the range down an octave.
+
+- The whole line an octave lower: voice C2-C4 (was C3-C5), home F2-E3; a high voice's top an octave down too.
+- Same shapes exactly: checked note for note against the old line, minus 12 (120 songs, moods, genres, voices).
+- Sung: the Cornell voice at the line's new pitch; the woman's voice (High) sings it back up an octave, in her own range.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
