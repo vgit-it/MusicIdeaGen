@@ -244,6 +244,12 @@ leave the two-step ones as they are.
   all quick notes.
 - Those are drawn red (other quick notes stay pink); the readout counts them. Two-step ones stay in the scale.
 
+## Quick notes a half step away (2026-10-14)
+Paul: the whole tone sounded weird; make it a half step.
+- The same 40% of one-step quick notes now go a half step up or down instead.
+- Out of key where the scale's next note is a whole step away (most places): about 21% of all quick
+  notes (was 7% with the whole tone). Two-step ones still stay in the scale.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

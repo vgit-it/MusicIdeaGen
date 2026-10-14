@@ -99,10 +99,10 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     // the quick notes: a dash at their height (a slope when bent to at a note's end)
     for (const n of all) for (const f of n.flicks ?? []) {
       if (f.bend) parts.push(`<line x1="${x(n.at + f.at)}" x2="${x(n.at + f.at + f.len)}" y1="${y(n.midi)}" y2="${y(f.midi)}" class="gfbend"/>`);
-      else parts.push(`<rect x="${x(n.at + f.at)}" y="${y(f.midi) - 2}" width="${Math.max(2, x(f.len))}" height="4" class="${f.outKey ? 'gflickout' : 'gflick'}"><title>${noteName(f.midi)}${f.outKey ? ' (a whole tone, out of key)' : ''}</title></rect>`);
+      else parts.push(`<rect x="${x(n.at + f.at)}" y="${y(f.midi) - 2}" width="${Math.max(2, x(f.len))}" height="4" class="${f.outKey ? 'gflickout' : 'gflick'}"><title>${noteName(f.midi)}${f.outKey ? ' (a half step, out of key)' : ''}</title></rect>`);
     }
     draw.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="The guide line over the song">${parts.join('')}<line id="g-cur" x1="-5" x2="-5" y1="0" y2="${H}" class="gcur"/></svg>
-      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend <span class="k gflickk"></span>quick note <span class="k gflickoutk"></span>quick note, a whole tone (out of key)</div>`;
+      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend <span class="k gflickk"></span>quick note <span class="k gflickoutk"></span>quick note, a half step (out of key)</div>`;
     cursor = draw.querySelector('#g-cur');
     drawnTotal = total;
   };
