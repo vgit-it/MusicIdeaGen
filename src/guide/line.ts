@@ -165,6 +165,12 @@ const GENRE_FLICKS: Record<Genre, GenreFlicks> = {
 
 /** How much longer notes are held than the first version's pace. */
 const STEADY = 2.5;
+/**
+ * Limits on held runs (Paul: "some held note runs go on for multiple bars, while there's no pause in others"):
+ * a note held at most a bar (the same note again is struck again after that), and never more than MAX_RUN bars
+ * sung without a pause (a pause then comes at the next note).
+ */
+const MAX_RUN = 4;
 /** Bends: only into a step (a half or whole step: a guitar's bend, and what MIDI's pitch bend can carry). */
 const BEND_SEMIS = 2;
 
@@ -203,7 +209,7 @@ const FLICK_UP = 0.5;
 /** How likely a quick note lands on an in-between 16th (the e and the a), against an 8th's 1. */
 const SIXTEENTH = 0.8;
 const HALF_UP = 0.35;
-/** At most this many quick notes, pushes and pulls together in any one second (Paul). */
+/** At most this many changes you hear in any one second: notes, quick notes out and back, pushes, pulls and the note back after them (Paul). */
 const MAX_PER_SECOND = 4;
 
 /**
@@ -390,7 +396,13 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       // a pause at the end of a phrase (never before the first note, never in the last bar of the song)
       const phraseStart = b.first && b.bar > 0 && b.bar % M.phrase === 0;
       const lastBar = lastSection && b.bar === song.bars.length - 1;
-      if ((phraseStart || (si > 0 && i === 0 && out.length === 0)) && !afterPause && !lastBar && (stat.notes > 0) && rng.chance(M.pause * (si > 0 && i === 0 ? 0.5 : 1))) {
+      // (sung too long without a pause: one now)
+      const joined = out.length > 0 && out[out.length - 1].step + out[out.length - 1].len === b.step;
+      let runFrom = joined ? out[out.length - 1].step : b.step;
+      for (let k = out.length - 1; joined && k > 0 && out[k - 1].step + out[k - 1].len === out[k].step; k--) runFrom = out[k - 1].step;
+      const runMax = MAX_RUN * song.bars[b.bar].len;
+      const tooLong = joined && b.step - runFrom >= runMax - 2;
+      if ((phraseStart || tooLong || (si > 0 && i === 0 && out.length === 0)) && !afterPause && !lastBar && (stat.notes > 0) && (tooLong || rng.chance(M.pause * (si > 0 && i === 0 ? 0.5 : 1)))) {
         const r = rng.chance(0.6) ? 1 : 2;
         i += r; beatNo += r;
         afterPause = true;
@@ -404,7 +416,9 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       // (up to the next phrase start, so pauses can come there)
       const phraseAt = (j: number) => beats[j].first && beats[j].bar % M.phrase === 0;
       let n = 1;
-      while (i + n < beats.length && !phraseAt(i + n) && (n < want || !beats[i + n].strong)) n++;
+      // (never held past a bar)
+      const maxHold = song.bars[b.bar].len;
+      while (i + n < beats.length && !phraseAt(i + n) && (n < want || !beats[i + n].strong) && beats[i + n].step - b.step < maxHold && beats[i + n].step - runFrom <= runMax) n++;
       const end = i + n >= beats.length;
       const songEnd = lastSection && end;
       // (the song's last two bars head for home, the nearest one)
@@ -474,10 +488,12 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const shift = M.colour && !songEnd ? colourShift(M.colour, song.mode, d, target > d) : 0;
       let colour = false;
       if (shift && rng.chance(M.colourP) && midi + shift <= ceil(t) && midi + shift >= MID[0] && mod(midi + shift - rootAt(b.step), 12) !== 6 && !(lean === 'in' && b.strong)) { midi += shift; colour = true; stat.colour++; }
-      const stepEnd = i + n < beats.length ? beats[i + n].step : song.total;
+      let stepEnd = i + n < beats.length ? beats[i + n].step : song.total;
+      // (a run that would pass its limit at the section's end: the note stops there, a pause after it)
+      if (stepEnd - runFrom > runMax && !songEnd) stepEnd = Math.max(b.step + 4, runFrom + runMax);
       const prev = out[out.length - 1];
       // (the same note again, straight on: held on, not struck again)
-      if (prev && a === 0 && prev.midi === midi && prev.step + prev.len === b.step) {
+      if (prev && a === 0 && prev.midi === midi && prev.step + prev.len === b.step && stepEnd - prev.step <= maxHold) {
         prev.len = stepEnd - prev.step;
         i += n; beatNo += n;
         continue;
@@ -509,7 +525,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const mk: Mark[] = [];
       while (markAt < to) {
         const at0 = markAt - from + (markAt - from) % 2;
-        const at = at0 >= 2 && at0 <= n.len - 4 ? at0 : undefined;
+        // (a beat of the note held first, Paul: not straight away)
+        const at = at0 >= 4 && at0 <= n.len - 4 ? at0 : undefined;
         if (at !== undefined) {
           // (never a pull on the song's last note: it rings to the end)
           const kind = mrng.chance(0.5) && !(lastSection && k === out.length - 1) ? 'pull' : 'push';
@@ -534,7 +551,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const songLast = lastSection && k === out.length - 1;
       const barLen = song.bars.find((b) => b.start + b.len > n.step)?.len ?? 16;
       const fl: Flick[] = [];
-      for (let at = DENSE.includes(flicks) || G.close ? 2 : 4; at < n.len; at++) {
+      // (a beat of the note held first, Paul: "too many very short held lines")
+      for (let at = 4; at < n.len; at++) {
         const r = frng.next(), two = frng.chance(G.two), gap = frng.chance(G.gap), half = !two && frng.chance(HALF_P), up = frng.chance(half ? HALF_UP : FLICK_UP);
         const cl = clusterAt(barOf(n.step + at));
         // (the genre: how many, offbeats, bends at a note's end)
@@ -580,23 +598,32 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     stepBase += song.total;
   });
 
-  // a cap (Paul): never more than MAX_PER_SECOND quick notes, pushes and pulls together in any second,
-  // in real time (by the tempo); the later ones in a busy second are left out
+  // a cap (Paul): never more than MAX_PER_SECOND changes you hear in any second, in real time (by the tempo):
+  // every note's start, a quick note (out and back again), a push, a pull (and the note back after it); the
+  // notes' starts stay, and in a busy spot the later quick notes, pushes and pulls are left out
   {
-    const evs: { t: number; n: GuideNote; f?: Flick; m?: Mark }[] = [];
+    const fixed: number[] = [];
+    const opts: { t: number[]; n: GuideNote; f?: Flick; m?: Mark }[] = [];
     let t0 = 0;
     parts.forEach((p, si) => {
-      const sec = 15 / list[si].song.bpm;
+      const sec = 15 / list[si].song.bpm, at = (st: number) => t0 + st * sec;
       for (const n of p) {
-        for (const f of n.flicks ?? []) evs.push({ t: t0 + (n.step + f.at) * sec, n, f });
-        for (const m of n.marks ?? []) evs.push({ t: t0 + (n.step + m.at) * sec, n, m });
+        if (!n.bend) fixed.push(at(n.step));
+        for (const f of n.flicks ?? []) opts.push({ t: [at(n.step + f.at), ...(f.bend ? [] : [at(n.step + f.at + f.len + (f.gap ?? 0))])], n, f });
+        for (const m of n.marks ?? []) opts.push({ t: [at(n.step + m.at), ...(m.back && m.at + m.back < n.len ? [at(n.step + m.at + m.back)] : [])], n, m });
       }
       t0 += list[si].song.total * sec;
     });
-    evs.sort((a, b) => a.t - b.t);
-    const kept: number[] = [];
-    for (const e of evs) {
-      if (kept.filter((t) => t > e.t - 1 + 1e-6).length < MAX_PER_SECOND) { kept.push(e.t); continue; }
+    opts.sort((a, b) => a.t[0] - b.t[0]);
+    const kept = [...fixed];
+    // (the most in any second around these times, with them in)
+    const fits = (add: number[]) => {
+      const all = [...kept, ...add].filter((x) => x > add[0] - 1.001 && x < add[add.length - 1] + 1.001).sort((a, b) => a - b);
+      for (let a = 0, b = 0; b < all.length; b++) { while (all[b] - all[a] >= 1 - 1e-6) a++; if (b - a + 1 > MAX_PER_SECOND) return false; }
+      return true;
+    };
+    for (const e of opts) {
+      if (fits(e.t)) { kept.push(...e.t); continue; }
       stat.capped++;
       if (e.f) {
         e.n.flicks = e.n.flicks!.filter((x) => x !== e.f);
@@ -630,7 +657,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     ...(flicks === 'off' ? [] : [`Quick notes for ${first.song.genre}: ${G.feel}`]),
     ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} in 2-bar clusters (frequent ${stat.byCluster.frequent}, moderate ${stat.byCluster.moderate}, sparse ${stat.byCluster.sparse}); ${stat.flickGaps} as a 16th with a 16th's pause before the note comes back, ${stat.flickBends} bent to at a note's end; ${stat.flickOut} a half step away and out of the key`]),
     `Pushes and pulls on the held notes: ${stat.push} pushes (a lift, like a word starting), ${stat.pull} pulls (a dip, like a word ending), spread unevenly; a pull falls to silence and the note comes back on the next beat`,
-    `Busy spots: at most ${MAX_PER_SECOND} quick notes, pushes and pulls in any second (${stat.capped} left out)`,
+    `Busy spots: at most ${MAX_PER_SECOND} changes you hear in any second (notes, quick notes out and back, pushes, pulls and the note back after them; ${stat.capped} quick notes, pushes and pulls left out)`,
     `${stat.notes} notes, about ${(songBeats / Math.max(1, stat.notes)).toFixed(1)} beats each; ${stat.pauses} pauses`,
     `Chords: ${lean === 'in' ? 'leaning in' : 'leaning out (key only)'}: strong beats on a chord note ${Math.round((100 * stat.strongTone) / Math.max(1, stat.strong))}%`,
     M.colour ? `Out of key: ${colourWord[M.colour]} (${stat.colour}${stat.colour === 1 ? ' time' : ' times'})` : 'Out of key: none (this mood stays in the scale)',

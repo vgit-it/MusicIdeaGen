@@ -1,9 +1,9 @@
 // Words for the Guide line (experiment, docs/GUIDE.md): the line's tune kept exactly, pitch for pitch and
 // step for step; the words only decide which syllable sits on each sound. The line's own events tell
 // them what to do: a note's start, a push (a word starting) and the note back after a pull's silence
-// start words; a pull ends one, softly, into its silence; quick notes are mostly new words of their own
-// (always the two-step ones), now and then the vowel carried on (oh-oh), by genre; a bend at a note's end
-// stays one sound or a word's soft ending. Lines break at the pauses; every other line rhymes; choruses sing the same words each time.
+// start words; a pull ends one, softly, into its silence; each quick note ends a word or starts a new one
+// (STARTS), a short breath between words in the singing (voice.ts). Lines break at the pauses; every other
+// line rhymes; choruses sing the same words each time.
 // The pseudo-English words are the vocals' own (src/parts/lyrics.ts).
 
 import type { Idea } from '../idea';
@@ -18,14 +18,17 @@ export interface GuideSyl { step: number; len: number; midi: number; vel: number
 export interface GuideSungLine { notes: GuideSyl[]; text: string }
 
 /**
- * How often a one-step quick note is a new word of its own rather than the vowel before, by genre (Paul:
- * "most of the quick notes should be new words"; the two-step ones always are).
+ * Every quick note is a word's end or a new word's start (Paul), its stresses to suit: a word's end is a
+ * light last syllable and the line coming back starts a new, stressed word (BRO-ken / NIGHT); a word's start
+ * is a stressed new word, the line coming back its light second syllable (the NIGHT / FAL-len). Two-step
+ * jumps start words; one with a pause after it, or bent to at a note's end, ends one; the rest by chance,
+ * a little more often starting words where the genre is busier.
  */
-const WORDY: Record<Genre, number> = { funk: 0.95, hardrock: 0.9, rock: 0.85, pop: 0.85, metal: 0.8, altmetal: 0.8, grunge: 0.7 };
+const STARTS: Record<Genre, number> = { funk: 0.6, hardrock: 0.55, rock: 0.5, pop: 0.5, metal: 0.5, altmetal: 0.5, grunge: 0.4 };
 
 /** What starts a stretch of sound: a note, a push, the note back after a pull or a quick note's pause, a quick note, a bend. */
 type Role = 'note' | 'bent' | 'push' | 'resume' | 'back' | 'after' | 'flick' | 'flickGap' | 'flickBend';
-interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; two?: boolean }
+interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; two?: boolean; stress?: boolean; ws?: boolean }
 
 const SOFT = new Set<Cons>(['N', 'M', 'L', 'S', 'Z', 'NG', 'R']);
 
@@ -33,7 +36,7 @@ const SOFT = new Set<Cons>(['N', 'M', 'L', 'S', 'Z', 'NG', 'R']);
 export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLine[][] {
   const first = list[0];
   const genre = first.song.genre;
-  const wordy = WORDY[genre] ?? 0.5;
+  const starts = STARTS[genre] ?? 0.5;
   const style = { mood: line.mood, genre };
   const hi = Math.max(0, ...line.parts.flat().map((n) => n.midi));
   // the choruses' words, from the first, to sing again
@@ -71,17 +74,21 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
       }
       emit(n.step + cur, n.len - cur, n.midi, role, !next || next.step > n.step + n.len);
     });
-    // which carry a syllable of their own, and which carry on the one before
-    let lastFlickSung = false;
+    // each stretch a syllable (a note bent into carries on the one before), its stress, and whether it starts a word
+    let flickStarts = false;
     for (const s of segs) {
       const strong = beats.has(s.step);
-      s.sung = s.role === 'note' || s.role === 'push' || s.role === 'resume' || s.role === 'flickGap' ? true
-        : s.role === 'back' ? true
-        : s.role === 'flick' ? (lastFlickSung = !!s.two || rng.chance(wordy))
-        : s.role === 'flickBend' ? !!s.two || rng.chance(wordy * 0.6)
-        : s.role === 'after' ? lastFlickSung && (strong || rng.chance(0.5))
-        : false;
-      if (s.role !== 'flick' && s.role !== 'after') lastFlickSung = false;
+      s.sung = s.role !== 'bent';
+      s.ws = true;
+      if (s.role === 'flick' || s.role === 'flickGap' || s.role === 'flickBend') {
+        flickStarts = s.role === 'flick' ? !!s.two || rng.chance(starts) : s.role === 'flickBend' ? !!s.two : false;
+        s.stress = flickStarts;
+        s.ws = flickStarts;
+      } else if (s.role === 'after') {
+        // (back to the line: a new stressed word after a word's end, or the light rest of the word the quick note started)
+        s.stress = !flickStarts;
+        s.ws = !flickStarts;
+      } else s.stress = s.role === 'push' || s.role === 'back' || ((s.role === 'note' || s.role === 'resume') && (strong || s.len >= 8));
     }
     // lines: at a pause (a beat or more of silence), or after two bars at the next word's start
     const barLen = idea.song.bars[0]?.len ?? 16;
@@ -100,15 +107,15 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
     const out = lines.map((L, li) => {
       const sungSegs = L.filter((s) => s.sung);
       const slots = sungSegs.map((s) => ({
-        // (a quick note sung is a new word of its own, Paul; a bend at a note's end stays a word's soft ending)
-        stress: s.role === 'push' || s.role === 'flick' || s.role === 'flickGap' || (s.role === 'flickBend' && !!s.two) || ((s.role === 'note' || s.role === 'resume') && (beats.has(s.step) || s.len >= 8)),
+        stress: !!s.stress,
         long: s.len >= 4,
         high: s.midi >= hi - 3,
       }));
       const odd = (lineNo + li) % 2 === 1;
       const hook = again?.[li] ? again[li].slice(0, slots.length) : undefined;
       let words = lyricLine(rng, slots, style, { rhyme: odd ? rhyme : null, hook });
-      words = words.map((w, i) => (sungSegs[i].len >= 8 ? openUp(w) : w));
+      // (where words start and end, as the quick notes ask; the line's first syllable always starts one)
+      words = words.map((w, i) => ({ ...(sungSegs[i].len >= 8 ? openUp(w) : w), wordStart: i === 0 || sungSegs[i].ws !== false, stress: !!sungSegs[i].stress }));
       if (!odd) rhyme = rhymeOf(words);
       mine.push(words.map((w) => ({ ...w })));
       // each stretch its syllable, or the one before carried on (its closing sounds moved to the end)
