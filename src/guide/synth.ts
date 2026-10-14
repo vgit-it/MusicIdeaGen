@@ -22,9 +22,10 @@ export class GuideSynth {
 
   /**
    * A note from `time` for `dur` seconds. `bends`: the pitch glides on to other notes without a new
-   * attack (`at` seconds in, over `over` seconds), the way a guitarist bends a string.
+   * attack (`at` seconds in, over `over` seconds), the way a guitarist bends a string; `over` 0: a jump.
+   * `taps`: a little accent at these seconds in (the quick notes, struck like a drum hit).
    */
-  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = []) {
+  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = [], taps: number[] = []) {
     const raw = this.ctx.rawContext as BaseAudioContext;
     const hz = (m: number) => 440 * 2 ** ((m - 69) / 12);
     const freq = hz(midi);
@@ -34,16 +35,21 @@ export class GuideSynth {
     g.gain.linearRampToValueAtTime(peak, time + 0.035);
     g.gain.setTargetAtTime(peak * 0.8, time + 0.035, 0.3);
     g.gain.setTargetAtTime(0, end, 0.06);
-    Tone.connect(g, this.lp);
+    const acc = raw.createGain();
+    acc.gain.setValueAtTime(1, time);
+    for (const t of taps) { acc.gain.setValueAtTime(1.4, time + t); acc.gain.setTargetAtTime(1, time + t + 0.01, 0.05); }
+    g.connect(acc);
+    Tone.connect(acc, this.lp);
     const oscs = (['sine', 'triangle'] as const).map((type, i) => {
       const o = raw.createOscillator();
       o.type = type;
       o.frequency.setValueAtTime(freq, time);
       let cur = freq;
-      for (const b of bends) {
+      for (const b of [...bends].sort((x, y) => x.at - y.at)) {
         o.frequency.setValueAtTime(cur, time + b.at);
         cur = hz(b.to);
-        o.frequency.exponentialRampToValueAtTime(cur, time + b.at + b.over);
+        if (b.over > 0) o.frequency.exponentialRampToValueAtTime(cur, time + b.at + b.over);
+        else o.frequency.setValueAtTime(cur, time + b.at + 0.002);
       }
       const lvl = raw.createGain();
       lvl.gain.value = i ? 0.35 : 1;
