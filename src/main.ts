@@ -82,7 +82,7 @@ function render() {
     renderSectionTools();
   }
   showReal();
-  guide.update(track ? track.sections : [cur], track?.mood);
+  guide.update(track ? track.sections : [cur], track?.mood, singerFor(cur));
 }
 
 function setPlaying(on: boolean) {

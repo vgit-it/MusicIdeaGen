@@ -5,12 +5,14 @@ import { Midi } from '@tonejs/midi';
 import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
 import type { Mood } from '../tension';
+import type { HighVoice } from '../parts/singers';
 import { FLICK_LEVELS, type Flicks, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
 import { GuideSynth } from './synth';
 
 export interface GuidePanel {
   /** New music (an idea, or a track's sections), and the song's mood (undefined: auto). */
-  update(list: Idea[], mood: Mood | undefined): void;
+  /** `singer`: the vocal's high voice, if it sings high (the Voice's Auto follows it). */
+  update(list: Idea[], mood: Mood | undefined, singer?: HighVoice | null): void;
 }
 
 const seg = (id: string, opts: [string, string][], on: string) =>
@@ -18,6 +20,10 @@ const seg = (id: string, opts: [string, string][], on: string) =>
 
 export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
   let on = false, lean: Lean = 'in', band = true, salt = 0, level = 70, flicks: Flicks = 'some';
+  // (the voice: Auto follows the singer; High without a high singer: the rock tenor's range)
+  let voice: 'auto' | 'mid' | 'high' = 'auto';
+  let singer: HighVoice | null = null;
+  const highNow = (): HighVoice | null => (voice === 'mid' ? null : voice === 'high' ? singer ?? 'tenor' : singer);
   let list: Idea[] = [];
   let mood: Mood | undefined;
   let line: GuideLine | null = null;
@@ -31,6 +37,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
       <div class="guiderow">
         <label>Chords ${seg('g-lean', [['in', 'Lean in'], ['out', 'Lean out']], lean)}</label>
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
+        <label title="Auto: mid, or high if the singer sings high. High: up to its top where the song is high">Voice ${seg('g-voice', [['auto', 'Auto'], ['mid', 'Mid'], ['high', 'High']], voice)}</label>
         <label title="Quick notes on the long ones: a step or two up or down for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
@@ -49,7 +56,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
 
   const rewrite = () => {
     if (!on || !list.length) { line = null; draw.innerHTML = ''; $('g-notes').innerHTML = ''; return; }
-    line = writeGuide(list, mood, lean, salt, flicks);
+    line = writeGuide(list, mood, lean, salt, flicks, highNow());
     $('g-notes').innerHTML = line.notes.map((n) => `<li>${n}</li>`).join('');
     drawLine();
   };
@@ -149,6 +156,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     });
   };
   pickSeg('g-lean', (v) => { lean = v as Lean; rewrite(); });
+  pickSeg('g-voice', (v) => { voice = v as typeof voice; rewrite(); });
   pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
   pickSeg('g-band', (v) => { band = v === 'band'; setBand(); });
   const setOn = (v: boolean) => {
@@ -212,7 +220,9 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
   });
 
   return {
-    update(l, m) {
+    update(l, m, h = null) {
+      const sing = h ?? null;
+      if (sing !== singer) { singer = sing; if (voice !== 'mid') { list = l; mood = m; rewrite(); return; } }
       // the same music again (a redraw): keep the line
       if (l.length === list.length && l.every((x, i) => x === list[i]) && m === mood) return;
       list = l;
