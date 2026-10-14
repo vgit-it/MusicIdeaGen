@@ -31,7 +31,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
       <div class="guiderow">
         <label>Chords ${seg('g-lean', [['in', 'Lean in'], ['out', 'Lean out']], lean)}</label>
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
-        <label title="Quick notes on the long ones: a step or two up or down for a 16th or an 8th, then back">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
+        <label title="Quick notes on the long ones: a step or two up or down for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
         <label class="grow">Volume <input type="range" id="g-vol" min="0" max="100" value="${level}"></label>
@@ -121,12 +121,16 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         len += notes[k].len;
       }
       // quick notes: a jump there and back (struck), or at the note's end a bend there
-      const taps: number[] = [];
+      const taps: number[] = [], rests: { at: number; len: number }[] = [];
       for (const f of n.flicks ?? []) {
         bends.push({ at: f.at * six, to: f.midi, over: f.bend ? f.len * six * 0.9 : 0 });
-        if (!f.bend) { bends.push({ at: (f.at + f.len) * six, to: n.midi, over: 0 }); taps.push(f.at * six); }
+        if (f.bend) continue;
+        bends.push({ at: (f.at + f.len) * six, to: n.midi, over: 0 });
+        taps.push(f.at * six);
+        // (a split second's silence, then the held note struck again)
+        if (f.gap) { rests.push({ at: (f.at + f.len) * six, len: f.gap * six }); taps.push((f.at + f.len + f.gap) * six); }
       }
-      synth!.play(n.midi, time, len * six, 0.8, bends, taps);
+      synth!.play(n.midi, time, len * six, 0.8, bends, taps, rests);
     }
     if (cursor && g % 4 === 0) {
       const xx = ((offsets[p] + g) / drawnTotal) * drawnW;
@@ -180,7 +184,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
           const fa = held.start + Math.round(f.at * step), fe = fa + Math.round(f.len * step);
           if (fa > from) t.addNote({ midi: held.midi, ticks: from, durationTicks: fa - from, velocity: 0.8 });
           t.addNote({ midi: f.midi, ticks: fa, durationTicks: fe - fa, velocity: 0.9 });
-          from = fe;
+          from = fe + Math.round((f.gap ?? 0) * step);
         }
         if (held.end > from) t.addNote({ midi: held.midi, ticks: from, durationTicks: held.end - from, velocity: 0.8 });
       };

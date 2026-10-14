@@ -23,9 +23,10 @@ export class GuideSynth {
   /**
    * A note from `time` for `dur` seconds. `bends`: the pitch glides on to other notes without a new
    * attack (`at` seconds in, over `over` seconds), the way a guitarist bends a string; `over` 0: a jump.
-   * `taps`: a little accent at these seconds in (the quick notes, struck like a drum hit).
+   * `taps`: a little accent at these seconds in (the quick notes, struck like a drum hit). `rests`: a
+   * split second of silence (`at` seconds in, `len` long), the note struck again after it.
    */
-  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = [], taps: number[] = []) {
+  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = [], taps: number[] = [], rests: { at: number; len: number }[] = []) {
     const raw = this.ctx.rawContext as BaseAudioContext;
     const hz = (m: number) => 440 * 2 ** ((m - 69) / 12);
     const freq = hz(midi);
@@ -37,7 +38,15 @@ export class GuideSynth {
     g.gain.setTargetAtTime(0, end, 0.06);
     const acc = raw.createGain();
     acc.gain.setValueAtTime(1, time);
-    for (const t of taps) { acc.gain.setValueAtTime(1.4, time + t); acc.gain.setTargetAtTime(1, time + t + 0.01, 0.05); }
+    const marks = [...taps.map((at) => ({ at, rest: 0 })), ...rests.map((r) => ({ at: r.at, rest: r.len }))].sort((a, b) => a.at - b.at || b.rest - a.rest);
+    for (const m of marks) {
+      const t = time + m.at;
+      if (m.rest) {
+        // (silence, cut quickly, until the note comes back)
+        acc.gain.setTargetAtTime(0, t, 0.006);
+        acc.gain.setValueAtTime(0, t + m.rest - 0.002);
+      } else { acc.gain.setValueAtTime(1.4, t); acc.gain.setTargetAtTime(1, t + 0.01, 0.05); }
+    }
     g.connect(acc);
     Tone.connect(acc, this.lp);
     const oscs = (['sine', 'triangle'] as const).map((type, i) => {
