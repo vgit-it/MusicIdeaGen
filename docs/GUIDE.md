@@ -321,6 +321,15 @@ Paul: the line sounded very weird up at C3-C5; shift the range down an octave.
 - Same shapes exactly: checked note for note against the old line, minus 12 (120 songs, moods, genres, voices).
 - Sung: the Cornell voice at the line's new pitch; the woman's voice (High) sings it back up an octave, in her own range.
 
+## Quick notes as new words (2026-10-14)
+
+Paul: the two-step quick notes should be new words, and most of the others too.
+
+- Two-step quick notes: always a new word.
+- One-step ones: a new word most of the time (by genre: funk 95%, rock and pop 85%, grunge 70%); otherwise the vowel carried on.
+- With a pause: a new word. A bend at a note's end: a soft word ending (a new word if it's a two-step jump).
+- About 2.4 syllables a bar on Some (was 2.0); carried vowels 14% (was 28%). Tune unchanged.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
