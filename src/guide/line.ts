@@ -10,7 +10,7 @@
 //   ends the song on home
 // - with the chords: lean in (strong beats on the chord's notes) or out (the key only)
 
-import type { Idea } from '../idea';
+import type { Idea, SectionKind } from '../idea';
 import { groupStarts } from '../rhythm';
 import { Rng } from '../rng';
 import { type Mood, MOOD_LABEL, autoMood } from '../tension';
@@ -171,20 +171,23 @@ const BEND_SEMIS = 2;
 const NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 export const noteName = (m: number) => `${NAMES[mod(m, 12)]}${Math.floor(m / 12) - 1}`;
 
-/** The whole line an octave down (Paul: up at C3-C5 it sounded very weird): the same shapes, an octave lower. */
+/** A high voice's top, written an octave under where it's sung (the woman's voice sings the line back up an octave, voice.ts). */
 export const DOWN = 12;
-/** Home in the middle of the voice: F2 to E3. */
-const homeMidi = (key: number) => 53 - DOWN + mod(key - 5, 12);
+/** Home around E3 (Paul: "somewhere around E3, where it sounds a bit normal"): A2 to G#3 by the key. */
+const homeMidi = (key: number) => 45 + mod(key - 9, 12);
 /**
- * The voice, C2 to C4 (Paul: the mid voice range, then "open up more of the higher range": was G3; then all an octave down);
- * a high voice (the singer's high voice, or High) goes up to its own top, an octave down too, in the song's high parts (tension from HIGH_T up).
+ * The voice, A2 to C4, around E3 (Paul: C3-C5 sounded very weird, C2-C4 super low); the song's peaks (tension from PEAK_T)
+ * reach D4; a high voice (the singer's high voice, or High) goes up to its own top, an octave down, in the song's high parts.
  */
-const MID: [number, number] = [48 - DOWN, 72 - DOWN];
+const MID: [number, number] = [45, 60];
+const PEAK = 62, PEAK_T = 0.8;
 /**
- * More room up (Paul: "the limiting of range has made it very stale, open up more of the higher range"):
- * the mood's span reaches this many scale steps higher, and a high voice goes past its usual top.
+ * Height by section, not wandering (Paul: a narrow range "without making it too monotonous"): where each kind of
+ * section sits in the voice (0 its bottom, 1 its top), moved by the tension and the mood's lean; a pre-chorus climbs
+ * through itself. Within a phrase the line keeps near that height: the mood's span sets how many scale notes either side.
  */
-const UP = 3;
+const HEIGHT: Partial<Record<SectionKind, number>> = { intro: 0.3, verse: 0.25, prechorus: 0.35, chorus: 0.7, interlude: 0.4, bridge: 0.55, breakdown: 0.25, solo: 0.5, outro: 0.4 };
+/** A high voice goes past its usual top (Paul: "open up more of the higher range"). */
 const HIGH_EXTRA = 2;
 const HIGH_T = 0.6;
 /** Section kinds sung alike each time (Paul: "the verses should be similar and the choruses similar"). */
@@ -232,7 +235,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const mood = moodIn ?? autoMood(first.song, first.seeds.song);
   const M = MOODS[mood];
   const rng = new Rng(`guide-${first.seeds.song}-${mood}-${lean}-${salt}`);
-  const lo = M.low, hi = M.low + M.span + UP;
+  // (how far either side of the section's height a phrase goes, in scale notes)
+  const W = Math.max(2, Math.round(M.span / 2) - 1);
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
   const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, flickOut: 0, push: 0, pull: 0, capped: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0 };
@@ -262,7 +266,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   };
   // the first verse, pre-chorus and chorus, kept to sing again (their notes, and each note's colour shift)
   const firstOf = new Map<string, { notes: GuideNote[]; cs: number[]; total: number; bars: number }>();
-  const top = high ? Math.max(MID[1], HIGH_VOICES[high].beltTop + HIGH_EXTRA - DOWN) : MID[1];
+  const top = high ? Math.max(PEAK, HIGH_VOICES[high].beltTop + HIGH_EXTRA - DOWN) : PEAK;
   // pushes and pulls: their own dice (the line and the quick notes stay the same), and the next one's place
   const mrng = new Rng(`guide-marks-${first.seeds.song}-${mood}-${salt}`);
   const markGap = () => {
@@ -308,8 +312,17 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       return;
     }
     // (the voice: mid, up to the high voice's top where the song is high)
-    const ceil = (t: number) => (high && t >= HIGH_T ? top : MID[1]);
-    const inVoice = (x: number, t: number) => midiOf(x) >= MID[0] && midiOf(x) <= ceil(t) && x >= lo && x <= hi + (high ? 3 : 0);
+    const ceil = (t: number) => (high && t >= HIGH_T ? top : t >= PEAK_T ? PEAK : MID[1]);
+    const inVoice = (x: number, t: number) => midiOf(x) >= MID[0] && midiOf(x) <= ceil(t);
+    // (the section's height in the voice, as a scale note: by its kind, the tension, the mood's lean; a pre-chorus climbing)
+    const heightD = (t: number, bar: number) => {
+      let h = (HEIGHT[idea.section?.kind ?? 'verse'] ?? 0.4) + (t - 0.5) * 0.4 + M.lean * 0.15;
+      if (idea.section?.kind === 'prechorus') h += 0.3 * (bar / Math.max(1, song.bars.length - 1));
+      const m = MID[0] + Math.max(0, Math.min(1, h)) * (MID[1] - MID[0]);
+      let best = 0;
+      for (let x = -14; x <= 21; x++) if (Math.abs(midiOf(x) - m) < Math.abs(midiOf(best) - m)) best = x;
+      return best;
+    };
     const kind = idea.section?.kind ?? '';
     const again = REPEATS.includes(kind) ? firstOf.get(kind) : undefined;
     let i = 0;
@@ -400,7 +413,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       // (the height the tension asks for, within the voice; a high voice reaches for its top where it's high)
       const voiceDs = Array.from({ length: 30 }, (_, k) => k - 10).filter((x) => inVoice(x, t));
       const dBot = Math.min(...voiceDs), dTop = Math.max(...voiceDs);
-      let want0 = lo + t * (hi - lo) + M.lean * 2;
+      let want0 = heightD(t, b.bar);
       if (high && t >= HIGH_T) want0 = Math.max(want0, dTop - 1);
       const target = closing ? homeD : Math.max(dBot, Math.min(dTop, want0));
       const strong = b.strong || n >= 2;
@@ -410,7 +423,9 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       for (let s = -reach; s <= reach; s++) {
         const x = d + s;
         // (above the voice where the song calms down: only on the way down, a step at a time)
-        if (!inVoice(x, t) && !(x < d && midiOf(x) <= midiOf(d) && midiOf(x) >= MID[0] && x <= hi + 3)) continue;
+        if (!inVoice(x, t) && !(x < d && midiOf(x) <= midiOf(d) && midiOf(x) >= MID[0])) continue;
+        // (near the section's height: a phrase keeps within W scale notes of it, or heads back toward it)
+        if (Math.abs(x - target) > W && Math.abs(x - target) >= Math.abs(d - target) && !songEnd) continue;
         const a = Math.abs(s);
         let w = a === 0 ? (sameRun >= 2 || stat.notes === 0 ? 0 : M.same) : a === 1 ? 1 : a === 2 ? M.third : M.leap * (afterPause ? 2.5 : 0) / (a - 2);
         if (stat.notes === 0) w = s === 0 ? 1 : 0;
@@ -606,7 +621,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const notes = [
     `Mood: ${MOOD_LABEL[mood]}${moodIn ? '' : ' (auto)'}: ${M.desc}`,
     stat.notes ? `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}` : 'No notes: the line sits out here',
-    `Voice: ${high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])})`}`,
+    `Voice: ${high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}; verses low, choruses lifted)`}`,
     `Repeats: ${stat.repeats} ${stat.repeats === 1 ? 'section' : 'sections'} sung like the first verse, pre-chorus or chorus (${stat.varied} notes changed a step)`,
     `Moves: steps ${pc(stat.step)}, 3rds ${pc(stat.third)}, held on ${pc(stat.same)}, leaps after a pause ${pc(stat.leap)} (${stat.leap})`,
     `Bends: ${stat.bends} (into a step: ${stat.bendLens[0]} over an 8th, ${stat.bendLens[1]} over a quarter, ${stat.bendLens[2]} over half a bar)`,

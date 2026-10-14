@@ -330,6 +330,16 @@ Paul: the two-step quick notes should be new words, and most of the others too.
 - With a pause: a new word. A bend at a note's end: a soft word ending (a new word if it's a two-step jump).
 - About 2.4 syllables a bar on Some (was 2.0); carried vowels 14% (was 28%). Tune unchanged.
 
+## Around E3, height by section (2026-10-14)
+
+Paul: C2-C4 was super low; keep it around E3 without making it monotonous.
+
+- **Voice A2 to C4**, home A2 to G#3 by the key, so the line circles E3. The song's peaks (tension 0.8 and up) reach D4. A high voice's top as before (an octave under where it's sung).
+- **Height by section, not by wandering:** each kind of section has its own place in the voice (verses low, pre-choruses climbing through themselves, choruses lifted, bridges in between), moved by the tension and the mood's lean.
+- **Within a phrase** the line keeps near that height: the mood's span sets how many scale notes either side (2-4), or it heads back toward it.
+- **Result** (80 songs): middle note F3 (was Eb4 before the octave drop); verses around D3, choruses around G3 (a 4th apart; was 2 semitones); the song's span (13 semitones) and different pitches per song (8) the same as before, so no flatter.
+- Leaps after pauses, quick notes, pushes and pulls unchanged.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
