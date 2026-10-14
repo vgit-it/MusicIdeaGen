@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
-import { type Flicks, writeGuide } from '../src/guide/line';
+import { type Flicks, type GuideIdeas, writeGuide } from '../src/guide/line';
 import { guideWords } from '../src/guide/words';
 import { MOODS } from '../src/tension';
 import type { HighVoice } from '../src/parts/singers';
@@ -25,9 +25,14 @@ const HIGH: (HighVoice | null)[] = [null, null, 'tenor', 'woman'];
 /** A short fingerprint of a string (FNV-1a). */
 const hash = (s: string) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0; return h.toString(16); };
 
+/** Each new idea switched on alone (the rules checked with it on too). */
+const IDEAS: [string, GuideIdeas][] = [['all off', {}], ['Repeat idea', { motif: true }]];
+
 const out: Record<string, string> = {};
 const broken: string[] = [];
-let k = 0, songs = 0;
+let songs = 0;
+for (const [ideaName, ideas] of IDEAS) {
+let k = 0;
 for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS) {
   const s = `gc-${genre}-${meter}-${mood}`;
   const flicks = FLICKS[k % 4], lean = k % 3 === 2 ? 'out' : 'in', high = HIGH[k % 4];
@@ -35,11 +40,11 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   const idea = generate({ genre, meter, weirdness: 0.3 } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const tr = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never);
   const list = tr.sections;
-  const L = writeGuide(list, tr.mood, lean, 0, flicks, high);
+  const L = writeGuide(list, tr.mood, lean, 0, flicks, high, ideas);
   const W = guideWords(list, L);
-  const id = `${mood}|${genre}|${meter}|${flicks}|${lean}|${high ?? 'mid'}`;
-  out[id] = hash(JSON.stringify({ parts: L.parts, silent: L.silent, words: W.map((ls) => ls.map((l) => ({ t: l.text, n: l.notes.map((x) => [x.step, x.len, x.midi, x.vel, x.syl.text, x.syl.wordStart, x.syl.stress]) }))) }));
-  songs++;
+  const id = `${ideaName === 'all off' ? '' : `[${ideaName}] `}${mood}|${genre}|${meter}|${flicks}|${lean}|${high ?? 'mid'}`;
+  if (ideaName === 'all off') out[id] = hash(JSON.stringify({ parts: L.parts, silent: L.silent, words: W.map((ls) => ls.map((l) => ({ t: l.text, n: l.notes.map((x) => [x.step, x.len, x.midi, x.vel, x.syl.text, x.syl.wordStart, x.syl.stress]) }))) }));
+  if (ideaName === 'all off') songs++;
   // the rules
   list.forEach((idea, si) => {
     const total = idea.song.total, six = 15 / idea.song.bpm;
@@ -66,6 +71,7 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
     const at = [...new Set(changes)].sort((a, b) => a - b);
     for (let i = 0; i + 4 < at.length; i++) if ((at[i + 4] - at[i]) * six < 1 - 1e-9) { broken.push(`${id} ${idea.section?.label}: over 4 changes in a second`); break; }
   });
+}
 }
 
 if (save) {
