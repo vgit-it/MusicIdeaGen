@@ -293,6 +293,14 @@ Paul: a pull should end in silence and the note come back on the next beat.
 - Quick notes and pushes keep clear of the silence. Drawn as a gap in the note; in MIDI a soft 16th, then the note again on the beat.
 - Pushes and pulls about 6 per 8 bars (a little fewer: the silences take room).
 
+## A cap: 4 per second (2026-10-14)
+
+Paul: never more than 4 quick notes, pushes and pulls together in any one second.
+
+- Counted in real time (by the tempo), across sections, in any 1-second window.
+- In a busy spot the later ones are left out. The readout shows how many.
+- Rarely needed: about 0.3% left out on Some, 0.6% on Lots (the busiest spots in fast songs).
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

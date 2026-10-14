@@ -197,6 +197,8 @@ const FLICK_UP = 0.5;
 /** How likely a quick note lands on an in-between 16th (the e and the a), against an 8th's 1. */
 const SIXTEENTH = 0.8;
 const HALF_UP = 0.35;
+/** At most this many quick notes, pushes and pulls together in any one second (Paul). */
+const MAX_PER_SECOND = 4;
 
 /**
  * Pushes (a lift, like a word starting) and pulls (a dip, like a word ending) on the held notes (Paul),
@@ -231,7 +233,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const lo = M.low, hi = M.low + M.span + UP;
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
-  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, flickOut: 0, push: 0, pull: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0 };
+  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, flickOut: 0, push: 0, pull: 0, capped: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0 };
   let afterPause = false, lastLeap = 0, sameRun = 0;
   const songBeats = list.reduce((n, i) => n + i.song.bars.reduce((b, x) => b + x.groups.length, 0), 0);
   let beatNo = 0;
@@ -560,6 +562,39 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     stepBase += song.total;
   });
 
+  // a cap (Paul): never more than MAX_PER_SECOND quick notes, pushes and pulls together in any second,
+  // in real time (by the tempo); the later ones in a busy second are left out
+  {
+    const evs: { t: number; n: GuideNote; f?: Flick; m?: Mark }[] = [];
+    let t0 = 0;
+    parts.forEach((p, si) => {
+      const sec = 15 / list[si].song.bpm;
+      for (const n of p) {
+        for (const f of n.flicks ?? []) evs.push({ t: t0 + (n.step + f.at) * sec, n, f });
+        for (const m of n.marks ?? []) evs.push({ t: t0 + (n.step + m.at) * sec, n, m });
+      }
+      t0 += list[si].song.total * sec;
+    });
+    evs.sort((a, b) => a.t - b.t);
+    const kept: number[] = [];
+    for (const e of evs) {
+      if (kept.filter((t) => t > e.t - 1 + 1e-6).length < MAX_PER_SECOND) { kept.push(e.t); continue; }
+      stat.capped++;
+      if (e.f) {
+        e.n.flicks = e.n.flicks!.filter((x) => x !== e.f);
+        if (!e.n.flicks.length) delete e.n.flicks;
+        stat.flicks--;
+        if (e.f.outKey) stat.flickOut--;
+        if (e.f.gap) stat.flickGaps--;
+        if (e.f.bend) stat.flickBends--;
+      } else if (e.m) {
+        e.n.marks = e.n.marks!.filter((x) => x !== e.m);
+        if (!e.n.marks.length) delete e.n.marks;
+        stat[e.m.kind]--;
+      }
+    }
+  }
+
   const moves = Math.max(1, stat.step + stat.third + stat.same + stat.leap);
   const pc = (x: number) => `${Math.round((100 * x) / moves)}%`;
   const startDeg = deg7(parts.find((p) => p.length)?.[0].deg ?? 0);
@@ -577,6 +612,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     ...(flicks === 'off' ? [] : [`Quick notes for ${first.song.genre}: ${G.feel}`]),
     ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} in 2-bar clusters (frequent ${stat.byCluster.frequent}, moderate ${stat.byCluster.moderate}, sparse ${stat.byCluster.sparse}); ${stat.flickGaps} as a 16th with a 16th's pause before the note comes back, ${stat.flickBends} bent to at a note's end; ${stat.flickOut} a half step away and out of the key`]),
     `Pushes and pulls on the held notes: ${stat.push} pushes (a lift, like a word starting), ${stat.pull} pulls (a dip, like a word ending), spread unevenly; a pull falls to silence and the note comes back on the next beat`,
+    `Busy spots: at most ${MAX_PER_SECOND} quick notes, pushes and pulls in any second (${stat.capped} left out)`,
     `${stat.notes} notes, about ${(songBeats / Math.max(1, stat.notes)).toFixed(1)} beats each; ${stat.pauses} pauses`,
     `Chords: ${lean === 'in' ? 'leaning in' : 'leaning out (key only)'}: strong beats on a chord note ${Math.round((100 * stat.strongTone) / Math.max(1, stat.strong))}%`,
     M.colour ? `Out of key: ${colourWord[M.colour]} (${stat.colour}${stat.colour === 1 ? ' time' : ' times'})` : 'Out of key: none (this mood stays in the scale)',
