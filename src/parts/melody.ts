@@ -1077,7 +1077,27 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     } else {
       // the head: the motif moved to the spine, or the idea (an answer: inverted)
       const letter = 'ABCDEFGH'.indexOf(form[li].toUpperCase());
-      const head = prevM && keep ? prevM.shape.slice(0, Math.min(keep, n)).map((x) => s0 + x) : realize(s0, letter % 2 === 1).slice(0, Math.max(1, n - 1));
+      let head = prevM && keep ? prevM.shape.slice(0, Math.min(keep, n)).map((x) => s0 + x) : realize(s0, letter % 2 === 1).slice(0, Math.max(1, n - 1));
+      // (words first: the idea's leap lands on a stressed word, not "the" or "a": the notes before it
+      // stretched with a neighbour and back, or trimmed, so its landing meets the nearest stress)
+      if (style.words && !(prevM && keep)) {
+        const idea = realize(s0, letter % 2 === 1);
+        const land = fs!.idea.pre.length + 1;
+        const stressed = (k: number) => (rh.onsets[k]?.syl?.level ?? 0) >= 2;
+        const cands = [0, 1, -1, 2, 3, -2].map((d) => land + d).filter((k) => k >= 1 && k < n - 1 && stressed(k));
+        const j = cands[0];
+        if (j !== undefined && j !== land) {
+          const pre = idea.slice(0, land);
+          const dir = Math.sign(idea[land] - idea[land - 1]) || 1;
+          if (j > land) {
+            // (a dip away from the leap and back: it starts from under, not the same note again)
+            const base = pre[pre.length - 1];
+            for (let k = 0; k < j - land; k++) pre.push(k % 2 === 0 ? base - dir : base);
+            if ((j - land) % 2 === 1) pre[pre.length - 1] = base - dir;
+          } else pre.splice(Math.max(1, j), pre.length - Math.max(1, j));
+          head = [...pre, ...idea.slice(land)].slice(0, Math.max(1, n - 1));
+        }
+      }
       head.forEach((x, k) => { idxs[k] = clampIdx(x); });
       // the rest: by step toward the spine's next note (Narmour: steps keep going, a leap turns back)
       let cur = idxs[head.length - 1], same = 0, lastTurn = 0;
@@ -1574,13 +1594,15 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   if (style.shaped) applyMoves(out);
   wail(rng, out, form, kind, style, tonesAt);
   singable(out, pool);
+  // (question and answer: a 1st or 3rd line, not the last, now and then rises at its end; the next falls home)
+  const asks = new Set<number>();
   if (style.words) {
-    // (question and answer: a 1st or 3rd line, not the last, now and then rises at its end; the next falls home)
-    const asks = new Set<number>();
     for (let li = 0; li < last; li += 2) if (rng.chance(style.words.ask)) asks.add(li);
     speechPitch(out, pool, tonesAt, asks);
   }
   out = holdHighs(out, bars, total, pool);
+  // (words first: again after the high notes are held, which can move a line's top)
+  if (style.words) speechPitch(out, pool, tonesAt, asks);
   const sung = ornament(rng, out, style, pool, tonesAt, { key, minorish, kind, step: 60 / song.bpm / 4 });
   deliver(rng, sung, style);
   // (a held high note never falls off its end: it fades, as held notes do; Paul)
@@ -1668,7 +1690,9 @@ function speechPitch(notes: TuneNote[], pool: number[], tonesAt: (g: number) => 
     const ki = S.findIndex((n) => lv(n) === 3);
     // light syllables by step, toward the next stress
     S.forEach((n, k) => {
-      if (lv(n) !== 0 || n.colour) return;
+      // (a colour note on a light syllable too: a light word isn't leapt to, whatever its colour)
+      if (lv(n) !== 0) return;
+      const was = n.midi;
       const nextStress = S.slice(k + 1).find((x) => lv(x) >= 1);
       if (k === 0) {
         // (a pickup: a step under (or on) the stress it leads into)
@@ -1678,6 +1702,7 @@ function speechPitch(notes: TuneNote[], pool: number[], tonesAt: (g: number) => 
       const p = S[k - 1];
       // (heading nowhere, the next stress on the same note: a neighbour on the side it leapt to, not the note again)
       if (Math.abs(n.midi - p.midi) > 3) n.midi = toward(p.midi, nextStress && nextStress.midi !== p.midi ? nextStress.midi : n.midi);
+      if (n.midi !== was) n.colour = false;
     });
     if (ki < 0) continue;
     const K = S[ki];
@@ -1695,7 +1720,8 @@ function speechPitch(notes: TuneNote[], pool: number[], tonesAt: (g: number) => 
     } else if (answer && !T && B && !K.colour && K.midi >= B.midi) K.midi = chordNear(B.midi, K.step, -1);
     // the line's top on a stress: light syllables above every stressed one come down to under the highest stress
     const stressTop = Math.max(...S.filter((n) => lv(n) >= 1).map((n) => n.midi));
-    for (const n of S) if (lv(n) === 0 && !n.colour && n.midi > stressTop) n.midi = below(stressTop);
+    // (a question's rising last syllable may top the line: that's the question)
+    for (const n of S) if (lv(n) === 0 && !n.colour && n.midi > stressTop && !(ask && n === T)) n.midi = below(stressTop);
   }
 }
 
