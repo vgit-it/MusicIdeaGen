@@ -20,6 +20,7 @@ import {
 import { type PartKey, buildLockPanel } from './ui/locks';
 import { buildPartsPanel } from './ui/parts';
 import { buildChordEditor } from './ui/chordedit';
+import { buildGuidePanel } from './guide/panel';
 import { hasPins } from './parts/sheet';
 import { highlightBar, markSection, renderIdea, renderTrack } from './ui/render';
 
@@ -55,6 +56,8 @@ const realBtn = $<HTMLButtonElement>('realamps');
 const realHint = $('realhint');
 let preparing = false;
 engine.onBar = highlightBar;
+// the Guide line experiment (src/guide/): its own section, listening to the engine's steps
+const guide = buildGuidePanel($('guide'), engine);
 
 /** The section strip, labelled with the instrument each section's rhythm part plays on. */
 const drawTrack = (t: Track) => renderTrack(t, (s) => SOUND_SHORT[engine.chordIdFor(s)]);
@@ -79,6 +82,7 @@ function render() {
     renderSectionTools();
   }
   showReal();
+  guide.update(track ? track.sections : [cur], track?.mood);
 }
 
 function setPlaying(on: boolean) {
