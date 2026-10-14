@@ -250,6 +250,21 @@ Paul: the whole tone sounded weird; make it a half step.
 - Out of key where the scale's next note is a whole step away (most places): about 21% of all quick
   notes (was 7% with the whole tone). Two-step ones still stay in the scale.
 
+## Fewer off-scale, more up, pushes and pulls (2026-10-14)
+Paul: fewer off-scale quick notes; more of the normal ones going up; and pushes (emphasis) and pulls
+(weak) on the held notes, like a word starting or ending, spread unevenly so held stretches run long or short.
+- **Off-scale:** 15% of one-step quick notes go a half step (was 40%): about 8% of all quick notes (was 21%).
+- **Up:** in-scale quick notes go up half the time (was 35%); the off-scale ones stay mostly down.
+- **Pushes and pulls** on held notes (2 beats or more, not in a bend), on the 8th grid, either one by chance:
+  - push: a breath of a dip, then louder, settling back (like a word starting)
+  - pull: falls away, then comes back softly (like a word ending)
+  - spread unevenly: the gap to the next is short (an 8th or two), medium (2-3 beats) or long (5-12 beats),
+    so some held stretches are broken up and others run on untouched
+  - placed first; quick notes keep off them (about 6% fewer quick notes)
+  - drawn as ticks (white up: push, grey down: pull); in the MIDI file the note is struck again there,
+    louder or softer
+- About 4 pushes and pulls per 8 bars. Gaps between them: 10% under 4 16ths, half under 14, 10% over 68.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

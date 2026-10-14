@@ -198,3 +198,6 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .guidedraw .gfbend { stroke: #e879f9; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .glegend .k.gflickk { background: #e879f9; }
 .glegend .k.gflickoutk { background: #f43f5e; }
+.guidedraw .gpush { stroke: #f1f5f9; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.guidedraw .gpull { stroke: #94a3b8; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.glegend .k.gpushk { background: #f1f5f9; } .glegend .k.gpullk { background: #94a3b8; }

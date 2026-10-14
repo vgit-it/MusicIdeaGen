@@ -24,9 +24,10 @@ export class GuideSynth {
    * A note from `time` for `dur` seconds. `bends`: the pitch glides on to other notes without a new
    * attack (`at` seconds in, over `over` seconds), the way a guitarist bends a string; `over` 0: a jump.
    * `taps`: a little accent at these seconds in (the quick notes, struck like a drum hit). `rests`: a
-   * split second of silence (`at` seconds in, `len` long), the note struck again after it.
+   * split second of silence (`at` seconds in, `len` long), the note struck again after it. `marks`: pushes
+   * (a quick dip and a lift, like a word starting) and pulls (a dip that comes back softly, like a word ending).
    */
-  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = [], taps: number[] = [], rests: { at: number; len: number }[] = []) {
+  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = [], taps: number[] = [], rests: { at: number; len: number }[] = [], marks: { at: number; kind: 'push' | 'pull' }[] = []) {
     const raw = this.ctx.rawContext as BaseAudioContext;
     const hz = (m: number) => 440 * 2 ** ((m - 69) / 12);
     const freq = hz(midi);
@@ -38,10 +39,19 @@ export class GuideSynth {
     g.gain.setTargetAtTime(0, end, 0.06);
     const acc = raw.createGain();
     acc.gain.setValueAtTime(1, time);
-    const marks = [...taps.map((at) => ({ at, rest: 0 })), ...rests.map((r) => ({ at: r.at, rest: r.len }))].sort((a, b) => a.at - b.at || b.rest - a.rest);
-    for (const m of marks) {
+    const evs = [...taps.map((at) => ({ at, rest: 0, kind: '' })), ...rests.map((r) => ({ at: r.at, rest: r.len, kind: '' })), ...marks.map((m) => ({ at: m.at, rest: 0, kind: m.kind }))].sort((a, b) => a.at - b.at || b.rest - a.rest);
+    for (const m of evs) {
       const t = time + m.at;
-      if (m.rest) {
+      if (m.kind === 'push') {
+        // (a breath of a dip, then louder, settling back)
+        acc.gain.setTargetAtTime(0.55, Math.max(time, t - 0.035), 0.01);
+        acc.gain.setValueAtTime(1.6, t);
+        acc.gain.setTargetAtTime(1, t + 0.02, 0.12);
+      } else if (m.kind === 'pull') {
+        // (falling away, then back softly)
+        acc.gain.setTargetAtTime(0.3, t, 0.04);
+        acc.gain.setTargetAtTime(1, t + 0.14, 0.1);
+      } else if (m.rest) {
         // (silence, cut quickly, until the note comes back)
         acc.gain.setTargetAtTime(0, t, 0.006);
         acc.gain.setValueAtTime(0, t + m.rest - 0.002);
