@@ -191,3 +191,6 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .glegend .k.gnote { background: var(--accent2); } .glegend .k.gleap { background: var(--accent); } .glegend .k.gcol { background: var(--warn); }
 .guidedraw .gbend { stroke: #4fd1a5; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .glegend .k.gbendk { background: #4fd1a5; }
+.guidedraw .gflick { fill: #e879f9; }
+.guidedraw .gfbend { stroke: #e879f9; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.glegend .k.gflickk { background: #e879f9; }

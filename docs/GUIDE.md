@@ -109,6 +109,29 @@ from note to note, over an 8th, a quarter or half a bar.
 
 Still: every song ends on home, no leap without a pause before it.
 
+## Quick notes (2026-10-14)
+Paul: on the long stretches, now and then one quick note up or down (a step or two at most), on the
+beat grid, lasting just that small unit like a drum hit, then straight back to the line; a control from
+sparse to a lot; at the end of a note, a bend to it instead.
+- **Where:** on held notes of 2 beats or more, on the 8th-note grid, at least a beat into the note,
+  at least a beat apart. Not on notes in a bend.
+- **What:** one note up (55%) or down, a step (75%) or two, in the key.
+- **How long:** a 16th or an 8th, by mood (angry and tense quicker, dreamy and melancholic slower).
+  Struck with a little accent, then straight back to the line's note.
+- **At a note's very end:** bent to instead, and the line moves on from there (never on the song's
+  last note).
+- **Control:** Quick notes: Off / Sparse / Some / Lots (Some by default). The line itself stays the
+  same whatever the setting; only the quick notes change.
+- Drawn as pink dashes (pink slopes for the bends). In the MIDI file the held note is cut around them.
+
+| 120 tracks, all moods | Quick notes a song | Per 8 bars |
+|---|---|---|
+| Sparse | 11 | 1.1 |
+| Some | 24 | 2.5 |
+| Lots | 51 | 5.3 |
+
+About 40% are 16ths, the rest 8ths; about 6% land at a note's end and are bent to.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

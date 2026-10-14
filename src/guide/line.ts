@@ -20,6 +20,16 @@ import { chordTones } from '../parts/guitar2';
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
 export type Lean = 'in' | 'out';
+/** Quick notes on the long ones: how many. */
+export type Flicks = 'off' | 'sparse' | 'some' | 'lots';
+export const FLICK_LEVELS: [Flicks, string][] = [['off', 'Off'], ['sparse', 'Sparse'], ['some', 'Some'], ['lots', 'Lots']];
+
+/** A quick note on a held one: `at` steps into it, `len` steps long (a 16th or an 8th), then back. */
+export interface Flick {
+  at: number; len: number; midi: number;
+  /** At the held note's end: bent up (or down) to, and the line moves on from there. */
+  bend?: boolean;
+}
 
 export interface GuideNote {
   /** Step in its section, length in steps, the note, and its scale degree (0 home, 1 the 2nd ... any octave). */
@@ -30,6 +40,8 @@ export interface GuideNote {
   leap?: boolean;
   /** Bent into from the note before (no new attack): the bend's length in steps (an 8th, a quarter, half a bar). */
   bend?: number;
+  /** Quick notes on it. */
+  flicks?: Flick[];
 }
 
 export interface GuideLine {
@@ -93,6 +105,10 @@ const MOODS: Record<Mood, GuideMood> = {
     desc: 'low and heavy: stays down, falls back, a dark half step above home' },
 };
 
+/** Quick notes per bar of a held note, by how many; and how often they're a 16th (else an 8th), by mood. */
+const FLICK_RATE: Record<Flicks, number> = { off: 0, sparse: 0.25, some: 0.6, lots: 1.5 };
+const FLICK_16TH: Record<Mood, number> = { angry: 0.7, tense: 0.6, happy: 0.5, triumphant: 0.4, dark: 0.4, nostalgic: 0.3, melancholic: 0.3, dreamy: 0.2 };
+
 /** How much longer notes are held than the first version's pace. */
 const STEADY = 2.5;
 /** Bends: only into a step (a half or whole step: a guitar's bend, and what MIDI's pitch bend can carry). */
@@ -120,7 +136,7 @@ function colourShift(c: Colour, mode: string, d: number, up: boolean): number {
 }
 
 /** Write the line for a list of sections played back to back (one idea, or a track). */
-export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0): GuideLine {
+export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, flicks: Flicks = 'off'): GuideLine {
   const first = list[0];
   const mood = moodIn ?? autoMood(first.song, first.seeds.song);
   const M = MOODS[mood];
@@ -128,10 +144,12 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const lo = M.low, hi = M.low + M.span;
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
-  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], strong: 0, strongTone: 0, lowM: 999, hiM: 0 };
+  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, strong: 0, strongTone: 0, lowM: 999, hiM: 0 };
   let afterPause = false, lastLeap = 0, sameRun = 0;
   const songBeats = list.reduce((n, i) => n + i.song.bars.reduce((b, x) => b + x.groups.length, 0), 0);
   let beatNo = 0;
+  // (the quick notes have their own dice: the line stays the same whatever their number)
+  const frng = new Rng(`guide-flicks-${first.seeds.song}-${mood}-${salt}`);
 
   list.forEach((idea, si) => {
     const { song, chords } = idea;
@@ -243,6 +261,32 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       afterPause = false;
       i += n; beatNo += n;
     }
+    // quick notes on the long ones (Paul): one note up or down a step or two, for a 16th or an 8th, on
+    // the 8th-note grid, then straight back to the line, like a drum hit; at a held note's very end, a bend
+    // to it instead (and on from there). Not on notes in a bend, never the song's last note's end.
+    out.forEach((n, k) => {
+      const next = out[k + 1];
+      if (n.len < 8 || n.bend || next?.bend) return;
+      const songLast = lastSection && k === out.length - 1;
+      const barLen = song.bars.find((b) => b.start + b.len > n.step)?.len ?? 16;
+      const pOn = (FLICK_RATE[flicks] * 2) / barLen;
+      const fl: Flick[] = [];
+      for (let at = 4; at < n.len; at += 2) {
+        const r = frng.next(), up = frng.chance(0.55), two = frng.chance(0.25), quick = frng.chance(FLICK_16TH[mood]);
+        if (fl.length && at < fl[fl.length - 1].at + fl[fl.length - 1].len + 4) continue;
+        if (r >= pOn) continue;
+        const len = quick ? 1 : 2;
+        if (at + len > n.len) continue;
+        const end = at + len === n.len;
+        if (end && songLast) continue;
+        const m = midiOf(n.deg + (up ? 1 : -1) * (two ? 2 : 1));
+        if (m === n.midi) continue;
+        fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}) });
+        stat.flicks++;
+        if (end) stat.flickBends++;
+      }
+      if (fl.length) n.flicks = fl;
+    });
     // the song's last note rings to the end
     parts.push(out);
   });
@@ -258,6 +302,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}`,
     `Moves: steps ${pc(stat.step)}, 3rds ${pc(stat.third)}, held on ${pc(stat.same)}, leaps after a pause ${pc(stat.leap)} (${stat.leap})`,
     `Bends: ${stat.bends} (into a step: ${stat.bendLens[0]} over an 8th, ${stat.bendLens[1]} over a quarter, ${stat.bendLens[2]} over half a bar)`,
+    ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} (${stat.flickBends} of them bent to at a note's end)`]),
     `${stat.notes} notes, about ${(songBeats / Math.max(1, stat.notes)).toFixed(1)} beats each; ${stat.pauses} pauses`,
     `Chords: ${lean === 'in' ? 'leaning in' : 'leaning out (key only)'}: strong beats on a chord note ${Math.round((100 * stat.strongTone) / Math.max(1, stat.strong))}%`,
     M.colour ? `Out of key: ${colourWord[M.colour]} (${stat.colour}${stat.colour === 1 ? ' time' : ' times'})` : 'Out of key: none (this mood stays in the scale)',

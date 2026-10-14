@@ -5,7 +5,7 @@ import { Midi } from '@tonejs/midi';
 import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
 import type { Mood } from '../tension';
-import { type GuideLine, type Lean, noteName, writeGuide } from './line';
+import { FLICK_LEVELS, type Flicks, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
 import { GuideSynth } from './synth';
 
 export interface GuidePanel {
@@ -17,7 +17,7 @@ const seg = (id: string, opts: [string, string][], on: string) =>
   `<div class="seg" id="${id}">${opts.map(([v, l]) => `<button data-v="${v}" class="${v === on ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 
 export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
-  let on = false, lean: Lean = 'in', band = true, salt = 0, level = 70;
+  let on = false, lean: Lean = 'in', band = true, salt = 0, level = 70, flicks: Flicks = 'some';
   let list: Idea[] = [];
   let mood: Mood | undefined;
   let line: GuideLine | null = null;
@@ -31,6 +31,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
       <div class="guiderow">
         <label>Chords ${seg('g-lean', [['in', 'Lean in'], ['out', 'Lean out']], lean)}</label>
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
+        <label title="Quick notes on the long ones: a step or two up or down for a 16th or an 8th, then back">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
         <label class="grow">Volume <input type="range" id="g-vol" min="0" max="100" value="${level}"></label>
@@ -48,7 +49,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
 
   const rewrite = () => {
     if (!on || !list.length) { line = null; draw.innerHTML = ''; $('g-notes').innerHTML = ''; return; }
-    line = writeGuide(list, mood, lean, salt);
+    line = writeGuide(list, mood, lean, salt, flicks);
     $('g-notes').innerHTML = line.notes.map((n) => `<li>${n}</li>`).join('');
     drawLine();
   };
@@ -86,8 +87,13 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
       else if (p && p.at + p.len === n.at) parts.push(`<line x1="${x(n.at)}" x2="${x(n.at)}" y1="${y(p.midi)}" y2="${y(n.midi)}" class="gjoin"/>`);
     });
     for (const n of all) parts.push(`<rect x="${x(n.at + (n.bend ?? 0))}" y="${y(n.midi) - 2.5}" width="${Math.max(2, x(n.len - (n.bend ?? 0)) - 1)}" height="5" rx="2" class="${n.colour ? 'gcol' : n.leap ? 'gleap' : 'gnote'}"><title>${noteName(n.midi)}</title></rect>`);
+    // the quick notes: a dash at their height (a slope when bent to at a note's end)
+    for (const n of all) for (const f of n.flicks ?? []) {
+      if (f.bend) parts.push(`<line x1="${x(n.at + f.at)}" x2="${x(n.at + f.at + f.len)}" y1="${y(n.midi)}" y2="${y(f.midi)}" class="gfbend"/>`);
+      else parts.push(`<rect x="${x(n.at + f.at)}" y="${y(f.midi) - 2}" width="${Math.max(2, x(f.len))}" height="4" class="gflick"><title>${noteName(f.midi)}</title></rect>`);
+    }
     draw.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="The guide line over the song">${parts.join('')}<line id="g-cur" x1="-5" x2="-5" y1="0" y2="${H}" class="gcur"/></svg>
-      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend</div>`;
+      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend <span class="k gflickk"></span>quick note</div>`;
     cursor = draw.querySelector('#g-cur');
     drawnTotal = total;
   };
@@ -114,7 +120,13 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         bends.push({ at: (notes[k].step - n.step) * six, to: notes[k].midi, over: notes[k].bend! * six });
         len += notes[k].len;
       }
-      synth!.play(n.midi, time, len * six, 0.8, bends);
+      // quick notes: a jump there and back (struck), or at the note's end a bend there
+      const taps: number[] = [];
+      for (const f of n.flicks ?? []) {
+        bends.push({ at: f.at * six, to: f.midi, over: f.bend ? f.len * six * 0.9 : 0 });
+        if (!f.bend) { bends.push({ at: (f.at + f.len) * six, to: n.midi, over: 0 }); taps.push(f.at * six); }
+      }
+      synth!.play(n.midi, time, len * six, 0.8, bends, taps);
     }
     if (cursor && g % 4 === 0) {
       const xx = ((offsets[p] + g) / drawnTotal) * drawnW;
@@ -133,6 +145,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     });
   };
   pickSeg('g-lean', (v) => { lean = v as Lean; rewrite(); });
+  pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
   pickSeg('g-band', (v) => { band = v === 'band'; setBand(); });
   const setOn = (v: boolean) => {
     on = v;
@@ -158,8 +171,19 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     let off = 0;
     line.parts.forEach((p, si) => {
       // (a bend: the note before held on, its pitch bent to this one (the standard range: a whole step))
-      let held: { midi: number; start: number; end: number } | null = null;
-      const flush = () => { if (held) t.addNote({ midi: held.midi, ticks: held.start, durationTicks: held.end - held.start, velocity: 0.8 }); };
+      // (quick notes: the held note cut around them)
+      let held: { midi: number; start: number; end: number; flicks?: GuideNote['flicks'] } | null = null;
+      const flush = () => {
+        if (!held) return;
+        let from = held.start;
+        for (const f of held.flicks ?? []) {
+          const fa = held.start + Math.round(f.at * step), fe = fa + Math.round(f.len * step);
+          if (fa > from) t.addNote({ midi: held.midi, ticks: from, durationTicks: fa - from, velocity: 0.8 });
+          t.addNote({ midi: f.midi, ticks: fa, durationTicks: fe - fa, velocity: 0.9 });
+          from = fe;
+        }
+        if (held.end > from) t.addNote({ midi: held.midi, ticks: from, durationTicks: held.end - from, velocity: 0.8 });
+      };
       for (const n of p) {
         const at = Math.round((off + n.step) * step), end = Math.round((off + n.step + n.len) * step);
         if (n.bend && held) {
@@ -170,7 +194,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         }
         if (held && t.pitchBends.length) t.addPitchBend({ ticks: at, value: 0 });
         flush();
-        held = { midi: n.midi, start: at, end };
+        held = { midi: n.midi, start: at, end, flicks: n.flicks };
       }
       flush();
       off += list[si].song.total;
