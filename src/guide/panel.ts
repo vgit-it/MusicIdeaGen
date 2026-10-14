@@ -8,6 +8,8 @@ import type { Mood } from '../tension';
 import type { HighVoice } from '../parts/singers';
 import { FLICK_LEVELS, type Flicks, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
 import { GuideSynth } from './synth';
+import { GuideVoice } from './voice';
+import { type GuideSungLine, guideWords } from './words';
 
 export interface GuidePanel {
   /** New music (an idea, or a track's sections), and the song's mood (undefined: auto). */
@@ -28,6 +30,10 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
   let mood: Mood | undefined;
   let line: GuideLine | null = null;
   let synth: GuideSynth | null = null;
+  // (sung: the line's words in the Cornell voice instead of the synth; Paul turns it on and off)
+  let sing = false;
+  let words: GuideSungLine[][] | null = null;
+  let singer2: GuideVoice | null = null;
 
   root.innerHTML = `
     <h2>Guide line <span class="exp">experiment</span></h2>
@@ -38,6 +44,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         <label>Chords ${seg('g-lean', [['in', 'Lean in'], ['out', 'Lean out']], lean)}</label>
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
         <label title="Auto: mid, or high if the singer sings high. High: up to its top where the song is high">Voice ${seg('g-voice', [['auto', 'Auto'], ['mid', 'Mid'], ['high', 'High']], voice)}</label>
+        <label title="Sing the line's words (the same tune) in the Cornell voice, instead of the synth">Sing ${seg('g-sing', [['off', 'Off'], ['cornell', 'Cornell']], 'off')}</label>
         <label title="Quick notes on the long ones: a step or two up or down for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
@@ -47,6 +54,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         <button id="g-remove" class="small">Remove</button>
       </div>
       <div id="g-draw" class="guidedraw"></div>
+      <div id="g-words" class="guidewords"></div>
       <ul class="notes" id="g-notes"></ul>
     </div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>(`#${id}`)!;
@@ -55,8 +63,11 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
   const setBand = () => { engine.mixer.master.gain.rampTo(band || !on ? 0.8 : 0, 0.05); };
 
   const rewrite = () => {
-    if (!on || !list.length) { line = null; draw.innerHTML = ''; $('g-notes').innerHTML = ''; return; }
+    if (!on || !list.length) { line = null; words = null; draw.innerHTML = ''; $('g-notes').innerHTML = ''; $('g-words').innerHTML = ''; return; }
     line = writeGuide(list, mood, lean, salt, flicks, highNow());
+    words = guideWords(list, line, salt);
+    $('g-words').innerHTML = words.map((lines, si) => (lines.length ? `<p><b>${list[si].section?.label ?? 'Words'}</b> ${lines.map((l) => l.text).join(' / ')}</p>` : '')).join('');
+    if (sing) { singer2 ??= new GuideVoice(engine.mixer.sectionLevel); singer2.setLevel(level); singer2.set(list, words, highNow()); }
     $('g-notes').innerHTML = line.notes.map((n) => `<li>${n}</li>`).join('');
     drawLine();
   };
@@ -126,6 +137,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     if (!on || !line) return;
     const p = partFor(idea, idx);
     if (p < 0) return;
+    if (sing && singer2) singer2.playStep(p, g, time);
     const notes = line.parts[p];
     const j = notes.findIndex((n) => n.step === g);
     // (a note bent into was already played: the note before it glides there)
@@ -150,14 +162,14 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
       }
       // (a pull: silence, the note struck again on the next beat)
       for (const m of n.marks ?? []) if (m.back && m.at + m.back < n.len) taps.push((m.at + m.back) * six);
-      synth!.play(n.midi, time, len * six, 0.8, bends, taps, rests, (n.marks ?? []).map((m) => ({ at: m.at * six, kind: m.kind })));
+      if (!sing) synth!.play(n.midi, time, len * six, 0.8, bends, taps, rests, (n.marks ?? []).map((m) => ({ at: m.at * six, kind: m.kind })));
     }
     if (cursor && g % 4 === 0) {
       const xx = ((offsets[p] + g) / drawnTotal) * drawnW;
       setTimeout(() => { cursor?.setAttribute('x1', `${xx}`); cursor?.setAttribute('x2', `${xx}`); }, Math.max(0, (time - engine.mixer.master.context.now()) * 1000));
     }
   };
-  engine.onStop = () => { synth?.releaseAll(); cursor?.setAttribute('x1', '-5'); cursor?.setAttribute('x2', '-5'); };
+  engine.onStop = () => { synth?.releaseAll(); singer2?.releaseAll(); cursor?.setAttribute('x1', '-5'); cursor?.setAttribute('x2', '-5'); };
 
   const pickSeg = (id: string, f: (v: string) => void) => {
     const el = $(id);
@@ -171,18 +183,19 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
   pickSeg('g-lean', (v) => { lean = v as Lean; rewrite(); });
   pickSeg('g-voice', (v) => { voice = v as typeof voice; rewrite(); });
   pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
+  pickSeg('g-sing', (v) => { sing = v !== 'off'; if (!sing) singer2?.releaseAll(); else synth?.releaseAll(); rewrite(); });
   pickSeg('g-band', (v) => { band = v === 'band'; setBand(); });
   const setOn = (v: boolean) => {
     on = v;
     body.hidden = !on;
     add.hidden = on;
-    if (on) { synth ??= new GuideSynth(engine.mixer.sectionLevel); synth.setLevel(level); } else synth?.releaseAll();
+    if (on) { synth ??= new GuideSynth(engine.mixer.sectionLevel); synth.setLevel(level); } else { synth?.releaseAll(); singer2?.releaseAll(); }
     setBand();
     rewrite();
   };
   add.addEventListener('click', () => setOn(true));
   $('g-remove').addEventListener('click', () => setOn(false));
-  $('g-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); });
+  $('g-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); singer2?.setLevel(level); });
   $('g-reroll').addEventListener('click', () => { salt++; rewrite(); });
   $('g-midi').addEventListener('click', () => {
     if (!line) return;
@@ -232,6 +245,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         held = { midi: n.midi, start: at, end, flicks: n.flicks, marks: n.marks };
       }
       flush();
+      // (the words, as lyrics, each syllable at its note; the carried-on ones left out)
+      for (const L of words?.[si] ?? []) for (const x of L.notes) if (x.syl.text !== '~') midi.header.meta.push({ type: 'lyrics', text: (x.syl.wordStart ? ' ' : '') + x.syl.text, ticks: Math.round((off + x.step) * step) });
       off += list[si].song.total;
     });
     const url = URL.createObjectURL(new Blob([new Uint8Array(midi.toArray())], { type: 'audio/midi' }));
