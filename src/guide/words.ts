@@ -1,9 +1,9 @@
 // Words for the Guide line (experiment, docs/GUIDE.md): the line's tune kept exactly, pitch for pitch and
 // step for step; the words only decide which syllable sits on each sound. The line's own events tell
 // them what to do: a note's start, a push (a word starting) and the note back after a pull's silence
-// start words; a pull ends one, softly, into its silence; quick notes carry the light end of a word
-// (NEV-er) or a quick light word (the, a, in), or stay on the vowel (oh-oh), by genre; a bend stays one
-// sound. Lines break at the pauses; every other line rhymes; choruses sing the same words each time.
+// start words; a pull ends one, softly, into its silence; quick notes are mostly new words of their own
+// (always the two-step ones), now and then the vowel carried on (oh-oh), by genre; a bend at a note's end
+// stays one sound or a word's soft ending. Lines break at the pauses; every other line rhymes; choruses sing the same words each time.
 // The pseudo-English words are the vocals' own (src/parts/lyrics.ts).
 
 import type { Idea } from '../idea';
@@ -17,12 +17,15 @@ import type { Flick, GuideLine } from './line';
 export interface GuideSyl { step: number; len: number; midi: number; vel: number; syl: Syllable }
 export interface GuideSungLine { notes: GuideSyl[]; text: string }
 
-/** How often a quick note carries a syllable of its own rather than the vowel before (Paul: a mix, by genre). */
-const WORDY: Record<Genre, number> = { funk: 0.75, hardrock: 0.65, rock: 0.55, pop: 0.55, metal: 0.5, altmetal: 0.5, grunge: 0.3 };
+/**
+ * How often a one-step quick note is a new word of its own rather than the vowel before, by genre (Paul:
+ * "most of the quick notes should be new words"; the two-step ones always are).
+ */
+const WORDY: Record<Genre, number> = { funk: 0.95, hardrock: 0.9, rock: 0.85, pop: 0.85, metal: 0.8, altmetal: 0.8, grunge: 0.7 };
 
 /** What starts a stretch of sound: a note, a push, the note back after a pull or a quick note's pause, a quick note, a bend. */
 type Role = 'note' | 'bent' | 'push' | 'resume' | 'back' | 'after' | 'flick' | 'flickGap' | 'flickBend';
-interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean }
+interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; two?: boolean }
 
 const SOFT = new Set<Cons>(['N', 'M', 'L', 'S', 'Z', 'NG', 'R']);
 
@@ -61,6 +64,8 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
         const f = (e as { f: Flick }).f;
         emit(n.step + cur, f.at - cur, n.midi, role);
         emit(n.step + f.at, f.len, f.midi, f.bend ? 'flickBend' : f.gap ? 'flickGap' : 'flick', !!f.gap);
+        // (a jump of two steps: always a new word, Paul)
+        if (Math.abs(f.midi - n.midi) >= 3) segs[segs.length - 1].two = true;
         cur = f.bend ? n.len : f.at + f.len + (f.gap ?? 0);
         role = f.gap ? 'back' : 'after';
       }
@@ -72,8 +77,8 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
       const strong = beats.has(s.step);
       s.sung = s.role === 'note' || s.role === 'push' || s.role === 'resume' || s.role === 'flickGap' ? true
         : s.role === 'back' ? true
-        : s.role === 'flick' ? (lastFlickSung = rng.chance(wordy))
-        : s.role === 'flickBend' ? rng.chance(wordy * 0.6)
+        : s.role === 'flick' ? (lastFlickSung = !!s.two || rng.chance(wordy))
+        : s.role === 'flickBend' ? !!s.two || rng.chance(wordy * 0.6)
         : s.role === 'after' ? lastFlickSung && (strong || rng.chance(0.5))
         : false;
       if (s.role !== 'flick' && s.role !== 'after') lastFlickSung = false;
@@ -95,7 +100,8 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
     const out = lines.map((L, li) => {
       const sungSegs = L.filter((s) => s.sung);
       const slots = sungSegs.map((s) => ({
-        stress: s.role === 'push' || ((s.role === 'note' || s.role === 'resume') && (beats.has(s.step) || s.len >= 8)),
+        // (a quick note sung is a new word of its own, Paul; a bend at a note's end stays a word's soft ending)
+        stress: s.role === 'push' || s.role === 'flick' || s.role === 'flickGap' || (s.role === 'flickBend' && !!s.two) || ((s.role === 'note' || s.role === 'resume') && (beats.has(s.step) || s.len >= 8)),
         long: s.len >= 4,
         high: s.midi >= hi - 3,
       }));
