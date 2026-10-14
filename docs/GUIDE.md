@@ -394,6 +394,40 @@ The first idea from the other melody writers (Shaped, Melody first): a short ide
 | Leaps without a pause, notes over a bar | 0, 0 | 0, 0 |
 | Songs ending on home | all | all |
 
+## Quick notes: one step, in the key (2026-10-14)
+
+Paul: remove the two-step quick notes and the off-key ones.
+- Every quick note is now the scale's next note up or down, in the key, never more than a whole step away. No two-step jumps (metal had the most), no half steps out of the key; the red off-key mark is gone from the drawing.
+- The line's own notes are unchanged; only the quick notes are. The reference for `npm run guide-check` was saved again on purpose (the 126 songs with quick notes on changed; the 42 with them off are the same).
+
+## Slow line (switch; 2026-10-14)
+
+The second idea from the other melody writers (Melody first's "spine"): a slow shape under each section that the line follows. **Slow line: Off / On** in the card (Off: the line exactly as before).
+
+- **The shapes**, in scale steps around the section's height, by where the line is in the section:
+
+| Section | Most moods | Mood and genre leans |
+|---|---|---|
+| Verse | falls (like 5-4-3) | rises when happy or triumphant; stays around one note when dark, tense or angry (and grunge, now and then); a slow wide arch when dreamy |
+| Pre-chorus | climbs | |
+| Chorus | arches: up early, then home | holds high then settles when triumphant (metal, alt metal, hard rock now and then); high and flat then a drop when angry; falls when melancholic; a wide arch when dreamy |
+| Bridge | a slow wide arch | around one note when dark; climbs when tense |
+| Interlude, outro | fall | breakdown: around one note |
+
+- **Phrases end on it:** a phrase's last note leans to the slow line's note there.
+- **With Repeat idea:** a phrase that comes back moves to suit the slow line too.
+- Your rules unchanged (checked with it on, alone and with Repeat idea). Its own dice.
+
+| 120 songs, Some, Lean in | Off | On |
+|---|---|---|
+| Sad moods' verses: lower at the end than the start | 77% | 88% |
+| Happy and triumphant verses: higher at the end | 28% | 60% |
+| Pre-choruses: higher at the end | 84% | 99% |
+| Choruses: top early, ending lower | 42% | 68% |
+| Phrases ending on the slow line's note | | about 40% |
+| The same note again | 13% | 15% |
+| Leaps without a pause | 0 | 0 |
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

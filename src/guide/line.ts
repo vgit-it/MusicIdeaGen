@@ -61,7 +61,34 @@ export interface Mark { at: number; kind: 'push' | 'pull'; back?: number }
  *   first phrase comes back (moved to suit the section's height and the chords), the second comes back
  *   with a new ending.
  */
-export interface GuideIdeas { motif?: boolean }
+export interface GuideIdeas { motif?: boolean; spine?: boolean }
+
+/**
+ * Slow line (Melody first's "spine", after Schenker): a slow shape under each section that the line follows,
+ * in scale steps above or below the section's height, by where it is in the section (0 to 1); phrases end on it.
+ */
+type Spine = 'fall' | 'rise' | 'arch' | 'drone' | 'wide' | 'hold' | 'drop';
+const SPINES: Record<Spine, { f: (x: number) => number; says: string }> = {
+  fall: { f: (x) => 2 - 3 * x, says: 'falls' },
+  rise: { f: (x) => -1 + 3 * x, says: 'climbs' },
+  arch: { f: (x) => (x < 0.35 ? (2 * x) / 0.35 : 2 - (3 * (x - 0.35)) / 0.65), says: 'arches (up early, then home)' },
+  drone: { f: (x) => (x > 0.75 ? 1 : 0), says: 'stays around one note, lifting at the end' },
+  wide: { f: (x) => 3 * Math.sin(Math.PI * x), says: 'a slow wide arch' },
+  hold: { f: (x) => (x < 0.8 ? 2 : 0), says: 'holds high, then settles' },
+  drop: { f: (x) => (x < 0.75 ? 1 : -2), says: 'high and flat, then drops' },
+};
+/** By section and mood (Melody first's table: happy rises, sad falls, dark and tense drone, dreamy wide arches, angry high then a drop). */
+const SPINE_BY: Partial<Record<SectionKind, Partial<Record<Mood, Spine>> & { all: Spine }>> = {
+  verse: { all: 'fall', happy: 'rise', triumphant: 'rise', dark: 'drone', tense: 'drone', angry: 'drone', dreamy: 'wide' },
+  prechorus: { all: 'rise' },
+  chorus: { all: 'arch', triumphant: 'hold', angry: 'drop', melancholic: 'fall', dreamy: 'wide' },
+  bridge: { all: 'wide', dark: 'drone', tense: 'rise' },
+  interlude: { all: 'fall' }, breakdown: { all: 'drone' }, outro: { all: 'fall' },
+};
+/** Genre leans (now and then, per song): grunge drones its verses, metal holds its choruses high, pop arches. */
+const SPINE_GENRE: Partial<Record<Genre, Partial<Record<SectionKind, Spine>>>> = {
+  grunge: { verse: 'drone' }, metal: { chorus: 'hold' }, altmetal: { chorus: 'hold' }, pop: { chorus: 'arch' }, hardrock: { chorus: 'hold' },
+};
 
 export interface GuideLine {
   /** Notes per section, in play order. */
@@ -245,7 +272,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const W = Math.max(2, Math.round(M.span / 2) - 1);
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
-  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, push: 0, pull: 0, capped: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0, ideaA: 0, ideaB: 0 };
+  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, push: 0, pull: 0, capped: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0, ideaA: 0, ideaB: 0, spineEnds: 0, phraseEnds: 0 };
   let afterPause = false, lastLeap = 0, sameRun = 0;
   const songBeats = list.reduce((n, i) => n + i.song.bars.reduce((b, x) => b + x.groups.length, 0), 0);
   let beatNo = 0;
@@ -291,6 +318,17 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const lastSung = silent.lastIndexOf(false);
   // (the new ideas: their own dice, so switching one on doesn't reshuffle the others)
   const irng = new Rng(`guide-ideas-${first.seeds.song}-${mood}-${salt}`);
+  // (Slow line: a shape per kind of section, by mood, now and then the genre's lean; its own dice)
+  const sprng = new Rng(`guide-spine-${first.seeds.song}-${mood}-${salt}`);
+  const spineOf = new Map<string, Spine>();
+  const spineFor = (kind: SectionKind | undefined): Spine | null => {
+    if (!ideas.spine || !kind || !SPINE_BY[kind]) return null;
+    if (!spineOf.has(kind)) {
+      const by = SPINE_BY[kind]!, lean = SPINE_GENRE[first.song.genre]?.[kind];
+      spineOf.set(kind, lean && sprng.chance(0.5) ? lean : by[mood] ?? by.all);
+    }
+    return spineOf.get(kind)!;
+  };
   const G = GENRE_FLICKS[first.song.genre] ?? GENRE_FLICKS.pop;
   const clusterRate = G.clusters ?? CLUSTER_RATE;
 
@@ -330,6 +368,12 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       let best = 0;
       for (let x = -14; x <= 21; x++) if (Math.abs(midiOf(x) - m) < Math.abs(midiOf(best) - m)) best = x;
       return best;
+    };
+    // (the section's slow line, if on: the height moved by it, by where in the section)
+    const spine = spineFor(idea.section?.kind);
+    const targetD = (t: number, bar: number) => {
+      const h = heightD(t, bar);
+      return spine ? h + Math.round(SPINES[spine].f(bar / Math.max(1, song.bars.length - 1))) : h;
     };
     const kind = idea.section?.kind ?? '';
     const again = REPEATS.includes(kind) ? firstOf.get(kind) : undefined;
@@ -448,7 +492,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
             for (const n of src) {
               const at = p0 + (n.step - s0);
               const bi = song.bars.findIndex((x) => x.start + x.len > at);
-              score -= 0.5 * Math.abs(n.deg + sh - heightD(tension(bi), bi)) / src.length;
+              score -= 0.5 * Math.abs(n.deg + sh - targetD(tension(bi), bi)) / src.length;
               const bt = beats.find((x) => x.step === at);
               if (lean === 'in' && bt?.strong) score += tonesAt(at).includes(mod(midiOf(n.deg + sh), 12)) ? 1 : -1;
             }
@@ -524,6 +568,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const maxHold = song.bars[b.bar].len;
       while (i + n < beats.length && !phraseAt(i + n) && (n < want || !beats[i + n].strong) && beats[i + n].step - b.step < maxHold && beats[i + n].step - runFrom <= runMax) n++;
       const end = i + n >= beats.length;
+      const phraseEnd = end || phraseAt(i + n);
       const songEnd = lastSection && end;
       // (the song's last two bars head for home, the nearest one)
       const homes = [-7, 0, 7, 14].filter((h) => midiOf(h) >= MID[0] && midiOf(h) <= MID[1]);
@@ -532,7 +577,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       // (the height the tension asks for, within the voice; a high voice reaches for its top where it's high)
       const voiceDs = Array.from({ length: 30 }, (_, k) => k - 10).filter((x) => inVoice(x, t));
       const dBot = Math.min(...voiceDs), dTop = Math.max(...voiceDs);
-      let want0 = heightD(t, b.bar);
+      let want0 = targetD(t, b.bar);
       if (high && t >= HIGH_T) want0 = Math.max(want0, dTop - 1);
       const target = closing ? homeD : Math.max(dBot, Math.min(dTop, want0));
       const strong = b.strong || n >= 2;
@@ -560,6 +605,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         w *= M.rest[deg7(x)] ** (strong ? 1.6 : 0.6);
         // with the chords: strong beats on the chord's notes
         if (lean === 'in' && strong) w *= tonesAt(b.step).includes(mod(midiOf(x), 12)) ? 3 : 0.35;
+        // (Slow line: a phrase ends on it)
+        if (spine && phraseEnd && x === target) w *= 3;
         // a section's last note settles (1st, 3rd, 5th); the song's last note is home
         if (end && [0, 2, 4].includes(deg7(x))) w *= 3;
         if (songEnd) w = deg7(x) === 0 ? w + 100 : 0;
@@ -584,6 +631,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         else if (joins && n > 1) { i += 1; beatNo += 1; afterPause = true; stat.pauses++; continue; }
       }
       if (stat.notes > 0) { if (a === 0) stat.same++; else if (a === 1) stat.step++; else if (a === 2) stat.third++; else stat.leap++; }
+      if (spine && phraseEnd) { stat.phraseEnds++; if (pick.d === target) stat.spineEnds++; }
       d = pick.d;
       lastLeap = a >= 3 ? s : 0;
       sameRun = a === 0 ? sameRun + 1 : 0;
@@ -751,6 +799,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     `Mood: ${MOOD_LABEL[mood]}${moodIn ? '' : ' (auto)'}: ${M.desc}`,
     stat.notes ? `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}` : 'No notes: the line sits out here',
     `Voice: ${high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}; verses low, choruses lifted)`}`,
+    ...(ideas.spine ? [`Slow line: ${[...spineOf].map(([k, sp]) => `${k === 'prechorus' ? 'pre-chorus' : k} ${SPINES[sp].says}`).join('; ')}; ${stat.spineEnds} of ${stat.phraseEnds} phrases end on it`] : []),
     ...(ideas.motif ? [`Repeat idea: phrases in the form A B A b, ${stat.ideaA} sung again (moved to suit the height and chords), ${stat.ideaB} again with a new ending`] : []),
     `Repeats: ${stat.repeats} ${stat.repeats === 1 ? 'section' : 'sections'} sung like the first verse, pre-chorus or chorus (${stat.varied} notes changed a step)`,
     `Moves: steps ${pc(stat.step)}, 3rds ${pc(stat.third)}, held on ${pc(stat.same)}, leaps after a pause ${pc(stat.leap)} (${stat.leap})`,
