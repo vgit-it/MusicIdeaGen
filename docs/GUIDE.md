@@ -181,6 +181,21 @@ within a song; quick notes leaning lower, whatever the mood.
 | Tenor | 5% | 72% |
 | Woman | 13% | 73% |
 
+## More room up (2026-10-14)
+Paul: "the limiting of range has made it very stale. Open up more of the higher range."
+- **Range:** C3 to C5 (was G4). Home stays F3 to E4, so the extra room is all above.
+- **Each mood reaches 3 scale notes higher**, so high parts (choruses, the climax) climb further.
+- **High voice:** up to 2 semitones past its belted top in the high parts (tenor D5, woman F5).
+- **Fixed:** two changed notes side by side in a repeat could make a leap without a pause.
+- Still: every note in range, every song ends home, no leap without a pause (360 tracks).
+
+| 50 tracks each | Song's top note (avg) | Average note | Notes G4 and up |
+|---|---|---|---|
+| Mid, before | F4 | B3/C4 | 5% |
+| Mid, now | A4 | D#4 | 38% |
+| Tenor, now | A#4 | E4 | 46% |
+| Woman, now | B4/C5 | E4 | 48% |
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
