@@ -20,6 +20,8 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   let bPairs = 0, bContra = 0, bPar = 0, strongN = 0, strongOn = 0, offRes = 0, ints = 0, steps = 0, leaps = 0, leapN = 0, filled = 0;
   const shapes = new Map<string, Set<string>>();
   // speech measures (docs/VOCAL-WORDS.md): stresses on beats (or pushed an 8th ahead of one), soft line endings, triplets, gaps inside words and word groups, syllables a second by section
+  // pitch by speech (words first): leaps onto light syllables, the line's top on a stress, soft endings falling, a light syllable over the key word just after it
+  let lightN = 0, lightLeap = 0, topLines = 0, topStress = 0, softN = 0, softFall = 0, preKey = 0, preKeyOver = 0;
   let stN = 0, stBeat = 0, stPush = 0, ends = 0, softEnds = 0, trips = 0, inWord = 0, inGroup = 0, grouped = 0;
   const rateBy: Record<string, number[]> = {};
   let sample = '';
@@ -55,6 +57,14 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
             if (p && p.syl.brk !== undefined) { grouped++; const gap = n.step - p.step; if (p.syl.brk === 0 && gap > 4) inWord++; if (p.syl.brk < 2 && gap >= 6) inGroup++; }
           });
           if (sy.length) { ends++; if (!sy[sy.length - 1].syl.stress) softEnds++; }
+          if (sy.length && sy[0].syl.level !== undefined) {
+            sy.forEach((n, k) => { if (k && n.syl.level === 0) { lightN++; if (Math.abs(n.midi - sy[k - 1].midi) > 3) lightLeap++; } });
+            const top = Math.max(...sy.map((n) => n.midi));
+            topLines++; if (sy.some((n) => n.midi === top && n.syl.level >= 2)) topStress++;
+            const ki = sy.findIndex((n) => n.syl.level === 3);
+            if (ki >= 0 && ki < sy.length - 1) { softN++; if (sy[ki + 1].midi <= sy[ki].midi) softFall++; }
+            if (ki > 0 && sy[ki - 1].syl.level === 0) { preKey++; if (sy[ki - 1].midi > sy[ki].midi) preKeyOver++; }
+          }
           if (sy.length > 2) { const kind = sec.section?.kind ?? 'idea'; (rateBy[kind] ??= []).push((sy.length - 1) / ((sy[sy.length - 1].step - sy[0].step) * 15 / sec.song.bpm)); } }
         { let r = 0; for (let k = 1; k < on.length; k++) { const g = on[k].step - on[k - 1].step; r = g === 4 ? r + 1 : 0; if (r >= 3) qrun++; } }
         for (let k = 0; k < on.length; k++) {
@@ -105,6 +115,7 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   lineRates.sort((a, b) => a - b); console.log(`   line syl/s: median ${lineRates[lineRates.length >> 1].toFixed(1)}, 90th ${lineRates[Math.floor(lineRates.length * 0.9)].toFixed(1)}, max ${lineRates[lineRates.length - 1].toFixed(1)}`);
   { const pc = (a: number, b: number) => `${Math.round((100 * a) / Math.max(1, b))}%`;
     const med = (xs: number[] = []) => (xs.sort((a, b) => a - b)[xs.length >> 1] ?? 0).toFixed(1);
-    console.log(`   speech: stresses on beats ${pc(stBeat, stN)}, pushed ahead of a strong beat ${pc(stPush, stN)}; soft line endings ${pc(softEnds, ends)}; triplet syllables ${trips}; line syl/s verse ${med(rateBy.verse)} pre ${med(rateBy.prechorus)} chorus ${med(rateBy.chorus)}${grouped ? `; rests inside words ${pc(inWord, grouped)}, long gaps inside word groups ${pc(inGroup, grouped)}` : ''}`); }
+    console.log(`   speech: stresses on beats ${pc(stBeat, stN)}, pushed ahead of a strong beat ${pc(stPush, stN)}; soft line endings ${pc(softEnds, ends)}; triplet syllables ${trips}; line syl/s verse ${med(rateBy.verse)} pre ${med(rateBy.prechorus)} chorus ${med(rateBy.chorus)}${grouped ? `; rests inside words ${pc(inWord, grouped)}, long gaps inside word groups ${pc(inGroup, grouped)}` : ''}`);
+    if (topLines) console.log(`   pitch by speech: leaps (over a minor 3rd) onto light syllables ${pc(lightLeap, lightN)}; the line's top on a stress ${pc(topStress, topLines)}; soft endings falling or level ${pc(softFall, softN)}; a light syllable over the key word after it ${pc(preKeyOver, preKey)}`); }
   if (sample) console.log('   pop verse line:', sample);
 }
