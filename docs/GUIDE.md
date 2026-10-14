@@ -472,6 +472,43 @@ Paul: "if there's a new note coming in during a word, it should be a bend. If no
 - **The tune is unchanged:** every note, quick note, push and pull is the same. Only the words and the sung glides change, so the reference was saved again.
 - **A new rule in `npm run guide-check`:** a new note inside a word must be a bend.
 
+## Breaths, Section change, Lead-ins, Carry over (switches; 2026-10-14)
+Paul's notes for the line itself: sing it like a person, mark section changes, be freer across section lines. Each note has its own switch and its own dice. With all four Off, the line is exactly as before.
+
+- **Breaths:** "give pauses after strenuous parts or before them (like chorus)".
+  - A tiring stretch makes a breath likely at the next phrase start, and makes it longer. Tiring means long without a pause, with high notes counting more (from 2.5 bars).
+  - Before a big section (a chorus, or one sung clearly higher), the last note before it is often cut short by 1-4 beats. The length is random.
+- **Section change:** "a noticeable shift in either phrase lengths or notes".
+  - Each kind of section (verse, pre-chorus, chorus...) gets its own feel the first time it comes, unlike the section before it: other phrase lengths (1, 2 or 4 bars), or another pace (busier or longer notes).
+  - Now and then (40%) it also comes in with a jump of 3 or more scale steps, after a beat's breath.
+  - The feel stays with the kind, so later verses and choruses keep their contrast, even though they repeat the first one's notes.
+- **Lead-ins:** "the next section's line could start towards the end of the previous bar and hold".
+  - About a third of the time, a section's first note comes in early: an 8th, a beat or two beats before the section starts. It is held into the section.
+  - It comes after a breath, so a leap into it is still allowed. It is held within a bar all told.
+  - A repeated verse or chorus can lead in too, with its own first note.
+- **Carry over:** "for silent sections like solos, continue the previous section's last part for a bar or so".
+  - Half the time, the last note runs on into a section the line sits out, for up to a bar. It is either held (within a bar all told) or bent a step (mostly down).
+  - The song's last note, home, is only ever held, never bent away.
+- **Kept, by design:**
+  - Notes still change only on strong beats, and a note is held at most a bar.
+  - The 4-bar run limit stays; across sections, runs over 4 bars drop (294 to 114 with all four on).
+  - Leaps still only come after a pause.
+  - At most 4 changes in any second.
+  - Only bends inside a word: a lead-in is its own word, sung straight into the section.
+- **Measured (120 songs):**
+  - Breaths: a breath before choruses 9% to 62%; the line silent 24% to 31% of the sung sections' time.
+  - Section change: changes you can hear where a section changes (another pace or run length, or a jump of a 4th or more) 53% to 75%.
+  - Lead-ins: 63 sections come in early.
+  - Carry over: 54 of 158 sections the line sits out get the last note run into them.
+- **Watch for:**
+  - Breaths and Section change together make more silence.
+  - A chorus that leads in has one syllable fewer than the first chorus's words, so its words can start a syllable off.
+  - A lead-in into a section after a solo isn't done yet.
+- **`npm run guide-check`:**
+  - Now checks the whole song at once, since notes can cross section lines.
+  - New rules: never two notes at once, a note held at most a bar.
+  - A pull at a note's end is no longer counted as a change, as in the line itself.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

@@ -77,7 +77,10 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
         cur = f.bend ? n.len : f.at + f.len + (f.gap ?? 0);
         role = f.gap ? 'back' : 'after';
       }
-      emit(n.step + cur, n.len - cur, n.midi, role, !next || next.step > n.step + n.len, bend);
+      // (a lead-in running on into the next section: sung straight on into its next note, no soft ending)
+      const on = line.parts[si + 1]?.[0];
+      const into = !next && n.step + n.len > idea.song.total && on && on.step === n.step + n.len - idea.song.total;
+      emit(n.step + cur, n.len - cur, n.midi, role, !into && (!next || next.step > n.step + n.len), bend);
     });
     // each stretch a syllable (a bend carries on the one before, its word going on), its stress; every
     // other stretch starts a word (a new note inside a word only ever a bend, Paul)

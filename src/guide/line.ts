@@ -63,7 +63,33 @@ export interface Mark { at: number; kind: 'push' | 'pull'; back?: number }
  *   first phrase comes back (moved to suit the section's height and the chords), the second comes back
  *   with a new ending.
  */
-export interface GuideIdeas { motif?: boolean; spine?: boolean; speech?: boolean; qa?: boolean }
+export interface GuideIdeas {
+  motif?: boolean; spine?: boolean; speech?: boolean; qa?: boolean;
+  /** Breaths (Paul: "imagine a person is singing it"): a pause, of a random length, after a tiring stretch (long, or high) and before a big section. */
+  breath?: boolean;
+  /** Section change: each kind of section its own phrase lengths or pace, or a jump in the notes where it comes in. */
+  shift?: boolean;
+  /** Lead-ins: now and then the next section's first note comes in before the section starts, held into it. */
+  leadIn?: boolean;
+  /** Carry over: now and then the last note runs on into a section the line sits out (a solo), held or bent. */
+  carry?: boolean;
+}
+
+/**
+ * Section change (Paul: "a noticeable shift in either phrase lengths or notes"): how each kind of section
+ * sings, picked the first time it comes, unlike the section before it: its phrase length (bars), its pace
+ * (how long notes are held, against the mood's), or the same feel with a jump in the notes where it comes in.
+ */
+interface Feel { phrase: number; pace: number; jump: boolean }
+const PACES = [0.55, 1, 1.45];
+
+/** Breaths: how tiring the stretch just sung is (bars, a high note counting more), from which a breath is likely. */
+const TIRED = 2.5;
+/** Lead-ins: how often, and how early (steps before the section: an 8th, a beat, two beats). */
+const LEAD_IN_P = 0.35;
+const LEAD_INS: [number, number][] = [[2, 0.3], [4, 0.45], [8, 0.25]];
+/** Carry over: how often the line runs on into a section it sits out. */
+const CARRY_P = 0.5;
 
 /**
  * Question and answer (Words first's pairs): how often a pair of phrases is sung as a question (ending up)
@@ -297,8 +323,10 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const clusterAt = (bar: number) => CLUSTERS[(Math.floor(bar / CLUSTER_BARS) + phase) % 3];
   let barBase = 0;
   /** A note cut a beat short (a pause after it), its quick notes in the cut gone. */
-  const cutBeat = (n: GuideNote) => {
-    n.len -= 4;
+  const cutBeat = (n: GuideNote) => cutBy(n, 4);
+  /** A note cut `by` steps short, its quick notes, pushes and pulls in the cut gone. */
+  const cutBy = (n: GuideNote, by: number) => {
+    n.len -= by;
     if (n.flicks) {
       const keep = n.flicks.filter((f) => f.at + f.len + (f.gap ?? 0) <= n.len - (f.bend ? 0 : 1));
       stat.flicks -= n.flicks.length - keep.length;
@@ -345,6 +373,25 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   };
   // (Question and answer: its own dice)
   const qrng = new Rng(`guide-qa-${first.seeds.song}-${mood}-${salt}`);
+  // (Breaths, Section change, Lead-ins, Carry over: each its own dice)
+  const brng = new Rng(`guide-breath-${first.seeds.song}-${mood}-${salt}`);
+  const crng = new Rng(`guide-shift-${first.seeds.song}-${mood}-${salt}`);
+  const lrng = new Rng(`guide-leadin-${first.seeds.song}-${mood}-${salt}`);
+  const orng = new Rng(`guide-carry-${first.seeds.song}-${mood}-${salt}`);
+  const feelOf = new Map<string, Feel>();
+  let lastFeel: Feel | null = null;
+  const nb = { breaths: 0, breathBeats: 0, before: 0, leadIns: 0, carries: 0, carryBends: 0, jumps: 0, feels: [] as string[] };
+  /** Breaths: how tiring the stretch sung up to the end of `notes` is (in bars; high notes count more), 0 after a pause. */
+  const effort = (notes: GuideNote[], barLen: number, at: number) => {
+    let e = 0, k = notes.length - 1;
+    if (k < 0 || notes[k].step + notes[k].len < at) return 0;
+    for (; k >= 0; k--) {
+      const n = notes[k];
+      e += (n.len / barLen) * (1 + Math.max(0, n.midi - 57) / 5);
+      if (k > 0 && notes[k - 1].step + notes[k - 1].len !== n.step) break;
+    }
+    return e;
+  };
   const G = GENRE_FLICKS[first.song.genre] ?? GENRE_FLICKS.pop;
   const clusterRate = G.clusters ?? CLUSTER_RATE;
 
@@ -366,6 +413,33 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     const lastSection = si === lastSung;
     // sitting out: nothing, and the line comes back after it as after a pause
     if (silent[si]) {
+      // (Carry over: the last note runs on into it, held, or bent a step, for up to a bar)
+      const pv = parts[si - 1], pIdea = list[si - 1];
+      const last = pv?.[pv.length - 1];
+      if (ideas.carry && last && pIdea && last.step + last.len === pIdea.song.total && song.bars.length >= 2 && orng.chance(CARRY_P)
+        && !(last.flicks ?? []).some((f) => f.at + f.len >= last.len) && !(last.marks ?? []).some((m) => m.at + (m.back ?? 0) >= last.len)) {
+        const bar = pIdea.song.bars[0].len;
+        // (never past the run limit: the stretch sung without a pause so far)
+        let from = last.step;
+        for (let k = pv.length - 1; k > 0 && pv[k - 1].step + pv[k - 1].len === pv[k].step; k--) from = pv[k - 1].step;
+        const room = Math.min(bar, MAX_RUN * bar - (pIdea.song.total - from), song.bars[0].len);
+        const x = Math.min(room, 4 * orng.int(1, Math.max(1, Math.floor(bar / 4))));
+        const pScale = SCALES[pIdea.song.mode] as readonly number[], pHome = homeMidi(pIdea.song.key);
+        const pMidi = (y: number) => pHome + 12 * Math.floor(y / 7) + pScale[deg7(y)];
+        const to = last.deg + (orng.chance(0.7) ? -1 : 1);
+        // (held, while it stays within a bar; else, or by chance, bent a step (never off the song's last note, home))
+        const canHold = last.len + x <= bar;
+        const canBend = si - 1 !== lastSung && !last.colour && Math.abs(pMidi(to) - last.midi) <= BEND_SEMIS && pMidi(to) >= MID[0] && pMidi(to) <= top && x >= 4;
+        if (x >= 4 && (canHold || canBend)) {
+          if (canHold && (!canBend || orng.chance(0.5))) last.len += x;
+          else {
+            const bl = x >= 8 && orng.chance(0.5) ? 4 : 2;
+            pv.push({ step: pIdea.song.total, len: x, midi: pMidi(to), deg: to, bend: bl });
+            nb.carryBends++;
+          }
+          nb.carries++;
+        }
+      }
       parts.push([]);
       beatNo += beats.length;
       barBase += song.bars.length;
@@ -394,6 +468,60 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     const kind = idea.section?.kind ?? '';
     const again = REPEATS.includes(kind) ? firstOf.get(kind) : undefined;
     let i = 0;
+    // (Section change: this kind's feel, picked the first time it comes, unlike the section before)
+    let feel: Feel = { phrase: M.phrase, pace: 1, jump: false };
+    if (ideas.shift) {
+      const known = feelOf.get(kind);
+      if (known) feel = known;
+      else {
+        if (lastFeel) {
+          const prevF: Feel = lastFeel;
+          const bars = song.bars.length;
+          const phr = [1, 2, 4].filter((x) => x !== prevF.phrase && x <= bars && bars % x === 0);
+          const pcs = PACES.filter((x) => Math.abs(x - prevF.pace) >= 0.4);
+          // (always its own phrase lengths or pace, so every return of it differs too; now and then a jump coming in as well)
+          const jump = crng.chance(0.4);
+          if ((crng.chance(0.5) || !pcs.length) && phr.length) feel = { phrase: crng.pick(phr), pace: prevF.pace, jump };
+          else if (pcs.length) feel = { phrase: prevF.phrase, pace: crng.pick(pcs), jump };
+          else feel = { phrase: prevF.phrase, pace: 1, jump: true };
+        }
+        feelOf.set(kind, feel);
+        nb.feels.push(`${kind === 'prechorus' ? 'pre-chorus' : kind}: ${feel.phrase}-bar phrases, ${feel.pace < 1 ? 'busier' : feel.pace > 1 ? 'longer notes' : 'usual pace'}${feel.jump ? ', a jump coming in' : ''}`);
+      }
+      lastFeel = feel;
+    }
+    // (the section before: its last note, if it sings through to the end)
+    const pv = si > 0 && !silent[si - 1] ? parts[si - 1] : undefined;
+    const pIdea = list[si - 1];
+    const pLast = pv?.[pv.length - 1];
+    const pBar = pIdea?.song.bars[0].len ?? 16;
+    const cutRoom = (n: GuideNote) => n.len - Math.max(4, (n.bend ?? 0) + 2);
+    // Breaths: before a big section (a chorus, or one sung higher than the last), or after a tiring stretch, a pause of a random length
+    let breathed = false;
+    if (ideas.breath && pLast && pIdea && pLast.step + pLast.len === pIdea.song.total) {
+      const big = kind === 'chorus' || (HEIGHT[kind as SectionKind] ?? 0.4) - (HEIGHT[pIdea.section?.kind ?? 'verse'] ?? 0.4) >= 0.25;
+      const tired = effort(pv!, pBar, pIdea.song.total) >= TIRED;
+      if (brng.chance((big ? 0.55 : 0.1) + (tired ? 0.3 : 0))) {
+        const by = Math.min(4 * brng.int(1, big && tired ? 4 : 3), 4 * Math.floor(cutRoom(pLast) / 4));
+        if (by >= 4) { cutBy(pLast, by); breathed = true; afterPause = true; nb.before++; nb.breathBeats += by / 4; stat.pauses++; }
+      }
+    }
+    // Lead-ins: the section's first note comes in early, at the end of the section before (after a breath), held into this one
+    let leadL = 0;
+    if (ideas.leadIn && pLast && pIdea && lrng.chance(LEAD_IN_P)) {
+      let r = lrng.next();
+      const L = (LEAD_INS.find(([, w]) => (r -= w) <= 0) ?? LEAD_INS[0])[0];
+      // (a copy's first note must start on the 1 and leave room in the bar)
+      const entryOk = !again || (again.total === song.total && again.bars === song.bars.length && again.notes[0].step === 0 && again.notes[0].len + L <= song.bars[0].len);
+      const room = pIdea.song.total - L - 4;
+      const pEnd = pLast.step + pLast.len;
+      const by = pEnd - room;
+      const beat1 = groupStarts(song.bars[0].groups)[1] ?? song.bars[0].len;
+      if (entryOk && (again || L + beat1 <= song.bars[0].len) && L < pIdea.song.bars[pIdea.song.bars.length - 1].len && (by <= 0 || (by % 2 === 0 && by <= cutRoom(pLast)))) {
+        if (by > 0) { cutBy(pLast, by); if (!breathed) stat.pauses++; }
+        leadL = L; afterPause = true; nb.leadIns++;
+      }
+    }
     // a verse, pre-chorus or chorus sung before: the same notes (in this section's key), a few a step away
     if (again && again.total === song.total && again.bars === song.bars.length) {
       const fit = (x: number) => midiOf(x) >= MID[0] && midiOf(x) <= top;
@@ -436,7 +564,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         if (cs && (midiOf(deg) + cs > top || midiOf(deg) + cs < MID[0])) cs = 0;
         const lp = n0.leap || homeLeap || (k === 0 && Math.abs(deg - d) >= 3);
         const late = k === 0 ? lateIn : homeLate;
-        const note: GuideNote = { step: n0.step + late, len: n0.len - late, midi: midiOf(deg) + cs, deg, ...(cs ? { colour: true } : {}), ...(lp ? { leap: true } : {}), ...(n0.bend ? { bend: n0.bend } : {}) };
+        const lead = k === 0 ? leadL : 0;
+        const note: GuideNote = { step: n0.step + late - lead, len: n0.len - late + lead, midi: midiOf(deg) + cs, deg, ...(cs ? { colour: true } : {}), ...(lp ? { leap: true } : {}), ...(n0.bend ? { bend: n0.bend } : {}) };
         // (a bend only into a step: a key change or a changed note can make it more)
         const prev = out[out.length - 1];
         if (note.bend && (!prev || Math.abs(note.midi - prev.midi) > BEND_SEMIS || note.midi === prev.midi)) delete note.bend;
@@ -452,7 +581,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       i = beats.length;
     }
     // (Repeat idea: the section's phrases, for its form; and the beats as steps from a phrase's start)
-    const phraseBars = M.phrase;
+    const phraseBars = feel.phrase;
     const phrases = Math.floor(song.bars.length / phraseBars);
     const phraseStep = (p: number) => song.bars[p * phraseBars]?.start ?? song.total;
     const phraseShape = (p: number) => beats.filter((x) => x.bar >= p * phraseBars && x.bar < (p + 1) * phraseBars).map((x) => `${x.step - phraseStep(p)}${x.strong ? 's' : ''}`).join(',');
@@ -565,7 +694,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         }
       }
       // a pause at the end of a phrase (never before the first note, never in the last bar of the song)
-      const phraseStart = b.first && b.bar > 0 && b.bar % M.phrase === 0;
+      const phraseStart = b.first && b.bar > 0 && b.bar % phraseBars === 0;
       const lastBar = lastSection && b.bar === song.bars.length - 1;
       // (sung too long without a pause: one now)
       const joined = out.length > 0 && out[out.length - 1].step + out[out.length - 1].len === b.step;
@@ -573,23 +702,35 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       for (let k = out.length - 1; joined && k > 0 && out[k - 1].step + out[k - 1].len === out[k].step; k--) runFrom = out[k - 1].step;
       const runMax = MAX_RUN * song.bars[b.bar].len;
       const tooLong = joined && b.step - runFrom >= runMax - 2;
-      if ((phraseStart || tooLong || (si > 0 && i === 0 && out.length === 0)) && !afterPause && !lastBar && (stat.notes > 0) && (tooLong || rng.chance(M.pause * (si > 0 && i === 0 ? 0.5 : 1)))) {
-        const r = rng.chance(0.6) ? 1 : 2;
-        i += r; beatNo += r;
+      // (Section change: a jump in the notes coming in, after a beat's breath)
+      const jumpIn = feel.jump && !leadL && si > 0 && out.length === 0 && stat.notes > 0 && !again;
+      if (jumpIn && !afterPause && i === 0) { i += 1; beatNo += 1; afterPause = true; stat.pauses++; continue; }
+      const canPause = (phraseStart || tooLong || (si > 0 && i === 0 && out.length === 0)) && !afterPause && !lastBar && (stat.notes > 0);
+      // (Breaths: after a tiring stretch, a breath is likely, and longer)
+      const tired = !!ideas.breath && canPause && phraseStart && effort(out, song.bars[b.bar].len, b.step) >= TIRED;
+      let pauseNow = canPause && (tooLong || rng.chance(M.pause * (si > 0 && i === 0 ? 0.5 : 1)));
+      let rb = pauseNow ? (rng.chance(0.6) ? 1 : 2) : 0;
+      if (!pauseNow && tired && brng.chance(0.7)) { pauseNow = true; rb = brng.int(1, 2); }
+      if (pauseNow) {
+        if (tired) { rb += brng.int(0, 2); nb.breaths++; nb.breathBeats += rb; }
+        i += rb; beatNo += rb;
         afterPause = true;
         stat.pauses++;
         continue;
       }
       // how long: the mood's pace (steady: Paul, "too many shifts, almost every beat"), a little quicker as
       // the tension rises; notes change only on strong beats (a bar's first, or its middle)
-      const mean = STEADY * M.beats * (1.15 - 0.3 * t);
+      const mean = STEADY * M.beats * (1.15 - 0.3 * t) * feel.pace;
       const want = Math.max(1, Math.round(mean * (0.7 + rng.next() * 0.6)));
       // (up to the next phrase start, so pauses can come there)
-      const phraseAt = (j: number) => beats[j].first && beats[j].bar % M.phrase === 0;
+      const phraseAt = (j: number) => beats[j].first && beats[j].bar % phraseBars === 0;
       let n = 1;
       // (never held past a bar)
-      const maxHold = song.bars[b.bar].len;
+      // (a lead-in: held from before the section, so within a bar all told)
+      const leading = leadL > 0 && out.length === 0 && i === 0;
+      const maxHold = song.bars[b.bar].len - (leading ? leadL : 0);
       while (i + n < beats.length && !phraseAt(i + n) && (n < want || !beats[i + n].strong) && beats[i + n].step - b.step < maxHold && beats[i + n].step - runFrom <= runMax) n++;
+      while (leading && n > 1 && (i + n < beats.length ? beats[i + n].step : song.total) - b.step + leadL > song.bars[b.bar].len) n--;
       const end = i + n >= beats.length;
       const phraseEnd = end || phraseAt(i + n);
       const qa = ideas.qa ? qaRole(b.bar) : null;
@@ -610,6 +751,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const reach = afterPause ? M.leapMax : 2;
       for (let s = -reach; s <= reach; s++) {
         const x = d + s;
+        if (jumpIn && Math.abs(s) < 3 && reach >= 3) continue;
         // (above the voice where the song calms down: only on the way down, a step at a time)
         if (!inVoice(x, t) && !(x < d && midiOf(x) <= midiOf(d) && midiOf(x) >= MID[0])) continue;
         // (near the section's height: a phrase keeps within W scale notes of it, or heads back toward it)
@@ -688,7 +830,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         let r2 = rng.next() * opts.reduce((x, o) => x + o.w, 0);
         if (r2 > 0) { bend = (opts.find((o) => (r2 -= o.w) <= 0) ?? opts[0]).len; stat.bends++; stat.bendLens[opts.findIndex((o) => o.len === bend)]++; }
       }
-      out.push({ step: b.step, len: stepEnd - b.step, midi, deg: d, ...(colour ? { colour } : {}), ...(a >= 3 || forced ? { leap: true } : {}), ...(bend ? { bend } : {}) });
+      if (jumpIn && a >= 3) nb.jumps++;
+      out.push({ step: b.step - (leading ? leadL : 0), len: stepEnd - b.step + (leading ? leadL : 0), midi, deg: d, ...(colour ? { colour } : {}), ...(a >= 3 || forced ? { leap: true } : {}), ...(bend ? { bend } : {}) });
       stat.notes++;
       if (b.strong) { stat.strong++; if (tonesAt(b.step).includes(mod(midi, 12))) stat.strongTone++; }
       stat.lowM = Math.min(stat.lowM, midi); stat.hiM = Math.max(stat.hiM, midi);
@@ -696,8 +839,15 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       afterPause = false;
       i += n; beatNo += n;
     }
-    // (the first of its kind: kept, to sing again)
-    if (REPEATS.includes(kind) && !firstOf.has(kind) && out.length) firstOf.set(kind, { notes: out.map((n) => ({ ...n })), cs: out.map((n) => n.midi - midiOf(n.deg)), total: song.total, bars: song.bars.length });
+    // (the first of its kind: kept, to sing again (a lead-in kept as if it started on the 1))
+    if (REPEATS.includes(kind) && !firstOf.has(kind) && out.length) firstOf.set(kind, { notes: out.map((n) => (n.step < 0 ? { ...n, step: 0, len: n.len + n.step } : { ...n })), cs: out.map((n) => n.midi - midiOf(n.deg)), total: song.total, bars: song.bars.length });
+    // (a lead-in: sung from the section before, so it's that section's note, running on into this one)
+    if (out[0] && out[0].step < 0 && pv && pIdea) {
+      const ld = out.shift()!;
+      pv.push({ ...ld, step: pIdea.song.total + ld.step });
+      // (the next note not bent from it: the words of the two sections are sung apart)
+      if (out[0]?.bend) delete out[0].bend;
+    }
     // pushes and pulls on the held notes, on the 8th grid (before the quick notes, which keep clear of them)
     out.forEach((n, k) => {
       const next = out[k + 1];
@@ -837,6 +987,10 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     ...(ideas.qa ? [`Question and answer: ${stat.qaPairs} pairs of phrases (${mood}: about ${Math.round(QA_CHANCE[mood] * 100)}% of pairs); ${stat.qUp} of ${stat.qN} questions ending up, ${stat.aDown} of ${stat.aN} answers falling to a settled note`] : []),
     ...(ideas.speech ? [`Pitch by words: quick notes going up start a new stressed word (then the light rest of it, back down); going down, a word's soft last syllable, the line coming back up into the next stress`] : []),
     ...(ideas.spine ? [`Slow line: ${[...spineOf].map(([k, sp]) => `${k === 'prechorus' ? 'pre-chorus' : k} ${SPINES[sp].says}`).join('; ')}; ${stat.spineEnds} of ${stat.phraseEnds} phrases end on it`] : []),
+    ...(ideas.breath ? [`Breaths: ${nb.before} before a big section or after a tiring one, ${nb.breaths} more after a tiring stretch (long or high); ${nb.breathBeats} beats in all, of random lengths`] : []),
+    ...(ideas.shift ? [`Section change: ${nb.feels.join('; ') || 'one kind of section only'}${nb.jumps ? ` (${nb.jumps} ${nb.jumps === 1 ? 'jump' : 'jumps'} coming in)` : ''}`] : []),
+    ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, their first note held over the line`] : []),
+    ...(ideas.carry ? [`Carry over: ${nb.carries} last ${nb.carries === 1 ? 'note runs' : 'notes run'} on into a section the line sits out (${nb.carryBends} bent a step)`] : []),
     ...(ideas.motif ? [`Repeat idea: phrases in the form A B A b, ${stat.ideaA} sung again (moved to suit the height and chords), ${stat.ideaB} again with a new ending`] : []),
     `Repeats: ${stat.repeats} ${stat.repeats === 1 ? 'section' : 'sections'} sung like the first verse, pre-chorus or chorus (${stat.varied} notes changed a step)`,
     `Moves: steps ${pc(stat.step)}, 3rds ${pc(stat.third)}, held on ${pc(stat.same)}, leaps after a pause ${pc(stat.leap)} (${stat.leap})`,
