@@ -92,6 +92,24 @@ What's left over comes from later steps that move notes for the band (clashes, t
 Melody first's planned clashes and loops keep more of their own shape. Classic, Grid, Shaped and Melody
 first with Classic or Grid rhythm unchanged (checked: the same notes as before).
 
+## Question and answer (2026-10-14)
+Pairs of lines sung as a question and its answer, the way English is said: now and then a 1st or 3rd
+line (never a section's last) rises at its end and the line after it falls home.
+- A question with a soft ending rises on it (BA-by? up on the "by"); with a strong ending, its key word
+  goes up to a chord note above the stress before it.
+- Its answer falls: its last word down to a chord note under the stress before it (a soft ending
+  steps down, not level).
+- How often, by mood: happy and dreamy 60% of pairs, nostalgic and tense 50%, triumphant 45%,
+  melancholic 40%, dark 30%, angry 25% (open, hopeful moods ask; angry and dark ones state).
+
+| 42 songs, 4/4 | Words before / after | Words + Shaped | Words + Melody first |
+|---|---|---|---|
+| 1st and 3rd lines ending up | 24% / 36% | 31% | 45% |
+| 2nd and 4th lines ending down | 32% / 46% | 48% | 46% |
+| One-note lines | 67 / 45 | 75 | 27 |
+
+Not every question survives to the end: later steps still move notes for the band and the tension
+curve. Other rhythms unchanged (checked: the same notes as before).
+
 ## Next
-- Questions ending up (lines that rise at the end, by the line's form).
 - Paul listens: Words vs Grid.
