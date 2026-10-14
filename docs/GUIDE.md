@@ -235,6 +235,15 @@ x0.8 on Some and Lots; Rock, Hard rock and Metal x1.1 on Sparse. Some and Lots a
 fit (one every other 8th), so there the busier genres differ mostly in feel, not count.
 Checked (224 tracks): intros and solos always empty, every song ends home, no leap without a pause.
 
+## Quick notes a whole tone away (2026-10-14)
+Paul: try some quick notes going one full note (a whole tone) up or down, not the scale's next note;
+leave the two-step ones as they are.
+- 40% of the one-step quick notes go a whole tone up or down, whatever the scale says.
+- Where the scale's next note is already a whole tone away it's the same note; where it's a half step
+  (e.g. the 3rd to the 4th, the 7th to home in major), the quick note leaves the key. That's about 7% of
+  all quick notes.
+- Those are drawn red (other quick notes stay pink); the readout counts them. Two-step ones stay in the scale.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
