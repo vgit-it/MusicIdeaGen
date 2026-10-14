@@ -63,7 +63,13 @@ export interface Mark { at: number; kind: 'push' | 'pull'; back?: number }
  *   first phrase comes back (moved to suit the section's height and the chords), the second comes back
  *   with a new ending.
  */
-export interface GuideIdeas { motif?: boolean; spine?: boolean; speech?: boolean }
+export interface GuideIdeas { motif?: boolean; spine?: boolean; speech?: boolean; qa?: boolean }
+
+/**
+ * Question and answer (Words first's pairs): how often a pair of phrases is sung as a question (ending up)
+ * and its answer (falling to a settled note), by mood: open, hopeful moods ask; angry and dark ones state.
+ */
+const QA_CHANCE: Record<Mood, number> = { happy: 0.6, dreamy: 0.6, nostalgic: 0.5, tense: 0.5, triumphant: 0.45, melancholic: 0.4, dark: 0.3, angry: 0.25 };
 
 /**
  * How often a quick note starts a new word (else it ends one), by genre: a little more in busier genres
@@ -280,7 +286,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const W = Math.max(2, Math.round(M.span / 2) - 1);
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
-  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, push: 0, pull: 0, capped: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0, ideaA: 0, ideaB: 0, spineEnds: 0, phraseEnds: 0 };
+  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, push: 0, pull: 0, capped: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0, ideaA: 0, ideaB: 0, spineEnds: 0, phraseEnds: 0, qaPairs: 0, qN: 0, qUp: 0, aN: 0, aDown: 0 };
   let afterPause = false, lastLeap = 0, sameRun = 0;
   const songBeats = list.reduce((n, i) => n + i.song.bars.reduce((b, x) => b + x.groups.length, 0), 0);
   let beatNo = 0;
@@ -337,6 +343,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     }
     return spineOf.get(kind)!;
   };
+  // (Question and answer: its own dice)
+  const qrng = new Rng(`guide-qa-${first.seeds.song}-${mood}-${salt}`);
   const G = GENRE_FLICKS[first.song.genre] ?? GENRE_FLICKS.pop;
   const clusterRate = G.clusters ?? CLUSTER_RATE;
 
@@ -454,6 +462,13 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       if (phrases === 2 || phrases === 3) return p === 1 ? { from: 0, newEnd: true } : null;
       if (p % 4 === 1) return p >= 4 ? { from: p - 4, newEnd: false } : null;
       return p % 4 === 2 ? { from: p - 2, newEnd: false } : p % 4 === 3 ? { from: p - 2, newEnd: true } : { from: p - 4, newEnd: false };
+    };
+    // (Question and answer: which pairs of phrases ask and answer (never the song's last note))
+    const asks = new Set<number>();
+    if (ideas.qa) for (let p = 0; p + 1 < phrases; p += 2) if (qrng.chance(QA_CHANCE[mood])) { asks.add(p); stat.qaPairs++; }
+    const qaRole = (bar: number): 'q' | 'a' | null => {
+      const p = Math.floor(bar / phraseBars);
+      return asks.has(p) ? 'q' : asks.has(p - 1) && p % 2 === 1 ? 'a' : null;
     };
     while (i < beats.length) {
       const b = beats[i];
@@ -577,6 +592,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       while (i + n < beats.length && !phraseAt(i + n) && (n < want || !beats[i + n].strong) && beats[i + n].step - b.step < maxHold && beats[i + n].step - runFrom <= runMax) n++;
       const end = i + n >= beats.length;
       const phraseEnd = end || phraseAt(i + n);
+      const qa = ideas.qa ? qaRole(b.bar) : null;
       const songEnd = lastSection && end;
       // (the song's last two bars head for home, the nearest one)
       const homes = [-7, 0, 7, 14].filter((h) => midiOf(h) >= MID[0] && midiOf(h) <= MID[1]);
@@ -613,6 +629,11 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         w *= M.rest[deg7(x)] ** (strong ? 1.6 : 0.6);
         // with the chords: strong beats on the chord's notes
         if (lean === 'in' && strong) w *= tonesAt(b.step).includes(mod(midiOf(x), 12)) ? 3 : 0.35;
+        // (Question and answer: a question's last note goes up, onto an open note; its answer falls to a settled one)
+        if (qa && phraseEnd && !songEnd) {
+          if (qa === 'q') w *= (s > 0 ? 8 : 0.08) * (deg7(x) === 0 ? 0.4 : 1);
+          else w *= (s < 0 ? 8 : 0.08) * ([0, 2, 4].includes(deg7(x)) ? 2.5 : 0.5);
+        }
         // (Slow line: a phrase ends on it)
         if (spine && phraseEnd && x === target) w *= 3;
         // a section's last note settles (1st, 3rd, 5th); the song's last note is home
@@ -639,6 +660,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         else if (joins && n > 1) { i += 1; beatNo += 1; afterPause = true; stat.pauses++; continue; }
       }
       if (stat.notes > 0) { if (a === 0) stat.same++; else if (a === 1) stat.step++; else if (a === 2) stat.third++; else stat.leap++; }
+      if (qa && phraseEnd && !songEnd) { if (qa === 'q') { stat.qN++; if (pick.d > d) stat.qUp++; } else { stat.aN++; if (pick.d < d) stat.aDown++; } }
       if (spine && phraseEnd) { stat.phraseEnds++; if (pick.d === target) stat.spineEnds++; }
       d = pick.d;
       lastLeap = a >= 3 ? s : 0;
@@ -812,6 +834,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     `Mood: ${MOOD_LABEL[mood]}${moodIn ? '' : ' (auto)'}: ${M.desc}`,
     stat.notes ? `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}` : 'No notes: the line sits out here',
     `Voice: ${high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}; verses low, choruses lifted)`}`,
+    ...(ideas.qa ? [`Question and answer: ${stat.qaPairs} pairs of phrases (${mood}: about ${Math.round(QA_CHANCE[mood] * 100)}% of pairs); ${stat.qUp} of ${stat.qN} questions ending up, ${stat.aDown} of ${stat.aN} answers falling to a settled note`] : []),
     ...(ideas.speech ? [`Pitch by words: quick notes going up start a new stressed word (then the light rest of it, back down); going down, a word's soft last syllable, the line coming back up into the next stress`] : []),
     ...(ideas.spine ? [`Slow line: ${[...spineOf].map(([k, sp]) => `${k === 'prechorus' ? 'pre-chorus' : k} ${SPINES[sp].says}`).join('; ')}; ${stat.spineEnds} of ${stat.phraseEnds} phrases end on it`] : []),
     ...(ideas.motif ? [`Repeat idea: phrases in the form A B A b, ${stat.ideaA} sung again (moved to suit the height and chords), ${stat.ideaB} again with a new ending`] : []),
