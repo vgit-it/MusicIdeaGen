@@ -129,10 +129,16 @@ export const noteName = (m: number) => `${NAMES[mod(m, 12)]}${Math.floor(m / 12)
 /** Home in the middle of the voice: F3 to E4. */
 const homeMidi = (key: number) => 53 + mod(key - 5, 12);
 /**
- * The mid voice, C3 to G4 (Paul: "the range should be the mid voice range"); a high voice (the singer's
+ * The voice, C3 to C5 (Paul: the mid voice range, then "open up more of the higher range": was G4); a high voice (the singer's
  * high voice, or High) goes up to its own top in the song's high parts (tension from HIGH_T up).
  */
-const MID: [number, number] = [48, 67];
+const MID: [number, number] = [48, 72];
+/**
+ * More room up (Paul: "the limiting of range has made it very stale, open up more of the higher range"):
+ * the mood's span reaches this many scale steps higher, and a high voice goes past its usual top.
+ */
+const UP = 3;
+const HIGH_EXTRA = 2;
 const HIGH_T = 0.6;
 /** Section kinds sung alike each time (Paul: "the verses should be similar and the choruses similar"). */
 const REPEATS = ['verse', 'prechorus', 'chorus'];
@@ -162,7 +168,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const mood = moodIn ?? autoMood(first.song, first.seeds.song);
   const M = MOODS[mood];
   const rng = new Rng(`guide-${first.seeds.song}-${mood}-${lean}-${salt}`);
-  const lo = M.low, hi = M.low + M.span;
+  const lo = M.low, hi = M.low + M.span + UP;
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
   const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0 };
@@ -186,7 +192,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   };
   // the first verse, pre-chorus and chorus, kept to sing again (their notes, and each note's colour shift)
   const firstOf = new Map<string, { notes: GuideNote[]; cs: number[]; total: number; bars: number }>();
-  const top = high ? HIGH_VOICES[high].top : MID[1];
+  const top = high ? Math.max(MID[1], HIGH_VOICES[high].beltTop + HIGH_EXTRA) : MID[1];
 
   list.forEach((idea, si) => {
     const { song, chords } = idea;
@@ -231,7 +237,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
           const to = deg + (rng.chance(0.5) ? 1 : -1);
           // (still small moves either side: a changed note never makes a leap)
           const near = (o?: GuideNote) => !o || Math.abs(o.deg + shift - to) <= 2 || o === again.notes[k + 1] && !!o.leap;
-          if (fit(to) && near(again.notes[k - 1]) && (near(again.notes[k + 1]) || !!again.notes[k + 1]?.leap)) { deg = to; cs = 0; stat.varied++; }
+          const before = out[out.length - 1];
+          if (fit(to) && (!before || Math.abs(before.deg - to) <= 2) && (near(again.notes[k + 1]) || !!again.notes[k + 1]?.leap)) { deg = to; cs = 0; stat.varied++; }
         }
         // (out of the voice (a repeat in a higher key): brought back in, a step at a time)
         while (!fit(deg) && midiOf(deg) > top) deg--;
