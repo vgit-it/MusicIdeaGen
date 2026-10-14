@@ -189,3 +189,5 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .glegend { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0 10px; font-size: 12px; color: var(--mute); }
 .glegend .k { display: inline-block; width: 14px; height: 5px; border-radius: 2px; margin-right: -4px; }
 .glegend .k.gnote { background: var(--accent2); } .glegend .k.gleap { background: var(--accent); } .glegend .k.gcol { background: var(--warn); }
+.guidedraw .gbend { stroke: #4fd1a5; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.glegend .k.gbendk { background: #4fd1a5; }

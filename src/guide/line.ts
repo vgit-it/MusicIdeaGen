@@ -28,6 +28,8 @@ export interface GuideNote {
   colour?: boolean;
   /** A leap after a pause. */
   leap?: boolean;
+  /** Bent into from the note before (no new attack): the bend's length in steps (an 8th, a quarter, half a bar). */
+  bend?: number;
 }
 
 export interface GuideLine {
@@ -61,6 +63,8 @@ interface GuideMood {
   leap: number; leapMax: number;
   /** Range (scale steps) and where it sits (scale steps from home). */
   span: number; low: number;
+  /** Chance a step is bent into rather than played, and how it likes its bends: an 8th, a quarter, half a bar. */
+  bend: number; bendLen: [number, number, number];
   /** An out-of-key colour note and how often. */
   colour: Colour; colourP: number;
   /** In plain words. */
@@ -71,23 +75,28 @@ interface GuideMood {
 // warm (major or minor), the 2nd, 4th and 6th unsettled, the 7th yearning; higher and rising brighter,
 // lower and falling darker; long notes calm, quick ones restless)
 const MOODS: Record<Mood, GuideMood> = {
-  happy: { start: [2, 4, 0], rest: [1.4, 0.6, 1.5, 0.6, 1.3, 1, 0.3], beats: 1.5, third: 0.3, same: 0.15, lean: 0.15, pause: 0.45, phrase: 2, leap: 0.5, leapMax: 4, span: 9, low: -2, colour: null, colourP: 0,
+  happy: { start: [2, 4, 0], rest: [1.4, 0.6, 1.5, 0.6, 1.3, 1, 0.3], beats: 1.5, third: 0.3, same: 0.15, lean: 0.15, pause: 0.45, phrase: 2, leap: 0.5, leapMax: 4, span: 9, low: -2, bend: 0.2, bendLen: [1, 0.8, 0.3], colour: null, colourP: 0,
     desc: 'bright: sits on the 3rd and 5th, lively, leans up, leaps up after a pause' },
-  melancholic: { start: [4, 2], rest: [1.2, 0.8, 1.5, 0.7, 1.1, 0.9, 0.4], beats: 2.5, third: 0.15, same: 0.1, lean: -0.35, pause: 0.55, phrase: 2, leap: 0.35, leapMax: 5, span: 7, low: -3, colour: 'sigh', colourP: 0.35,
+  melancholic: { start: [4, 2], rest: [1.2, 0.8, 1.5, 0.7, 1.1, 0.9, 0.4], beats: 2.5, third: 0.15, same: 0.1, lean: -0.35, pause: 0.55, phrase: 2, leap: 0.35, leapMax: 5, span: 7, low: -3, bend: 0.35, bendLen: [0.6, 1, 1], colour: 'sigh', colourP: 0.35,
     desc: 'falls more than it rises, slow, sighs down by step; a 6th leap now and then' },
-  nostalgic: { start: [2, 4], rest: [1.2, 0.7, 1.4, 0.8, 1.1, 1.3, 0.4], beats: 2, third: 0.25, same: 0.1, lean: -0.1, pause: 0.5, phrase: 2, leap: 0.55, leapMax: 5, span: 8, low: -2, colour: 'sigh', colourP: 0.2,
+  nostalgic: { start: [2, 4], rest: [1.2, 0.7, 1.4, 0.8, 1.1, 1.3, 0.4], beats: 2, third: 0.25, same: 0.1, lean: -0.1, pause: 0.5, phrase: 2, leap: 0.55, leapMax: 5, span: 8, low: -2, bend: 0.3, bendLen: [0.8, 1, 0.6], colour: 'sigh', colourP: 0.2,
     desc: 'warm: rests on the 3rd and 6th, gentle waves, a leap up of a 6th after a pause' },
-  tense: { start: [1, 4, 6], rest: [0.6, 1.2, 0.8, 1.2, 1, 1, 1.3], beats: 1, third: 0.2, same: 0.35, lean: 0.1, pause: 0.3, phrase: 2, leap: 0.4, leapMax: 3, span: 6, low: -2, colour: 'lead', colourP: 0.5,
-    desc: 'restless: quick, repeats itself, rests on unsettled notes (2nd, 4th, 7th), rarely home' },
-  angry: { start: [0, 4], rest: [1.4, 0.5, 1, 0.8, 1.4, 0.7, 0.6], beats: 1, third: 0.2, same: 0.4, lean: 0, pause: 0.35, phrase: 2, leap: 0.6, leapMax: 4, span: 7, low: -3, colour: 'dark', colourP: 0.3,
-    desc: 'hammers: quick, insistent repeats on the 1st and 5th, punches up after a pause' },
-  dreamy: { start: [4, 2], rest: [1, 0.9, 1.3, 0.8, 1.3, 1.2, 0.8], beats: 4, third: 0.3, same: 0.05, lean: 0, pause: 0.6, phrase: 4, leap: 0.3, leapMax: 3, span: 6, low: -1, colour: 'float', colourP: 0.4,
+  tense: { start: [1, 4, 6], rest: [0.6, 1.2, 0.8, 1.2, 1, 1, 1.3], beats: 1, third: 0.2, same: 0.35, lean: 0.1, pause: 0.3, phrase: 2, leap: 0.4, leapMax: 3, span: 6, low: -2, bend: 0.25, bendLen: [1, 0.6, 0.4], colour: 'lead', colourP: 0.5,
+    desc: 'restless: the busiest, repeats itself, rests on unsettled notes (2nd, 4th, 7th), rarely home' },
+  angry: { start: [0, 4], rest: [1.4, 0.5, 1, 0.8, 1.4, 0.7, 0.6], beats: 1, third: 0.2, same: 0.4, lean: 0, pause: 0.35, phrase: 2, leap: 0.6, leapMax: 4, span: 7, low: -3, bend: 0.2, bendLen: [1.5, 0.5, 0.2], colour: 'dark', colourP: 0.3,
+    desc: 'hammers: busy, insistent repeats on the 1st and 5th, punches up after a pause' },
+  dreamy: { start: [4, 2], rest: [1, 0.9, 1.3, 0.8, 1.3, 1.2, 0.8], beats: 4, third: 0.3, same: 0.05, lean: 0, pause: 0.6, phrase: 4, leap: 0.3, leapMax: 3, span: 6, low: -1, bend: 0.35, bendLen: [0.5, 1, 1.5], colour: 'float', colourP: 0.4,
     desc: 'floats: long held notes, wanders gently, never quite lands' },
-  triumphant: { start: [0, 4], rest: [1.5, 0.5, 1.2, 0.6, 1.5, 0.8, 0.3], beats: 1.5, third: 0.35, same: 0.1, lean: 0.3, pause: 0.45, phrase: 2, leap: 0.7, leapMax: 4, span: 10, low: -3, colour: 'lead', colourP: 0.25,
+  triumphant: { start: [0, 4], rest: [1.5, 0.5, 1.2, 0.6, 1.5, 0.8, 0.3], beats: 1.5, third: 0.35, same: 0.1, lean: 0.3, pause: 0.45, phrase: 2, leap: 0.7, leapMax: 4, span: 10, low: -3, bend: 0.25, bendLen: [1, 1, 0.5], colour: 'lead', colourP: 0.25,
     desc: 'climbs: home and the 5th, rises through the song, bold leaps after a pause' },
-  dark: { start: [0, 2], rest: [1.4, 0.7, 1.3, 0.8, 1, 1, 0.5], beats: 2, third: 0.2, same: 0.2, lean: -0.25, pause: 0.45, phrase: 2, leap: 0.35, leapMax: 4, span: 7, low: -3, colour: 'dark', colourP: 0.4,
+  dark: { start: [0, 2], rest: [1.4, 0.7, 1.3, 0.8, 1, 1, 0.5], beats: 2, third: 0.2, same: 0.2, lean: -0.25, pause: 0.45, phrase: 2, leap: 0.35, leapMax: 4, span: 7, low: -3, bend: 0.3, bendLen: [0.6, 1, 0.8], colour: 'dark', colourP: 0.4,
     desc: 'low and heavy: stays down, falls back, a dark half step above home' },
 };
+
+/** How much longer notes are held than the first version's pace. */
+const STEADY = 2.5;
+/** Bends: only into a step (a half or whole step: a guitar's bend, and what MIDI's pitch bend can carry). */
+const BEND_SEMIS = 2;
 
 const NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 export const noteName = (m: number) => `${NAMES[mod(m, 12)]}${Math.floor(m / 12) - 1}`;
@@ -119,7 +128,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const lo = M.low, hi = M.low + M.span;
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
-  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, strong: 0, strongTone: 0, lowM: 999, hiM: 0 };
+  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], strong: 0, strongTone: 0, lowM: 999, hiM: 0 };
   let afterPause = false, lastLeap = 0, sameRun = 0;
   const songBeats = list.reduce((n, i) => n + i.song.bars.reduce((b, x) => b + x.groups.length, 0), 0);
   let beatNo = 0;
@@ -154,14 +163,14 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         stat.pauses++;
         continue;
       }
-      // how long: the mood's pace, quicker as the tension rises; long notes start on strong beats
-      const mean = M.beats * (1.35 - 0.7 * t);
-      let n = Math.max(1, Math.round(mean * (0.6 + rng.next() * 0.8)));
-      if (!b.strong && n > 2) n = 2;
+      // how long: the mood's pace (steady: Paul, "too many shifts, almost every beat"), a little quicker as
+      // the tension rises; notes change only on strong beats (a bar's first, or its middle)
+      const mean = STEADY * M.beats * (1.15 - 0.3 * t);
+      const want = Math.max(1, Math.round(mean * (0.7 + rng.next() * 0.6)));
       // (up to the next phrase start, so pauses can come there)
-      let k = 1;
-      while (k < n && i + k < beats.length && !(beats[i + k].first && beats[i + k].bar % M.phrase === 0)) k++;
-      n = k;
+      const phraseAt = (j: number) => beats[j].first && beats[j].bar % M.phrase === 0;
+      let n = 1;
+      while (i + n < beats.length && !phraseAt(i + n) && (n < want || !beats[i + n].strong)) n++;
       const end = i + n >= beats.length;
       const songEnd = lastSection && end;
       // (the song's last two bars head for home, the nearest one)
@@ -212,7 +221,22 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       let colour = false;
       if (shift && rng.chance(M.colourP) && mod(midi + shift - rootAt(b.step), 12) !== 6 && !(lean === 'in' && b.strong)) { midi += shift; colour = true; stat.colour++; }
       const stepEnd = i + n < beats.length ? beats[i + n].step : song.total;
-      out.push({ step: b.step, len: stepEnd - b.step, midi, deg: d, ...(colour ? { colour } : {}), ...(a >= 3 ? { leap: true } : {}) });
+      const prev = out[out.length - 1];
+      // (the same note again, straight on: held on, not struck again)
+      if (prev && a === 0 && prev.midi === midi && prev.step + prev.len === b.step) {
+        prev.len = stepEnd - prev.step;
+        i += n; beatNo += n;
+        continue;
+      }
+      // a bend into the next step: straight on from the note before (no pause), by a half or whole step,
+      // over an 8th, a quarter or half a bar (never more than half the note)
+      let bend = 0;
+      if (prev && prev.step + prev.len === b.step && a === 1 && Math.abs(midi - prev.midi) <= BEND_SEMIS && rng.chance(M.bend)) {
+        const opts = [2, 4, Math.round(song.bars[b.bar].len / 2)].map((len, j) => ({ len, w: len * 2 <= stepEnd - b.step ? M.bendLen[j] : 0 }));
+        let r2 = rng.next() * opts.reduce((x, o) => x + o.w, 0);
+        if (r2 > 0) { bend = (opts.find((o) => (r2 -= o.w) <= 0) ?? opts[0]).len; stat.bends++; stat.bendLens[opts.findIndex((o) => o.len === bend)]++; }
+      }
+      out.push({ step: b.step, len: stepEnd - b.step, midi, deg: d, ...(colour ? { colour } : {}), ...(a >= 3 ? { leap: true } : {}), ...(bend ? { bend } : {}) });
       stat.notes++;
       if (b.strong) { stat.strong++; if (tonesAt(b.step).includes(mod(midi, 12))) stat.strongTone++; }
       stat.lowM = Math.min(stat.lowM, midi); stat.hiM = Math.max(stat.hiM, midi);
@@ -223,7 +247,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     parts.push(out);
   });
 
-  const moves = Math.max(1, stat.notes - 1);
+  const moves = Math.max(1, stat.step + stat.third + stat.same + stat.leap);
   const pc = (x: number) => `${Math.round((100 * x) / moves)}%`;
   const startDeg = deg7(parts.find((p) => p.length)?.[0].deg ?? 0);
   const colourWord: Record<Exclude<Colour, null>, string> = {
@@ -232,7 +256,8 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const notes = [
     `Mood: ${MOOD_LABEL[mood]}${moodIn ? '' : ' (auto)'}: ${M.desc}`,
     `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}`,
-    `Moves: steps ${pc(stat.step)}, 3rds ${pc(stat.third)}, same note ${pc(stat.same)}, leaps after a pause ${pc(stat.leap)} (${stat.leap})`,
+    `Moves: steps ${pc(stat.step)}, 3rds ${pc(stat.third)}, held on ${pc(stat.same)}, leaps after a pause ${pc(stat.leap)} (${stat.leap})`,
+    `Bends: ${stat.bends} (into a step: ${stat.bendLens[0]} over an 8th, ${stat.bendLens[1]} over a quarter, ${stat.bendLens[2]} over half a bar)`,
     `${stat.notes} notes, about ${(songBeats / Math.max(1, stat.notes)).toFixed(1)} beats each; ${stat.pauses} pauses`,
     `Chords: ${lean === 'in' ? 'leaning in' : 'leaning out (key only)'}: strong beats on a chord note ${Math.round((100 * stat.strongTone) / Math.max(1, stat.strong))}%`,
     M.colour ? `Out of key: ${colourWord[M.colour]} (${stat.colour}${stat.colour === 1 ? ' time' : ' times'})` : 'Out of key: none (this mood stays in the scale)',

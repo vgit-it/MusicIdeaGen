@@ -82,11 +82,12 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     // the joins, then the notes
     all.forEach((n, k) => {
       const p = all[k - 1];
-      if (p && p.at + p.len === n.at) parts.push(`<line x1="${x(n.at)}" x2="${x(n.at)}" y1="${y(p.midi)}" y2="${y(n.midi)}" class="gjoin"/>`);
+      if (p && n.bend) parts.push(`<line x1="${x(n.at)}" x2="${x(n.at + n.bend)}" y1="${y(p.midi)}" y2="${y(n.midi)}" class="gbend"/>`);
+      else if (p && p.at + p.len === n.at) parts.push(`<line x1="${x(n.at)}" x2="${x(n.at)}" y1="${y(p.midi)}" y2="${y(n.midi)}" class="gjoin"/>`);
     });
-    for (const n of all) parts.push(`<rect x="${x(n.at)}" y="${y(n.midi) - 2.5}" width="${Math.max(2, x(n.len) - 1)}" height="5" rx="2" class="${n.colour ? 'gcol' : n.leap ? 'gleap' : 'gnote'}"><title>${noteName(n.midi)}</title></rect>`);
+    for (const n of all) parts.push(`<rect x="${x(n.at + (n.bend ?? 0))}" y="${y(n.midi) - 2.5}" width="${Math.max(2, x(n.len - (n.bend ?? 0)) - 1)}" height="5" rx="2" class="${n.colour ? 'gcol' : n.leap ? 'gleap' : 'gnote'}"><title>${noteName(n.midi)}</title></rect>`);
     draw.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="The guide line over the song">${parts.join('')}<line id="g-cur" x1="-5" x2="-5" y1="0" y2="${H}" class="gcur"/></svg>
-      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour</div>`;
+      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend</div>`;
     cursor = draw.querySelector('#g-cur');
     drawnTotal = total;
   };
@@ -101,7 +102,20 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     if (!on || !line) return;
     const p = partFor(idea, idx);
     if (p < 0) return;
-    for (const n of line.parts[p]) if (n.step === g) synth!.play(n.midi, time, n.len * six, 0.8);
+    const notes = line.parts[p];
+    const j = notes.findIndex((n) => n.step === g);
+    // (a note bent into was already played: the note before it glides there)
+    if (j >= 0 && !notes[j].bend) {
+      const n = notes[j];
+      let k = j, len = n.len;
+      const bends: { at: number; to: number; over: number }[] = [];
+      while (notes[k + 1]?.bend) {
+        k++;
+        bends.push({ at: (notes[k].step - n.step) * six, to: notes[k].midi, over: notes[k].bend! * six });
+        len += notes[k].len;
+      }
+      synth!.play(n.midi, time, len * six, 0.8, bends);
+    }
     if (cursor && g % 4 === 0) {
       const xx = ((offsets[p] + g) / drawnTotal) * drawnW;
       setTimeout(() => { cursor?.setAttribute('x1', `${xx}`); cursor?.setAttribute('x2', `${xx}`); }, Math.max(0, (time - engine.mixer.master.context.now()) * 1000));
@@ -143,7 +157,22 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     const ppq = midi.header.ppq, step = ppq / 4;
     let off = 0;
     line.parts.forEach((p, si) => {
-      for (const n of p) t.addNote({ midi: n.midi, ticks: Math.round((off + n.step) * step), durationTicks: Math.round(n.len * step), velocity: 0.8 });
+      // (a bend: the note before held on, its pitch bent to this one (the standard range: a whole step))
+      let held: { midi: number; start: number; end: number } | null = null;
+      const flush = () => { if (held) t.addNote({ midi: held.midi, ticks: held.start, durationTicks: held.end - held.start, velocity: 0.8 }); };
+      for (const n of p) {
+        const at = Math.round((off + n.step) * step), end = Math.round((off + n.step + n.len) * step);
+        if (n.bend && held) {
+          const to = Math.max(-1, Math.min(1, (n.midi - held.midi) / 2));
+          for (let q = 1; q <= 8; q++) t.addPitchBend({ ticks: at + Math.round((q / 8) * n.bend * step), value: to * (q / 8) });
+          held.end = end;
+          continue;
+        }
+        if (held && t.pitchBends.length) t.addPitchBend({ ticks: at, value: 0 });
+        flush();
+        held = { midi: n.midi, start: at, end };
+      }
+      flush();
       off += list[si].song.total;
     });
     const url = URL.createObjectURL(new Blob([new Uint8Array(midi.toArray())], { type: 'audio/midi' }));
