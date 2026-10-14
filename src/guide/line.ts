@@ -33,6 +33,8 @@ export interface Flick {
   gap?: number;
   /** At the held note's end: bent up (or down) to, and the line moves on from there. */
   bend?: boolean;
+  /** A whole tone away rather than the scale's next note, and so out of the key here. */
+  outKey?: boolean;
 }
 
 export interface GuideNote {
@@ -123,6 +125,12 @@ const CLUSTER_RATE: Record<Cluster, number> = { frequent: 2.2, moderate: 1, spar
 const CLUSTER_BARS = 2;
 /** How often a quick note is a 16th with a 16th's silence after it (an 8th in all), then the held note again. */
 const GAP_P = 0.35;
+/**
+ * Of the one-step quick notes, how many go a whole tone up or down whatever the scale says (Paul: "one full
+ * note, not as per scale", some of them). Where the scale's next note is a half step away, this one leaves
+ * the key; elsewhere it's the same note. Two-step ones stay in the scale.
+ */
+const WHOLE_P = 0.4;
 
 /**
  * Where the line sits out (Paul): intros (no note at all) and solos always; interludes, bridges,
@@ -201,7 +209,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   const lo = M.low, hi = M.low + M.span + UP;
   let d = rng.pick(M.start);
   const parts: GuideNote[][] = [];
-  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0 };
+  const stat = { notes: 0, same: 0, step: 0, third: 0, leap: 0, colour: 0, pauses: 0, bends: 0, bendLens: [0, 0, 0], flicks: 0, flickBends: 0, flickGaps: 0, flickOut: 0, byCluster: { frequent: 0, moderate: 0, sparse: 0 } as Record<Cluster, number>, strong: 0, strongTone: 0, lowM: 999, hiM: 0, repeats: 0, varied: 0, highNotes: 0 };
   let afterPause = false, lastLeap = 0, sameRun = 0;
   const songBeats = list.reduce((n, i) => n + i.song.bars.reduce((b, x) => b + x.groups.length, 0), 0);
   let beatNo = 0;
@@ -447,7 +455,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const barLen = song.bars.find((b) => b.start + b.len > n.step)?.len ?? 16;
       const fl: Flick[] = [];
       for (let at = DENSE.includes(flicks) || G.close ? 2 : 4; at < n.len; at += 2) {
-        const r = frng.next(), up = frng.chance(FLICK_UP), two = frng.chance(G.two), gap = frng.chance(G.gap);
+        const r = frng.next(), up = frng.chance(FLICK_UP), two = frng.chance(G.two), gap = frng.chance(G.gap), whole = !two && frng.chance(WHOLE_P);
         const cl = clusterAt(barOf(n.step + at));
         // (the genre: how many, offbeats, bends at a note's end)
         const offbeat = mod(n.step + at, 4) === 2;
@@ -464,12 +472,15 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         if (at + len > n.len) continue;
         const end = at + len === n.len;
         if (end && songLast) continue;
-        const m = midiOf(n.deg + (up ? 1 : -1) * (two ? 2 : 1));
+        const inKey = midiOf(n.deg + (up ? 1 : -1) * (two ? 2 : 1));
+        const m = whole ? n.midi + (up ? 2 : -2) : inKey;
+        const outKey = whole && m !== inKey;
         if (m === n.midi || m < MID[0] - 2 || m > (high ? top : MID[1]) + 2) continue;
         // (a 16th's silence before the note comes back: only with room after it)
         const rest = !end && gap && at + len + 1 < n.len;
         if (gap && !rest) continue;
-        fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}), ...(rest ? { gap: 1 } : {}) });
+        fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}), ...(rest ? { gap: 1 } : {}), ...(outKey ? { outKey } : {}) });
+        if (outKey) stat.flickOut++;
         if (rest) stat.flickGaps++;
         stat.byCluster[cl]++;
         stat.flicks++;
@@ -497,7 +508,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     `Bends: ${stat.bends} (into a step: ${stat.bendLens[0]} over an 8th, ${stat.bendLens[1]} over a quarter, ${stat.bendLens[2]} over half a bar)`,
     `Sits out: ${list.map((i, si) => (silent[si] ? i.section?.label ?? '' : '')).filter(Boolean).join(', ') || 'nothing'} (always the intro and solos; interludes, bridges, breakdowns and outros by chance)`,
     ...(flicks === 'off' ? [] : [`Quick notes for ${first.song.genre}: ${G.feel}`]),
-    ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} in 2-bar clusters (frequent ${stat.byCluster.frequent}, moderate ${stat.byCluster.moderate}, sparse ${stat.byCluster.sparse}); ${stat.flickGaps} as a 16th with a 16th's pause before the note comes back, ${stat.flickBends} bent to at a note's end`]),
+    ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} in 2-bar clusters (frequent ${stat.byCluster.frequent}, moderate ${stat.byCluster.moderate}, sparse ${stat.byCluster.sparse}); ${stat.flickGaps} as a 16th with a 16th's pause before the note comes back, ${stat.flickBends} bent to at a note's end; ${stat.flickOut} a whole tone away and out of the key`]),
     `${stat.notes} notes, about ${(songBeats / Math.max(1, stat.notes)).toFixed(1)} beats each; ${stat.pauses} pauses`,
     `Chords: ${lean === 'in' ? 'leaning in' : 'leaning out (key only)'}: strong beats on a chord note ${Math.round((100 * stat.strongTone) / Math.max(1, stat.strong))}%`,
     M.colour ? `Out of key: ${colourWord[M.colour]} (${stat.colour}${stat.colour === 1 ? ' time' : ' times'})` : 'Out of key: none (this mood stays in the scale)',

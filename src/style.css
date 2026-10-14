@@ -194,5 +194,7 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .guidedraw .gbend { stroke: #4fd1a5; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .glegend .k.gbendk { background: #4fd1a5; }
 .guidedraw .gflick { fill: #e879f9; }
+.guidedraw .gflickout { fill: #f43f5e; }
 .guidedraw .gfbend { stroke: #e879f9; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .glegend .k.gflickk { background: #e879f9; }
+.glegend .k.gflickoutk { background: #f43f5e; }
