@@ -279,6 +279,123 @@ export function lyricLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts:
   return slots.map((s) => syl([], s.long ? 'OW' : 'AX', [], s.stress, true, s.long ? 'oh' : 'a'));
 }
 
+/** A syllable of a line written words first (docs/VOCAL-WORDS.md): how much weight it carries, and what follows it. */
+export interface WordSyl extends Syllable {
+  /** 0: light, 1: lightly stressed, 2: stressed, 3: the line's key word. */
+  level: number;
+  /** After it: 0 inside a word, 1 a word's end, 2 a word group's end, 3 a clause's end (where a breath may go). */
+  brk: number;
+}
+
+/** Light first syllables of a weak-strong word (a-WAY, be-FORE, to-NIGHT, re-MAIN). */
+const WEAK_START: W<[Cons[], Vowel, Cons[], string]> = [
+  [[[], 'AX', [], 'a'], 3], [[['B'], 'IH', [], 'be'], 2], [[['R'], 'IH', [], 're'], 1.5], [[['T'], 'AX', [], 'to'], 1.5], [[['F'], 'AX', ['R'], 'for'], 1],
+  [[['D'], 'IH', [], 'de'], 0.8], [[[], 'AX', ['N'], 'un'], 0.6],
+];
+/** Light middle syllables of a strong-weak-weak word (BEAU-ti-ful, E-ve-ry, ME-mo-ry). */
+const WEAK_MID: W<[Cons[], Vowel, Cons[], string]> = [
+  [[['T'], 'IH', [], 'ti'], 1], [[[], 'AX', [], 'a'], 1.5], [[['L'], 'IH', [], 'li'], 1], [[['N'], 'AX', [], 'na'], 0.8], [[['R'], 'IH', [], 'ri'], 0.8], [[['V'], 'AX', [], 've'], 0.6],
+];
+
+/** Two light words as English pairs them (in the, on a, I'm a, and the...), not any two in a row. */
+const FN_PAIRS: W<[[Cons[], Vowel, Cons[], string], [Cons[], Vowel, Cons[], string]]> = [
+  [[[[], 'IH', ['N'], 'in'], [['DH'], 'AX', [], 'the']], 3], [[[[], 'AA', ['N'], 'on'], [['DH'], 'AX', [], 'the']], 2], [[[[], 'AX', ['N', 'D'], 'and'], [['DH'], 'AX', [], 'the']], 2],
+  [[[['T'], 'AX', [], 'to'], [['DH'], 'AX', [], 'the']], 1.5], [[[[], 'AY', ['M'], "I'm"], [[], 'AX', [], 'a']], 1.5], [[[[], 'IH', ['T', 'S'], "it's"], [[], 'AX', [], 'a']], 1],
+  [[[[], 'IH', ['N'], 'in'], [['M'], 'AY', [], 'my']], 1.5], [[[[], 'AX', ['V'], 'of'], [['M'], 'AY', [], 'my']], 1], [[[['F'], 'AX', ['R'], 'for'], [[], 'AX', [], 'a']], 1],
+  [[[[], 'AO', ['L'], 'all'], [['DH'], 'AX', [], 'the']], 0.8], [[[['W'], 'IY', [], 'we'], [['W'], 'AX', ['R'], 'were']], 0.6], [[[['Y'], 'UW', [], 'you'], [['N'], 'OW', [], 'know']], 0.4],
+];
+
+/** A word's shape: S one syllable, Sw BA-by, wS a-WAY, Sww BEAU-ti-ful, wSw to-MOR-row, SS two stresses side by side (COLD NIGHT). */
+type Shape = 'S' | 'Sw' | 'wS' | 'Sww' | 'wSw' | 'SS';
+const SHAPES: W<Shape> = [['S', 5], ['Sw', 3], ['wS', 1.4], ['Sww', 0.7], ['wSw', 0.7], ['SS', 0.8]];
+
+/**
+ * A line of words, written before its rhythm (docs/VOCAL-WORDS.md): word groups as English is said, a
+ * light word or two and then a content word ("the NIGHT", "in the NIGHT", "my BA-by", "a-WAY"), now
+ * and then two stresses side by side. `n`: syllables up to and including the line's key word (its last
+ * stress); `fem`: a soft syllable after it (BA-by, NE-ver). The hook, if any, opens the line. Each
+ * syllable carries its weight and what follows it (a word, group or clause end).
+ */
+export function wordLine(rng: Rng, n: number, style: LyricStyle, opts: { fem?: boolean; hook?: Syllable[] } = {}): WordSyl[] {
+  let best: WordSyl[] | null = null, bestRough = Infinity;
+  for (let tries = 0; tries < 6; tries++) {
+    const out: WordSyl[] = [];
+    const prev = () => out[out.length - 1];
+    let lastV: Vowel | undefined;
+    const hook = (opts.hook ?? []).slice(0, Math.max(0, n - 1));
+    hook.forEach((h, i) => out.push({ ...h, level: h.stress ? 2 : 0, brk: i === hook.length - 1 ? 2 : hook[i + 1].wordStart ? 1 : 0 }));
+    const weak = (list: W<[Cons[], Vowel, Cons[], string]>, wordStart: boolean, brk = 0) => { const s = pick(rng, list, prev(), false, wordStart); out.push({ ...s, level: 0, brk }); };
+    const stressed = (level: number, wordStart: boolean, key: boolean, brk = 0) => {
+      const s = strong(rng, { stress: true, long: key, high: false }, style, lastV, prev());
+      lastV = s.vowel;
+      out.push({ ...s, wordStart, level, brk });
+    };
+    /** A word of shape `sh`; `level`: its stress's weight; `tail`: the line's soft ending (a final Sw / wSw). */
+    const word = (sh: Shape, level: number, key: boolean) => {
+      if (sh === 'SS') { stressed(1, true, false, 1); stressed(level, true, key, 1); return; }
+      if (sh[0] === 'w') weak(WEAK_START, true);
+      stressed(level, sh[0] !== 'w', key, sh.endsWith('S') ? 1 : 0);
+      if (sh.length - (sh[0] === 'w' ? 1 : 0) > 1) {
+        // (a strong-weak word: often opened into its weak syllable, as lyricLine does)
+        const s = prev();
+        if (s.coda.length && rng.chance(0.45)) { s.coda = []; s.text = spellSyl(s.onset, s.vowel, []); }
+        if (sh === 'Sww') weak(WEAK_MID, false);
+        weak(WEAK_END, false, 1);
+      }
+    };
+    const fns = (k: number) => {
+      if (k === 2) { for (const e of weighted(rng, FN_PAIRS)) out.push({ ...fromList(e, false, true), level: 0, brk: 1 }); return; }
+      for (let i = 0; i < k; i++) weak(FUNCTION, true, 1);
+    };
+    const endGroup = (clause: boolean) => { const s = prev(); if (s) s.brk = clause ? 3 : Math.max(s.brk, 2); };
+    // the last group first (its size decides what's left): a light word or two, then the key word
+    const lastShape: Shape = opts.fem ? (rng.chance(0.75) ? 'Sw' : 'wSw') : rng.chance(0.75) ? 'S' : 'wS';
+    const lastStress = lastShape[0] === 'w' ? 2 : 1;
+    let room = n - hook.length - lastStress;
+    if (room < 0) room = 0;
+    const lastFns = Math.min(room, rng.weighted([[0, 1], [1, 1.6], [2, 0.7]]));
+    let mid = room - lastFns;
+    let groups = 0, sinceClause = 0;
+    while (mid > 0) {
+      // a group: light words, then a content word, fitting what's left
+      const f = Math.min(mid - 1, rng.weighted([[0, 1.2], [1, 1.6], [2, 0.6]]));
+      const left = mid - f;
+      const shapes = SHAPES.filter(([sh]) => sh.length <= left);
+      const sh = rng.weighted(shapes);
+      fns(f);
+      word(sh, rng.chance(0.25) ? 1 : 2, false);
+      mid -= f + sh.length;
+      groups++; sinceClause += f + sh.length;
+      endGroup(sinceClause >= 4 && rng.chance(0.35));
+      if (prev().brk === 3) sinceClause = 0;
+    }
+    fns(lastFns);
+    word(lastShape, 3, true);
+    endGroup(true);
+    if (BLOCKED.test(spell(out).toLowerCase().replace(/[^a-z]/g, ''))) continue;
+    const r = roughness(out);
+    if (r < 0.75 && groups >= 0) return out;
+    if (r < bestRough) best = out, bestRough = r;
+  }
+  return best ?? Array.from({ length: n }, (_, i) => ({ ...syl([], i === n - 1 ? 'OW' : 'AX', [], i === n - 1, true, i === n - 1 ? 'oh' : 'a'), level: i === n - 1 ? 3 : 0, brk: i === n - 1 ? 3 : 1 }));
+}
+
+/** A stressed syllable on a long or high note, its closed ee and oo opened up (to ay, oh), as singers do. */
+export function openUp(s: Syllable): Syllable {
+  if (!s.stress || (s.vowel !== 'IY' && s.vowel !== 'UW')) return s;
+  const vowel: Vowel = s.vowel === 'IY' ? 'EY' : 'OW';
+  return { ...s, vowel, text: spellSyl(s.onset, vowel, s.coda) };
+}
+
+/** A line's last stressed syllable given a rhyme (in place). */
+export function rhymeWith(line: Syllable[], r: Rhyme) {
+  const last = [...line].reverse().find((x) => x.stress);
+  if (!last) return;
+  last.vowel = r.vowel;
+  last.coda = [...r.coda];
+  last.text = spellSyl(last.onset, last.vowel, last.coda);
+}
+
 /** The chorus title: two to four syllables, strong first, ending on an open vowel that sings. */
 export function makeHook(rng: Rng, stresses: boolean[], style: LyricStyle): Syllable[] {
   const slots = stresses.map((stress, i) => ({ stress, long: i === stresses.length - 1, high: false }));

@@ -44,7 +44,7 @@ export interface GenOptions {
   /** Who sings the vocal high (the tunes kept under their top; singers.ts), if anyone. */
   vocalSinger?: HighVoice;
   /** How the vocal's rhythm is written: classic (speech rhythm, the default) or on the metronome grid (docs/VOCAL-RHYTHM.md). */
-  vocalRhythm?: 'grid';
+  vocalRhythm?: 'grid' | 'words';
   /** How the vocal's pitches are written: classic (the default), shaped (docs/VOCAL-MELODY.md) or melody first (docs/VOCAL-FIRST.md). */
   vocalMelody?: 'shaped' | 'first';
   /** Shaped: one signature move chosen (src/parts/moves.ts); left out: each song its own, by genre. */

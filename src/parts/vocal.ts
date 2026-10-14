@@ -22,8 +22,8 @@ import { chordTones } from './guitar2';
 import { HIGH_VOICES, type HighVoice, type Timbre } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
 import { firstDesc, firstStyle } from './first';
-import { FLOOR, PEAK, type Tune, type TuneNote, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
-import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, rhymeOf, spell } from './lyrics';
+import { FLOOR, PEAK, type Tune, type TuneNote, WORD_RATE, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
+import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, openUp, rhymeOf, rhymeWith, spell } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -46,6 +46,8 @@ export interface VocalNote {
   belt?: boolean;
   /** A high note held (a belt, or a jump up to the line's top): held half a bar, never falling off, left room by Guitar 2. */
   peak?: boolean;
+  /** Words first: its place in a beat of three quick syllables sung as a triplet (tripletize). */
+  trip?: number;
 }
 
 export type VoiceType = 'low' | 'high';
@@ -154,9 +156,10 @@ function onEighths(tune: Tune): Tune {
 }
 
 /** A tune as sung: settled (no quick turns), spoken (speech rhythm), with room to breathe. */
-function shape(tune: Tune, rng: Rng, syncop: number, grid = false): Tune {
-  // (the grid's rhythm has its own pushes, on the grid: no speech-rhythm pushes on top)
-  const t = onEighths(grid ? settle(tune) : speak(settle(tune), rng, syncop));
+function shape(tune: Tune, rng: Rng, syncop: number, grid = false, words = false): Tune {
+  // (the grid's rhythm has its own pushes, on the grid: no speech-rhythm pushes on top; words first:
+  // its quick light syllables kept on their 16ths, docs/VOCAL-WORDS.md)
+  const t = words ? settle(tune) : onEighths(grid ? settle(tune) : speak(settle(tune), rng, syncop));
   breathe(t.notes);
   return t;
 }
@@ -196,7 +199,9 @@ function spaceOut(tune: Tune, space: number, rng: Rng): Tune {
     if (syl.length >= 6 && rng.chance(space)) {
       // (up to half the words, cut where a new syllable starts at least a beat after the first)
       const most = Math.floor(syl.length / 2) - 1;
-      for (let k = 1; k <= most; k++) if (L[syl[k]].step - L[0].step >= 4) { cut = syl[k]; break; }
+      // (words first: only where a word group ends, not in the middle of one)
+      const groupEnd = (k: number) => { const p = L[syl[k - 1]].syl; return !p || p.brk >= 2; };
+      for (let k = 1; k <= most; k++) if (L[syl[k]].step - L[0].step >= 4 && groupEnd(k)) { cut = syl[k]; break; }
     }
     const keep = L.slice(cut);
     if (keep.length) keep[0] = { ...keep[0], start: true, tie: false };
@@ -209,16 +214,27 @@ function spaceOut(tune: Tune, space: number, rng: Rng): Tune {
  * Words for a tune: rhymes on every other line, the chorus hook at the start of lines 1 and 3. A carried
  * note carries on the last syllable's vowel, its closing consonants moved to the end.
  */
-function writeWords(rng: Rng, tune: Tune, style: LyricStyle, hook: Syllable[] | null, hi: number): Syllable[] {
+function writeWords(rng: Rng, tune: Tune, style: LyricStyle, hook: Syllable[] | null, hi: number, own = true): Syllable[] {
   const sung: Syllable[] = [];
   let rhyme: Rhyme | null = null;
   const tied = carried(tune);
+  // (words first, docs/VOCAL-WORDS.md: the tune's own words, written before its rhythm; later verses get new ones to its rhythm)
+  const mine = own && tune.notes.some((n) => n.syl);
   for (let li = 0; li < tune.lines; li++) {
     const ns = tune.notes.filter((n, i) => n.line === li && !tied[i]);
     if (!ns.length) continue;
+    let line: Syllable[];
+    if (mine) {
+      // (long and high notes open their closed vowels, now the pitches are known)
+      line = ns.map((n) => { const s: Syllable = n.syl ? { ...n.syl } : { onset: [], vowel: 'AX', coda: [], stress: false, text: 'a', wordStart: true }; return n.len >= 4 || n.midi >= hi - 3 ? openUp(s) : s; });
+      if (li % 2 === 1 && rhyme) rhymeWith(line, rhyme);
+      if (li % 2 === 0) rhyme = rhymeOf(line);
+      sung.push(...line);
+      continue;
+    }
     const slots: LyricSlot[] = ns.map((n) => ({ stress: n.stress, long: n.len >= 4, high: n.midi >= hi - 3 }));
     const useHook = hook && li % 2 === 0 ? hook.slice(0, Math.min(hook.length, ns.length - 1)) : undefined;
-    const line = lyricLine(rng, slots, style, { rhyme: li % 2 === 1 ? rhyme : null, hook: useHook });
+    line = lyricLine(rng, slots, style, { rhyme: li % 2 === 1 ? rhyme : null, hook: useHook });
     if (li % 2 === 0) rhyme = rhymeOf(line);
     sung.push(...line);
   }
@@ -254,6 +270,8 @@ export interface SingContext {
   high?: HighVoice;
   /** The rhythm on the metronome grid (docs/VOCAL-RHYTHM.md) instead of the classic speech rhythm. */
   grid?: boolean;
+  /** Words first (docs/VOCAL-WORDS.md): each line's words written before its rhythm, set to the grid. */
+  words?: boolean;
   /** The pitches written the shaped way (docs/VOCAL-MELODY.md) instead of the classic way. */
   shaped?: boolean;
   /** Melody first (docs/VOCAL-FIRST.md; on top of shaped's range and moves): the tune's own spine and idea, fitted to the chords last. */
@@ -302,6 +320,11 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   const blocks = new Map<SectionKind, { tune: Tune; key: number; bars: number; words: Syllable[]; tag: string; ref: number }>();
   const hookStress = rng.pick([[true, false, true], [true, true], [true, false, true, false], [true, false]]);
   const hook = makeHook(new Rng(`${ctx.seed}-hook-words`), hookStress, style);
+  // words first (docs/VOCAL-WORDS.md): how wordy the song is (its genre's rate, its own lean), its triplets, its soft endings
+  if (ctx.words) {
+    const wr = new Rng(`${ctx.seed}-words-rate`);
+    melody.words = { rate: 0.75 + 0.55 * wr.next(), trip: WORD_TRIP[ctx.genre], fem: WORD_FEM[ctx.genre], lyric: style, hook };
+  }
   const seen: Partial<Record<SectionKind, number>> = {};
   let told = false;
   sections.forEach((idea, si) => {
@@ -318,14 +341,14 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
       // (written at its section's energy, by the energy style's dials)
       const st = es ? energize(melody, dialsFor(es, levelOf(src.section?.energy ?? 3, eLo, eHi)), as, bandBusy(src), es) : melody;
-      const tune = spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}`), st.singer.syncop, melody.grid), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}`));
+      const tune = spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}`), st.singer.syncop, melody.grid, !!melody.words), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}`));
       const words = writeWords(new Rng(`${ctx.seed}-words-${as}`), tune, style, as === 'chorus' ? hook : null, base + 6);
       const t = idea.section?.tension ?? [];
       b = { tune, key: src.song.key, bars: src.song.bars.length, words, tag: as, ref: t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0.5 };
       blocks.set(as, b);
     }
     // later verses: the same tune with new words; choruses: word for word
-    const words = as === 'verse' && n > 1 ? writeWords(new Rng(`${ctx.seed}-words-verse-${n}`), b.tune, style, null, base + 6) : b.words;
+    const words = as === 'verse' && n > 1 ? writeWords(new Rng(`${ctx.seed}-words-verse-${n}`), b.tune, style, null, base + 6, false) : b.words;
     let shift = mod(idea.song.key - b.key + 6, 12) - 6;
     // (a key change that would take the tune out of reach: sung an octave down)
     if (Math.max(...b.tune.notes.map((x) => x.midi)) + shift > PEAK + melody.up + 2) shift -= 12;
@@ -339,7 +362,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         if (g >= total || blockSteps <= 0) return;
         // (an outro sings only its first half, then lets the band play out)
         if (kind === 'outro' && g >= Math.max(blockLen / 2, total / 2)) return;
-        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt, ...(t.colour ? { colour: true } : {}), ...(t.peak ? { peak: true } : {}) });
+        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt, ...(t.colour ? { colour: true } : {}), ...(t.peak ? { peak: true } : {}), ...(t.trip !== undefined ? { trip: t.trip } : {}) });
       });
     }
     // the tune follows the tension curve, line by line: reaching up as the song builds, settling as it lets go
@@ -374,6 +397,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       against = deliverEnergy(idea, es, sections.length > 1 ? againstFor(new Rng(`${ctx.seed}-against-${si}`), info.energy, si === firstSung) : null, FLOOR + melody.up, PEAK + melody.up + 1 + melody.top);
     }
     if (ctx.high) fitHigh(idea, ctx.high);
+    const trips = tripletize(idea.vocal);
     const quick = quicken(idea.vocal, 15 / idea.song.bpm, new Rng(`${ctx.seed}-quick-${si}`));
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
@@ -381,6 +405,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`);
         if (es) idea.notes.push(`Energy (${ctx.energy ? 'chosen' : 'this song\'s'}): ${ENERGY[es].label}, like ${ENERGY[es].like}: ${ENERGY[es].desc}`);
         if (melody.first) idea.notes.push(`Melody: ${firstDesc(melody.first)}`);
+        if (melody.words) idea.notes.push(`Rhythm: words first, the words written before the rhythm: word groups set to the grid, quick light words, soft line endings; about ${(melody.words.rate * WORD_RATE[ctx.genre]).toFixed(1)} syllables a second in verses (${GENRE_LABEL[ctx.genre].toLowerCase()}, this song ${melody.words.rate >= 1.1 ? 'wordier' : melody.words.rate <= 0.9 ? 'sparer' : 'about usual'})`);
         if (melody.moves?.length) idea.notes.push(`Melody moves (${ctx.move ? 'chosen' : 'this song\'s signature'}): ${movesDesc(melody.moves)}`);
         told = true;
       }
@@ -388,12 +413,34 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
       const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
       if (quick) fitBits.push(`${quick === 1 ? 'a run' : `${quick} runs`} sung quicker than the beat`);
+      if (trips) fitBits.push(`${trips === 1 ? 'a triplet' : `${trips} triplets`}`);
       if (fitBits.length) idea.notes.push(`Vocal fits the band: ${fitBits.join(', ')}`);
       if (against) idea.notes.push(`Vocal against the band: ${against}`);
       if (bits.length) idea.notes.push(`Vocal follows the tension: ${moved.up ? 'reaching up' : 'settling down'} (notes moved ${bits.join(', ')})`);
     }
   });
 }
+
+/** Words first's triplets (docs/VOCAL-WORDS.md): a beat's three quick syllables, marked when set, sung evenly in thirds of the beat (fractional steps). */
+function tripletize(v: VocalNote[]): number {
+  let made = 0;
+  for (let i = 0; i + 2 < v.length; i++) {
+    const [a, b, c] = [v[i], v[i + 1], v[i + 2]];
+    if (a.trip !== 0 || b.trip !== 1 || c.trip !== 2) continue;
+    const g = a.step;
+    // (still in their beat after the fitting: else left as they are)
+    if (!(b.step > g && c.step > b.step && c.step < g + 4)) continue;
+    const end = c.step + c.len;
+    a.len = 4 / 3; b.step = g + 4 / 3; b.len = 4 / 3; c.step = g + 8 / 3; c.len = Math.max(4 / 3, end - c.step);
+    made++;
+    i += 2;
+  }
+  return made;
+}
+
+/** How often a beat of three quick syllables is sung as a triplet, and a line ends softly (BA-by), by genre (words first). */
+const WORD_TRIP: Record<Genre, number> = { pop: 0.35, funk: 0.45, rock: 0.3, hardrock: 0.25, metal: 0.15, grunge: 0.2, altmetal: 0.3 };
+const WORD_FEM: Record<Genre, number> = { pop: 0.5, funk: 0.4, rock: 0.45, hardrock: 0.4, metal: 0.3, grunge: 0.45, altmetal: 0.4 };
 
 /**
  * Runs aren't locked to the band's grid (Paul: in a slow song the vocal is "super slow and draggy";
@@ -459,9 +506,9 @@ function leaveRoom(idea: Idea) {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, grid = false, melody?: 'shaped' | 'first', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off') {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, rhythm?: 'grid' | 'words', melody?: 'shaped' | 'first', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off') {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
-  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid, shaped: !!melody, first: melody === 'first', move, high, energy }, 0);
+  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid: rhythm === 'grid', words: rhythm === 'words', shaped: !!melody, first: melody === 'first', move, high, energy }, 0);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum, fake.vocalEnergy), mood, energy: fake.vocalEnergy }, -1);
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;

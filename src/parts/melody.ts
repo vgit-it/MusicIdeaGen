@@ -23,7 +23,7 @@ import type { Mood } from '../tension';
 import { SCALES, chordPc } from '../theory';
 import { MINORISH, chordTones } from './guitar2';
 import { type Band, bandScore, bassAt, harmonyOf } from './fit';
-import type { Syllable } from './lyrics';
+import { type LyricStyle, type Syllable, type WordSyl, wordLine } from './lyrics';
 import type { MoveId } from './moves';
 import { type FirstStyle, spineAt } from './first';
 import { type RunKind, type Singer, type Timbre, VOICE_DOWN, phrasePlan, pickSinger, pickTimbre } from './singers';
@@ -105,6 +105,12 @@ export interface MelodyStyle {
   energyReg?: number;
   /** Chance a line leaves its first words out, starting later (energy.ts: a Drifter's space). */
   space?: number;
+  /**
+   * Words first (docs/VOCAL-WORDS.md): each line's words written before its rhythm, then set to the grid.
+   * `rate`: the song's lean on its genre's syllables a second; `trip`: the chance a beat of three quick
+   * syllables is sung as a triplet; `fem`: the chance a line ends softly (BA-by); the lyric's style; the chorus hook.
+   */
+  words?: { rate: number; trip: number; fem: number; lyric: LyricStyle; hook: Syllable[] | null };
 }
 
 type W<T> = [T, number][];
@@ -436,8 +442,171 @@ function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: Secti
   return { onsets: os, end };
 }
 
+/** Syllables a second in a verse, by genre (docs/VOCAL-WORDS.md; Paul: "a bit random, biased by genre"): funk the wordiest, grunge the least. */
+export const WORD_RATE: Record<Genre, number> = { funk: 3.6, pop: 3.2, rock: 3, hardrock: 2.8, altmetal: 2.8, metal: 2.5, grunge: 2.4 };
+/** And by section: verses tell the story, choruses open out. */
+const SECTION_RATE: Partial<Record<SectionKind, number>> = { verse: 1, prechorus: 1.05, chorus: 0.72, bridge: 0.85, outro: 0.72 };
+
+/** A line's rhythm kept for the lines that come back: each syllable's place and weight, the key word's, how many soft ones end it (steps from the line's start). */
+interface WordTemplate { pos: number[]; levels: number[]; hold: number; tail: number; tailGap: number }
+
+/**
+ * Where a line's key word lands and is held (docs/VOCAL-WORDS.md): beat 1 or the middle beat of its last
+ * bar (a one-bar line: its middle beat); a long hold lands in the bar before and holds through the bar
+ * line; a soft ending needs a beat after it; now and then an 8th early (rock's anticipation).
+ */
+function wordHold(rng: Rng, bars: Bar[], holdLen: HoldLen, sync: number, tail: boolean): number {
+  const b1 = bars[0], bl = bars[bars.length - 1];
+  const gl = groupStarts(bl.groups);
+  const mid = gl[Math.floor(bl.groups.length / 2)] || gl[gl.length - 1] || 0;
+  let H: number;
+  if (bars.length === 1) H = b1.start + mid;
+  else if (holdLen === 'long') {
+    const pen = bars[bars.length - 2], gp = groupStarts(pen.groups);
+    H = pen.start + gp[Math.max(1, gp.length - rng.weighted([[1, 2], [2, 2]]))];
+  } else H = rng.chance(holdLen === 'short' ? 0.45 : 0.6) ? bl.start : bl.start + mid;
+  const lineEnd = bl.start + bl.len;
+  if (tail && H + 6 > lineEnd && H - 4 >= b1.start + 4) H -= 4;
+  if (rng.chance(sync * 0.4) && H - 2 > b1.start + 2) H -= 2;
+  return H;
+}
+
+/**
+ * A line's words set to the grid (docs/VOCAL-WORDS.md): every placement weighed and the best kept. The
+ * key word lands on `hold` and is held; the syllables before it go where English puts them: stresses on
+ * the beats (or pushed an 8th ahead of a strong one, by the singer's syncopation), light ones between
+ * (on 16ths in quick pairs where `quick`), short; no rest inside a word, no breath inside a word group;
+ * not plodding in even quarters. A soft ending comes after the key word. A line that comes back keeps
+ * close to its first one's places (`tpl`; `exact`: the same places when its words have the same shape).
+ * Now and then a beat of three quick syllables is sung as a triplet (`trip` on its notes).
+ */
+function wordRhythm(rng: Rng, bars: Bar[], words: WordSyl[], o: { start: Start; syncop: number; u: number; quick: boolean; trip: number; hold: number; tpl?: WordTemplate & { until: number; exact: boolean } }): LineRhythm & { keep: number } {
+  const b1 = bars[0], bl = bars[bars.length - 1];
+  const lineEnd = bl.start + bl.len;
+  const H = o.hold;
+  // the metronome's weights: beat 1, the middle beat, the other beats, 8ths, 16ths (in a slow song, its 8ths count as beats)
+  const beatW = new Map<number, number>();
+  for (const b of bars) {
+    const gs = groupStarts(b.groups);
+    const mid = b.groups.length >= 2 && b.groups.length % 2 === 0 ? b.groups.length / 2 : -1;
+    gs.forEach((x, gi) => beatW.set(b.start + x, gi === 0 ? 4 : gi === mid ? 3 : 2));
+  }
+  const weight = (g: number) => beatW.get(g) ?? (o.u === 1 ? (g % 2 ? 0.5 : 1.5) : g % 2 ? 0 : 1);
+  let ws = words;
+  let key = ws.findIndex((w) => w.level === 3);
+  if (key < 0) key = ws.length - 1;
+  const tpl = o.tpl;
+  let pos: number[] | null = null;
+  // (the same shape of words as the line it repeats: its places again)
+  if (tpl?.exact && ws.length === tpl.levels.length && ws.every((w, i) => w.level === tpl.levels[i])) pos = tpl.pos.map((x) => b1.start + x);
+  if (!pos) {
+    const s0 = Math.max(0, b1.start - (o.start === 'pickup' ? 6 : 2));
+    const lv = (i: number) => ws[i].level, br = (i: number) => ws[i].brk;
+    const cost = (i: number, p: number) => {
+      const w = weight(p), L = lv(i);
+      let c = 0;
+      if (L >= 2) c += w >= 2 ? -0.2 * (w - 1) : w >= 1 ? (weight(p + 2) >= 3 ? Math.max(0.2, 1.1 - 0.9 * o.syncop) : 2.5) : 4;
+      else if (L === 1) c += w >= 2 ? -0.2 : w >= 1 ? 0.5 : 2;
+      else c += w >= 3 ? 0.8 : w >= 2 ? 0.3 : w >= 1 ? 0 : 0.2;
+      if (i === 0) {
+        if (o.start === 'down' && p < b1.start) c += 2;
+        if (o.start === 'after' && p === b1.start) c += 2;
+        if (o.start === 'pickup' && p >= b1.start && L === 0) c += 0.8;
+        c += 0.2 * Math.max(0, p - b1.start - (o.start === 'after' ? 4 : 2));
+      }
+      if (tpl && tpl.pos[i] !== undefined && tpl.pos[i] < tpl.until && p === b1.start + tpl.pos[i]) c -= 1.2;
+      return c + rng.next() * 0.5;
+    };
+    const trans = (i: number, gap: number, force: boolean) => {
+      const quickOk = force || o.u === 1 || (o.quick && lv(i - 1) === 0 && br(i - 1) <= 1);
+      if (gap < (quickOk ? 1 : 2)) return Infinity;
+      const b = br(i - 1);
+      let c = 0;
+      // (a rest inside a word; a gap inside a word group; a breath only where a group or clause ends)
+      if (b === 0) c += gap > 4 ? 3 + (gap - 4) : 0;
+      else if (b === 1) c += gap > 6 ? 1.5 + 0.5 * (gap - 6) : 0;
+      else if (gap > 8) c += (b >= 3 ? 0 : 0.5) + 0.1 * (gap - 8);
+      if (b < 3) c += 0.15 * Math.max(0, gap - 4);
+      // (stresses long, light syllables short; no plodding quarters)
+      if (lv(i - 1) >= 2 && gap === 1) c += 1;
+      if (lv(i - 1) === 0 && gap >= 4 && b < 2) c += gap >= 6 ? 1.2 : lv(i) === 0 ? 0.8 : 0.4;
+      if (gap === 4 && lv(i - 1) <= 1 && lv(i) <= 1) c += 0.3;
+      return c;
+    };
+    const solve = (force: boolean): number[] | null => {
+      if (key === 0) return [H];
+      const P = H - s0;
+      if (P <= 0) return null;
+      const best: number[][] = [], from: number[][] = [];
+      for (let i = 0; i < key; i++) {
+        best.push(new Array(P).fill(Infinity));
+        from.push(new Array(P).fill(-1));
+        for (let j = 0; j < P; j++) {
+          const c = cost(i, s0 + j);
+          if (i === 0) { best[0][j] = c; continue; }
+          for (let q = Math.max(0, j - 16); q < j; q++) {
+            if (best[i - 1][q] === Infinity) continue;
+            const t = best[i - 1][q] + trans(i, j - q, force) + c;
+            if (t < best[i][j]) { best[i][j] = t; from[i][j] = q; }
+          }
+        }
+      }
+      let bj = -1, bc = Infinity;
+      for (let j = 0; j < P; j++) {
+        if (best[key - 1][j] === Infinity) continue;
+        const t = best[key - 1][j] + trans(key, P - j, force);
+        if (t < bc) { bc = t; bj = j; }
+      }
+      if (bj < 0) return null;
+      const out = [H];
+      for (let i = key - 1, j = bj; i >= 0; j = from[i][j], i--) out.unshift(s0 + j);
+      return out;
+    };
+    // (too many words for the room: quicker, then the first words left out)
+    let pre = solve(false) ?? solve(true);
+    while (!pre && key > 1) {
+      ws = ws.slice(1);
+      ws[0] = { ...ws[0], wordStart: true };
+      key--;
+      pre = solve(true);
+    }
+    if (!pre) { ws = ws.slice(key); key = 0; pre = [H]; }
+    // the soft ending: a beat (or an 8th, or more) after the key word
+    const tail = ws.length - 1 - key;
+    let tg = tpl && tpl.tail === tail ? tpl.tailGap : rng.weighted([[2, 1], [4, 1.2], [6, 0.5]]);
+    while (tg > 2 && H + tg + 2 * (tail - 1) > lineEnd - 2) tg -= 2;
+    pos = [...pre];
+    for (let t = 0; t < tail; t++) pos.push(H + tg + 2 * t);
+  }
+  const tail = ws.length - 1 - key;
+  const last = pos[pos.length - 1];
+  const breath = bl.groups[bl.groups.length - 1];
+  const end = Math.max(last + 2, lineEnd - breath);
+  // triplets: a beat of three quick syllables (light ones after the first), now and then said as a triplet
+  const trip: (number | undefined)[] = new Array(ws.length).fill(undefined);
+  if (o.trip > 0 && o.u === 2) {
+    // (quarter-note beats only: a dotted beat's three 8ths are its own already)
+    const quarters = bars.flatMap((b) => groupStarts(b.groups).filter((_, gi) => b.groups[gi] === 4).map((x) => b.start + x));
+    for (const g of quarters) {
+      const inBeat = pos.map((_, i) => i).filter((i) => pos![i] >= g && pos![i] < g + 4);
+      if (inBeat.length !== 3 || pos[inBeat[0]] !== g || inBeat.some((i, k) => i >= key || (k > 0 && ws[i].level >= 2))) continue;
+      if (!inBeat.some((i) => pos![i] % 2) || !rng.chance(o.trip)) continue;
+      inBeat.forEach((i, k) => { trip[i] = k; });
+    }
+  }
+  // (quick: on a 16th, or a 16th after the last: said quickly, never merged into the syllable before)
+  const onsets = ws.map((w, i) => ({
+    g: pos![i], stress: w.level >= 2 || (w.level === 1 && weight(pos![i]) >= 2), syl: w,
+    ...(pos![i] % 2 || (i > 0 && pos![i] - pos![i - 1] < 2) ? { quick: true } : {}), ...(trip[i] !== undefined ? { trip: trip[i] } : {}),
+  }));
+  let keep = 0;
+  if (tpl) while (keep < pos.length && keep < tpl.pos.length && pos[keep] - b1.start === tpl.pos[keep] && tpl.pos[keep] < tpl.until) keep++;
+  const tg = tail ? pos[key + 1] - H : 2;
+  return { onsets, end, keep, tpl: { pos: pos.map((p) => p - b1.start), levels: ws.map((w) => w.level), hold: H - b1.start, tail, tailGap: tg } };
+}
+
 /** A line's rhythm: onsets (absolute steps) with stress (`quick`: a light syllable on a 16th, see `fine`), and where its last (held) note ends. */
-interface LineRhythm { onsets: { g: number; stress: boolean; quick?: boolean }[]; end: number }
+interface LineRhythm { onsets: { g: number; stress: boolean; quick?: boolean; syl?: WordSyl; trip?: number }[]; end: number; tpl?: WordTemplate }
 
 type HoldLen = 'short' | 'mid' | 'long';
 interface PhraseOpts { busy: number; start: Start; sync: number; flow: number; syncop: number; hold: number; holdLen: HoldLen; changes: number[]; fine: boolean; slow: number }
@@ -565,7 +734,7 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
  * `slide`: scooped up into from so many semitones below; `fall`: falls off its end by so many; `belt`: a wail;
  * `peak`: a high note held (a belt, or a jump up to the line's top: held half a bar, never falling off).
  */
-export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean; colour?: boolean; peak?: boolean }
+export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean; colour?: boolean; peak?: boolean; syl?: WordSyl; trip?: number }
 /** A melody block (one section's worth), before its words. */
 export interface Tune { notes: TuneNote[]; lines: number }
 
@@ -588,7 +757,7 @@ const headOf = (rh: LineRhythm, split: number) => rh.onsets.filter((o) => o.g < 
 /** Where a line splits into motif and answer: its middle bar line (a one-bar line: its middle beat). */
 const splitOf = (L: Bar[]) => (L.length > 1 ? L[Math.floor(L.length / 2)].start : L[0].start + groupStarts(L[0].groups)[Math.floor(L[0].groups.length / 2)]);
 
-interface Motif { rh: LineRhythm; start: number; split: number; lens: number[]; shape: number[]; alt: number[] }
+interface Motif { rh: LineRhythm; start: number; split: number; lens: number[]; shape: number[]; alt: number[]; tpl?: WordTemplate }
 
 /**
  * The tune of a block: lines of one to four bars (the singer's phrase plan) written by the style's form
@@ -810,7 +979,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const top = Math.max(...idxs.map((x, k) => pool[x] + alts[k]));
     let seenTop = false;
     idxs.forEach((x, k) => { if (pool[x] + alts[k] !== top) return; if (seenTop && !rh.onsets[k].stress && k !== n - 1) idxs[k] = clampIdx(x - 1); seenTop = true; });
-    const lineNotes: TuneNote[] = rh.onsets.map((o, oi) => ({ step: o.g, len: Math.max(1, lens[oi]), midi: pool[idxs[oi]] + alts[oi], stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}) }));
+    const lineNotes: TuneNote[] = rh.onsets.map((o, oi) => ({ step: o.g, len: Math.max(1, lens[oi]), midi: pool[idxs[oi]] + alts[oi], stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}), ...(o.syl ? { syl: o.syl } : {}), ...(o.trip !== undefined ? { trip: o.trip } : {}) }));
     return { rh, shape: idxs.map((x) => x - anchor), alt: alts, lineNotes };
   };
   const lineMotif = motifs;
@@ -1002,7 +1171,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const top = Math.max(...idxs);
     let seenTop = false;
     idxs.forEach((x, k) => { if (x !== top) return; if (seenTop && !rh.onsets[k].stress && k !== n - 1 && !colour[k]) idxs[k] = clampIdx(x - 1); seenTop = true; });
-    const lineNotes: TuneNote[] = rh.onsets.map((o, oi) => ({ step: o.g, len: Math.max(1, lens[oi]), midi: pool[idxs[oi]], stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}), ...(colour[oi] ? { colour: true } : {}) }));
+    const lineNotes: TuneNote[] = rh.onsets.map((o, oi) => ({ step: o.g, len: Math.max(1, lens[oi]), midi: pool[idxs[oi]], stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}), ...(o.syl ? { syl: o.syl } : {}), ...(o.trip !== undefined ? { trip: o.trip } : {}), ...(colour[oi] ? { colour: true } : {}) }));
     return { rh, shape: idxs.map((x) => x - s0), alt: new Array(n).fill(0), lineNotes, goalM: pool[goal] };
   };
 
@@ -1082,6 +1251,37 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     ns.sort((a, b) => a.step - b.step || (a.tie ? 1 : 0) - (b.tie ? 1 : 0));
   };
 
+  /**
+   * Words first (docs/VOCAL-WORDS.md): a line's words, then their rhythm on the grid. How many syllables:
+   * the song's rate (by genre, its own lean), the section's, the singer's and energy's busy-ness, for the
+   * time the line has to sing; a line that comes back about as many as its first (a syllable more or less
+   * now and then), set close to its rhythm. Chorus lines 1 and 3 open with the hook.
+   */
+  const wordsFor = (rng: Rng, L: Bar[], li: number, po: PhraseOpts, prevM: Motif | undefined, same: boolean, split: number) => {
+    const W = style.words!;
+    const u = gridUnit(song.bpm);
+    // (a light syllable said on a 16th: while a 16th lasts long enough to say one)
+    const quick = 15 / song.bpm >= 0.085;
+    const tpl = prevM?.tpl;
+    const fem = tpl ? (tpl.tail > 0 ? rng.chance(0.85) : rng.chance(0.1)) : rng.chance(W.fem);
+    const H = tpl ? L[0].start + tpl.hold : wordHold(rng, L, po.holdLen, po.sync, fem);
+    const verse = kind === 'verse' || kind === 'prechorus';
+    const sb = Math.max(0.6, Math.min(1.6, (verse ? style.busyVerse : style.busyChorus) / GENRE_MELODY[genre].busy)) ** 0.6;
+    const more = (kind === 'prechorus' && li === last ? 1.2 : 1) * (sPos(li) === 2 ? 1.2 : 1);
+    const secs = ((H - L[0].start) * 15) / song.bpm;
+    let n = tpl ? tpl.levels.length - tpl.tail + (rng.chance(0.35) ? rng.pick([-1, 1]) : 0)
+      : Math.round(W.rate * WORD_RATE[genre] * (SECTION_RATE[kind] ?? 1) * sb * more * secs * (0.85 + 0.3 * rng.next())) + 1;
+    // (no more than the grid holds: 8ths, or 16ths for some of the light ones)
+    const room = H - Math.max(0, L[0].start - (po.start === 'pickup' ? 6 : 2));
+    n = Math.max(2, Math.min(n, Math.floor(room / (quick ? 1.5 : u === 1 ? 1.3 : 2)) + 1));
+    const hook = W.hook && big && li % 2 === 0 ? W.hook : undefined;
+    const words = wordLine(rng, n, W.lyric, { fem, hook });
+    return wordRhythm(rng, L, words, {
+      start: po.start, syncop: po.syncop, u, quick, trip: W.trip, hold: H,
+      tpl: tpl ? { ...tpl, until: same ? Infinity : split - L[0].start, exact: same && rng.chance(0.6) } : undefined,
+    });
+  };
+
   lines.forEach((L, li) => {
     const letter = form[li];
     const name = letter.toUpperCase();
@@ -1103,7 +1303,14 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       let rh: LineRhythm;
       let keep = 0;
       const fits = prev && L.length === prev.lens.length && L.every((b, k) => b.len === prev.lens[k]);
-      if (prev && fits) {
+      if (style.words) {
+        // words first (docs/VOCAL-WORDS.md): the line's words, then their rhythm; a line that comes back
+        // gets new words set close to its first rhythm (its first half only, a primed one)
+        const st = li === 0 && start === 'pickup' ? 'down' : start;
+        const po = opts(st, busy);
+        const w = wordsFor(rng, L, li, po, fits ? prev : undefined, letter === name, split);
+        rh = w; keep = w.keep;
+      } else if (prev && fits) {
         const off = lineStart - prev.start;
         if (letter === name) {
           rh = { onsets: prev.rh.onsets.map((o) => ({ ...o, g: o.g + off })), end: prev.rh.end + off };
@@ -1205,7 +1412,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
         prevIdx = idx;
         shape.push(idx - anchor);
         alt.push(a);
-        lineNotes.push({ step: g, len: Math.max(1, len), midi: pool[idx] + a, stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}) });
+        lineNotes.push({ step: g, len: Math.max(1, len), midi: pool[idx] + a, stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}), ...(o.syl ? { syl: o.syl } : {}), ...(o.trip !== undefined ? { trip: o.trip } : {}) });
       });
       return { rh, shape, alt, lineNotes };
     };
@@ -1227,7 +1434,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     }
     const { rh, shape, alt } = best;
     notes.push(...best.lineNotes);
-    if (!prev) motifs.set(name, { rh, start: lineStart, split, lens: L.map((b) => b.len), shape, alt });
+    if (!prev) motifs.set(name, { rh, start: lineStart, split, lens: L.map((b) => b.len), shape, alt, tpl: rh.tpl });
   });
 
   /**
@@ -1366,7 +1573,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   if (style.shaped) applyMoves(out);
   wail(rng, out, form, kind, style, tonesAt);
   singable(out, pool);
-  out = holdHighs(out, bars, total);
+  out = holdHighs(out, bars, total, pool);
   const sung = ornament(rng, out, style, pool, tonesAt, { key, minorish, kind, step: 60 / song.bpm / 4 });
   deliver(rng, sung, style);
   // (a held high note never falls off its end: it fades, as held notes do; Paul)
@@ -1399,7 +1606,7 @@ function holdInside(rng: Rng, rh: LineRhythm, bars: Bar[], chance: number): Line
  * (or within a semitone of it), is held at least half its bar; the words in its way are left out (the
  * line's next words come after it), a beat's breath before the next line (or, no room, sung into it). Marked `peak`: it never falls off.
  */
-function holdHighs(notes: TuneNote[], bars: Bar[], total: number): TuneNote[] {
+function holdHighs(notes: TuneNote[], bars: Bar[], total: number, pool: number[]): TuneNote[] {
   const gone = new Set<TuneNote>();
   const sung = notes.filter((n) => !n.tie);
   const top = new Map<number, number>();
@@ -1416,7 +1623,14 @@ function holdHighs(notes: TuneNote[], bars: Bar[], total: number): TuneNote[] {
     const nextLine = sung.find((x) => x.line > n.line && !gone.has(x));
     // (a beat's breath before the next line; no room for one: sung through into it)
     const limit = Math.min(total, !nextLine ? total : nextLine.step - 4 >= n.step + half ? nextLine.step - 4 : nextLine.step);
-    const end = Math.min(n.step + half, limit);
+    let end = Math.min(n.step + half, limit);
+    // (words first: no word left out for it, held up to the next syllable; a jump up that can't be held
+    // half a bar there isn't made: a step up instead, Paul's rule kept)
+    const nextSyl = notes.find((x) => x !== n && x.syl && !x.tie && x.line === n.line && x.step > n.step && x.step < end);
+    if (nextSyl) {
+      end = nextSyl.step;
+      if (end - n.step < half && !n.belt && prev) { n.midi = pool.find((m) => m > prev.midi) ?? prev.midi; n.peak = false; return; }
+    }
     if (end <= n.step + n.len) return;
     // (the line's own notes in its way left out, ties and all)
     for (const x of notes) if (x !== n && x.line === n.line && x.step > n.step && x.step < end) gone.add(x);

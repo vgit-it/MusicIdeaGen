@@ -612,7 +612,7 @@ const partsPanel = buildPartsPanel($('parts'), engine, () => {
   set: (k, v) => {
     if (!idea) return;
     // (a move chosen: the melody goes Shaped, where the moves live)
-    const opts = k === 'rhythm' ? { ...idea.opts, vocalRhythm: v === 'grid' ? ('grid' as const) : undefined }
+    const opts = k === 'rhythm' ? { ...idea.opts, vocalRhythm: v === 'grid' || v === 'words' ? (v as 'grid' | 'words') : undefined }
       : k === 'melody' ? { ...idea.opts, vocalMelody: v === 'shaped' || v === 'first' ? (v as 'shaped' | 'first') : undefined }
       : k === 'energy' ? { ...idea.opts, vocalEnergy: v === 'auto' ? undefined : v }
       : { ...idea.opts, vocalMove: v === 'auto' ? undefined : v, ...(v !== 'auto' && !idea.opts.vocalMelody ? { vocalMelody: 'shaped' as const } : {}) };
