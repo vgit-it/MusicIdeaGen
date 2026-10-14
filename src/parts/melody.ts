@@ -108,9 +108,10 @@ export interface MelodyStyle {
   /**
    * Words first (docs/VOCAL-WORDS.md): each line's words written before its rhythm, then set to the grid.
    * `rate`: the song's lean on its genre's syllables a second; `trip`: the chance a beat of three quick
-   * syllables is sung as a triplet; `fem`: the chance a line ends softly (BA-by); the lyric's style; the chorus hook.
+   * syllables is sung as a triplet; `fem`: the chance a line ends softly (BA-by); `ask`: the chance a pair of
+   * lines is sung as a question (rising) and its answer (falling), by mood; the lyric's style; the chorus hook.
    */
-  words?: { rate: number; trip: number; fem: number; lyric: LyricStyle; hook: Syllable[] | null };
+  words?: { rate: number; trip: number; fem: number; ask: number; lyric: LyricStyle; hook: Syllable[] | null };
 }
 
 type W<T> = [T, number][];
@@ -1573,7 +1574,12 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   if (style.shaped) applyMoves(out);
   wail(rng, out, form, kind, style, tonesAt);
   singable(out, pool);
-  if (style.words) speechPitch(out, pool);
+  if (style.words) {
+    // (question and answer: a 1st or 3rd line, not the last, now and then rises at its end; the next falls home)
+    const asks = new Set<number>();
+    for (let li = 0; li < last; li += 2) if (rng.chance(style.words.ask)) asks.add(li);
+    speechPitch(out, pool, tonesAt, asks);
+  }
   out = holdHighs(out, bars, total, pool);
   const sung = ornament(rng, out, style, pool, tonesAt, { key, minorish, kind, step: 60 / song.bpm / 4 });
   deliver(rng, sung, style);
@@ -1647,13 +1653,17 @@ function holdHighs(notes: TuneNote[], bars: Bar[], total: number, pool: number[]
  * (or stays) after its key word, BA-by sung high-low; the light syllable just before the key word rises
  * into it (not above it), unless the line is stepping down into it. Colour notes (moves) are left be.
  */
-function speechPitch(notes: TuneNote[], pool: number[]) {
+function speechPitch(notes: TuneNote[], pool: number[], tonesAt: (g: number) => number[], asks: Set<number>) {
   const idx = (m: number) => pool.reduce((b, x, i) => (Math.abs(x - m) < Math.abs(pool[b] - m) ? i : b), 0);
   const below = (m: number) => [...pool].reverse().find((x) => x < m) ?? m;
   const toward = (from: number, to: number) => (to > from ? pool[Math.min(pool.length - 1, idx(from) + 1)] : to < from ? pool[Math.max(0, idx(from) - 1)] : from);
+  const above = (m: number) => pool.find((x) => x > m) ?? m;
+  // the nearest chord note above (or below) m, within a 4th, else the next scale note
+  const chordNear = (m: number, g: number, d: 1 | -1) => { for (let x = m + d; Math.abs(x - m) <= 5; x += d) if (tonesAt(g).includes(((x % 12) + 12) % 12) && pool.includes(x)) return x; return d > 0 ? above(m) : below(m); };
   const lines = new Map<number, TuneNote[]>();
   for (const n of notes) if (!n.tie && n.syl) (lines.get(n.line) ?? lines.set(n.line, []).get(n.line)!).push(n);
-  for (const S of lines.values()) {
+  for (const [li, S] of lines) {
+    const ask = asks.has(li), answer = asks.has(li - 1);
     const lv = (n: TuneNote) => n.syl!.level;
     const ki = S.findIndex((n) => lv(n) === 3);
     // light syllables by step, toward the next stress
@@ -1676,7 +1686,13 @@ function speechPitch(notes: TuneNote[], pool: number[]) {
     if (P && lv(P) === 0 && !P.colour && P.midi > K.midi && P.midi - K.midi > 2) P.midi = below(K.midi);
     // a soft ending falls after its key word (or stays)
     const T = S[ki + 1];
-    if (T && lv(T) === 0 && !T.colour && T.midi > K.midi) T.midi = below(K.midi);
+    if (T && lv(T) === 0 && !T.colour && !ask && (T.midi > K.midi || (answer && T.midi === K.midi))) T.midi = below(K.midi);
+    // a question rises at its end (BA-by? up on the "by"; a strong ending up from the stress before it); its answer falls home
+    const B = [...S.slice(0, ki)].reverse().find((n) => lv(n) >= 1);
+    if (ask) {
+      if (T && lv(T) === 0 && !T.colour) { if (T.midi <= K.midi) T.midi = above(K.midi); }
+      else if (!T && B && !K.colour && K.midi <= B.midi) K.midi = chordNear(B.midi, K.step, 1);
+    } else if (answer && !T && B && !K.colour && K.midi >= B.midi) K.midi = chordNear(B.midi, K.step, -1);
     // the line's top on a stress: light syllables above every stressed one come down to under the highest stress
     const stressTop = Math.max(...S.filter((n) => lv(n) >= 1).map((n) => n.midi));
     for (const n of S) if (lv(n) === 0 && !n.colour && n.midi > stressTop) n.midi = below(stressTop);

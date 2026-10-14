@@ -21,6 +21,8 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   const shapes = new Map<string, Set<string>>();
   // speech measures (docs/VOCAL-WORDS.md): stresses on beats (or pushed an 8th ahead of one), soft line endings, triplets, gaps inside words and word groups, syllables a second by section
   // pitch by speech (words first): leaps onto light syllables, the line's top on a stress, soft endings falling, a light syllable over the key word just after it
+  // question and answer: lines ending up (above the stress before their end), by their place in the section (1st, 3rd...: the call; 2nd, 4th...: the answer)
+  let callN = 0, callUp = 0, ansN = 0, ansDown = 0;
   let lightN = 0, lightLeap = 0, topLines = 0, topStress = 0, softN = 0, softFall = 0, preKey = 0, preKeyOver = 0;
   let stN = 0, stBeat = 0, stPush = 0, ends = 0, softEnds = 0, trips = 0, inWord = 0, inGroup = 0, grouped = 0;
   const rateBy: Record<string, number[]> = {};
@@ -35,7 +37,7 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
       const v = (sec.vocal ?? []).filter((n: any) => !n.role);
       const L: any[][] = [];
       for (const n of v) { if (n.start || !L.length) L.push([]); L[L.length - 1].push(n); }
-      for (const l of L) {
+      L.forEach((l, li) => {
         lines++;
         { const top = Math.max(...l.map((n) => n.midi)), bar = 16;
           // (a held note: a syllable sung half a bar or more, its ties included)
@@ -64,6 +66,8 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
             const ki = sy.findIndex((n) => n.syl.level === 3);
             if (ki >= 0 && ki < sy.length - 1) { softN++; if (sy[ki + 1].midi <= sy[ki].midi) softFall++; }
             if (ki > 0 && sy[ki - 1].syl.level === 0) { preKey++; if (sy[ki - 1].midi > sy[ki].midi) preKeyOver++; }
+            const end = sy[sy.length - 1], before = [...sy.slice(0, -1)].reverse().find((n) => n.syl.level >= 1);
+            if (before && li < L.length - 1) { if (li % 2 === 0) { callN++; if (end.midi > before.midi) callUp++; } else { ansN++; if (end.midi < before.midi) ansDown++; } }
           }
           if (sy.length > 2) { const kind = sec.section?.kind ?? 'idea'; (rateBy[kind] ??= []).push((sy.length - 1) / ((sy[sy.length - 1].step - sy[0].step) * 15 / sec.song.bpm)); } }
         { let r = 0; for (let k = 1; k < on.length; k++) { const g = on[k].step - on[k - 1].step; r = g === 4 ? r + 1 : 0; if (r >= 3) qrun++; } }
@@ -101,7 +105,7 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
           }
           for (let k = 3; k < on4.length; k++) { const key = [1, 2, 3].map((j) => on4[k - 3 + j].midi - on4[k - 3 + j - 1].midi).join(','); if (!shapes.has(key)) shapes.set(key, new Set()); shapes.get(key)!.add(s); } }
         if (!sample && sec.section?.kind === 'verse' && g === 'pop' && l.length > 5) sample = l.map((n) => `${n.midi}@${n.step}/${n.len}`).join(' ');
-      }
+      });
     }
   }
   const pct = (x: number) => `${Math.round((100 * x) / syls)}%`;
@@ -116,6 +120,7 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   { const pc = (a: number, b: number) => `${Math.round((100 * a) / Math.max(1, b))}%`;
     const med = (xs: number[] = []) => (xs.sort((a, b) => a - b)[xs.length >> 1] ?? 0).toFixed(1);
     console.log(`   speech: stresses on beats ${pc(stBeat, stN)}, pushed ahead of a strong beat ${pc(stPush, stN)}; soft line endings ${pc(softEnds, ends)}; triplet syllables ${trips}; line syl/s verse ${med(rateBy.verse)} pre ${med(rateBy.prechorus)} chorus ${med(rateBy.chorus)}${grouped ? `; rests inside words ${pc(inWord, grouped)}, long gaps inside word groups ${pc(inGroup, grouped)}` : ''}`);
+    if (callN) console.log(`   call and answer: 1st/3rd lines ending up ${pc(callUp, callN)}, 2nd/4th lines ending down ${pc(ansDown, ansN)}`);
     if (topLines) console.log(`   pitch by speech: leaps (over a minor 3rd) onto light syllables ${pc(lightLeap, lightN)}; the line's top on a stress ${pc(topStress, topLines)}; soft endings falling or level ${pc(softFall, softN)}; a light syllable over the key word after it ${pc(preKeyOver, preKey)}`); }
   if (sample) console.log('   pop verse line:', sample);
 }

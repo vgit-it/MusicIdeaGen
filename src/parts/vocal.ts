@@ -323,7 +323,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   // words first (docs/VOCAL-WORDS.md): how wordy the song is (its genre's rate, its own lean), its triplets, its soft endings
   if (ctx.words) {
     const wr = new Rng(`${ctx.seed}-words-rate`);
-    melody.words = { rate: 0.75 + 0.55 * wr.next(), trip: WORD_TRIP[ctx.genre], fem: WORD_FEM[ctx.genre], lyric: style, hook };
+    melody.words = { rate: 0.75 + 0.55 * wr.next(), trip: WORD_TRIP[ctx.genre], fem: WORD_FEM[ctx.genre], ask: WORD_ASK[ctx.mood], lyric: style, hook };
   }
   const seen: Partial<Record<SectionKind, number>> = {};
   let told = false;
@@ -440,6 +440,8 @@ function tripletize(v: VocalNote[]): number {
 
 /** How often a beat of three quick syllables is sung as a triplet, and a line ends softly (BA-by), by genre (words first). */
 const WORD_TRIP: Record<Genre, number> = { pop: 0.35, funk: 0.45, rock: 0.3, hardrock: 0.25, metal: 0.15, grunge: 0.2, altmetal: 0.3 };
+/** How often a pair of lines is a question and its answer (the first rising, the second falling home), by mood: open, hopeful moods ask most; angry and dark ones state. */
+const WORD_ASK: Record<Mood, number> = { happy: 0.6, dreamy: 0.6, nostalgic: 0.5, triumphant: 0.45, tense: 0.5, melancholic: 0.4, dark: 0.3, angry: 0.25 };
 const WORD_FEM: Record<Genre, number> = { pop: 0.5, funk: 0.4, rock: 0.45, hardrock: 0.4, metal: 0.3, grunge: 0.45, altmetal: 0.4 };
 
 /**
