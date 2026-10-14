@@ -375,6 +375,25 @@ Paul: bring in what the other melody writers learned, without breaking what's he
 - **How new ideas come in:** each its own switch in the card (Off: the line exactly as now, the check passing), its own random numbers (so switching one on doesn't reshuffle the rest), the rules checked with it on too, one idea per PR, Paul deciding by ear whether it becomes the default.
 - The ideas lined up from the other writers: a short idea repeated (motif and form), a slow line under each section (verse falling, pre-chorus climbing, chorus arching), pitch by the words (the top on a stressed word, light syllables by step, soft endings falling), question and answer line endings by mood; then later choruses bigger, listening to the bass, phrase lengths with variety, high notes held, pace by tempo.
 
+## Repeat idea (switch; 2026-10-14)
+
+The first idea from the other melody writers (Shaped, Melody first): a short idea repeated. **Repeat idea: Off / On** in the card (Off: the line exactly as before, checked by `npm run guide-check`).
+
+- **The form, per section:** its phrases (2 bars; 4 when dreamy) go A B A b: the first phrase comes back as the third, the second comes back as the fourth with a new ending (its last note written fresh). Longer sections go round again (A B A b A B A b); sections of 2 or 3 phrases: A, then A with a new ending.
+- **Moved as a whole:** a phrase that comes back may move up or down the scale (a sequence) to suit where the section sits (a pre-chorus climbing) and, leaning in, the chords under it (strong beats on chord notes). Never into a leap without a pause, never out of the voice, not starting on the note just sung, stepping back after a leap.
+- **Your rules kept:** if it would make more than 4 bars without a pause, a beat's breath comes before it. Quick notes, pushes, pulls and words go on top as usual (so a phrase that comes back is decorated differently).
+- **Its own dice:** the rest of the line's choices aren't reshuffled by it.
+- Sections sung again (verse 2, the choruses) still copy the first one, as before.
+
+| 120 songs (8 moods, 5 genres, 4/4, 6/8, 7/8), Some, Lean in | Off | On |
+|---|---|---|
+| Phrases sung again (moved) / again with a new ending, per song | 0 / 0 | 4.9 / 4.4 |
+| 2-bar phrases repeating an earlier one's shape in their section | 13% | 37% |
+| The same note again | 14% | 13% |
+| Strong beats on a chord note | 69% | 72% |
+| Leaps without a pause, notes over a bar | 0, 0 | 0, 0 |
+| Songs ending on home | all | all |
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

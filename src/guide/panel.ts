@@ -7,7 +7,7 @@ import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
 import type { Mood } from '../tension';
 import type { HighVoice } from '../parts/singers';
-import { FLICK_LEVELS, type Flicks, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
+import { FLICK_LEVELS, type Flicks, type GuideIdeas, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
 import { GuideSynth } from './synth';
 import { type GuideSing, GuideVoice } from './voice';
 import { TIMBRE_CHOICES } from '../audio/singer';
@@ -47,6 +47,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   let singVoice: GuideSing = 'cornell';
   let words: GuideSungLine[][] | null = null;
   let singer2: GuideVoice | null = null;
+  // (new ideas from the other melody writers, each its own switch; all off: the line as before)
+  const ideas: GuideIdeas = {};
 
   root.innerHTML = `
     <h2>Guide line <span class="exp">experiment</span></h2>
@@ -62,6 +64,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
         <label title="Auto: mid, or high if the singer sings high. High: up to its top where the song is high">Voice ${seg('g-voice', [['auto', 'Auto'], ['mid', 'Mid'], ['high', 'High']], voice)}</label>
         <label title="Sing the line's words (the same tune) in one of the singer's voices, instead of the synth">Sing <select id="g-sing" class="gsing"><option value="off" selected>Off</option>${TIMBRE_CHOICES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('')}</select></label>
+        <label title="A short idea repeated: each section's phrases in the form A B A b (the first phrase comes back, moved to suit the height and chords; the second comes back with a new ending)">Repeat idea ${seg('g-motif', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="Quick notes on the long ones: a step or two up or down for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
@@ -81,7 +84,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
 
   const rewrite = () => {
     if (!on || !list.length) { line = null; words = null; draw.innerHTML = ''; $('g-notes').innerHTML = ''; $('g-words').innerHTML = ''; return; }
-    line = writeGuide(list, mood, lean, salt, flicks, highNow());
+    line = writeGuide(list, mood, lean, salt, flicks, highNow(), ideas);
     words = guideWords(list, line, salt);
     $('g-words').innerHTML = words.map((lines, si) => (lines.length ? `<p><b>${list[si].section?.label ?? 'Words'}</b> ${lines.map((l) => l.text).join(' / ')}</p>` : '')).join('');
     if (sing) { singer2 ??= new GuideVoice(engine.mixer.sectionLevel); singer2.setLevel(level); singer2.set(list, words, singVoice, highNow()); }
@@ -199,6 +202,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   };
   pickSeg('g-lean', (v) => { lean = v as Lean; rewrite(); });
   pickSeg('g-voice', (v) => { voice = v as typeof voice; rewrite(); });
+  pickSeg('g-motif', (v) => { ideas.motif = v === 'on'; rewrite(); });
   pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
   $('g-sing').addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;
