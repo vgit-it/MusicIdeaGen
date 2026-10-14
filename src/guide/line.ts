@@ -75,6 +75,8 @@ export interface GuideIdeas {
   carry?: boolean;
   /** Sung hard or soft (dynamics.ts): the words' levels by tension, section and height; soft quiet sections, belted peaks. */
   dynamics?: boolean;
+  /** Anchor line (anchor.ts, docs/GUIDE-ANCHOR.md): a different writer: one strong note per 4 bars, sung in a rhythm pattern, broken by an accent. */
+  anchor?: boolean;
 }
 
 /**
@@ -216,7 +218,7 @@ const GAP_P = 0.35;
  * Where the line sits out (Paul): intros (no note at all) and solos always; interludes, bridges,
  * breakdowns and outros by chance, per song. Missing kinds always play.
  */
-const PLAY_CHANCE: Partial<Record<string, number>> = { intro: 0, solo: 0, interlude: 0.5, bridge: 0.7, breakdown: 0.5, outro: 0.5 };
+export const PLAY_CHANCE: Partial<Record<string, number>> = { intro: 0, solo: 0, interlude: 0.5, bridge: 0.7, breakdown: 0.5, outro: 0.5 };
 
 /**
  * What Sparse, Some and Lots mean in each genre (Paul): the levels keep their order, the genre scales them
@@ -252,14 +254,14 @@ export const noteName = (m: number) => `${NAMES[mod(m, 12)]}${Math.floor(m / 12)
 /** A high voice's top, written an octave under where it's sung (the woman's voice sings the line back up an octave, voice.ts). */
 export const DOWN = 12;
 /** Home at the bottom of the voice: the first home note from its lowest (E3 to D#4 by the key, in Auto). */
-const homeMidi = (key: number, lo = 48) => lo + mod(key - lo, 12);
+export const homeMidi = (key: number, lo = 48) => lo + mod(key - lo, 12);
 /**
  * The voice, E3 to E5 (Paul; was C3 to E4 with peaks to F#4, before that C3-C5, C2-C4, A2-C4): the usual top D5,
  * the song's peaks (tension from PEAK_T) reach E5; a high voice (the singer's high voice, or High) goes up to its own
  * top, an octave down, in the song's high parts. Limits the line is written within, not a shift afterwards.
  */
-const MID_AUTO: [number, number] = [52, 74];
-const PEAK_AUTO = 76, PEAK_T = 0.8;
+export const MID_AUTO: [number, number] = [52, 74];
+export const PEAK_AUTO = 76, PEAK_T = 0.8;
 /** A range set by hand (Paul, to see how far it stretches): its lowest and highest notes, MIDI; at least an octave apart (narrower, the home note can fall outside it). */
 export type GuideRange = [number, number];
 
@@ -291,12 +293,12 @@ export const RANGE_MIN_SPAN = 12;
  * section sits in the voice (0 its bottom, 1 its top), moved by the tension and the mood's lean; a pre-chorus climbs
  * through itself. Within a phrase the line keeps near that height: the mood's span sets how many scale notes either side.
  */
-const HEIGHT: Partial<Record<SectionKind, number>> = { intro: 0.3, verse: 0.25, prechorus: 0.35, chorus: 0.7, interlude: 0.4, bridge: 0.55, breakdown: 0.25, solo: 0.5, outro: 0.4 };
+export const HEIGHT: Partial<Record<SectionKind, number>> = { intro: 0.3, verse: 0.25, prechorus: 0.35, chorus: 0.7, interlude: 0.4, bridge: 0.55, breakdown: 0.25, solo: 0.5, outro: 0.4 };
 /** A high voice goes past its usual top (Paul: "open up more of the higher range"). */
 const HIGH_EXTRA = 2;
 const HIGH_T = 0.6;
 /** Section kinds sung alike each time (Paul: "the verses should be similar and the choruses similar"). */
-const REPEATS = ['verse', 'prechorus', 'chorus'];
+export const REPEATS = ['verse', 'prechorus', 'chorus'];
 /** How many notes of a repeat change, a step up or down (similar, not a copy). */
 const VARY = 0.15;
 /** How often quick notes go up: evenly (Paul: more up again). */
@@ -304,7 +306,7 @@ const FLICK_UP = 0.5;
 /** How likely a quick note lands on an in-between 16th (the e and the a), against an 8th's 1. */
 const SIXTEENTH = 0.8;
 /** At most this many changes you hear in any one second: notes, quick notes out and back, pushes, pulls and the note back after them (Paul). */
-const MAX_PER_SECOND = 4;
+export const MAX_PER_SECOND = 4;
 
 /**
  * Pushes (a lift, like a word starting) and pulls (a dip, like a word ending) on the held notes (Paul),

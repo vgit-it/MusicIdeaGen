@@ -1,0 +1,63 @@
+# Anchor line (Guide line switch; 2026-10-14)
+
+Paul's idea: a melody built the way many real vocal lines are, mostly one note, sung in a steady rhythm,
+broken now and then by a small accent. **Anchor line: Off / On** in the Guide line card. It is a writer of its
+own (`src/guide/anchor.ts`), giving the same kind of line as the guide line, so the drawing, the synth, the
+words, the singer and MIDI all work as before. Off: the guide line exactly as before.
+
+## Decisions (Paul)
+| Question | Choice |
+|---|---|
+| The main note | One per 4 bars, **moving every 4 bars** (a step or two) |
+| Rhythm patterns | **By genre** |
+| Where | **Its own switch** |
+| Words | A word on each note of the rhythm; now and then more than one in a beat (less often) |
+| Accent endings | The last note strong, sometimes held into the next bar or two; the verse planned around it |
+| Bends | Into the accents, now and then, by chance |
+
+## How it writes
+- **The anchor:** for each 4 bars, one main note, near the section's height (verses low, pre-choruses
+  climbing, choruses lifted, by the tension), on a note the chords there share (leaning in), a step or two
+  from the last one.
+- **The plan of each 4 bars:** one 4-bar phrase, two 2-bar phrases, or 1+1+2 / 2+1+1 (6/8 and 7/8: 4, or
+  2+2). Never more than 4 bars sung without a pause (Paul: no phrase longer than 8 bars).
+- **Each phrase:**
+  1. **The pattern:** a rhythm cell of 3-6 beats, by genre, repeated on the anchor (at least about half the
+     phrase). Each beat of a cell: one note, two notes, a push on the offbeat, three quick notes (rare), the
+     note held on, or a rest.
+  2. **The break:** the rhythm changes for the accent: a note a beat each, two to a beat, or the last note
+     pushed an 8th early.
+  3. **The accent**, in scale steps from the anchor (in the key): two up and one down (+2, +1); a step up and
+     back (+1, 0); up, up, one down; a dip (-1, 0); a turn (+1, 0, -1, 0); a reach up two (+1, +2); a fall
+     (-1 or -2); up then down past it; two up, stepping home; now and then a leap up a 5th after a breath
+     (choruses, pre-choruses, bridges).
+  4. **The last note:** on a strong beat, on a chord note (leaning in); a beat or two, or held a bar or two
+     (more in choruses and by mood: dreamy, melancholic and triumphant the most).
+  5. **A rest** of a beat or more (verses longer: sparse).
+- **The mood picks the accents:** happy and triumphant reach up, melancholic and dark fall and dip, tense
+  turns, angry steps and falls.
+- **Phrases that end a 4-bar block settle** (back to the anchor or below); earlier ones stay open (up).
+- **Bends**, by chance: into an accent note a half or whole step from the note before, straight on, over an
+  8th, a quarter or half a bar (more likely on the last note; melancholic and dreamy most).
+- **Kept from the guide line:** where it sits out, verses and choruses sung alike, the song ending on home,
+  at most 4 new sounds in any second (in busy spots anchor notes are tied together, the accents kept), the
+  range and Key & scale, Hard & soft.
+- **Not used:** quick notes, pushes and pulls, and the other switches.
+
+## Measured (168 songs: 8 moods, 7 genres, 4/4, 6/8, 7/8)
+| | 4/4 | 6/8 | 7/8 |
+|---|---|---|---|
+| Notes on the 4 bars' main note | 78% | 81% | 81% |
+| Notes a beat | 0.58 | 0.73 | 0.65 |
+| Time sung | 75% | 71% | 75% |
+| Notes held a bar or more, a song | 8.5 | 11 | 9.6 |
+| Bends, a song | 8.5 | 6 | 6.3 |
+
+`npm run guide-check` checks it too (alone, with Hard & soft, two ranges, a key and scale of its own): the
+words on the tune, at most 4 changes in a second, the range, never two notes at once, a note held at most
+2 bars (the guide line's own limit, a bar, stays for the guide line).
+
+## Next
+- Paul listens per genre and mood.
+- Maybe: the pattern changing with the section (a chorus busier), a pickup into a phrase, the anchor
+  following the slow line.
