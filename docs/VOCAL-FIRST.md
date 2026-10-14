@@ -166,3 +166,24 @@ by ear.
 ## Next
 - Paul listens: Melody first vs Shaped; then decide whether it replaces Shaped.
 - Possible: the clash rates and loop chance tuned by ear; the sentence's continuation shown in the notes.
+
+## Fix: planned clashes heard as out of tune (2026-10-14)
+Paul, on an alt metal chorus in A minor (Words + Melody first): "it sounds out of tune". Rebuilt from his
+link: three held notes a half step against the band's power chords, each held a beat before resolving
+(B over F5, a tritone off the root; C#, out of the key, over G5; G# under the root of A5). All three were
+"leans from a half step below" written as held notes. With a synthesized voice over distorted power
+chords a held half-step clash reads as out of tune, not tension. Fixed:
+- **A lean is a scoop:** the note itself stays on the chord, the voice slides up into it from a half
+  step below (as singers lean), never a held wrong note.
+- **Never a tritone off the chord's root.**
+- **A half step against the chord's root or 5th** (the flat 9th, a flat 6th on a power chord, a major 7th
+  under the root) only in the dark and tense songs. Sighs from above onto a 3rd (4-3) and 9ths stay.
+
+| 42 songs, 4/4, choruses | Before | After |
+|---|---|---|
+| Held planned clashes a tritone off the root (Words + Melody first) | 35 | 3 |
+| Held planned clashes rubbing a half step (Words + Melody first) | 95 | 52 (mostly 4-3 sighs) |
+| Strong notes on chord notes (Melody first / Words + Melody first) | 71% / 70% | 75% / 73% |
+| The same note again (Melody first / Words + Melody first) | 15% / 19% | 16% / 20% |
+
+Classic and Shaped unchanged (checked: the same notes as before).

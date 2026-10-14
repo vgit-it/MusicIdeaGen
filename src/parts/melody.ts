@@ -1251,13 +1251,16 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           if (last) kind = 'sigh';
           else { const m = nearPc(res, rootOf(n.step) + 2); if (Math.abs(m - res) <= 2) { n.midi = m; n.colour = true; count--; } continue; }
         }
-        let clash = kind === 'lean' ? res - 1 : above(res);
-        if (kind === 'held') {
-          if (prev && chordAt(prev.step) !== chordAt(n.step) && [1, 2].includes(prev.midi - res)) clash = prev.midi;
-          else clash = above(res);
-        }
-        // (a half step above the chord's root, the flat 9th, only in the dark and tense songs: elsewhere it sounds wrong, not sad)
-        if (mod(clash - rootOf(n.step), 12) === 1 && !harsh) continue;
+        // (a lean from a half step below: sung as singers do, a scoop up into the note, not a held wrong note:
+        // held a beat against the band, Paul heard it as out of tune)
+        if (kind === 'lean') { if (n.len >= 3 && !n.slide) { n.slide = 1; n.colour = true; count--; } continue; }
+        let clash = above(res);
+        if (kind === 'held' && prev && chordAt(prev.step) !== chordAt(n.step) && [1, 2].includes(prev.midi - res)) clash = prev.midi;
+        // (never a tritone off the chord's root; a half step against its root or 5th, the flat 9th or a flat 6th
+        // grinding on a power chord, only in the dark and tense songs: elsewhere it sounds wrong, not sad)
+        const iv = mod(clash - rootOf(n.step), 12);
+        if (iv === 6) continue;
+        if ([1, 8, 11].includes(iv) && !harsh) continue;
         // (a long note: the clash held a quarter, then the resolution on its vowel: a quicker turn is merged away, settle() in vocal.ts)
         if (n.len >= 6) {
           const h = Math.max(4, Math.floor(n.len / 2));
