@@ -111,5 +111,30 @@ line (never a section's last) rises at its end and the line after it falls home.
 Not every question survives to the end: later steps still move notes for the band and the tension
 curve. Other rhythms unchanged (checked: the same notes as before).
 
+## Melody first with Words (2026-10-14)
+Paul: which melody option works best with words first? Melody first (the most varied tunes, the fewest
+repeated notes, its planned clashes on the stressed words), but it lagged on the speech measures. Traced
+inside the tune: its colour notes on light syllables were left out of the speech rules, and holding its
+bigger leaps up high moved some lines' tops onto light words. Fixed:
+- The idea's signature leap lands on a stressed word (the notes before it stretched with a neighbour
+  and back, or trimmed).
+- Light syllables follow the speech rules whatever their colour.
+- The speech rules run again after the high notes are held.
+- A question's rising last syllable may top its line (it's the question).
+
+| 42 songs, 4/4, Words + Melody first | Before | After |
+|---|---|---|
+| Leaps onto light syllables | 11% | 8% |
+| The line's top on a stressed word | 77% | 83% |
+| Soft endings falling (or level) | 75% | 79% |
+| 1st and 3rd lines ending up | 45% | 41% |
+| The same note again | 19% | 19% |
+| Different 4-note shapes | 1215 | 1218 |
+
+Words + Classic and Words + Shaped gain a little too (top on a stress 88% and 87%). Other rhythms
+unchanged (checked: the same notes as before).
+
+Recommended pairing to try first: **Rhythm Words + Melody first**.
+
 ## Next
-- Paul listens: Words vs Grid.
+- Paul listens: Words vs Grid; Words + Melody first vs Words + Shaped.
