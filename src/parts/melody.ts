@@ -1573,6 +1573,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   if (style.shaped) applyMoves(out);
   wail(rng, out, form, kind, style, tonesAt);
   singable(out, pool);
+  if (style.words) speechPitch(out, pool);
   out = holdHighs(out, bars, total, pool);
   const sung = ornament(rng, out, style, pool, tonesAt, { key, minorish, kind, step: 60 / song.bpm / 4 });
   deliver(rng, sung, style);
@@ -1637,6 +1638,49 @@ function holdHighs(notes: TuneNote[], bars: Bar[], total: number, pool: number[]
     n.len = end - n.step;
   });
   return notes.filter((n) => !gone.has(n));
+}
+
+/**
+ * Pitch by speech (docs/VOCAL-WORDS.md, words first): the tune follows how the words are said. Light
+ * syllables (the, a, in, the "-by" of BA-by) are reached by a step or a repeat, never a leap, heading for
+ * the next stress; the line's highest note is on a stressed word, not a light one; a soft ending falls
+ * (or stays) after its key word, BA-by sung high-low; the light syllable just before the key word rises
+ * into it (not above it), unless the line is stepping down into it. Colour notes (moves) are left be.
+ */
+function speechPitch(notes: TuneNote[], pool: number[]) {
+  const idx = (m: number) => pool.reduce((b, x, i) => (Math.abs(x - m) < Math.abs(pool[b] - m) ? i : b), 0);
+  const below = (m: number) => [...pool].reverse().find((x) => x < m) ?? m;
+  const toward = (from: number, to: number) => (to > from ? pool[Math.min(pool.length - 1, idx(from) + 1)] : to < from ? pool[Math.max(0, idx(from) - 1)] : from);
+  const lines = new Map<number, TuneNote[]>();
+  for (const n of notes) if (!n.tie && n.syl) (lines.get(n.line) ?? lines.set(n.line, []).get(n.line)!).push(n);
+  for (const S of lines.values()) {
+    const lv = (n: TuneNote) => n.syl!.level;
+    const ki = S.findIndex((n) => lv(n) === 3);
+    // light syllables by step, toward the next stress
+    S.forEach((n, k) => {
+      if (lv(n) !== 0 || n.colour) return;
+      const nextStress = S.slice(k + 1).find((x) => lv(x) >= 1);
+      if (k === 0) {
+        // (a pickup: a step under (or on) the stress it leads into)
+        if (nextStress && Math.abs(n.midi - nextStress.midi) > 3) n.midi = below(nextStress.midi);
+        return;
+      }
+      const p = S[k - 1];
+      // (heading nowhere, the next stress on the same note: a neighbour on the side it leapt to, not the note again)
+      if (Math.abs(n.midi - p.midi) > 3) n.midi = toward(p.midi, nextStress && nextStress.midi !== p.midi ? nextStress.midi : n.midi);
+    });
+    if (ki < 0) continue;
+    const K = S[ki];
+    // the light syllable before the key word rises into it, unless stepping down into it
+    const P = S[ki - 1];
+    if (P && lv(P) === 0 && !P.colour && P.midi > K.midi && P.midi - K.midi > 2) P.midi = below(K.midi);
+    // a soft ending falls after its key word (or stays)
+    const T = S[ki + 1];
+    if (T && lv(T) === 0 && !T.colour && T.midi > K.midi) T.midi = below(K.midi);
+    // the line's top on a stress: light syllables above every stressed one come down to under the highest stress
+    const stressTop = Math.max(...S.filter((n) => lv(n) >= 1).map((n) => n.midi));
+    for (const n of S) if (lv(n) === 0 && !n.colour && n.midi > stressTop) n.midi = below(stressTop);
+  }
 }
 
 /**

@@ -70,7 +70,28 @@ notes as before).
 Fewer long held notes than Grid: more words fill the lines. A jump up to a line's top that can't be held
 half a bar (a word comes next) is sung a step up instead (Paul's rule on held high notes kept).
 
+## Pitch by speech (2026-10-14; `speechPitch` in `src/parts/melody.ts`)
+The tune follows how the words are said, on top of whichever melody writer (Classic, Shaped, Melody
+first); colour notes from the moves are left be:
+- Light syllables (the, a, in, the "-by" of BA-by) by a step or a repeat, never a leap, heading for the
+  next stress (a neighbour rather than the same note again: no more repeated notes than before).
+- A pickup sits a step under the stress it leads into.
+- The line's highest note on a stressed word, not a light one.
+- A soft ending falls after its key word (BA-by: high, then low).
+- The light syllable just before the key word rises into it (not above it).
+
+| 42 songs, 4/4 | Words before / after | Words + Shaped | Words + Melody first |
+|---|---|---|---|
+| Leaps (over a minor 3rd) onto light syllables | 14% / 9% | 14% / 9% | 16% / 11% |
+| The line's top on a stressed word | 72% / 88% | 68% / 86% | 66% / 77% |
+| Soft endings falling (or level) | 63% / 91% | 62% / 85% | 62% / 75% |
+| A light syllable above the key word after it | 33% / 9% | 34% / 14% | 32% / 21% |
+| The same note again | 26% / 27% | 23% / 25% | 19% / 19% |
+
+What's left over comes from later steps that move notes for the band (clashes, the tension curve);
+Melody first's planned clashes and loops keep more of their own shape. Classic, Grid, Shaped and Melody
+first with Classic or Grid rhythm unchanged (checked: the same notes as before).
+
 ## Next
-- Pitch by speech: the key word on a high or strong note, no leaps onto light syllables, questions
-  ending up.
+- Questions ending up (lines that rise at the end, by the line's form).
 - Paul listens: Words vs Grid.
