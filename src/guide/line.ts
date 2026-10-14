@@ -109,7 +109,10 @@ const MOODS: Record<Mood, GuideMood> = {
 };
 
 /** Quick notes per bar of a held note, by how many; and how often they're a 16th (else an 8th), by mood. */
-const FLICK_RATE: Record<Flicks, number> = { off: 0, sparse: 0.25, some: 0.6, lots: 4 };
+// (Paul: the old Lots "working best" becomes Some; Sparse and Lots retuned around it)
+const FLICK_RATE: Record<Flicks, number> = { off: 0, sparse: 1.2, some: 4, lots: 12 };
+/** Levels that may start an 8th into a note and come an 8th apart in any cluster. */
+const DENSE: Flicks[] = ['some', 'lots'];
 /** They come in clusters of 2 bars, frequent, then moderate, then sparse (Paul): how many in each, times the rate. */
 type Cluster = 'frequent' | 'moderate' | 'sparse';
 const CLUSTERS: Cluster[] = ['frequent', 'moderate', 'sparse'];
@@ -391,13 +394,13 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const songLast = lastSection && k === out.length - 1;
       const barLen = song.bars.find((b) => b.start + b.len > n.step)?.len ?? 16;
       const fl: Flick[] = [];
-      for (let at = flicks === 'lots' ? 2 : 4; at < n.len; at += 2) {
+      for (let at = DENSE.includes(flicks) ? 2 : 4; at < n.len; at += 2) {
         const r = frng.next(), up = frng.chance(FLICK_UP), two = frng.chance(0.25), gap = frng.chance(GAP_P);
         const cl = clusterAt(barOf(n.step + at));
         const pOn = (FLICK_RATE[flicks] * CLUSTER_RATE[cl] * 2) / barLen;
-        // (apart: a beat, an 8th in a frequent cluster or on Lots (Paul: "much more frequent"))
+        // (apart: a beat, an 8th in a frequent cluster or on Some and Lots (Paul: "much more frequent"))
         const last = fl[fl.length - 1];
-        if (last && at < last.at + last.len + (last.gap ?? 0) + (cl === 'frequent' || flicks === 'lots' ? 2 : 4)) continue;
+        if (last && at < last.at + last.len + (last.gap ?? 0) + (cl === 'frequent' || DENSE.includes(flicks) ? 2 : 4)) continue;
         if (r >= pOn) continue;
         // (with a pause: a 16th, a 16th's silence, then the line again on the 8th)
         const len = gap ? 1 : 2;

@@ -196,6 +196,20 @@ Paul: "the limiting of range has made it very stale. Open up more of the higher 
 | Tenor, now | A#4 | E4 | 46% |
 | Woman, now | B4/C5 | E4 | 48% |
 
+## Quick notes: levels retuned (2026-10-14)
+Paul: Lots works best, so make Some the current Lots and retune the other two.
+- **Some** (the default) is now what Lots was: it may start an 8th into a note, an 8th apart anywhere.
+- **Sparse** is between the old Some and the old Lots (a beat apart, outside frequent clusters).
+- **Lots** goes further. It's near the most that fits (every other 8th on a held note), so the
+  clusters even out a little: frequent and moderate clusters are about as busy, sparse ones still lighter.
+- The line itself doesn't change between levels.
+
+| Per 8 bars | Before | Now |
+|---|---|---|
+| Sparse | 1.3 | 5.0 |
+| Some | 2.8 | 12.7 |
+| Lots | 12.7 | 17.0 |
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
