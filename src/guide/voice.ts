@@ -1,23 +1,29 @@
-// The Guide line sung (experiment): the line's words (words.ts) sung by the FOF singer in the Cornell
-// voice tuned by Paul (the woman's voice when the line is sung high), each line rendered once in the
-// background and kept, polished like the vocals, started on the step that leaves room for its lead-in.
+// The Guide line sung (experiment): the line's words (words.ts) sung in any of the singer's voices (Paul:
+// "give me the other voices in there too"): the Cornell voice he tuned, the other characters, each genre's
+// voice (Auto: the song's own; the woman's when the line is sung high), or the clear first voice. Each line
+// rendered once in the background and kept, polished like the vocals, started on the step that leaves room
+// for its lead-in.
 
 import * as Tone from 'tone';
 import type { Idea } from '../idea';
 import type { Genre } from '../genres';
-import type { HighVoice } from '../parts/singers';
+import type { HighVoice, Timbre } from '../parts/singers';
 import { FOF_RATE, renderFof } from '../audio/fof';
-import { fofFor } from '../audio/voices';
+import { CHARACTERS, type Character, fofFor } from '../audio/voices';
 import { polishVoice } from '../audio/polish';
 import { polishFor } from '../audio/singer';
-import type { SungNote } from '../audio/sing';
+import { SING_RATE, type SungNote, renderLine } from '../audio/sing';
 import type { GuideSungLine } from './words';
 import { DOWN } from './line';
 
 /** Seconds of lead-in before a line's first note (onset consonants, a breath). */
 const PRE = 0.3;
 
-interface Placed { key: string; notes: SungNote[]; t0: number; idea: Idea; energy: number }
+/** Which voice sings the line: Auto (the song's genre voice), the clear voice, a genre's, or a character. */
+export type GuideSing = 'auto' | Timbre | Character;
+const isCharacter = (v: string): v is Character => v in CHARACTERS;
+
+interface Placed { key: string; notes: SungNote[]; t0: number; idea: Idea; energy: number; sung: Timbre | Character }
 
 export class GuideVoice {
   private ctx = Tone.getContext();
@@ -27,7 +33,6 @@ export class GuideVoice {
   private queue: Placed[] = [];
   private working = false;
   private sources = new Set<AudioBufferSourceNode>();
-  private high: HighVoice | null = null;
 
   constructor(out: Tone.InputNode) {
     this.vol = new Tone.Volume(-2).connect(out);
@@ -45,12 +50,13 @@ export class GuideVoice {
   }
 
   /** The lines to sing, per section of `list`; rendering starts in the background. */
-  set(list: Idea[], words: GuideSungLine[][], high: HighVoice | null) {
-    this.high = high;
-    // (the line sits an octave down, in the Cornell voice's own range; the woman sings it back up in hers)
-    const shift = high === 'woman' ? DOWN : 0;
+  set(list: Idea[], words: GuideSungLine[][], choice: GuideSing, high: HighVoice | null) {
     this.byStep = words.map((lines, si) => {
       const idea = list[si];
+      // (Auto: the song's own genre voice, or the woman's when the line is sung high)
+      const sung: Timbre | Character = choice !== 'auto' ? choice : high === 'woman' ? 'woman' : idea.song.genre;
+      // (the woman sings the line an octave up, in her own range)
+      const shift = sung === 'woman' ? DOWN : 0;
       const six = 15 / idea.song.bpm;
       const energy = idea.section ? (idea.section.energy - 1) / 4 : 0.5;
       const m = new Map<number, Placed[]>();
@@ -58,8 +64,8 @@ export class GuideVoice {
         if (!L.notes.length) continue;
         const t0 = GuideVoice.at(idea, L.notes[0].step);
         const notes: SungNote[] = L.notes.map((n) => ({ t: GuideVoice.at(idea, n.step) - t0, end: GuideVoice.at(idea, n.step + n.len) - t0, midi: n.midi + shift, vel: n.vel, syl: n.syl }));
-        const key = `${high ?? 'cornell'}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}`;
-        const p: Placed = { key, notes, t0, idea, energy };
+        const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}`;
+        const p: Placed = { key, notes, t0, idea, energy, sung };
         const first = Math.max(0, L.notes[0].step - Math.ceil(PRE / six));
         (m.get(first) ?? m.set(first, []).get(first)!).push(p);
         if (!this.bufs.has(key)) this.queue.push(p);
@@ -84,12 +90,15 @@ export class GuideVoice {
     let seed = 0;
     for (let i = 0; i < p.key.length; i += 7) seed = (seed * 31 + p.key.charCodeAt(i)) >>> 0;
     const base = p.idea.song.genre as Genre;
-    // (the Cornell voice; sung high: the woman's, the Cornell voice an octave up)
-    const voice = this.high === 'woman' ? fofFor(base, seed % 97, true, 'woman') : fofFor(base, seed % 97, false, 'cornell');
-    const raw = renderFof(p.notes, { ...voice, energy: p.energy }, PRE);
-    const pcm = polishVoice(raw, FOF_RATE, polishFor(p.idea, true, p.notes.some((n) => n.vel >= 0.85)));
+    const v = seed % 97;
+    // (the clear voice: the formant synth; the others: the FOF singer, a character on top of the song's genre voice)
+    const clear = p.sung === 'clear';
+    const rate = clear ? SING_RATE : FOF_RATE;
+    const raw = clear ? renderLine(p.notes, { high: false, slides: 0.5, seed: v }, PRE)
+      : renderFof(p.notes, { ...(isCharacter(p.sung) ? fofFor(base, v, p.sung === 'woman', p.sung) : fofFor(p.sung as Genre, v, false)), energy: p.energy }, PRE);
+    const pcm = polishVoice(raw, rate, polishFor(p.idea, true, p.notes.some((n) => n.vel >= 0.85)));
     const ctx = this.ctx.rawContext as unknown as BaseAudioContext;
-    const buf = ctx.createBuffer(1, pcm.length, FOF_RATE);
+    const buf = ctx.createBuffer(1, pcm.length, rate);
     buf.copyToChannel(pcm as Float32Array<ArrayBuffer>, 0);
     return buf;
   }

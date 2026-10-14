@@ -348,6 +348,13 @@ Paul: still a bit weird; lift the range further, as limits the line is written w
 - Result (80 songs): middle note Ab3 (was F3); most notes D3 to D4; verses around F#3, choruses around Bb3. Span and variety as before (12-13 semitones, 8 pitches a song).
 - The woman's voice (High) still sings the line an octave up, in her range.
 
+## All the voices (2026-10-14)
+
+Paul: give me the other voices in there too.
+
+- **Sing** is now a menu: Off, Auto (the song's genre voice; the woman's when the line is sung High), Clear (the first voice), each genre's voice, and the characters (Big & dark, Chester, Cornell, Woman, Dark & nasal), the same list as the vocals' Voice menu.
+- The Woman voice sings the line an octave up, in her range; the rest at the line's pitch.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

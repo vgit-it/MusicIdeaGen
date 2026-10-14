@@ -205,3 +205,4 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .guidewords { margin: 8px 0 4px; font-size: 13px; color: var(--mute); }
 .guidewords p { margin: 2px 0; }
 .guidewords b { color: var(--text); font-weight: 600; margin-right: 4px; }
+.guiderow select.gsing { width: auto; padding: 6px 8px; font-size: 13px; }
