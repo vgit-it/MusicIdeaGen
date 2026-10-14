@@ -203,7 +203,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         for (const e of evs) {
           const ea = h.start + Math.round(e.at * step);
           if (ea > from) t.addNote({ midi: h.midi, ticks: from, durationTicks: ea - from, velocity: vel });
-          if ('m' in e) { from = ea; vel = e.m!.kind === 'push' ? 1 : 0.5; continue; }
+          if ('m' in e) { from = ea; vel = e.m!.kind === 'push' ? 1 : 0.3; continue; }
           const f = e.f!, fe = ea + Math.round(f.len * step);
           t.addNote({ midi: f.midi, ticks: ea, durationTicks: fe - ea, velocity: 0.9 });
           from = fe + Math.round((f.gap ?? 0) * step);

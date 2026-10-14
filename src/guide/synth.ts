@@ -44,13 +44,13 @@ export class GuideSynth {
       const t = time + m.at;
       if (m.kind === 'push') {
         // (a breath of a dip, then louder, settling back)
-        acc.gain.setTargetAtTime(0.55, Math.max(time, t - 0.035), 0.01);
-        acc.gain.setValueAtTime(1.6, t);
-        acc.gain.setTargetAtTime(1, t + 0.02, 0.12);
+        acc.gain.setTargetAtTime(0.35, Math.max(time, t - 0.045), 0.01);
+        acc.gain.setValueAtTime(2.2, t);
+        acc.gain.setTargetAtTime(1, t + 0.04, 0.18);
       } else if (m.kind === 'pull') {
         // (falling away, then back softly)
-        acc.gain.setTargetAtTime(0.3, t, 0.04);
-        acc.gain.setTargetAtTime(1, t + 0.14, 0.1);
+        acc.gain.setTargetAtTime(0.12, t, 0.035);
+        acc.gain.setTargetAtTime(1, t + 0.2, 0.14);
       } else if (m.rest) {
         // (silence, cut quickly, until the note comes back)
         acc.gain.setTargetAtTime(0, t, 0.006);
