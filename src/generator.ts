@@ -104,7 +104,7 @@ export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
   idea.notes.splice(at, 0, ...notes);
   // the singer: the idea is a chorus, so it sings the chorus tune and its hook
   const vs = seeds.vocal ?? `${seeds.chords}-vocal`;
-  singIdea(idea, vs, autoMood(song, seeds.song), opts.vocalLift ?? 0, opts.vocalRhythm === 'grid', opts.vocalMelody, opts.vocalMove as MoveId | undefined, opts.vocalSinger, opts.vocalEnergy as EnergyStyle | 'off' | undefined);
+  singIdea(idea, vs, autoMood(song, seeds.song), opts.vocalLift ?? 0, opts.vocalRhythm, opts.vocalMelody, opts.vocalMove as MoveId | undefined, opts.vocalSinger, opts.vocalEnergy as EnergyStyle | 'off' | undefined);
   idea.vocalVoice = autoVoice(vs, song.partGenres.strum);
   idea.vocalHigh = pickHigh(vs, song.partGenres.strum);
   return idea;

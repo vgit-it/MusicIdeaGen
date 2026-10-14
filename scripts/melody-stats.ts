@@ -6,11 +6,12 @@ import { generate } from '../src/generator';
 import type { Genre } from '../src/genres';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { chordTones } from '../src/parts/guitar2';
+import { groupStarts } from '../src/rhythm';
 
 const GENRES: Genre[] = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'];
 const N = Number(process.env.N ?? 6);
 const ONLY = process.env.MODE;
-for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }], ['shaped', { vocalMelody: 'shaped' }], ['grid+shaped', { vocalRhythm: 'grid', vocalMelody: 'shaped' }], ['first', { vocalMelody: 'first' }], ['grid+first', { vocalRhythm: 'grid', vocalMelody: 'first' }]] as const) {
+for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }], ['shaped', { vocalMelody: 'shaped' }], ['grid+shaped', { vocalRhythm: 'grid', vocalMelody: 'shaped' }], ['first', { vocalMelody: 'first' }], ['grid+first', { vocalRhythm: 'grid', vocalMelody: 'first' }], ['words', { vocalRhythm: 'words' }], ['words+shaped', { vocalRhythm: 'words', vocalMelody: 'shaped' }], ['words+first', { vocalRhythm: 'words', vocalMelody: 'first' }]] as const) {
   if (ONLY && ONLY !== label) continue;
   const lineRates: number[] = [];
   let held = 0, heldTime = 0, voiced = 0, highs = 0, highShort = 0, highFall = 0, odd = 0, qrun = 0, secs = 0, syls = 0, same = 0, run3 = 0, lines = 0, flatLines = 0;
@@ -18,6 +19,9 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
   // pitch measures (docs/VOCAL-FIRST.md): strong notes on chord notes, off-chord ones resolving by step, steps and leaps, gap-fill, 4-note shapes heard across songs
   let bPairs = 0, bContra = 0, bPar = 0, strongN = 0, strongOn = 0, offRes = 0, ints = 0, steps = 0, leaps = 0, leapN = 0, filled = 0;
   const shapes = new Map<string, Set<string>>();
+  // speech measures (docs/VOCAL-WORDS.md): stresses on beats (or pushed an 8th ahead of one), soft line endings, triplets, gaps inside words and word groups, syllables a second by section
+  let stN = 0, stBeat = 0, stPush = 0, ends = 0, softEnds = 0, trips = 0, inWord = 0, inGroup = 0, grouped = 0;
+  const rateBy: Record<string, number[]> = {};
   let sample = '';
   for (const g of GENRES) for (let i = 0; i < N; i++) {
     const s = `${g}-${i}`;
@@ -41,6 +45,17 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
         if (new Set(l.map((n) => n.midi)).size <= 1) flatLines++;
         // syllable onsets only (notes continuing a syllable have the same syl object)
         const on = l.filter((n, k) => k === 0 || n.syl !== l[k - 1].syl);
+        { const beats = new Set<number>(), strong = new Set<number>();
+          for (const b of sec.song.bars) groupStarts(b.groups).forEach((x: number, gi: number) => { beats.add(b.start + x); if (gi === 0 || gi === b.groups.length / 2) strong.add(b.start + x); });
+          const sy = on.filter((n) => n.syl.text !== '~');
+          sy.forEach((n, k) => {
+            if (n.step % 1) trips++;
+            if (n.syl.stress) { stN++; if (beats.has(n.step)) stBeat++; else if (strong.has(n.step + 2)) stPush++; }
+            const p = sy[k - 1];
+            if (p && p.syl.brk !== undefined) { grouped++; const gap = n.step - p.step; if (p.syl.brk === 0 && gap > 4) inWord++; if (p.syl.brk < 2 && gap >= 6) inGroup++; }
+          });
+          if (sy.length) { ends++; if (!sy[sy.length - 1].syl.stress) softEnds++; }
+          if (sy.length > 2) { const kind = sec.section?.kind ?? 'idea'; (rateBy[kind] ??= []).push((sy.length - 1) / ((sy[sy.length - 1].step - sy[0].step) * 15 / sec.song.bpm)); } }
         { let r = 0; for (let k = 1; k < on.length; k++) { const g = on[k].step - on[k - 1].step; r = g === 4 ? r + 1 : 0; if (r >= 3) qrun++; } }
         for (let k = 0; k < on.length; k++) {
           syls++;
@@ -49,7 +64,7 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
           if (k && on[k].midi === on[k - 1].midi) same++;
           if (k > 1 && on[k].midi === on[k - 1].midi && on[k - 1].midi === on[k - 2].midi) run3++;
         }
-        { const tonesAt = (g: number) => chordTones(sec.song.key, sec.chords.timeline[sec.chords.chordIdx[Math.min(sec.song.total - 1, Math.max(0, g))]].chord);
+        { const tonesAt = (g: number) => chordTones(sec.song.key, sec.chords.timeline[sec.chords.chordIdx[Math.min(sec.song.total - 1, Math.max(0, Math.floor(g)))]].chord);
           l.forEach((n, k) => {
             if (n.syl.text === '~' || !(n.syl.stress || n.len >= 4)) return;
             strongN++;
@@ -88,5 +103,8 @@ for (const [label, extra] of [['classic', {}], ['grid', { vocalRhythm: 'grid' }]
     console.log(`   strong notes on chord notes ${pc(strongOn, strongN)}, off-chord ones resolving by step ${pc(offRes, strongN - strongOn)}; steps ${pc(steps, ints)}, leaps ${pc(leaps, ints)}, gap-fill after leaps ${pc(filled, leapN)}; 4-note shapes ${shapes.size} (in a third of the songs or more: ${common})`);
     console.log(`   against the bass (strong notes, both moving): contrary ${pc(bContra, bPairs)}, parallel 5ths/octaves ${pc(bPar, bPairs)}`); }
   lineRates.sort((a, b) => a - b); console.log(`   line syl/s: median ${lineRates[lineRates.length >> 1].toFixed(1)}, 90th ${lineRates[Math.floor(lineRates.length * 0.9)].toFixed(1)}, max ${lineRates[lineRates.length - 1].toFixed(1)}`);
+  { const pc = (a: number, b: number) => `${Math.round((100 * a) / Math.max(1, b))}%`;
+    const med = (xs: number[] = []) => (xs.sort((a, b) => a - b)[xs.length >> 1] ?? 0).toFixed(1);
+    console.log(`   speech: stresses on beats ${pc(stBeat, stN)}, pushed ahead of a strong beat ${pc(stPush, stN)}; soft line endings ${pc(softEnds, ends)}; triplet syllables ${trips}; line syl/s verse ${med(rateBy.verse)} pre ${med(rateBy.prechorus)} chorus ${med(rateBy.chorus)}${grouped ? `; rests inside words ${pc(inWord, grouped)}, long gaps inside word groups ${pc(inGroup, grouped)}` : ''}`); }
   if (sample) console.log('   pop verse line:', sample);
 }

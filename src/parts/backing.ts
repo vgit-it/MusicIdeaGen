@@ -45,7 +45,7 @@ export function pickBacking(seed: string, mood: Mood, genre: Genre, energy?: Ene
 
 const syl = (onset: Cons[], vowel: Vowel, coda: Cons[], text: string, stress = true): Syllable => ({ onset, vowel, coda, stress, text, wordStart: true });
 
-const chordAt = (c: ChordPart, g: number, total: number) => c.timeline[c.chordIdx[Math.min(Math.max(0, g), total - 1)]].chord;
+const chordAt = (c: ChordPart, g: number, total: number) => c.timeline[c.chordIdx[Math.min(Math.max(0, Math.floor(g)), total - 1)]].chord;
 
 /** A harmony note for a lead note: the nearest chord note above (a third or fourth) or below (a fourth to a fifth). */
 function harmonyFor(idea: Idea, n: VocalNote, up: boolean): number | null {
