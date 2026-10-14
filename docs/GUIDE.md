@@ -160,6 +160,27 @@ comes back in time.
   next 8th (was an 8th and a 32nd). About a third of them.
 - Sparse and Some unchanged (1.3 and 2.9 per 8 bars).
 
+## Voice range, repeats, quick notes lower (2026-10-14)
+Paul: the mid voice range (a high voice can have some high parts); verses alike and choruses alike
+within a song; quick notes leaning lower, whatever the mood.
+- **Range:** the mid voice, C3 to G4. Home sits between F3 and E4, so there's room above and below.
+- **High voice:** Voice: Auto follows the singer (high if they sing high), or pick Mid or High (High
+  with no high singer uses the rock tenor's range). Where the song is high (tension 0.6 and up:
+  choruses, the climax) the line may go up to that voice's top (tenor A4, woman C5) and reaches for
+  it. On the way back down it steps down, never jumps.
+- **Repeats:** the 2nd and later verses, pre-choruses and choruses sing the first one's notes (in
+  their own key, so a last chorus up a key moves up), with about 15% of notes a step away, never
+  making a leap. The song's last note is still home. A leap into a repeat gets a pause before it.
+- **Quick notes:** 65% go down (was 45%).
+- Still: every note in range, every song ends on home, no leap without a pause (360 tracks: mid,
+  tenor, woman).
+
+| 120 tracks each | Notes above G4 | Repeats: same note at the same place |
+|---|---|---|
+| Mid | 0% | 73% |
+| Tenor | 5% | 72% |
+| Woman | 13% | 73% |
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
