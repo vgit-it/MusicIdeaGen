@@ -31,6 +31,8 @@ export interface Flick {
   at: number; len: number; midi: number;
   /** A 16th's silence (in steps) after it before the held note comes back (the quick note then a 16th itself). */
   gap?: number;
+  /** Pitch by words: a new stressed word (true, going up) or a word's soft last syllable (false, going down). */
+  starts?: boolean;
   /** At the held note's end: bent up (or down) to, and the line moves on from there. */
   bend?: boolean;
 }
@@ -61,7 +63,13 @@ export interface Mark { at: number; kind: 'push' | 'pull'; back?: number }
  *   first phrase comes back (moved to suit the section's height and the chords), the second comes back
  *   with a new ending.
  */
-export interface GuideIdeas { motif?: boolean; spine?: boolean }
+export interface GuideIdeas { motif?: boolean; spine?: boolean; speech?: boolean }
+
+/**
+ * How often a quick note starts a new word (else it ends one), by genre: a little more in busier genres
+ * (words.ts; with Pitch by words, how often quick notes go up).
+ */
+export const WORD_STARTS: Record<Genre, number> = { funk: 0.6, hardrock: 0.55, rock: 0.5, pop: 0.5, metal: 0.5, altmetal: 0.5, grunge: 0.4 };
 
 /**
  * Slow line (Melody first's "spine", after Schenker): a slow shape under each section that the line follows,
@@ -705,7 +713,12 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       const fl: Flick[] = [];
       // (a beat of the note held first, Paul: "too many very short held lines")
       for (let at = 4; at < n.len; at++) {
-        const r = frng.next(), gap = frng.chance(G.gap), up = frng.chance(FLICK_UP);
+        const r = frng.next(), gap = frng.chance(G.gap);
+        // (Pitch by words, as English is said: up, a new stressed word; down, a word's soft last syllable, the
+        // line coming back up into the next stress; one with a pause after it ends a word, so falls)
+        const speech = !!ideas.speech;
+        let up = frng.chance(speech ? WORD_STARTS[first.song.genre] ?? 0.5 : FLICK_UP);
+        if (speech && gap) up = false;
         const cl = clusterAt(barOf(n.step + at));
         // (the genre: how many, offbeats, bends at a note's end)
         // (any 16th: the offbeat 8ths by the genre's taste, the in-between 16ths a little less often)
@@ -734,7 +747,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         if (gap && !odd && !rest) continue;
         // (clear of the pushes and pulls)
         if ((n.marks ?? []).some((mk) => mk.at < at + len + (rest ? 1 : 0) && mk.at + (mk.back ?? 1) > at)) continue;
-        fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}), ...(rest ? { gap: 1 } : {}) });
+        fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}), ...(rest ? { gap: 1 } : {}), ...(speech && !end ? { starts: up && !rest } : {}) });
         if (rest) stat.flickGaps++;
         stat.byCluster[cl]++;
         stat.flicks++;
@@ -799,6 +812,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     `Mood: ${MOOD_LABEL[mood]}${moodIn ? '' : ' (auto)'}: ${M.desc}`,
     stat.notes ? `Starts on the ${DEG_NAME[startDeg]}, ends on home. Range ${noteName(stat.lowM)} to ${noteName(stat.hiM)}` : 'No notes: the line sits out here',
     `Voice: ${high ? `high (${HIGH_VOICES[high].label}): mid range, up to ${noteName(top)} where the song is high (${stat.highNotes} notes up there)` : `mid (${noteName(MID[0])} to ${noteName(MID[1])}, the song's peaks to ${noteName(PEAK)}; verses low, choruses lifted)`}`,
+    ...(ideas.speech ? [`Pitch by words: quick notes going up start a new stressed word (then the light rest of it, back down); going down, a word's soft last syllable, the line coming back up into the next stress`] : []),
     ...(ideas.spine ? [`Slow line: ${[...spineOf].map(([k, sp]) => `${k === 'prechorus' ? 'pre-chorus' : k} ${SPINES[sp].says}`).join('; ')}; ${stat.spineEnds} of ${stat.phraseEnds} phrases end on it`] : []),
     ...(ideas.motif ? [`Repeat idea: phrases in the form A B A b, ${stat.ideaA} sung again (moved to suit the height and chords), ${stat.ideaB} again with a new ending`] : []),
     `Repeats: ${stat.repeats} ${stat.repeats === 1 ? 'section' : 'sections'} sung like the first verse, pre-chorus or chorus (${stat.varied} notes changed a step)`,

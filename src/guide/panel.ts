@@ -66,6 +66,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label title="Sing the line's words (the same tune) in one of the singer's voices, instead of the synth">Sing <select id="g-sing" class="gsing"><option value="off" selected>Off</option>${TIMBRE_CHOICES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('')}</select></label>
         <label title="A short idea repeated: each section's phrases in the form A B A b (the first phrase comes back, moved to suit the height and chords; the second comes back with a new ending)">Repeat idea ${seg('g-motif', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="A slow shape under each section that the line follows, by mood: verses falling (rising when happy, around one note when dark), pre-choruses climbing, choruses arching; phrases end on it">Slow line ${seg('g-spine', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+        <label title="Pitch follows how the words are said: a quick note going up starts a new stressed word, going down is a word's soft last syllable, the line coming back up into the next stress">Pitch by words ${seg('g-speech', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="Quick notes on the long ones: a scale step up or down (in the key) for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
@@ -205,6 +206,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   pickSeg('g-voice', (v) => { voice = v as typeof voice; rewrite(); });
   pickSeg('g-motif', (v) => { ideas.motif = v === 'on'; rewrite(); });
   pickSeg('g-spine', (v) => { ideas.spine = v === 'on'; rewrite(); });
+  pickSeg('g-speech', (v) => { ideas.speech = v === 'on'; rewrite(); });
   pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
   $('g-sing').addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;
