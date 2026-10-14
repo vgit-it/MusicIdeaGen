@@ -104,12 +104,14 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
     // pushes (a tick up) and pulls (a tick down) on the held notes
     for (const n of all) for (const m of n.marks ?? []) {
       const xx = x(n.at + m.at), yy = y(n.midi);
+      // (a pull's silence: a gap in the note)
+      if (m.back) parts.push(`<rect x="${x(n.at + m.at + 1)}" y="${yy - 3.5}" width="${Math.max(1, x(m.back - 1))}" height="7" class="gquiet"/>`);
       parts.push(m.kind === 'push'
         ? `<line x1="${xx}" x2="${xx}" y1="${yy - 9}" y2="${yy - 3}" class="gpush"><title>push</title></line>`
         : `<line x1="${xx}" x2="${xx}" y1="${yy + 3}" y2="${yy + 9}" class="gpull"><title>pull</title></line>`);
     }
     draw.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="The guide line over the song">${parts.join('')}<line id="g-cur" x1="-5" x2="-5" y1="0" y2="${H}" class="gcur"/></svg>
-      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend <span class="k gflickk"></span>quick note <span class="k gflickoutk"></span>quick note, a half step (out of key) <span class="k gpushk"></span>push <span class="k gpullk"></span>pull</div>`;
+      <div class="glegend"><span class="k gnote"></span>in key <span class="k gleap"></span>leap after a pause <span class="k gcol"></span>out-of-key colour <span class="k gbendk"></span>bend <span class="k gflickk"></span>quick note <span class="k gflickoutk"></span>quick note, a half step (out of key) <span class="k gpushk"></span>push <span class="k gpullk"></span>pull (then silence to the next beat)</div>`;
     cursor = draw.querySelector('#g-cur');
     drawnTotal = total;
   };
@@ -146,6 +148,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         // (a split second's silence, then the held note struck again)
         if (f.gap) { rests.push({ at: (f.at + f.len) * six, len: f.gap * six }); taps.push((f.at + f.len + f.gap) * six); }
       }
+      // (a pull: silence, the note struck again on the next beat)
+      for (const m of n.marks ?? []) if (m.back && m.at + m.back < n.len) taps.push((m.at + m.back) * six);
       synth!.play(n.midi, time, len * six, 0.8, bends, taps, rests, (n.marks ?? []).map((m) => ({ at: m.at * six, kind: m.kind })));
     }
     if (cursor && g % 4 === 0) {
@@ -203,7 +207,11 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine): GuidePanel {
         for (const e of evs) {
           const ea = h.start + Math.round(e.at * step);
           if (ea > from) t.addNote({ midi: h.midi, ticks: from, durationTicks: ea - from, velocity: vel });
-          if ('m' in e) { from = ea; vel = e.m!.kind === 'push' ? 1 : 0.3; continue; }
+          if ('m' in e) {
+            // (a pull: a soft 16th, silence, the note back on the next beat)
+            if (e.m!.back) { const fe = Math.min(h.end, ea + Math.round(step)); t.addNote({ midi: h.midi, ticks: ea, durationTicks: fe - ea, velocity: 0.3 }); from = h.start + Math.round((e.m!.at + e.m!.back) * step); vel = 0.8; continue; }
+            from = ea; vel = e.m!.kind === 'push' ? 1 : 0.3; continue;
+          }
           const f = e.f!, fe = ea + Math.round(f.len * step);
           t.addNote({ midi: f.midi, ticks: ea, durationTicks: fe - ea, velocity: 0.9 });
           from = fe + Math.round((f.gap ?? 0) * step);

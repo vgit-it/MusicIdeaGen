@@ -283,6 +283,16 @@ Paul: wherever a quick note starts, the line should come back on the beat grid.
 - The grid is the 8th in every meter (4/4, 6/8, 7/8).
 - Counts back to about where they were (Some ~9 per 8 bars).
 
+## Pulls end in silence (2026-10-14)
+
+Paul: a pull should end in silence and the note come back on the next beat.
+
+- **A pull now:** the note falls away over a 16th, then silence, then the note is struck again on the next beat (by the time signature's beats: 4/4 quarters, 6/8 dotted quarters, 7/8 its groups).
+- **Silence:** usually 1-5 16ths (median 3). Near a note's end, it stays silent until the next note.
+- **Never on the song's last note** (it rings to the end).
+- Quick notes and pushes keep clear of the silence. Drawn as a gap in the note; in MIDI a soft 16th, then the note again on the beat.
+- Pushes and pulls about 6 per 8 bars (a little fewer: the silences take room).
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

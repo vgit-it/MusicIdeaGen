@@ -53,7 +53,8 @@ export interface GuideNote {
 }
 
 /** A push (a lift, like a word starting) or a pull (a dip, like a word ending) inside a held note. */
-export interface Mark { at: number; kind: 'push' | 'pull' }
+/** A push or a pull on a held note. A pull falls away to silence, the note back on the next beat (`back` steps after `at`; at the note's end, not back). */
+export interface Mark { at: number; kind: 'push' | 'pull'; back?: number }
 
 export interface GuideLine {
   /** Notes per section, in play order. */
@@ -250,6 +251,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     }
     if (n.marks) {
       const keep = n.marks.filter((m) => m.at <= n.len - 4);
+      for (const m of keep) if (m.back && m.at + m.back > n.len) m.back = n.len - m.at;
       for (const m of n.marks) if (!keep.includes(m)) stat[m.kind]--;
       if (keep.length) n.marks = keep; else delete n.marks;
     }
@@ -488,7 +490,15 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
       while (markAt < to) {
         const at0 = markAt - from + (markAt - from) % 2;
         const at = at0 >= 2 && at0 <= n.len - 4 ? at0 : undefined;
-        if (at !== undefined) { const kind = mrng.chance(0.5) ? 'push' : 'pull'; mk.push({ at, kind }); stat[kind]++; markAt = from + at; }
+        if (at !== undefined) {
+          // (never a pull on the song's last note: it rings to the end)
+          const kind = mrng.chance(0.5) && !(lastSection && k === out.length - 1) ? 'pull' : 'push';
+          // (a pull: a 16th falling away, then silence until the next beat, where the note comes back)
+          const beat = beats.find((b) => b.step >= n.step + at + 2)?.step ?? Infinity;
+          const back = kind === 'pull' ? Math.min(n.len, beat - n.step) - at : undefined;
+          mk.push({ at, kind, ...(back ? { back } : {}) }); stat[kind]++;
+          markAt = from + at + (back ?? 0);
+        }
         markAt += markGap();
       }
       if (mk.length) n.marks = mk;
@@ -534,7 +544,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
         const rest = !end && gap && !odd && at + len + 1 < n.len;
         if (gap && !odd && !rest) continue;
         // (clear of the pushes and pulls)
-        if ((n.marks ?? []).some((mk) => mk.at >= at && mk.at < at + len + (rest ? 1 : 0))) continue;
+        if ((n.marks ?? []).some((mk) => mk.at < at + len + (rest ? 1 : 0) && mk.at + (mk.back ?? 1) > at)) continue;
         fl.push({ at, len, midi: m, ...(end ? { bend: true } : {}), ...(rest ? { gap: 1 } : {}), ...(outKey ? { outKey } : {}) });
         if (outKey) stat.flickOut++;
         if (rest) stat.flickGaps++;
@@ -566,7 +576,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
     `Sits out: ${list.map((i, si) => (silent[si] ? i.section?.label ?? '' : '')).filter(Boolean).join(', ') || 'nothing'} (always the intro and solos; interludes, bridges, breakdowns and outros by chance)`,
     ...(flicks === 'off' ? [] : [`Quick notes for ${first.song.genre}: ${G.feel}`]),
     ...(flicks === 'off' ? [] : [`Quick notes: ${stat.flicks} in 2-bar clusters (frequent ${stat.byCluster.frequent}, moderate ${stat.byCluster.moderate}, sparse ${stat.byCluster.sparse}); ${stat.flickGaps} as a 16th with a 16th's pause before the note comes back, ${stat.flickBends} bent to at a note's end; ${stat.flickOut} a half step away and out of the key`]),
-    `Pushes and pulls on the held notes: ${stat.push} pushes (a lift, like a word starting), ${stat.pull} pulls (a dip, like a word ending), spread unevenly`,
+    `Pushes and pulls on the held notes: ${stat.push} pushes (a lift, like a word starting), ${stat.pull} pulls (a dip, like a word ending), spread unevenly; a pull falls to silence and the note comes back on the next beat`,
     `${stat.notes} notes, about ${(songBeats / Math.max(1, stat.notes)).toFixed(1)} beats each; ${stat.pauses} pauses`,
     `Chords: ${lean === 'in' ? 'leaning in' : 'leaning out (key only)'}: strong beats on a chord note ${Math.round((100 * stat.strongTone) / Math.max(1, stat.strong))}%`,
     M.colour ? `Out of key: ${colourWord[M.colour]} (${stat.colour}${stat.colour === 1 ? ' time' : ' times'})` : 'Out of key: none (this mood stays in the scale)',
