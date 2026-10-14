@@ -210,6 +210,31 @@ Paul: Lots works best, so make Some the current Lots and retune the other two.
 | Some | 2.8 | 12.7 |
 | Lots | 12.7 | 17.0 |
 
+## Where it sits out, and quick notes by genre (2026-10-14)
+Paul: silent in solos; by chance in interludes, bridges and outros; no notes at all in intros; and
+Sparse, Some and Lots meaning something different per genre.
+- **Sits out:** intros and solos always. Interludes 50%, bridges 70% plays, breakdowns 50%, outros 50%
+  (rolled per song; Reroll rolls again). Verses, pre-choruses and choruses always play.
+- After sitting out it comes back on any note (the silence is its pause). If the outro sits out, the
+  last chorus ends on home (with a pause before it if that's a leap).
+- Drawn greyed and marked "silent"; the readout lists the sections it sits out.
+- **Quick notes by genre** (the levels keep their order; the genre scales them and gives them a feel):
+
+| Genre | How many | Feel |
+|---|---|---|
+| Pop | as set | smooth |
+| Rock | a little more | as before |
+| Hard rock | more | punchy: half have a pause after them |
+| Funk | many more, an 8th apart at every level | stabby: most with a pause, on the offbeat 8ths |
+| Grunge | fewer | lazy: few pauses, often bent to at a note's end |
+| Alt metal | in bursts | busy frequent clusters, little between |
+| Metal | more | half with a pause, more two-step jumps |
+
+Measured against the same songs played Pop-style: Funk x2.1 on Sparse, x1.2 on Some; Grunge and Alt metal
+x0.8 on Some and Lots; Rock, Hard rock and Metal x1.1 on Sparse. Some and Lots are near the most that
+fit (one every other 8th), so there the busier genres differ mostly in feel, not count.
+Checked (224 tracks): intros and solos always empty, every song ends home, no leap without a pause.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
