@@ -20,9 +20,14 @@ export class GuideSynth {
     this.vol.volume.value = v <= 0 ? -Infinity : 20 * Math.log10((v / 100) ** 2) - 2;
   }
 
-  play(midi: number, time: number, dur: number, vel = 0.8) {
+  /**
+   * A note from `time` for `dur` seconds. `bends`: the pitch glides on to other notes without a new
+   * attack (`at` seconds in, over `over` seconds), the way a guitarist bends a string.
+   */
+  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = []) {
     const raw = this.ctx.rawContext as BaseAudioContext;
-    const freq = 440 * 2 ** ((midi - 69) / 12);
+    const hz = (m: number) => 440 * 2 ** ((m - 69) / 12);
+    const freq = hz(midi);
     const g = raw.createGain();
     const peak = 0.22 * vel, end = time + Math.max(0.08, dur - 0.03);
     g.gain.setValueAtTime(0, time);
@@ -33,7 +38,13 @@ export class GuideSynth {
     const oscs = (['sine', 'triangle'] as const).map((type, i) => {
       const o = raw.createOscillator();
       o.type = type;
-      o.frequency.value = freq;
+      o.frequency.setValueAtTime(freq, time);
+      let cur = freq;
+      for (const b of bends) {
+        o.frequency.setValueAtTime(cur, time + b.at);
+        cur = hz(b.to);
+        o.frequency.exponentialRampToValueAtTime(cur, time + b.at + b.over);
+      }
       const lvl = raw.createGain();
       lvl.gain.value = i ? 0.35 : 1;
       o.connect(lvl).connect(g);

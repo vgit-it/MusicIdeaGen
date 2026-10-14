@@ -82,6 +82,33 @@ Tendencies for Western listeners, not laws. Tempo and loudness matter more than 
 Every song ends on home, and no leap of a 4th or more comes without a pause before it. Moves are
 mostly steps (52-70%), then 3rds (12-40%), with leaps 1-7%.
 
+## Steadier, with bends (2026-10-14)
+Paul: "too many shifts, almost every beat; more steady for now", and bends as one of the ways it moves
+from note to note, over an 8th, a quarter or half a bar.
+- **Steadier:** notes last 2.5 times as long as before, change only on strong beats (a bar's first or
+  its middle), and tension speeds them up less. The same note again is held on, not struck again.
+  Now about a note every 3-8 beats (was 1-2.4).
+- **Bends:** a step up or down (a half or whole step, like a guitar bend) can be bent into instead of
+  played: no new attack, the pitch glides from the note before over an 8th, a quarter or half a bar
+  (never more than half the note). Only straight on (no pause before).
+  - How often, by mood: melancholic and dreamy 35% of steps, nostalgic and dark 30%, tense and
+    triumphant 25%, happy and angry 20%.
+  - Which length: angry likes quick 8th bends, dreamy and melancholic slow half-bar ones.
+  - Drawn as green slopes. In the MIDI file as pitch bends (the standard whole-step range).
+
+| 40 tracks per mood | Notes a song (lean in) | Beats a note | Bends a song |
+|---|---|---|---|
+| Happy | 54 | 4.2 | 3 |
+| Melancholic | 40 | 5.7 | 4 |
+| Nostalgic | 48 | 4.8 | 5 |
+| Tense | 67 | 3.4 | 9 |
+| Angry | 61 | 3.8 | 5 |
+| Dreamy | 27 | 8.4 | 2 |
+| Triumphant | 54 | 4.2 | 5 |
+| Dark | 46 | 4.9 | 4 |
+
+Still: every song ends on home, no leap without a pause before it.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
