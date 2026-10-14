@@ -173,14 +173,15 @@ export const noteName = (m: number) => `${NAMES[mod(m, 12)]}${Math.floor(m / 12)
 
 /** A high voice's top, written an octave under where it's sung (the woman's voice sings the line back up an octave, voice.ts). */
 export const DOWN = 12;
-/** Home around E3 (Paul: "somewhere around E3, where it sounds a bit normal"): A2 to G#3 by the key. */
-const homeMidi = (key: number) => 45 + mod(key - 9, 12);
+/** Home in the lower middle of the voice: C3 to B3 by the key (was A2 to G#3; Paul: "lift the range further up"). */
+const homeMidi = (key: number) => 48 + mod(key, 12);
 /**
- * The voice, A2 to C4, around E3 (Paul: C3-C5 sounded very weird, C2-C4 super low); the song's peaks (tension from PEAK_T)
- * reach D4; a high voice (the singer's high voice, or High) goes up to its own top, an octave down, in the song's high parts.
+ * The voice, C3 to E4, around A3 (Paul: C3-C5 sounded very weird, C2-C4 super low, A2-C4 still a bit weird: lifted);
+ * the song's peaks (tension from PEAK_T) reach F#4; a high voice (the singer's high voice, or High) goes up to its own
+ * top, an octave down, in the song's high parts. Limits the line is written within, not a shift afterwards.
  */
-const MID: [number, number] = [45, 60];
-const PEAK = 62, PEAK_T = 0.8;
+const MID: [number, number] = [48, 64];
+const PEAK = 66, PEAK_T = 0.8;
 /**
  * Height by section, not wandering (Paul: a narrow range "without making it too monotonous"): where each kind of
  * section sits in the voice (0 its bottom, 1 its top), moved by the tension and the mood's lean; a pre-chorus climbs
