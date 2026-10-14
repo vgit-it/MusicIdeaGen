@@ -131,6 +131,10 @@ export class Engine {
   /** A track finished playing. */
   onEnd: () => void = () => {};
   onStatus: (msg: string) => void = () => {};
+  /** Every step played live (the Guide line experiment listens here: src/guide/). */
+  onStep: ((idea: Idea, idx: number, g: number, time: number, six: number) => void) | null = null;
+  /** Playback stopped. */
+  onStop: (() => void) | null = null;
 
   /** This engine's own clock and context (an offline render has its own, separate from the live ones). */
   private ctx = Tone.getContext();
@@ -818,6 +822,7 @@ export class Engine {
     this.keysInst?.releaseAll();
     this.padInst?.releaseAll();
     this.stringsInst?.releaseAll();
+    this.onStop?.();
     this.onBar(-1);
   }
 
@@ -936,6 +941,7 @@ export class Engine {
       const next = hits.length ? toNext(this.hitsAt2) : 0;
       for (const h of hits) this.playHit(this.g2Inst, held(h, next), time + (idea.g2Feel ?? 0) / 1000, six);
     }
+    if (others && this.onStep && !this.offline) this.onStep(idea, this.idx, g, time, six);
     // the singer: its lines start a little ahead of their first notes
     if (others && this.singer && this.vocalChoice !== 'off') this.singer.playStep(idea, g, time, six);
     if (others && this.backer && this.backingOn) this.backer.playStep(idea, g, time, six);
