@@ -12,6 +12,7 @@ import { polishVoice } from '../audio/polish';
 import { polishFor } from '../audio/singer';
 import type { SungNote } from '../audio/sing';
 import type { GuideSungLine } from './words';
+import { DOWN } from './line';
 
 /** Seconds of lead-in before a line's first note (onset consonants, a breath). */
 const PRE = 0.3;
@@ -46,6 +47,8 @@ export class GuideVoice {
   /** The lines to sing, per section of `list`; rendering starts in the background. */
   set(list: Idea[], words: GuideSungLine[][], high: HighVoice | null) {
     this.high = high;
+    // (the line sits an octave down, in the Cornell voice's own range; the woman sings it back up in hers)
+    const shift = high === 'woman' ? DOWN : 0;
     this.byStep = words.map((lines, si) => {
       const idea = list[si];
       const six = 15 / idea.song.bpm;
@@ -54,7 +57,7 @@ export class GuideVoice {
       for (const L of lines) {
         if (!L.notes.length) continue;
         const t0 = GuideVoice.at(idea, L.notes[0].step);
-        const notes: SungNote[] = L.notes.map((n) => ({ t: GuideVoice.at(idea, n.step) - t0, end: GuideVoice.at(idea, n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl }));
+        const notes: SungNote[] = L.notes.map((n) => ({ t: GuideVoice.at(idea, n.step) - t0, end: GuideVoice.at(idea, n.step + n.len) - t0, midi: n.midi + shift, vel: n.vel, syl: n.syl }));
         const key = `${high ?? 'cornell'}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}`;
         const p: Placed = { key, notes, t0, idea, energy };
         const first = Math.max(0, L.notes[0].step - Math.ceil(PRE / six));

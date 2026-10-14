@@ -171,13 +171,15 @@ const BEND_SEMIS = 2;
 const NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 export const noteName = (m: number) => `${NAMES[mod(m, 12)]}${Math.floor(m / 12) - 1}`;
 
-/** Home in the middle of the voice: F3 to E4. */
-const homeMidi = (key: number) => 53 + mod(key - 5, 12);
+/** The whole line an octave down (Paul: up at C3-C5 it sounded very weird): the same shapes, an octave lower. */
+export const DOWN = 12;
+/** Home in the middle of the voice: F2 to E3. */
+const homeMidi = (key: number) => 53 - DOWN + mod(key - 5, 12);
 /**
- * The voice, C3 to C5 (Paul: the mid voice range, then "open up more of the higher range": was G4); a high voice (the singer's
- * high voice, or High) goes up to its own top in the song's high parts (tension from HIGH_T up).
+ * The voice, C2 to C4 (Paul: the mid voice range, then "open up more of the higher range": was G3; then all an octave down);
+ * a high voice (the singer's high voice, or High) goes up to its own top, an octave down too, in the song's high parts (tension from HIGH_T up).
  */
-const MID: [number, number] = [48, 72];
+const MID: [number, number] = [48 - DOWN, 72 - DOWN];
 /**
  * More room up (Paul: "the limiting of range has made it very stale, open up more of the higher range"):
  * the mood's span reaches this many scale steps higher, and a high voice goes past its usual top.
@@ -260,7 +262,7 @@ export function writeGuide(list: Idea[], moodIn: Mood | undefined, lean: Lean, s
   };
   // the first verse, pre-chorus and chorus, kept to sing again (their notes, and each note's colour shift)
   const firstOf = new Map<string, { notes: GuideNote[]; cs: number[]; total: number; bars: number }>();
-  const top = high ? Math.max(MID[1], HIGH_VOICES[high].beltTop + HIGH_EXTRA) : MID[1];
+  const top = high ? Math.max(MID[1], HIGH_VOICES[high].beltTop + HIGH_EXTRA - DOWN) : MID[1];
   // pushes and pulls: their own dice (the line and the quick notes stay the same), and the next one's place
   const mrng = new Rng(`guide-marks-${first.seeds.song}-${mood}-${salt}`);
   const markGap = () => {
