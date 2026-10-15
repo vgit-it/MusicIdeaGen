@@ -12,7 +12,7 @@ import { Rng } from '../rng';
 import { type Mood, MOOD_LABEL, autoMood } from '../tension';
 import { chordTones } from '../parts/guitar2';
 import type { Genre } from '../genres';
-import { GUIDE_SCALES, HEIGHT, MID_AUTO, NAMES, PEAK_AUTO, PEAK_T, PLAY_CHANCE, REPEATS, SCALE_LABEL, MAX_PER_SECOND, type GuideLine, type GuideNote, type GuideRange, type GuideTonality, type Lean, homeMidi, noteName } from './line';
+import { GUIDE_SCALES, HEIGHT, LEAD_INS, LEAD_IN_P, SPINES, SPINE_BY, SPINE_GENRE, TIRED, type GuideIdeas, type Spine, MID_AUTO, NAMES, PEAK_AUTO, PEAK_T, PLAY_CHANCE, REPEATS, SCALE_LABEL, MAX_PER_SECOND, type GuideLine, type GuideNote, type GuideRange, type GuideTonality, type Lean, homeMidi, noteName } from './line';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -126,7 +126,7 @@ const SHAPE_ENERGY: Record<Shape, number> = { scoop: 0.6, again: 0.7, plain: 0.2
 /** How a 4-bar block is split into phrases (bars). */
 const PLANS: [number[], number][] = [[[4], 0.35], [[2, 2], 0.45], [[1, 1, 2], 0.1], [[2, 1, 1], 0.1]];
 
-export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, range: GuideRange | null = null, tonality: GuideTonality | null = null): GuideLine {
+export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, range: GuideRange | null = null, tonality: GuideTonality | null = null, ideas: GuideIdeas = {}): GuideLine {
   const first = list[0];
   const mood = moodIn ?? autoMood(first.song, first.seeds.song);
   const genre = first.song.genre as Genre;
@@ -143,6 +143,17 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
     return pc !== undefined && !srng.chance(pc);
   });
   const lastSung = silent.lastIndexOf(false);
+  // (Slow line: a shape under each kind of section that the anchors follow, by mood, now and then the genre's lean; its own dice)
+  const sprng = new Rng(`anchor-spine-${first.seeds.song}-${mood}-${salt}`);
+  const spineOf = new Map<SectionKind, Spine>();
+  const spineFor = (kind: SectionKind): Spine | null => {
+    if (!ideas.spine || !SPINE_BY[kind]) return null;
+    if (!spineOf.has(kind)) {
+      const by = SPINE_BY[kind]!, gl = SPINE_GENRE[first.song.genre]?.[kind];
+      spineOf.set(kind, gl && sprng.chance(0.5) ? gl : by[mood] ?? by.all);
+    }
+    return spineOf.get(kind)!;
+  };
   const cells = CELLS[genre] ?? CELLS.pop;
   const stat = { phrases: 0, holds: 0, bends: 0, merged: 0, figs: new Map<string, number>(), anchors: [] as string[], beats: 0, notes: 0, strongFin: 0, strongTone: 0, repeats: 0, shapes: new Map<Shape, number>(), energy: [] as string[] };
   const firstOf = new Map<string, { degs: { step: number; len: number; deg: number; bend?: number; acc: boolean }[]; total: number; bars: number }>();
@@ -211,7 +222,10 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
         const lastBlock = b0 + 4 >= song.bars.length;
         const songEnd = lastSection && lastBlock;
         // the anchor: near the section's height, a chord note through the block (leaning in), moving from the last
-        const target = songEnd ? Math.round((heightD(b0) + 0) / 2) : heightD(b0);
+        // (Slow line: the section's shape moves the height, by where the block sits in the section)
+        const spine = spineFor(kind);
+        const lift = spine ? Math.round(SPINES[spine].f(b0 / Math.max(1, song.bars.length - nBars))) : 0;
+        const target = songEnd ? Math.round((heightD(b0) + 0) / 2) : heightD(b0) + lift;
         const blockSteps = [song.bars[b0].start, song.bars[b0 + nBars - 1].start + song.bars[b0 + nBars - 1].len];
         const chordFit = (x: number) => {
           let n = 0, k = 0;
@@ -228,7 +242,7 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
         if (!cands.length) cands.push(target);
         let anchor = cands[0], best = -Infinity;
         for (const x of cands) {
-          const sc = -0.5 * Math.abs(x - target) + (lean === 'in' ? 1.5 * chordFit(x) : 0) + rng.next() * 0.6;
+          const sc = -(spine ? 1.1 : 0.5) * Math.abs(x - target) + (lean === 'in' ? 1.5 * chordFit(x) : 0) + rng.next() * 0.6;
           if (sc > best) { best = sc; anchor = x; }
         }
         prevAnchor = anchor;
@@ -406,6 +420,66 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
     parts.push(out);
   });
 
+  // Breaths and Lead-ins (switches; each its own dice, so the line elsewhere stays put)
+  const nb = { before: 0, tired: 0, beats: 0, leadIns: 0 };
+  if (ideas.breath || ideas.leadIn) {
+    const brng = new Rng(`anchor-breath-${first.seeds.song}-${mood}-${salt}`);
+    const lrng = new Rng(`anchor-leadin-${first.seeds.song}-${mood}-${salt}`);
+    /** Shortened by `by` steps, if it keeps at least a beat (and room for its bend). */
+    const cut = (n: GuideNote, by: number) => {
+      if (by <= 0) return true;
+      if (n.len - by < Math.max(4, 2 * (n.bend ?? 0))) return false;
+      n.len -= by;
+      return true;
+    };
+    /** How tiring a stretch is, in bars (high notes count more): sung time since the last silence of 2 beats or more. */
+    const effortTo = (p: GuideNote[], j: number, bar: number) => {
+      let e = 0;
+      for (let k = j; k >= 0; k--) {
+        e += (p[k].len / bar) * (1 + Math.max(0, p[k].midi - 57) / 5);
+        if (k > 0 && p[k].step - (p[k - 1].step + p[k - 1].len) >= 8) break;
+      }
+      return e;
+    };
+    parts.forEach((p, si) => {
+      if (!p.length) return;
+      const song = list[si].song, bar = song.bars[0].len, kind = list[si].section?.kind ?? 'verse';
+      // Breaths after a tiring stretch, inside the section: the rest before the next phrase made longer
+      if (ideas.breath) for (let j = 1; j < p.length; j++) {
+        const gap = p[j].step - (p[j - 1].step + p[j - 1].len);
+        if (gap < 4 || gap >= 12 || effortTo(p, j - 1, bar) < TIRED || !brng.chance(0.7)) continue;
+        const by = 4 * brng.int(1, 2);
+        if (cut(p[j - 1], by)) { nb.tired++; nb.beats += by / 4; }
+      }
+      const prevP = si > 0 ? parts[si - 1] : undefined, prevIdea = list[si - 1];
+      const pLast = prevP?.[prevP.length - 1];
+      // the gap (steps) between the section before's last note and this one's first
+      const gapIn = () => (pLast && prevIdea ? prevIdea.song.total - (pLast.step + pLast.len) + p[0].step : Infinity);
+      // Breaths before a big section (a chorus, or one sung higher), or after a tiring stretch: a silence of 1-4 beats
+      if (ideas.breath && pLast && prevIdea) {
+        const big = kind === 'chorus' || (HEIGHT[kind as SectionKind] ?? 0.4) - (HEIGHT[prevIdea.section?.kind ?? 'verse'] ?? 0.4) >= 0.25;
+        const tired = effortTo(prevP!, prevP!.length - 1, prevIdea.song.bars[0].len) >= TIRED;
+        if (brng.chance((big ? 0.55 : 0.1) + (tired ? 0.3 : 0))) {
+          const want = 4 * brng.int(1, big && tired ? 4 : 3);
+          const by = want - gapIn();
+          if (by > 0 && cut(pLast, by)) { nb.before++; nb.beats += by / 4; }
+        }
+      }
+      // Lead-ins: the section's first note comes in early (an 8th, a beat or two), held into it, a beat's breath before it
+      const f = p[0];
+      if (ideas.leadIn && f.step < 4 && !f.bend && lrng.chance(LEAD_IN_P)) {
+        let r = lrng.next();
+        const L = (LEAD_INS.find(([, w]) => (r -= w) <= 0) ?? LEAD_INS[0])[0];
+        const prevBar = prevIdea?.song.bars[prevIdea.song.bars.length - 1].len ?? bar;
+        const need = L + f.step + 4 - gapIn();
+        if (L < prevBar && f.len + f.step + L <= ANCHOR_HOLD_BARS * bar && (!pLast || need <= 0 || cut(pLast, need))) {
+          f.len += f.step + L; f.step = -L;
+          nb.leadIns++;
+        }
+      }
+    });
+  }
+
   // a cap (Paul's): at most 4 new sounds in any second; in a busy spot the anchor notes are tied together
   // (the one before held on), keeping the accents
   {
@@ -469,7 +543,10 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
     `${stat.notes} notes (a word each), ${(stat.notes / Math.max(1, stat.beats)).toFixed(2)} a beat; ${stat.repeats} sections sung like the first verse, pre-chorus or chorus`,
     `Busy spots: at most ${MAX_PER_SECOND} new sounds in any second (${stat.merged} anchor notes tied into the one before)`,
     `Sits out: ${list.map((i, si) => (silent[si] ? i.section?.label ?? '' : '')).filter(Boolean).join(', ') || 'nothing'}`,
-    'Not used here: quick notes, pushes and pulls, and the other switches (Hard & soft, Range and Key & scale still apply)',
+    ...(ideas.spine ? [`Slow line: the anchors follow ${[...spineOf].map(([k, sp]) => `the ${k === 'prechorus' ? 'pre-chorus' : k} (${SPINES[sp].says})`).join(', ') || 'no shape here'}`] : []),
+    ...(ideas.breath ? [`Breaths: ${nb.before} before a big section or after a tiring one, ${nb.tired} more after a tiring stretch; ${nb.beats} beats in all`] : []),
+    ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, the first note held into it`] : []),
+    'Not used here: quick notes, pushes and pulls, and the other switches (Breaths, Lead-ins, Slow line, Hard & soft, Range and Key & scale apply)',
   ];
   return { parts, silent, mood, notes };
 }
