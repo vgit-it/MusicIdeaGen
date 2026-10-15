@@ -81,6 +81,12 @@ export interface GuideIdeas {
   feel?: boolean;
   /** The Anchor line's rhythm style (anchor.ts; left out: Auto, by genre). */
   rhythm?: AnchorRhythm;
+  /** Anchor line, Hook (anchor.ts): a section's phrases in a form (A A B A, A B A B, A A B B), a phrase's rhythm and accent coming back, the chorus's first phrase its hook. */
+  hook?: boolean;
+  /** Anchor line, Less one-note (anchor.ts): the words on the main note decorated: a step up or down and back on weak notes, a step into the accent, a leap into a phrase, a clash on the strong last note settling down onto a chord note. */
+  color?: boolean;
+  /** Anchor line, Best of several (anchor.ts): several lines written, the one that scores best kept (chord fit, easy to sing, repeats, shape, the song's top in a chorus). */
+  best?: boolean;
 }
 /** The Anchor line's rhythm styles (the Rhythm menu). */
 export type AnchorRhythm = 'auto' | 'straight' | 'pushed' | 'busy' | 'sparse' | 'bouncy' | 'mixed';
