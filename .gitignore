@@ -7,3 +7,4 @@ dist/
 !.vscode/extensions.json
 .claude/settings.local.json
 voice-lab/
+study-data/
