@@ -178,3 +178,27 @@ Measured (168 songs):
 | Phrase ends on the chord | 60% | 56% | 57% | 71% | 66% |
 | Song's top in a chorus (songs with one) | 89% | 89% | 90% | 99% | 99% |
 | Words a beat | 0.79 | 0.78 | 0.80 | 0.79 | 0.80 |
+
+## Song arc, Listen to band (2026-10-15)
+Paul: the song-wide arc and listening to the band. Two more switches in the Anchor line's group.
+
+- **Song arc:** choruses higher (a tenth of the voice's range), with fewer words (plainer rhythms, no extra
+  words when the energy is up) and more long notes; verses lower and a little talkier. The song's highest note
+  saved for the last chorus, sung once: a long accent there (past its first third, the later the better) raised
+  up to 3 scale steps above everything else, within the range and no leap over a 6th; held a beat longer into
+  the rest after it; any note elsewhere as high brought a step under it.
+- **Listen to band** (like the singer's `fit.ts`): phrase ends land on a drum hit (kick or snare), moved up to a
+  beat if not (keeping a chord note a chord note); on the kick, now and then moved on to the snare a beat away (a
+  backbeat landing). When the band pushes a chord change an 8th or 16th early (kick or bass on it), the note on
+  the beat comes in with it. Under the drums' fills and Guitar 2's licks (when Guitar 2 plays half the section
+  or less: licks, not a part) no new words: the note before held on.
+
+Measured (168 songs):
+| | Off | Arc | Band | Arc, band, best |
+|---|---|---|---|---|
+| Song's top in the last chorus only | 13% | 98% | 13% | 99% |
+| Song's top sung once | 21% | 98% | 21% | 99% |
+| Verse: average pitch / words a beat | 57.5 / 0.74 | 55.5 / 0.81 | 57.5 / 0.72 | 55.6 / 0.79 |
+| Chorus: average pitch / words a beat | 65.7 / 0.84 | 69.5 / 0.72 | 65.7 / 0.78 | 69.6 / 0.67 |
+| Chorus: long notes (half a bar or more) | 10% | 13% | 12% | 16% |
+| Phrase ends on a drum hit (on the snare) | 76% (19%) | 74% (20%) | 86% (28%) | 86% (29%) |

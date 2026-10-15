@@ -205,6 +205,25 @@ const LEAP_IN_P = 0.2;
 const APPOG_P: Record<Mood, number> = { melancholic: 0.4, nostalgic: 0.4, dreamy: 0.35, dark: 0.3, tense: 0.3, happy: 0.2, triumphant: 0.2, angry: 0.12 };
 /** Best of several (switch): how many lines are written; the best scoring one kept. */
 const BEST_TRIES = 8;
+/**
+ * Song-wide arc (switch; Paul): the choruses higher, with fewer words and longer notes, the verses lower and
+ * talkier; the song's highest note saved for the last chorus, sung once. By kind of section: height (a part of
+ * the voice's range), words (how busy) and long notes (more likely).
+ */
+const ARC_HEIGHT: Partial<Record<SectionKind, number>> = { chorus: 0.1, verse: -0.12, bridge: 0.04, outro: -0.06 };
+const ARC_BUSY: Partial<Record<SectionKind, number>> = { chorus: -0.45, verse: 0.3, prechorus: 0.05, outro: -0.1 };
+const ARC_HOLD: Partial<Record<SectionKind, number>> = { chorus: 0.3, verse: -0.12, bridge: 0.05 };
+/** The climax: raised at most this many scale steps; a leap into it at most this many semitones. */
+const CLIMAX_RAISE = 3;
+const CLIMAX_LEAP = 9;
+/**
+ * Listening to the band (switch; Paul, as the singer's fit.ts): phrase ends and accents on a drum hit (the
+ * snare now and then, a backbeat landing), quick words off the beat with the groove's hits, held notes (no new
+ * words) under the drums' fills and Guitar 2's licks, and pushed with the band when it pushes a chord change.
+ */
+const SNARE_P = 0.35;
+/** Guitar 2 playing more of the section than this is a part (arpeggios, a pad), not licks to leave room for. */
+const LICK_MAX = 0.5;
 
 export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, range: GuideRange | null = null, tonality: GuideTonality | null = null, ideas: GuideIdeas = {}): GuideLine {
   if (!ideas.best) return writeOnce(list, moodIn, lean, salt, range, tonality, ideas, '');
@@ -284,6 +303,7 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
   const keyOf = (s: Idea['song']) => (tone?.key != null ? mod(s.key + tone.key - first.song.key, 12) : s.key);
   const scaleOf = (s: Idea['song']) => GUIDE_SCALES[tone?.scale ?? s.mode] as readonly number[];
   const rng = new Rng(`anchor-${first.seeds.song}-${mood}-${lean}-${salt}${tag}`);
+  const stat3 = { pushes: 0, ends: 0, onHit: 0, moved: 0, snare: 0, held: 0, climax: '', lowered: 0 };
   const stat2 = { forms: [] as string[], hooks: 0, back: 0, neighbors: 0, passing: 0, leapsIn: 0, appogs: 0 };
   // (where it sits out: the same dice as the guide line, so the same sections)
   const srng = new Rng(`guide-silent-${first.seeds.song}-${salt}`);
@@ -339,7 +359,7 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
     const level = ((idea.section?.energy ?? 3) - 1) / 4;
     const energyAt = (bar: number) => Math.max(0, Math.min(1, 0.6 * level + 0.4 * tension(bar) + MOOD_PUSH[mood]));
     const longFins = new Set<GuideNote>();
-    let holdsLeft = HOLDS_MAX + (kind === 'chorus' ? 1 : 0);
+    let holdsLeft = HOLDS_MAX + (kind === 'chorus' ? 1 + (ideas.arc ? 1 : 0) : 0);
     stat.beats += song.bars.reduce((n, b) => n + b.groups.length, 0);
 
     // a verse, pre-chorus or chorus sung before: its notes again (in this section's key)
@@ -364,7 +384,7 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
       const short = song.bars[0].groups.length <= 3;
       // (the section's height in the voice, as a scale note: by its kind and the tension)
       const heightD = (bar: number) => {
-        let h = (HEIGHT[kind] ?? 0.4) + (tension(bar) - 0.5) * 0.4;
+        let h = (HEIGHT[kind] ?? 0.4) + (tension(bar) - 0.5) * 0.4 + (ideas.arc ? ARC_HEIGHT[kind] ?? 0 : 0);
         if (kind === 'prechorus') h += 0.3 * (bar / Math.max(1, song.bars.length - 1));
         const m = MID[0] + Math.max(0, Math.min(1, h)) * (MID[1] - MID[0]);
         let best = 0;
@@ -430,7 +450,7 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
         // the block's rhythm cell (now and then its own for a phrase), as busy as the energy: more words when it's up
         const E = energyAt(b0);
         if (b0 === 0 && !again) stat.energy.push(`${idea.section?.label ?? kind} ${E < 0.35 ? 'low' : E < 0.65 ? 'mid' : 'high'}`);
-        const want = 0.35 + 1.0 * E + (KIND_BUSY[kind] ?? 0);
+        const want = 0.35 + 1.0 * E + (KIND_BUSY[kind] ?? 0) + (ideas.arc ? ARC_BUSY[kind] ?? 0 : 0);
         // (a chosen style: the energy steers less, so the style is heard)
         const pickCell = () => rng.weighted(pool.map(([c, w]) => [c, w * Math.exp(-(style === 'auto' ? 3 : 1.5) * Math.abs(busy(c) - want))] as [Beat[], number]));
         const blockCell = pickCell();
@@ -463,7 +483,15 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
                 if (opts.length) varied[i] = rng.pick(opts);
               }
             }
-            else if (E > 0.65 && song.bpm <= 125) cell = cell.map((x) => (x === 'one' && rng.chance((E - 0.65) * 1.5) ? 'two' : x));
+            else if (E > 0.65 && song.bpm <= 125 && !(ideas.arc && kind === 'chorus')) cell = cell.map((x) => (x === 'one' && rng.chance((E - 0.65) * 1.5) ? 'two' : x));
+            // (Song-wide arc: a chorus's words plainer and fewer, a verse's a little talkier)
+            if (ideas.arc && kind === 'chorus') {
+              const pl = (x: Beat): Beat => (PLAINER[x] && rng.chance(0.6) ? PLAINER[x]! : (x === 'two' || x === 'and' || x === 'snap') && rng.chance(0.4) ? 'one' : x);
+              cell = cell.map(pl); varied = varied.map(pl);
+            } else if (ideas.arc && kind === 'verse' && song.bpm <= 125) {
+              const tk = (x: Beat): Beat => (x === 'one' && rng.chance(0.25) ? 'two' : x);
+              cell = cell.map(tk); varied = varied.map(tk);
+            }
           }
           const pbeats = beats.filter((x) => x.bar >= pb && x.bar < pb + pBars);
           const nb = pbeats.length;
@@ -476,7 +504,7 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
           // (held long, now and then, fewer as the energy rises and only a few a section: half a bar to a bar;
           // two bars only to close a chorus or the song)
           const perBar = nb / pBars;
-          const long = rec ? rec.long && pBars >= 2 && holdsLeft > 0 : pBars >= 2 && holdsLeft > 0 && rng.chance(HOLD_P[mood] * (1.3 - 0.8 * E) + (kind === 'chorus' ? 0.1 : 0) + (lastPhrase ? 0.05 : 0));
+          const long = rec ? rec.long && pBars >= 2 && holdsLeft > 0 : pBars >= 2 && holdsLeft > 0 && rng.chance(HOLD_P[mood] * (1.3 - 0.8 * E) + (kind === 'chorus' ? 0.1 : 0) + (lastPhrase ? 0.05 : 0) + (ideas.arc ? ARC_HOLD[kind] ?? 0 : 0));
           const closing = lastPhrase && lastBlock && (kind === 'chorus' || songEnd);
           const twoBars = rec ? rec.twoBars && long && pBars >= 4 && closing : long && pBars >= 4 && closing && rng.chance(0.5);
           if (long) holdsLeft--;
@@ -644,6 +672,69 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
       }
       if (REPEATS.includes(kind) && !firstOf.has(kind)) firstOf.set(kind, { degs: out.map((n) => ({ step: n.step, len: n.len, deg: n.deg, ...(n.bend ? { bend: n.bend } : {}), acc: roles.get(n) === 'acc' })), total: song.total, bars: song.bars.length });
     }
+    // Listening to the band (its own dice): this section's drums, bass, chords and Guitar 2, as the singer hears them
+    if (ideas.band && out.length) {
+      const brng = new Rng(`anchor-band-${first.seeds.song}-${mood}-${salt}${tag}-${si}`);
+      const { kick, snare } = idea.drums;
+      const barLen = song.bars[0].len, maxLen = ANCHOR_HOLD_BARS * barLen;
+      const onBeat = new Set(song.bars.flatMap((b) => groupStarts(b.groups).map((x) => b.start + x)));
+      const drum = (g: number) => !!(kick[g] || snare[g]);
+      const chordOk = (n: GuideNote, g: number) => !tonesAt(n.step).includes(n.midi % 12) || tonesAt(g).includes(n.midi % 12);
+      /** The note before may give way to `to` (ends by then, or shortened, keeping at least an 8th and room for its bend). */
+      const roomBefore = (j: number, to: number) => {
+        const p = out[j - 1];
+        if (!p || p.step + p.len <= to) return true;
+        return to - p.step >= Math.max(2, 2 * (p.bend ?? 0));
+      };
+      const giveWay = (j: number, to: number) => { const p = out[j - 1]; if (p && p.step + p.len > to) p.len = to - p.step; };
+      // (the band pushes a chord change an 8th or a 16th early, the kick or the bass on it: the note on the beat comes in with it)
+      for (let g = 1; g < song.total; g++) {
+        if (chords.chordIdx[g] === chords.chordIdx[g - 1] || onBeat.has(g) || !(kick[g] || idea.bass[g])) continue;
+        const beat = [g + 1, g + 2].find((x) => onBeat.has(x));
+        const j = beat === undefined ? -1 : out.findIndex((n) => n.step === beat);
+        if (j < 0) continue;
+        const n = out[j];
+        if (n.bend || !(n.len >= 4 || roles.get(n) === 'acc') || n.len + (n.step - g) > maxLen || !roomBefore(j, g) || out[j - 1]?.step === g) continue;
+        giveWay(j, g);
+        n.len += n.step - g; n.step = g;
+        stat3.pushes++;
+      }
+      // (phrase ends on a drum hit: moved to the nearest within a beat; on the kick, now and then on to the snare, a backbeat landing)
+      out.forEach((n, j) => {
+        const next = out[j + 1];
+        if (roles.get(n) !== 'acc' || n.len < 4 || (next && next.step - (n.step + n.len) < 4) || (lastSection && !next)) return;
+        stat3.ends++;
+        const toSnare = drum(n.step) && !snare[n.step] && brng.chance(SNARE_P);
+        if (drum(n.step) && !toSnare) { stat3.onHit++; return; }
+        const ds = [4, -4, 2, -2, 8, -8].filter((d) => (toSnare ? snare[n.step + d] && Math.abs(d) === 4 : drum(n.step + d) && Math.abs(d) <= 4 && (onBeat.has(n.step + d) || brng.chance(0.4))));
+        for (const d of ds) {
+          const to = n.step + d;
+          if (to < 0 || n.len - d < 4 || n.len - d > maxLen || !chordOk(n, to) || (d < 0 && (!roomBefore(j, to) || n.bend))) continue;
+          if (d < 0) giveWay(j, to);
+          n.step = to; n.len -= d;
+          if (toSnare) stat3.snare++; else stat3.moved++;
+          stat3.onHit++;
+          return;
+        }
+        if (drum(n.step)) stat3.onHit++;
+      });
+      // (room for the drums' fills and Guitar 2's licks: no new words under them, the note before held on)
+      const busyAt = new Set<number>();
+      for (const f of idea.drums.fills) {
+        const b = song.bars[f.bar];
+        if (b) for (let g = b.start + b.len - f.len; g < b.start + b.len; g++) busyAt.add(g);
+      }
+      const licks = (idea.guitar2 ?? []).filter((h) => h.notes.some((m) => m >= 52));
+      if (licks.reduce((a, h) => a + h.len, 0) <= LICK_MAX * song.total) for (const h of licks) for (let g = h.step; g < h.step + h.len; g++) busyAt.add(g);
+      for (let j = 1; j < out.length; j++) {
+        const n = out[j], p = out[j - 1];
+        if (!busyAt.has(n.step) || roles.get(n) !== 'cell' || p.step + p.len !== n.step || p.len + n.len > Math.min(maxLen, barLen) || out[j + 1]?.bend) continue;
+        p.len += n.len;
+        out.splice(j, 1);
+        j--;
+        stat3.held++;
+      }
+    }
     // the song's last note: home
     if (lastSection && out.length) {
       const n = out[out.length - 1];
@@ -785,6 +876,52 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
     });
   }
 
+  // Song-wide arc: the song's highest note saved for the last chorus, sung once (a long accent there raised above
+  // everything else, or the others brought down under it)
+  if (ideas.arc) {
+    const lastCh = list.reduce((x, i, si) => (i.section?.kind === 'chorus' && parts[si].length ? si : x), -1);
+    if (lastCh < 0) stat3.climax = 'no chorus sung';
+    else {
+      const p = parts[lastCh], midiOf = midiOfs[lastCh], total = list[lastCh].song.total;
+      const others = parts.flatMap((q, si) => (si === lastCh ? [] : q.map((n) => n.midi)));
+      const M = others.length ? Math.max(...others) : -1;
+      let best: { j: number; deg: number; sc: number } | null = null;
+      p.forEach((n, j) => {
+        if (roles.get(n) !== 'acc' || n.len < 4 || n.step < 0.3 * total || (lastCh === lastSung && j === p.length - 1)) return;
+        const prev = p[j - 1], next = p[j + 1];
+        for (let r = 0; r <= CLIMAX_RAISE; r++) {
+          const m = midiOf(n.deg + r);
+          if (m > PEAK) break;
+          if (prev && n.step - (prev.step + prev.len) < 4 && Math.abs(m - prev.midi) > CLIMAX_LEAP) break;
+          if (next && next.step - (n.step + n.len) < 4 && Math.abs(m - next.midi) > CLIMAX_LEAP) break;
+          const sc = (m > M ? 3 : 0) + m / 12 - 0.4 * r + Math.min(1, n.len / 8) + (n.step >= 0.5 * total ? 0.5 : 0);
+          if (!best || sc > best.sc) best = { j, deg: n.deg + r, sc };
+        }
+      });
+      if (!best) stat3.climax = 'no room for it';
+      else {
+        const { j, deg } = best as { j: number; deg: number };
+        const c = p[j];
+        c.deg = deg; c.midi = midiOf(deg);
+        // (held a little longer, into the rest after it)
+        const gap = p[j + 1] ? p[j + 1].step - (c.step + c.len) : total - (c.step + c.len);
+        if (c.len < 8 && gap >= 4) c.len += Math.min(4, gap - 2, ANCHOR_HOLD_BARS * list[lastCh].song.bars[0].len - c.len);
+        // (everything else under it)
+        parts.forEach((q, si) => q.forEach((n) => {
+          if (n === c || n.midi < c.midi) return;
+          while (n.midi >= c.midi) { n.deg--; n.midi = midiOfs[si](n.deg); }
+          stat3.lowered++;
+        }));
+        const bar = list[lastCh].song.bars.findIndex((b) => b.start + b.len > c.step);
+        stat3.climax = `${noteName(c.midi)} in ${list[lastCh].section?.label ?? 'the last chorus'}, bar ${bar + 1}`;
+        for (const q of parts) q.forEach((n, k) => {
+          const b = q[k - 1];
+          if (n.bend && (!b || b.step + b.len !== n.step || Math.abs(n.midi - b.midi) > 2 || n.midi === b.midi)) delete n.bend;
+        });
+      }
+    }
+  }
+
   for (const p of parts) for (const n of p) {
     stat.notes++;
     if (n.bend) stat.bends++;
@@ -809,6 +946,8 @@ function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: num
     ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, the first note held into it; ${nb.pickups} phrases come in early inside a section (held into it, or a quick pickup word)`] : []),
     ...(ideas.hook ? [`Hook: sections in a form (${stat2.forms.join('; ') || 'none'}); ${stat2.back} phrases coming back (the same rhythm, its accent again when it ends the same way); ${stat2.hooks} chorus hooks (its first phrase reaching up)`] : []),
     ...(ideas.color ? [`Less one-note: ${stat2.neighbors} words a step up or down and back, ${stat2.passing} steps into the accent, ${stat2.leapsIn} phrases leaping in from a 3rd or 4th, ${stat2.appogs} last notes sung a step above first (a clash settling onto the chord)`] : []),
+    ...(ideas.arc ? [`Song-wide arc: choruses higher, with fewer words and longer notes, verses lower and talkier; the song's top note ${stat3.climax.startsWith('no') ? `not placed (${stat3.climax})` : `${stat3.climax}, sung once (${stat3.lowered} notes elsewhere brought under it)`}`] : []),
+    ...(ideas.band ? [`Listening to the band: ${stat3.onHit} of ${stat3.ends} phrase ends on a drum hit (${stat3.moved} moved there, ${stat3.snare} on to the snare); ${stat3.pushes} notes pushed with the band's pushes; ${stat3.held} words left out under drum fills and Guitar 2's licks (the note before held)`] : []),
     'Not used here: quick notes, pushes and pulls, Repeat idea, Pitch by words, Question & answer, Section change, Carry over (Slow line, Breaths, Lead-ins, Hard & soft, Human feel, Range and Key & scale apply)',
   ];
   return { parts, silent, mood, notes };
