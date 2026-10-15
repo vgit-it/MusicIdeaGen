@@ -54,7 +54,11 @@ export const CONS: Record<Cons, ConsSpec> = {
  * A note to sing, in seconds from the line's start (its vowel lands at `t`); `slide`: scooped up into from
  * so many semitones below; `fall`: falls off its end by so many (left out: the line's own way).
  */
-export interface SungNote { t: number; end: number; midi: number; vel: number; syl: Syllable; slide?: number; fall?: number }
+export interface SungNote {
+  t: number; end: number; midi: number; vel: number; syl: Syllable; slide?: number; fall?: number; bend?: number;
+  /** Human feel (the guide line, src/guide/feel.ts; left out: as before): `glide` seconds from the note before; `swell` seconds rising into it; `fade` seconds fading out at its end; `sharp` cents over. */
+  glide?: number; swell?: number; fade?: number; sharp?: number;
+}
 
 export interface VoiceShape {
   high: boolean;
@@ -411,13 +415,16 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     let midi = note.midi + (voice.high ? 12 : 0);
     const prevN = vowelNotes[ni - 1];
     const into = t - note.t, held = note.end - note.t;
-    if (note.slide) {
+    if (note.bend && prevN) {
+      // a bend from the last note, over `bend` seconds (the guide line's bends)
+      midi = lerp(prevN.midi + (voice.high ? 12 : 0), midi, Math.max(0, Math.min(1, into / note.bend)));
+    } else if (note.slide) {
       // a scoop up into the note (easing in), over up to a fifth of a second
       const sd = Math.min(0.22, held * 0.35);
       midi -= note.slide * (1 - Math.max(0, Math.min(1, (into + 0.02) / sd))) ** 2;
     } else if (prevN && prevN.end >= note.t - 0.12) {
       // a glide from the last note (quicker between the quick notes of a run)
-      const gl = Math.min(0.09, Math.max(0.025, (note.t - prevN.t) * 0.4));
+      const gl = Math.min(note.glide ?? 0.09, Math.max(0.025, (note.t - prevN.t) * 0.4));
       if (t < note.t + gl * 0.67) midi = lerp(prevN.midi + (voice.high ? 12 : 0), midi, (t - (note.t - gl / 3)) / gl);
     }
     if (ni === 0 && note.slide === undefined && scoop && t < note.t + 0.1) midi -= lerp(1, 0, (t - note.t + 0.02) / 0.12);
@@ -442,6 +449,7 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     const fw = note.fall ? Math.min(0.3, held * 0.35) : 0.14;
     const fx = fallBy && t > note.end - fw ? Math.min(1, (t - (note.end - fw)) / fw) : 0;
     midi -= fallBy * (note.fall ? fx * fx : fx);
+    if (note.sharp) midi += (note.sharp / 100) * smooth(0, 0.15, into);
     fr.f0 = mtof(midi);
     // loud notes brighter (less tilt), soft ones breathier
     fr.tiltDb = lerp(9, 2, note.vel);
@@ -639,6 +647,9 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       if (s.vowel) fr.cascadeAspirationDb = Math.max(fr.cascadeAspirationDb, lerp(-8, 0, note.vel) - 34 + 12 * g);
     }
     let amp = lerp(-8, 0, note.vel) - (note.fall ? 9 * fx : 0) - 6 * fry;
+    // (human feel: rising into the word, fading at its end)
+    if (note.swell) amp -= 10 * (1 - smooth(-0.01, note.swell, into));
+    if (note.fade) amp -= 18 * smooth(note.end - note.fade, note.end, t);
     if (flow) {
       // (the loudness glides from note to note, not in steps)
       ampNow = ampNow === null ? amp : ampNow + (amp - ampNow) * 0.12;

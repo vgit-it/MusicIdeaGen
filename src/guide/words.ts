@@ -1,34 +1,34 @@
 // Words for the Guide line (experiment, docs/GUIDE.md): the line's tune kept exactly, pitch for pitch and
 // step for step; the words only decide which syllable sits on each sound. The line's own events tell
 // them what to do: a note's start, a push (a word starting) and the note back after a pull's silence
-// start words; a pull ends one, softly, into its silence; each quick note ends a word or starts a new one
-// (STARTS), a short breath between words in the singing (voice.ts). Lines break at the pauses; every other
+// start words; a pull ends one, softly, into its silence. A new note inside a word is only ever a bend
+// (Paul): a bent note or a quick note bent to carries the word on, gliding there as the line bends; any
+// other new note (a quick note, the line coming back from one) ends the word and starts a new one, a short
+// breath between words in the singing (voice.ts). Lines break at the pauses; every other
 // line rhymes; choruses sing the same words each time.
 // The pseudo-English words are the vocals' own (src/parts/lyrics.ts).
 
 import type { Idea } from '../idea';
-import type { Genre } from '../genres';
 import { groupStarts } from '../rhythm';
 import { Rng } from '../rng';
 import { type Cons, type Rhyme, type Syllable, lyricLine, openUp, rhymeOf, spell } from '../parts/lyrics';
-import type { Flick, GuideLine } from './line';
+import { type Flick, type GuideLine, WORD_STARTS } from './line';
 
 /** One sung sound: a syllable (or the one before carried on, text '~') on a stretch of the line. */
-export interface GuideSyl { step: number; len: number; midi: number; vel: number; syl: Syllable }
+export interface GuideSyl { step: number; len: number; midi: number; vel: number; syl: Syllable; bend?: number }
 export interface GuideSungLine { notes: GuideSyl[]; text: string }
 
 /**
- * Every quick note is a word's end or a new word's start (Paul), its stresses to suit: a word's end is a
- * light last syllable and the line coming back starts a new, stressed word (BRO-ken / NIGHT); a word's start
- * is a stressed new word, the line coming back its light second syllable (the NIGHT / FAL-len). Two-step
- * jumps start words; one with a pause after it, or bent to at a note's end, ends one; the rest by chance,
- * a little more often starting words where the genre is busier.
+ * Every quick note not bent to starts a new word, and so does the line coming back from it (a new note in a
+ * word only ever a bend, Paul), stressed to suit: a light word on the quick note and a stressed one coming
+ * back (the / NIGHT), or a stressed one on the quick note and a light one coming back (NIGHT / the). One
+ * with a pause after it is light; the rest by chance, a little more often stressed where the genre is busier.
  */
-const STARTS: Record<Genre, number> = { funk: 0.6, hardrock: 0.55, rock: 0.5, pop: 0.5, metal: 0.5, altmetal: 0.5, grunge: 0.4 };
+const STARTS = WORD_STARTS;
 
 /** What starts a stretch of sound: a note, a push, the note back after a pull or a quick note's pause, a quick note, a bend. */
 type Role = 'note' | 'bent' | 'push' | 'resume' | 'back' | 'after' | 'flick' | 'flickGap' | 'flickBend';
-interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; two?: boolean; stress?: boolean; ws?: boolean }
+interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; starts?: boolean; stress?: boolean; ws?: boolean; bend?: number }
 
 const SOFT = new Set<Cons>(['N', 'M', 'L', 'S', 'Z', 'NG', 'R']);
 
@@ -49,45 +49,53 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
     const beats = new Set(idea.song.bars.flatMap((b) => groupStarts(b.groups).map((p) => b.start + p)));
     // the stretches of sound, in order
     const segs: Seg[] = [];
-    const emit = (step: number, len: number, midi: number, role: Role, silenceAfter = false) => { if (len > 0) segs.push({ step, len, midi, role, silenceAfter }); };
+    const emit = (step: number, len: number, midi: number, role: Role, silenceAfter = false, bend?: number) => { if (len > 0) segs.push({ step, len, midi, role, silenceAfter, ...(bend ? { bend } : {}) }); };
     notes.forEach((n, k) => {
       const next = notes[k + 1];
       const evs = [...(n.flicks ?? []).map((f) => ({ at: f.at, f })), ...(n.marks ?? []).map((m) => ({ at: m.at, m }))].sort((a, b) => a.at - b.at);
       let cur = 0, role: Role = n.bend ? 'bent' : 'note';
+      // (a bent note glides there over its bend, as the line plays it)
+      let bend = n.bend;
       for (const e of evs) {
         if (cur >= n.len) break;
         if ('m' in e && e.m) {
-          if (e.m.kind === 'push') { emit(n.step + cur, e.at - cur, n.midi, role); cur = e.at; role = 'push'; continue; }
+          if (e.m.kind === 'push') { emit(n.step + cur, e.at - cur, n.midi, role, false, bend); bend = undefined; cur = e.at; role = 'push'; continue; }
           const back = e.m.back ?? 0;
-          emit(n.step + cur, Math.min(n.len, e.at + 1) - cur, n.midi, role, true);
+          emit(n.step + cur, Math.min(n.len, e.at + 1) - cur, n.midi, role, true, bend);
+          bend = undefined;
           cur = e.at + Math.max(1, back);
           role = 'resume';
           continue;
         }
         const f = (e as { f: Flick }).f;
-        emit(n.step + cur, f.at - cur, n.midi, role);
-        emit(n.step + f.at, f.len, f.midi, f.bend ? 'flickBend' : f.gap ? 'flickGap' : 'flick', !!f.gap);
-        // (a jump of two steps: always a new word, Paul)
-        if (Math.abs(f.midi - n.midi) >= 3) segs[segs.length - 1].two = true;
+        emit(n.step + cur, f.at - cur, n.midi, role, false, bend);
+        bend = undefined;
+        // (a quick note bent to: over most of its length, as the line plays it)
+        emit(n.step + f.at, f.len, f.midi, f.bend ? 'flickBend' : f.gap ? 'flickGap' : 'flick', !!f.gap, f.bend ? f.len * 0.9 : undefined);
+        // (Pitch by words: the line says which, by the quick note's direction)
+        if (f.starts !== undefined) segs[segs.length - 1].starts = f.starts;
         cur = f.bend ? n.len : f.at + f.len + (f.gap ?? 0);
         role = f.gap ? 'back' : 'after';
       }
-      emit(n.step + cur, n.len - cur, n.midi, role, !next || next.step > n.step + n.len);
+      // (a lead-in running on into the next section: sung straight on into its next note, no soft ending)
+      const on = line.parts[si + 1]?.[0];
+      const into = !next && n.step + n.len > idea.song.total && on && on.step === n.step + n.len - idea.song.total;
+      emit(n.step + cur, n.len - cur, n.midi, role, !into && (!next || next.step > n.step + n.len), bend);
     });
-    // each stretch a syllable (a note bent into carries on the one before), its stress, and whether it starts a word
+    // each stretch a syllable (a bend carries on the one before, its word going on), its stress; every
+    // other stretch starts a word (a new note inside a word only ever a bend, Paul)
     let flickStarts = false;
     for (const s of segs) {
       const strong = beats.has(s.step);
-      s.sung = s.role !== 'bent';
+      s.sung = s.role !== 'bent' && s.role !== 'flickBend';
       s.ws = true;
       if (s.role === 'flick' || s.role === 'flickGap' || s.role === 'flickBend') {
-        flickStarts = s.role === 'flick' ? !!s.two || rng.chance(starts) : s.role === 'flickBend' ? !!s.two : false;
+        flickStarts = s.role === 'flick' ? rng.chance(starts) : false;
+        if (s.starts !== undefined) flickStarts = s.starts;
         s.stress = flickStarts;
-        s.ws = flickStarts;
       } else if (s.role === 'after') {
-        // (back to the line: a new stressed word after a word's end, or the light rest of the word the quick note started)
+        // (back to the line: a stressed word after a light one on the quick note, or a light one after a stressed)
         s.stress = !flickStarts;
-        s.ws = !flickStarts;
       } else s.stress = s.role === 'push' || s.role === 'back' || ((s.role === 'note' || s.role === 'resume') && (strong || s.len >= 8));
     }
     // lines: at a pause (a beat or more of silence), or after two bars at the next word's start
@@ -126,7 +134,7 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
         if (s.sung || !sung.length) sung.push({ step: s.step, len: s.len, midi: s.midi, vel, syl: { ...words[Math.min(k++, words.length - 1)] } });
         else {
           const before = sung[sung.length - 1].syl;
-          sung.push({ step: s.step, len: s.len, midi: s.midi, vel, syl: { onset: [], vowel: before.vowel, coda: before.coda, stress: false, text: '~', wordStart: false } });
+          sung.push({ step: s.step, len: s.len, midi: s.midi, vel, syl: { onset: [], vowel: before.vowel, coda: before.coda, stress: false, text: '~', wordStart: false }, ...(s.bend ? { bend: s.bend } : {}) });
           before.coda = [];
         }
         // (into a silence: the word ends softly)

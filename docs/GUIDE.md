@@ -365,6 +365,222 @@ Paul: the 4-a-second cap didn't feel enforced; too many short held bits with qui
 - **Words at the quick notes:** every quick note ends a word (a light last syllable; the line coming back starts a new, stressed word) or starts one (stressed; the line coming back is its light second syllable). Two-step jumps start words; with a pause after, or bent to at a note's end, end one; the rest by chance (funk a little more starts, grunge fewer). Nothing carried on the vowel any more except notes bent into.
 - **A short breath between words** in the singing (the word before let go up to 50 ms early; the tune's timing kept).
 
+## Generate & play here; a safety net for new ideas (2026-10-14)
+
+Paul: bring in what the other melody writers learned, without breaking what's here; and a Generate & play button in the Guide line card to experiment quickly.
+
+- **Generate & play** (in the card): a new song, as Generate at the top does (locks kept; a track stays a track), playing from its start. **Play** beside it starts and stops, the same as the page's Play.
+- **A snapshot:** commit `3217f94` on main holds the guide line as it was before any of these ideas, to bring back whole any time.
+- **A reference check** (`npm run guide-check`): the line and its words for 168 songs (every mood, genre, and 4/4, 6/8, 7/8; the quick-note levels, Lean in/out and the voices in turn), compared note for note and word for word with the saved reference (`scripts/guide-reference.json`). It also checks the rules: the words exactly on the tune, at most 4 changes heard in any second, the range. Checked: changing one setting a semitone shows 39 songs changed.
+- **How new ideas come in:** each its own switch in the card (Off: the line exactly as now, the check passing), its own random numbers (so switching one on doesn't reshuffle the rest), the rules checked with it on too, one idea per PR, Paul deciding by ear whether it becomes the default.
+- The ideas lined up from the other writers: a short idea repeated (motif and form), a slow line under each section (verse falling, pre-chorus climbing, chorus arching), pitch by the words (the top on a stressed word, light syllables by step, soft endings falling), question and answer line endings by mood; then later choruses bigger, listening to the bass, phrase lengths with variety, high notes held, pace by tempo.
+
+## Repeat idea (switch; 2026-10-14)
+
+The first idea from the other melody writers (Shaped, Melody first): a short idea repeated. **Repeat idea: Off / On** in the card (Off: the line exactly as before, checked by `npm run guide-check`).
+
+- **The form, per section:** its phrases (2 bars; 4 when dreamy) go A B A b: the first phrase comes back as the third, the second comes back as the fourth with a new ending (its last note written fresh). Longer sections go round again (A B A b A B A b); sections of 2 or 3 phrases: A, then A with a new ending.
+- **Moved as a whole:** a phrase that comes back may move up or down the scale (a sequence) to suit where the section sits (a pre-chorus climbing) and, leaning in, the chords under it (strong beats on chord notes). Never into a leap without a pause, never out of the voice, not starting on the note just sung, stepping back after a leap.
+- **Your rules kept:** if it would make more than 4 bars without a pause, a beat's breath comes before it. Quick notes, pushes, pulls and words go on top as usual (so a phrase that comes back is decorated differently).
+- **Its own dice:** the rest of the line's choices aren't reshuffled by it.
+- Sections sung again (verse 2, the choruses) still copy the first one, as before.
+
+| 120 songs (8 moods, 5 genres, 4/4, 6/8, 7/8), Some, Lean in | Off | On |
+|---|---|---|
+| Phrases sung again (moved) / again with a new ending, per song | 0 / 0 | 4.9 / 4.4 |
+| 2-bar phrases repeating an earlier one's shape in their section | 13% | 37% |
+| The same note again | 14% | 13% |
+| Strong beats on a chord note | 69% | 72% |
+| Leaps without a pause, notes over a bar | 0, 0 | 0, 0 |
+| Songs ending on home | all | all |
+
+## Quick notes: one step, in the key (2026-10-14)
+
+Paul: remove the two-step quick notes and the off-key ones.
+- Every quick note is now the scale's next note up or down, in the key, never more than a whole step away. No two-step jumps (metal had the most), no half steps out of the key; the red off-key mark is gone from the drawing.
+- The line's own notes are unchanged; only the quick notes are. The reference for `npm run guide-check` was saved again on purpose (the 126 songs with quick notes on changed; the 42 with them off are the same).
+
+## Slow line (switch; 2026-10-14)
+
+The second idea from the other melody writers (Melody first's "spine"): a slow shape under each section that the line follows. **Slow line: Off / On** in the card (Off: the line exactly as before).
+
+- **The shapes**, in scale steps around the section's height, by where the line is in the section:
+
+| Section | Most moods | Mood and genre leans |
+|---|---|---|
+| Verse | falls (like 5-4-3) | rises when happy or triumphant; stays around one note when dark, tense or angry (and grunge, now and then); a slow wide arch when dreamy |
+| Pre-chorus | climbs | |
+| Chorus | arches: up early, then home | holds high then settles when triumphant (metal, alt metal, hard rock now and then); high and flat then a drop when angry; falls when melancholic; a wide arch when dreamy |
+| Bridge | a slow wide arch | around one note when dark; climbs when tense |
+| Interlude, outro | fall | breakdown: around one note |
+
+- **Phrases end on it:** a phrase's last note leans to the slow line's note there.
+- **With Repeat idea:** a phrase that comes back moves to suit the slow line too.
+- Your rules unchanged (checked with it on, alone and with Repeat idea). Its own dice.
+
+| 120 songs, Some, Lean in | Off | On |
+|---|---|---|
+| Sad moods' verses: lower at the end than the start | 77% | 88% |
+| Happy and triumphant verses: higher at the end | 28% | 60% |
+| Pre-choruses: higher at the end | 84% | 99% |
+| Choruses: top early, ending lower | 42% | 68% |
+| Phrases ending on the slow line's note | | about 40% |
+| The same note again | 13% | 15% |
+| Leaps without a pause | 0 | 0 |
+
+## Pitch by words (switch; 2026-10-14)
+
+The third idea from the other melody writers (Words first's "pitch by speech"): the tune follows how the words are said. **Pitch by words: Off / On** in the card (Off: the line and its words exactly as before).
+
+In the guide line the light syllables live on the quick notes (every note of the line itself starts a stressed word), so this works through them; the line and its notes are the same, only which way each quick note goes and which word it carries are decided together:
+- **A quick note going up starts a new, stressed word**, and the line coming back down is that word's light second syllable: high then low, as English is said (BA-by, FAL-len).
+- **A quick note going down is a word's soft last syllable**, and the line coming back up starts the next stressed word: a light pickup a step under the stress it leads into.
+- **One with a pause after it ends a word, so it falls.**
+- How many start words keeps each genre's lean (funk most, grunge fewest). The words still sit exactly on the tune.
+
+| 80 songs (8 moods, 5 genres, 4/4 and 6/8), Some | Off | On |
+|---|---|---|
+| A line's top note on a stressed syllable | 70% | 96% |
+| Soft word endings falling (or level) | 52% | 95% |
+| A light syllable a step under the stress after it | 42% | 82% |
+| Syllables a bar | 2.52 | 2.52 |
+
+## Question and answer (switch; 2026-10-14)
+
+The fourth idea from the other melody writers (Words first's question and answer pairs). **Question & answer: Off / On** in the card (Off: the line exactly as before).
+
+- **Pairs of phrases:** a section's phrases pair up (1st and 2nd, 3rd and 4th...). Now and then a pair is sung as a question and its answer: the first phrase's last note goes up, onto an open note (not home); the second's falls, onto a settled one (home, the 3rd or the 5th).
+- **How often, by mood** (open, hopeful moods ask; angry and dark ones state): happy and dreamy 60% of pairs, nostalgic and tense 50%, triumphant 45%, melancholic 40%, dark 30%, angry 25%.
+- Never the song's last note (that's home). Sections sung again keep the first one's questions and answers. With Repeat idea, a repeated question comes back as a question, and an answer's new ending is written as an answer.
+- Your rules unchanged (checked with it on, alone and with all four switches). Its own dice.
+
+| 120 songs (8 moods, 5 genres, 4/4, 6/8, 7/8), Some | On |
+|---|---|
+| Questions whose last note goes up | 78% |
+| Answers whose last note falls to a settled note | 81% |
+| The same note again (off: 14%) | 12% |
+| Leaps without a pause | 0 |
+
+The rest are held back by the other rules (the voice's top, stepping back after a leap, keeping near the section's height).
+
+## Only bends inside a word (2026-10-14)
+Paul: "if there's a new note coming in during a word, it should be a bend. If not for a bend, end the word and start a new one." Part of the line's own words (no switch), with the switches on or off.
+- **A bend carries the word on:** a bent note, or a quick note bent to at a note's end, keeps the syllable before it (no new attack).
+- **Every other new note starts a new word:** a quick note, and the line coming back from it. Before, either one could be the next syllable of the same word (BRO-ken).
+- **Stresses kept:** a light word on the quick note and a stressed one coming back (the / NIGHT), or the other way round (NIGHT / the). Pitch by words still decides which.
+- **Bends sung as bends:** the voice now glides over a bend's own length (an 8th, a quarter or half a bar; most of a bent quick note), as the line plays it. Before, it jumped there in about 90 ms.
+- **The tune is unchanged:** every note, quick note, push and pull is the same. Only the words and the sung glides change, so the reference was saved again.
+- **A new rule in `npm run guide-check`:** a new note inside a word must be a bend.
+
+## Breaths, Section change, Lead-ins, Carry over (switches; 2026-10-14)
+Paul's notes for the line itself: sing it like a person, mark section changes, be freer across section lines. Each note has its own switch and its own dice. With all four Off, the line is exactly as before.
+
+- **Breaths:** "give pauses after strenuous parts or before them (like chorus)".
+  - A tiring stretch makes a breath likely at the next phrase start, and makes it longer. Tiring means long without a pause, with high notes counting more (from 2.5 bars).
+  - Before a big section (a chorus, or one sung clearly higher), the last note before it is often cut short by 1-4 beats. The length is random.
+- **Section change:** "a noticeable shift in either phrase lengths or notes".
+  - Each kind of section (verse, pre-chorus, chorus...) gets its own feel the first time it comes, unlike the section before it: other phrase lengths (1, 2 or 4 bars), or another pace (busier or longer notes).
+  - Now and then (40%) it also comes in with a jump of 3 or more scale steps, after a beat's breath.
+  - The feel stays with the kind, so later verses and choruses keep their contrast, even though they repeat the first one's notes.
+- **Lead-ins:** "the next section's line could start towards the end of the previous bar and hold".
+  - About a third of the time, a section's first note comes in early: an 8th, a beat or two beats before the section starts. It is held into the section.
+  - It comes after a breath, so a leap into it is still allowed. It is held within a bar all told.
+  - A repeated verse or chorus can lead in too, with its own first note.
+- **Carry over:** "for silent sections like solos, continue the previous section's last part for a bar or so".
+  - Half the time, the last note runs on into a section the line sits out, for up to a bar. It is either held (within a bar all told) or bent a step (mostly down).
+  - The song's last note, home, is only ever held, never bent away.
+- **Kept, by design:**
+  - Notes still change only on strong beats, and a note is held at most a bar.
+  - The 4-bar run limit stays; across sections, runs over 4 bars drop (294 to 114 with all four on).
+  - Leaps still only come after a pause.
+  - At most 4 changes in any second.
+  - Only bends inside a word: a lead-in is its own word, sung straight into the section.
+- **Measured (120 songs):**
+  - Breaths: a breath before choruses 9% to 62%; the line silent 24% to 31% of the sung sections' time.
+  - Section change: changes you can hear where a section changes (another pace or run length, or a jump of a 4th or more) 53% to 75%.
+  - Lead-ins: 63 sections come in early.
+  - Carry over: 54 of 158 sections the line sits out get the last note run into them.
+- **Watch for:**
+  - Breaths and Section change together make more silence.
+  - A chorus that leads in has one syllable fewer than the first chorus's words, so its words can start a syllable off.
+  - A lead-in into a section after a solo isn't done yet.
+- **`npm run guide-check`:**
+  - Now checks the whole song at once, since notes can cross section lines.
+  - New rules: never two notes at once, a note held at most a bar.
+  - A pull at a note's end is no longer counted as a change, as in the line itself.
+
+## Hard and soft (switch; 2026-10-14)
+
+Paul: how hard or soft the line is sung. Before, each sound's level was fixed by what it was (a push loud,
+a held note medium, a quick note light), the same in a verse as in a chorus; a belt happened only when a
+push landed high. With **Hard & soft** on (`src/guide/dynamics.ts`, heard when Sing is on), the same
+levels are shaped the way the vocals shape theirs:
+
+- louder with the bar's tension (as `followTension` in `src/parts/melody.ts`) and the section's energy
+- high notes taking more push than low ones; stressed syllables leaning in, light ones falling back
+  (as the energy styles' accents, `src/parts/energy.ts`)
+- a quiet section (energy 2 or less, not a chorus) sung soft all through half the time: no belting
+  (as the energy styles' holding back)
+- a big line belting its top held note (a beat or more, near the song's top): choruses most, then
+  bridges, outros, a pre-chorus's last line, rarely a verse; more in the heavy genres, less in pop and
+  funk (as the vocals' wails, but the note isn't moved: the tune stays exactly as it is)
+- repeated choruses sung alike
+
+The voice hears a level as effort: loud notes above the singer's break belted (screamed by Clean &
+scream), soft ones breathier. The tune and the words don't change; the synth line plays as before.
+
+Measured (168 songs): verses 0.77 → 0.73 on average, choruses 0.77 → 0.88; high notes sung hard: verses
+14%, pre-choruses 47%, choruses 64%; about 5 belted lines a song; 114 quiet sections sung soft.
+
+## Range by hand (2026-10-14)
+
+Paul: a slider for the lowest and highest notes the line is written within, "to see how far I can
+stretch it without breaking it". **Range** in the guide card: Auto (as tuned by ear: C3 to E4, peaks to
+F#4, Voice setting the high part) or Custom, with two sliders, Lowest and Highest (C1 to F#6).
+
+- Written within, not shifted afterwards: home is the lowest home note at or above Lowest; the usual top
+  2 semitones under Highest, the song's peaks up to Highest; heights by section spread across it.
+- Custom replaces Voice's high part (the line's own top is Highest); the woman's voice (Sing) still sings
+  it an octave up.
+- At least an octave apart: narrower, the home note can fall outside the range (the check found notes
+  out of range with a 7-semitone range; none from an octave up).
+- Auto: the line exactly as before. `npm run guide-check` also writes every song in 7 ranges (an octave
+  at the very bottom and the very top, narrow, wide, C1 to F#6), with the switches off and all on, and
+  checks every rule with the range's own limits.
+
+## Auto range E3 to E5; Key & scale (2026-10-14)
+
+**Auto range** (Paul): E3 to E5 (was C3 to E4, peaks to F#4): the usual top D5, the song's peaks to E5;
+home is the first home note from E3 up (E3 to D#4 by the key). The woman's voice now sings the line an
+octave up only when it's written low enough (its top + an octave at most G5); otherwise as written.
+The reference was saved again.
+
+**Key & scale** (Paul: "see if I can get away with a different scale for the vocals than the rest of the
+instruments"): two menus in the guide card; the band keeps its own key and chords.
+
+- Key: the song's, or any of the 12. It's the key of the song's first section; the line moves with the
+  song's key changes from there (a chorus up a step: the line too).
+- Scale: the song's, or Major, Minor, Dorian, Mixolydian, Phrygian, Lydian, Locrian, Harmonic minor,
+  Melodic minor (seven notes each, so the line's steps, quick notes, homes and colour notes work as before).
+- Each choice shows how many of its 7 notes it shares with the band's scale: the more shared, the fewer
+  clashes (the same key's Dorian or Mixolydian 6/7, a 5th up 6/7, a semitone up 2/7).
+- **Avoid clashes** (on by default): the line is written in its own scale, but each held note and strong
+  beat is steered away from the chord the band plays under it: a semitone against any of the chord's
+  notes, or a tritone against its root (any of the chords it's held over). Weak, short notes may still
+  rub (a passing tension). Off: anything goes.
+- The notes list says the key and scale, the notes shared, and how many held notes still clash.
+
+Measured (84 songs, held notes clashing with a chord under them, guard off → on): the song's own key
+15% → 3%; Dorian 16% → 4%; Lydian 32% → 12%; Phrygian 21% → 8%; Harmonic minor 21% → 7%; a 5th up
+18% → 5%; a semitone up 53% → 28%; a tritone 57% → 31%. (The song's own 15%: held over chord changes.)
+`npm run guide-check` also writes every song in 5 keys and scales, guarded and not, and checks the rules.
+
+## Anchor line (switch; 2026-10-14)
+A writer of its own behind the **Anchor line** switch: one main note per 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it. See `docs/GUIDE-ANCHOR.md`.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
+
+## Human feel
+Glides, scoops, swells, fades, falls, breaths: how the line is played and sung, by the singer and the energy. See `docs/GUIDE-FEEL.md`.

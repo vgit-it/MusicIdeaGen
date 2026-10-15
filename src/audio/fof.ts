@@ -393,6 +393,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       while (ni + 1 < notes.length && notes[ni + 1].t <= t) ni++;
       const n = notes[ni];
       let m = n.midi;
+      // (a bend from the note before, over `bend` seconds: the guide line's bends)
+      if (n.bend && ni > 0) m = notes[ni - 1].midi + (n.midi - notes[ni - 1].midi) * smooth01((t - n.t) / n.bend);
       if (n.slide) m -= n.slide * (1 - smooth01((t - n.t + 0.03) / Math.min(0.25, Math.max(0.08, (n.end - n.t) * 0.4))));
       if (ni === notes.length - 1 && n.fall) { const fd = fallLen(n); m -= n.fall * smooth01((t - (n.end - fd)) / fd); }
       pitchLine[j] = m;
@@ -415,8 +417,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       for (let j = from; j < a.t / dt; j++) pitchLine[j] = a.midi;
       // (damped more than in Saitou's model: a smaller overshoot and dip, about
       // 5%; a strong rise or dip on every note makes each syllable a contour, like a tonal language)
-      spring(from, to, 26, 0.7, false);
-      spring(from, to, 22, 0.75, true);
+      // (human feel: the line's own glide time, about 90 ms as written)
+      const gs = a.glide ? 0.09 / a.glide : 1;
+      spring(from, to, 26 * gs, 0.7, false);
+      spring(from, to, 22 * gs, 0.75, true);
       first = k;
     }
   }
@@ -513,6 +517,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       const sc = scoops[ni];
       if (sc) midi -= sc.by * (1 - smooth01((into + 0.01) / sc.len));
       // (a sag: a held note let droop at its end, up to about half a semitone)
+      if (note.sharp) midi += (note.sharp / 100) * smooth01(into / 0.15);
       if (sag && held > 0.45 && !note.fall) midi -= sag * 0.55 * smooth01((into - held * 0.65) / (held * 0.35));
       // (the slow wanders)
       const dtC = CT / fs;
@@ -567,7 +572,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // (a held note swells a little in and eases at its end)
       const sw = swells[ni], xs = clamp01(into / Math.max(0.1, held));
       const swell = life ? (sw.kind === 1 ? sw.by * lerp(-1, 0.6, xs) : sw.kind === 2 ? sw.by * lerp(0.4, -1, xs) : sw.kind === 3 ? sw.by * (Math.sin(Math.PI * xs) - 0.6) : 0) : held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
-      const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? 12 * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0);
+      const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? 12 * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0)
+        // (human feel: rising into the word, fading at its end)
+        - (note.swell ? 10 * (1 - smooth01((into + 0.01) / note.swell)) : 0) - (note.fade ? 18 * smooth01((t - (note.end - note.fade)) / note.fade) : 0);
       // (a word starting on a vowel: a small dip so the words don't slur together)
       const dip = ni > 0 && note.syl.wordStart && !note.syl.onset.length && note.syl.text !== '~' ? 5 * Math.max(0, 1 - Math.abs(t - note.t) / 0.05) : 0;
 
