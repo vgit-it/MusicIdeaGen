@@ -12,7 +12,7 @@ import { Rng } from '../rng';
 import { type Mood, MOOD_LABEL, autoMood } from '../tension';
 import { chordTones } from '../parts/guitar2';
 import type { Genre } from '../genres';
-import { GUIDE_SCALES, HEIGHT, LEAD_INS, LEAD_IN_P, SPINES, SPINE_BY, SPINE_GENRE, TIRED, type GuideIdeas, type Spine, MID_AUTO, NAMES, PEAK_AUTO, PEAK_T, PLAY_CHANCE, REPEATS, SCALE_LABEL, MAX_PER_SECOND, type GuideLine, type GuideNote, type GuideRange, type GuideTonality, type Lean, homeMidi, noteName } from './line';
+import { GUIDE_SCALES, HEIGHT, LEAD_INS, LEAD_IN_P, SPINES, SPINE_BY, SPINE_GENRE, TIRED, type GuideIdeas, type AnchorRhythm, type Spine, MID_AUTO, NAMES, PEAK_AUTO, PEAK_T, PLAY_CHANCE, REPEATS, SCALE_LABEL, MAX_PER_SECOND, type GuideLine, type GuideNote, type GuideRange, type GuideTonality, type Lean, homeMidi, noteName } from './line';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -31,8 +31,13 @@ export const ANCHOR_HOLD_BARS = 2;
  * last 8th), a push on the offbeat (`off`), three quick ones (`run`: the "more than one word a beat", rare),
  * long-short (`dot`: a dotted 8th and a 16th), short-long (`snap`: a 16th and a dotted 8th), two quick ones
  * on the offbeat (`and`), a 16th late (`late`), the note before held on (`tie`) or silence (`rest`).
+ * More (Paul: "too limited"): an 8th and two 16ths (`gallop`), two 16ths and an 8th (`rgallop`), 16th-8th-16th
+ * (`syn`, the syncopated middle), four 16ths (`four`, talky, rare), a 16th late then an 8th (`skip`), the
+ * beat's last 16th pushed into the next (`ant`, held on by a `tie` after it), a clipped word (`short`), and in
+ * the long beats of 6/8 three 8ths (`three`; a plain beat sings it as a run).
  */
-type Beat = 'one' | 'two' | 'off' | 'run' | 'dot' | 'snap' | 'and' | 'late' | 'tie' | 'rest';
+type Beat = 'one' | 'two' | 'off' | 'run' | 'dot' | 'snap' | 'and' | 'late' | 'tie' | 'rest'
+  | 'gallop' | 'rgallop' | 'syn' | 'four' | 'skip' | 'ant' | 'short' | 'three';
 /** Where a beat's notes fall (step in the beat, length), for a beat of `L` steps (4: a quarter; 6: a dotted quarter). */
 const BEAT_NOTES: Record<Exclude<Beat, 'tie' | 'rest'>, (L: number) => [number, number][]> = {
   one: (L) => [[0, L]],
@@ -43,6 +48,14 @@ const BEAT_NOTES: Record<Exclude<Beat, 'tie' | 'rest'>, (L: number) => [number, 
   snap: (L) => (L >= 6 ? [[0, 2], [2, L - 2]] : [[0, 1], [1, L - 1]]),
   and: (L) => [[L - 2, 1], [L - 1, 1]],
   late: (L) => (L >= 6 ? [[2, L - 2]] : [[1, L - 1]]),
+  gallop: (L) => (L >= 6 ? [[0, 2], [2, 2], [4, L - 4]] : [[0, 2], [2, 1], [3, 1]]),
+  rgallop: (L) => (L >= 6 ? [[0, 1], [1, 1], [2, L - 2]] : [[0, 1], [1, 1], [2, 2]]),
+  syn: (L) => (L >= 6 ? [[0, 1], [1, 3], [4, L - 4]] : [[0, 1], [1, 2], [3, 1]]),
+  four: (L) => (L >= 6 ? [[0, 1], [1, 1], [2, 2], [4, L - 4]] : [[0, 1], [1, 1], [2, 1], [3, 1]]),
+  skip: (L) => (L >= 6 ? [[1, 1], [2, L - 2]] : [[1, 1], [2, 2]]),
+  ant: (L) => [[L - 1, 1]],
+  short: (L) => [[0, Math.min(2, L)]],
+  three: (L) => (L >= 6 ? [[0, 2], [2, 2], [4, L - 4]] : [[0, 1], [1, 1], [2, L - 2]]),
 };
 
 /**
@@ -51,25 +64,60 @@ const BEAT_NOTES: Record<Exclude<Beat, 'tie' | 'rest'>, (L: number) => [number, 
  */
 const CELLS: Record<Genre, Beat[][]> = {
   pop: [['two', 'one', 'one', 'rest'], ['one', 'two', 'one', 'rest'], ['one', 'one', 'tie', 'rest'], ['off', 'tie', 'two', 'one'], ['two', 'one', 'tie'],
-    ['dot', 'one', 'two', 'rest'], ['two', 'snap', 'one', 'rest'], ['rest', 'two', 'two', 'one'], ['one', 'and', 'one', 'rest']],
+    ['dot', 'one', 'two', 'rest'], ['two', 'snap', 'one', 'rest'], ['rest', 'two', 'two', 'one'], ['one', 'and', 'one', 'rest'], ['two', 'two', 'short', 'rest'], ['rgallop', 'one', 'two', 'rest'], ['one', 'ant', 'tie', 'two', 'rest'], ['skip', 'two', 'one', 'rest'], ['two', 'one', 'rest', 'and', 'one', 'rest']],
   rock: [['one', 'one', 'two', 'one', 'rest', 'rest'], ['two', 'one', 'tie', 'rest'], ['one', 'two', 'one', 'tie'], ['one', 'one', 'one', 'rest'],
-    ['dot', 'dot', 'one', 'rest'], ['one', 'off', 'one', 'rest'], ['two', 'two', 'one', 'tie', 'rest']],
+    ['dot', 'dot', 'one', 'rest'], ['one', 'off', 'one', 'rest'], ['two', 'two', 'one', 'tie', 'rest'], ['gallop', 'one', 'one', 'rest'], ['one', 'one', 'ant', 'tie', 'rest'], ['short', 'short', 'two', 'one', 'rest'], ['two', 'rgallop', 'one', 'tie'], ['one', 'syn', 'one', 'rest']],
   hardrock: [['one', 'off', 'tie', 'rest'], ['two', 'one', 'one', 'rest'], ['one', 'one', 'one', 'tie'], ['one', 'one', 'off', 'tie', 'rest'],
-    ['snap', 'one', 'off', 'tie'], ['dot', 'one', 'one', 'rest'], ['one', 'rest', 'two', 'one']],
+    ['snap', 'one', 'off', 'tie'], ['dot', 'one', 'one', 'rest'], ['one', 'rest', 'two', 'one'], ['gallop', 'gallop', 'one', 'rest'], ['one', 'ant', 'tie', 'off', 'tie'], ['short', 'one', 'short', 'one', 'rest'], ['rgallop', 'one', 'one', 'tie'], ['syn', 'one', 'off', 'tie', 'rest']],
   funk: [['off', 'two', 'off', 'rest'], ['two', 'off', 'tie', 'rest'], ['off', 'one', 'two', 'rest'], ['run', 'off', 'rest'], ['off', 'off', 'one', 'rest'],
-    ['late', 'and', 'one', 'rest'], ['snap', 'off', 'two', 'rest'], ['and', 'two', 'off', 'tie'], ['dot', 'late', 'one', 'rest']],
+    ['late', 'and', 'one', 'rest'], ['snap', 'off', 'two', 'rest'], ['and', 'two', 'off', 'tie'], ['dot', 'late', 'one', 'rest'], ['syn', 'syn', 'off', 'rest'], ['four', 'off', 'tie', 'rest'], ['skip', 'and', 'one', 'rest'], ['short', 'off', 'short', 'off'], ['rgallop', 'syn', 'one', 'rest'], ['ant', 'tie', 'skip', 'two', 'rest']],
   grunge: [['one', 'tie', 'one', 'tie', 'rest'], ['one', 'one', 'tie', 'rest', 'rest'], ['off', 'tie', 'tie', 'rest'], ['one', 'tie', 'rest'],
-    ['dot', 'one', 'tie', 'rest'], ['late', 'tie', 'one', 'rest'], ['one', 'one', 'rest', 'off', 'tie']],
+    ['dot', 'one', 'tie', 'rest'], ['late', 'tie', 'one', 'rest'], ['one', 'one', 'rest', 'off', 'tie'], ['short', 'rest', 'one', 'tie', 'rest'], ['ant', 'tie', 'tie', 'rest'], ['one', 'tie', 'skip', 'tie', 'rest'], ['rest', 'late', 'tie', 'one', 'tie'], ['dot', 'tie', 'one', 'rest', 'rest']],
   metal: [['one', 'one', 'one', 'rest'], ['two', 'one', 'one', 'tie', 'rest'], ['one', 'off', 'tie', 'rest'], ['one', 'one', 'tie'],
-    ['dot', 'dot', 'one', 'rest'], ['two', 'two', 'two', 'one'], ['one', 'rest', 'one', 'one']],
+    ['dot', 'dot', 'one', 'rest'], ['two', 'two', 'two', 'one'], ['one', 'rest', 'one', 'one'], ['gallop', 'gallop', 'gallop', 'one'], ['short', 'short', 'short', 'one', 'rest'], ['rgallop', 'rgallop', 'one', 'rest'], ['one', 'one', 'ant', 'tie'], ['gallop', 'one', 'gallop', 'one', 'rest']],
   altmetal: [['one', 'one', 'off', 'tie', 'rest'], ['two', 'two', 'one', 'rest'], ['off', 'tie', 'one', 'rest'], ['one', 'one', 'one', 'tie', 'rest', 'rest'],
-    ['snap', 'snap', 'one', 'rest'], ['late', 'one', 'off', 'tie'], ['two', 'rest', 'two', 'one']],
+    ['snap', 'snap', 'one', 'rest'], ['late', 'one', 'off', 'tie'], ['two', 'rest', 'two', 'one'], ['syn', 'one', 'ant', 'tie', 'rest'], ['four', 'one', 'short', 'rest'], ['short', 'skip', 'one', 'rest'], ['rgallop', 'off', 'tie', 'rest'], ['gallop', 'syn', 'one', 'tie', 'rest']],
 };
 /** Classic vocal rhythms any genre can use: a pickup into the beat, a call that breathes, long-short swing, a dotted push. */
 const SHARED: Beat[][] = [
   ['rest', 'off', 'one', 'one'], ['one', 'rest', 'one', 'two'], ['dot', 'dot', 'two', 'rest'], ['two', 'one', 'rest', 'off', 'tie'],
   ['one', 'one', 'one', 'one', 'rest'], ['off', 'one', 'off', 'one', 'rest'], ['snap', 'one', 'one', 'rest'], ['two', 'dot', 'one', 'rest', 'rest'],
+  ['two', 'two', 'ant', 'tie', 'rest'], ['short', 'rest', 'two', 'one'], ['gallop', 'one', 'two', 'rest'], ['one', 'skip', 'one', 'rest'],
 ];
+
+/**
+ * Rhythm styles (the Rhythm menu; Paul: "more options of rhythms"), each a pool of cells: Straight (words on
+ * the beats), Pushed (syncopated: offbeats, notes pushed ahead of the beat), Busy (talky: 16ths, gallops),
+ * Sparse (few words, held and late), Bouncy (long-short: dotted and gallops), Mixed (a bit of everything,
+ * conversational). Auto: the genre's own, the shared ones and a little of the styles that suit the genre.
+ */
+const STYLES: Record<Exclude<AnchorRhythm, 'auto'>, Beat[][]> = {
+  straight: [['one', 'one', 'one', 'rest'], ['two', 'two', 'one', 'rest'], ['one', 'two', 'one', 'two', 'one', 'rest'], ['two', 'one', 'two', 'one'],
+    ['one', 'short', 'one', 'short'], ['two', 'two', 'two', 'rest'], ['one', 'one', 'two', 'one', 'tie', 'rest'], ['short', 'short', 'one', 'tie']],
+  pushed: [['off', 'tie', 'off', 'tie'], ['ant', 'tie', 'one', 'rest'], ['one', 'off', 'tie', 'off'], ['skip', 'off', 'one', 'rest'], ['syn', 'syn', 'one', 'rest'],
+    ['and', 'ant', 'tie', 'rest'], ['off', 'one', 'ant', 'tie', 'rest'], ['two', 'ant', 'tie', 'off', 'tie'], ['late', 'off', 'tie', 'rest']],
+  busy: [['four', 'two', 'gallop', 'one', 'rest'], ['run', 'run', 'one', 'rest'], ['gallop', 'gallop', 'two', 'rest'], ['rgallop', 'two', 'four', 'one', 'rest'],
+    ['two', 'four', 'two', 'rest'], ['syn', 'gallop', 'one', 'rest'], ['two', 'two', 'rgallop', 'one'], ['gallop', 'two', 'syn', 'one', 'rest']],
+  sparse: [['one', 'tie', 'rest', 'rest'], ['short', 'rest', 'one', 'tie'], ['late', 'tie', 'tie', 'rest'], ['one', 'rest', 'rest', 'off', 'tie'],
+    ['dot', 'tie', 'rest'], ['rest', 'one', 'tie', 'tie'], ['ant', 'tie', 'tie', 'rest', 'rest'], ['one', 'tie', 'short', 'rest']],
+  bouncy: [['dot', 'dot', 'dot', 'rest'], ['gallop', 'one', 'gallop', 'rest'], ['snap', 'dot', 'one', 'rest'], ['dot', 'snap', 'two', 'rest'],
+    ['rgallop', 'dot', 'one', 'rest'], ['gallop', 'rgallop', 'one', 'rest'], ['dot', 'dot', 'ant', 'tie'], ['snap', 'snap', 'dot', 'one', 'rest']],
+  mixed: [['two', 'rest', 'syn', 'one'], ['short', 'short', 'two', 'one', 'rest'], ['one', 'skip', 'tie', 'rest'], ['and', 'two', 'rest', 'gallop', 'one'],
+    ['ant', 'tie', 'rgallop', 'one', 'rest'], ['dot', 'off', 'short', 'rest'], ['two', 'late', 'ant', 'tie', 'rest'], ['rest', 'skip', 'two', 'one']],
+};
+/** The styles that suit each genre (Auto mixes a little of them in). */
+const GENRE_STYLES: Record<Genre, Exclude<AnchorRhythm, 'auto'>[]> = {
+  pop: ['straight', 'bouncy'], rock: ['straight', 'pushed'], hardrock: ['bouncy', 'pushed'], funk: ['pushed', 'busy'],
+  grunge: ['sparse', 'pushed'], metal: ['straight', 'bouncy'], altmetal: ['busy', 'pushed'],
+};
+/** A beat's near relations: a repeat of the cell now and then swaps one beat for one (a variation, not a copy). */
+const VARY: Partial<Record<Beat, Beat[]>> = {
+  one: ['two', 'short', 'late', 'dot'], two: ['one', 'dot', 'snap', 'gallop', 'rgallop'], off: ['and', 'skip', 'ant'], dot: ['two', 'snap', 'gallop'],
+  snap: ['dot', 'rgallop', 'two'], and: ['off', 'skip'], late: ['one', 'skip'], gallop: ['two', 'dot', 'rgallop'], rgallop: ['two', 'snap', 'gallop'],
+  syn: ['two', 'skip'], four: ['run', 'gallop'], skip: ['off', 'late', 'syn'], short: ['one', 'two'], run: ['four', 'gallop'],
+};
+/** Busier beats (16ths) a fast song, or a low-energy section, sings plainer. */
+const PLAINER: Partial<Record<Beat, Beat>> = { four: 'two', gallop: 'two', rgallop: 'two', syn: 'one', skip: 'late', run: 'two', three: 'two' };
 /** Notes a beat in a cell, about (how busy it is). */
 const busy = (c: Beat[]) => c.reduce((n, b) => n + (b === 'tie' || b === 'rest' ? 0 : BEAT_NOTES[b](4).length), 0) / c.length;
 
@@ -163,7 +211,14 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
     }
     return spineOf.get(kind)!;
   };
-  const cells = CELLS[genre] ?? CELLS.pop;
+  // (the rhythm style: Auto, the genre's cells, the shared ones and a little of the styles that suit it; or one style's)
+  const style = ideas.rhythm ?? 'auto';
+  const pool: [Beat[], number][] = style === 'auto'
+    ? [...(CELLS[genre] ?? CELLS.pop).map((c) => [c, 1] as [Beat[], number]), ...SHARED.map((c) => [c, 0.6] as [Beat[], number]),
+      ...(GENRE_STYLES[genre] ?? []).flatMap((st) => STYLES[st].map((c) => [c, 0.35] as [Beat[], number]))]
+    : STYLES[style].map((c) => [c, 1] as [Beat[], number]);
+  // (each kind of section its own pace: choruses busier, pre-choruses driving, verses a little sparer)
+  const KIND_BUSY: Partial<Record<SectionKind, number>> = { chorus: 0.1, prechorus: 0.06, verse: -0.05, bridge: -0.03, outro: -0.05 };
   const stat = { phrases: 0, holds: 0, bends: 0, merged: 0, figs: new Map<string, number>(), anchors: [] as string[], beats: 0, notes: 0, strongFin: 0, strongTone: 0, repeats: 0, shapes: new Map<Shape, number>(), energy: [] as string[] };
   const firstOf = new Map<string, { degs: { step: number; len: number; deg: number; bend?: number; acc: boolean }[]; total: number; bars: number }>();
   const parts: GuideNote[][] = [];
@@ -270,8 +325,9 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
         // the block's rhythm cell (now and then its own for a phrase), as busy as the energy: more words when it's up
         const E = energyAt(b0);
         if (b0 === 0 && !again) stat.energy.push(`${idea.section?.label ?? kind} ${E < 0.35 ? 'low' : E < 0.65 ? 'mid' : 'high'}`);
-        const pickCell = () => rng.weighted([...cells.map((c) => [c, 1] as [Beat[], number]), ...SHARED.map((c) => [c, 0.6] as [Beat[], number])]
-          .map(([c, w]) => [c, w * Math.exp(-3 * Math.abs(busy(c) - (0.35 + 1.0 * E)))] as [Beat[], number]));
+        const want = 0.35 + 1.0 * E + (KIND_BUSY[kind] ?? 0);
+        // (a chosen style: the energy steers less, so the style is heard)
+        const pickCell = () => rng.weighted(pool.map(([c, w]) => [c, w * Math.exp(-(style === 'auto' ? 3 : 1.5) * Math.abs(busy(c) - want))] as [Beat[], number]));
         const blockCell = pickCell();
         let pb = b0;
         plan.forEach((pBars, pi) => {
@@ -280,11 +336,21 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
           const ending = songEnd && lastPhrase;
           let cell = rng.chance(0.25) ? pickCell() : blockCell;
           // (fast songs: fewer notes in a beat)
-          if (song.bpm > 125) cell = cell.map((x) => (x === 'run' ? 'two' : (x === 'two' || x === 'and') && rng.chance(0.5) ? 'one' : x));
+          if (song.bpm > 125) cell = cell.map((x) => (PLAINER[x] && (x === 'run' || x === 'four' || rng.chance(0.6)) ? PLAINER[x]! : (x === 'two' || x === 'and') && rng.chance(0.5) ? 'one' : x));
           // (long beats (6/8, 7/8): now and then two words in one)
           else if (short) cell = cell.map((x) => (x === 'one' && rng.chance(0.5) ? 'two' : x));
           // (the energy: fewer words in a beat when it's low, more when it's high)
-          if (E < 0.45) cell = cell.map((x) => ((x === 'two' || x === 'dot' || x === 'snap' || x === 'and') && rng.chance((0.45 - E) * 2) ? 'one' : x));
+          if (E < 0.45) cell = cell.map((x) => (PLAINER[x] && rng.chance((0.45 - E) * 2) ? PLAINER[x]! : x)).map((x) => ((x === 'two' || x === 'dot' || x === 'snap' || x === 'and') && rng.chance((0.45 - E) * 2) ? 'one' : x));
+          // (the cell's repeats now and then a variation: one beat swapped for a near relation, Paul: more rhythms)
+          const varied = cell.slice();
+          if (rng.chance(0.55)) {
+            const at = cell.map((x, i) => (VARY[x] ? i : -1)).filter((i) => i >= 0);
+            for (let v = 0; v < (at.length > 3 && rng.chance(0.3) ? 2 : 1) && at.length; v++) {
+              const i = at.splice(rng.int(0, at.length - 1), 1)[0];
+              const opts = VARY[cell[i]]!.filter((x) => !(song.bpm > 125 && PLAINER[x]));
+              if (opts.length) varied[i] = rng.pick(opts);
+            }
+          }
           else if (E > 0.65 && song.bpm <= 125) cell = cell.map((x) => (x === 'one' && rng.chance((E - 0.65) * 1.5) ? 'two' : x));
           const pbeats = beats.filter((x) => x.bar >= pb && x.bar < pb + pBars);
           const nb = pbeats.length;
@@ -341,7 +407,7 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
           const cellEnd = Math.max(0, f - preBeats);
           // the cell, repeated from the phrase's start up to the break (all on the anchor)
           for (let j = 0; j < cellEnd; j++) {
-            const bt = pbeats[j], kindB = cell[j % cell.length], L = bt.len;
+            const bt = pbeats[j], rep = Math.floor(j / cell.length), kindB = (rep % 2 ? varied : cell)[j % cell.length], L = bt.len;
             const last = out[out.length - 1];
             if (kindB === 'tie') { if (last && last.step + last.len === bt.step && last.len + L <= barLen) last.len += L; }
             else if (kindB !== 'rest') for (const [o, l] of BEAT_NOTES[kindB](L)) push(bt.step + o, l, anchor, 'cell');

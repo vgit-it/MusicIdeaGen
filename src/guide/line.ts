@@ -79,7 +79,11 @@ export interface GuideIdeas {
   anchor?: boolean;
   /** Human feel (feel.ts, docs/GUIDE-FEEL.md): how the line is played and sung (glides, scoops, swells, fades, falls, vibrato, breaths); the written line unchanged. */
   feel?: boolean;
+  /** The Anchor line's rhythm style (anchor.ts; left out: Auto, by genre). */
+  rhythm?: AnchorRhythm;
 }
+/** The Anchor line's rhythm styles (the Rhythm menu). */
+export type AnchorRhythm = 'auto' | 'straight' | 'pushed' | 'busy' | 'sparse' | 'bouncy' | 'mixed';
 
 /**
  * Section change (Paul: "a noticeable shift in either phrase lengths or notes"): how each kind of section

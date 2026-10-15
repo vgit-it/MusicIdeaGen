@@ -119,6 +119,29 @@ so a single 8-bar idea barely changed (and a lead-in before the song's very star
 
 Breaths only act where the line is tiring; many quiet verses already rest a lot.
 
+## More rhythms, a Rhythm menu (2026-10-15)
+Paul: the vocal rhythm too limited; more options.
+- **New beats:** an 8th and two 16ths (gallop), two 16ths and an 8th, 16th-8th-16th (syncopated), four
+  16ths (talky, rare), a 16th late then an 8th, the beat's last 16th pushed into the next (held on), a
+  clipped word, three 8ths in a 6/8 beat.
+- **More patterns:** 5-6 more per genre, 4 more shared.
+- **Rhythm menu** (next to Anchor line): Auto (by genre: its own patterns, the shared ones, a little of the
+  styles that suit it), or one style:
+  | Style | What | Words a beat | Off the beat (8ths / 16ths) |
+  |---|---|---|---|
+  | Auto | by genre | 0.91 | 29% / 11% |
+  | Straight | words on the beats | 0.97 | 29% / 1% |
+  | Pushed | offbeats, notes ahead of the beat | 0.78 | 32% / 24% |
+  | Busy | quick, talky | 1.29 | 33% / 14% |
+  | Sparse | few words, held and late | 0.55 | 20% / 13% |
+  | Bouncy | long-short, gallops | 1.18 | 22% / 27% |
+  | Mixed | a bit of everything, like talking | 0.90 | 24% / 21% |
+- **Variations:** a pattern repeated in a phrase now and then comes back with a beat or two changed
+  (a near relation: a word split in two, a dotted one, pushed early).
+- **Each kind of section its pace:** choruses busier, pre-choruses driving, verses a little sparer.
+- Fast songs and quiet sections sing the 16ths plainer.
+- Different bar rhythms a song (Auto): 15.7 → 17.6. `npm run guide-check` checks each style.
+
 ## Human feel
 The Human feel switch works with it too (`docs/GUIDE-FEEL.md`).
 

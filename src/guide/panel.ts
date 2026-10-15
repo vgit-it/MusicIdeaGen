@@ -7,7 +7,7 @@ import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
 import type { Mood } from '../tension';
 import type { HighVoice } from '../parts/singers';
-import { FLICK_LEVELS, type Flicks, type GuideIdeas, type GuideRange, RANGE_MIN_SPAN, type GuideScale, type GuideTonality, GUIDE_SCALES, NAMES, SCALE_LABEL, shared, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
+import { FLICK_LEVELS, type Flicks, type GuideIdeas, type AnchorRhythm, type GuideRange, RANGE_MIN_SPAN, type GuideScale, type GuideTonality, GUIDE_SCALES, NAMES, SCALE_LABEL, shared, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
 import { GuideSynth, type SynthFeel } from './synth';
 import { feelFor } from './feel';
 import { Rng } from '../rng';
@@ -74,6 +74,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label title="Auto: mid, or high if the singer sings high. High: up to its top where the song is high">Voice ${seg('g-voice', [['auto', 'Auto'], ['mid', 'Mid'], ['high', 'High']], voice)}</label>
         <label title="Sing the line's words (the same tune) in one of the singer's voices, instead of the synth">Sing <select id="g-sing" class="gsing"><option value="off" selected>Off</option>${TIMBRE_CHOICES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('')}</select></label>
         <label title="A different writer: one strong note every 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it (two up and one down, a step up and back, a turn, a fall), its last note strong and sometimes held a bar or two; bends into the accents now and then. Of the switches below, only Slow line, Breaths, Lead-ins, Hard &amp; soft and Human feel apply to it">Anchor line ${seg('g-anchor', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+        <label title="The Anchor line's rhythm: Auto (by genre), Straight (words on the beats), Pushed (offbeats, notes ahead of the beat), Busy (quick, talky words), Sparse (few words, held and late), Bouncy (long-short, gallops), Mixed (a bit of everything, like talking)">Rhythm <select id="g-rhythm" class="gsing">${([['auto', 'Auto'], ['straight', 'Straight'], ['pushed', 'Pushed'], ['busy', 'Busy'], ['sparse', 'Sparse'], ['bouncy', 'Bouncy'], ['mixed', 'Mixed']] as const).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
         <label title="A short idea repeated: each section's phrases in the form A B A b (the first phrase comes back, moved to suit the height and chords; the second comes back with a new ending)">Repeat idea ${seg('g-motif', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="A slow shape under each section that the line follows, by mood: verses falling (rising when happy, around one note when dark), pre-choruses climbing, choruses arching; phrases end on it">Slow line ${seg('g-spine', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="Pitch follows how the words are said: a quick note going up starts a new stressed word, going down is a word's soft last syllable, the line coming back up into the next stress">Pitch by words ${seg('g-speech', [['off', 'Off'], ['on', 'On']], 'off')}</label>
@@ -300,6 +301,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   pickSeg('g-carry', (v) => { ideas.carry = v === 'on'; rewrite(); });
   pickSeg('g-dyn', (v) => { ideas.dynamics = v === 'on'; rewrite(); });
   pickSeg('g-feel', (v) => { ideas.feel = v === 'on'; rewrite(); });
+  $('g-rhythm').addEventListener('change', (e) => { const v = (e.target as HTMLSelectElement).value as AnchorRhythm; ideas.rhythm = v === 'auto' ? undefined : v; rewrite(); });
   pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
   $('g-sing').addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;
