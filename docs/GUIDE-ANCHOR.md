@@ -102,6 +102,23 @@ Pitch by words, Question & answer, Section change, Carry over, Quick notes, Voic
 - Each has its own dice: switching one on doesn't reshuffle the rest. `npm run guide-check` checks each,
   and all three together with Hard & soft and a narrow range.
 
+## Stronger, inside a section too (2026-10-15)
+Paul: switching them on and off made no difference he could hear. They worked, but mostly where sections meet,
+so a single 8-bar idea barely changed (and a lead-in before the song's very start couldn't be heard: fixed).
+- **Slow line:** never "around one note" (the anchor already is): a clear shape instead (high then a drop;
+  tense: a climb); the shape moves the anchors further (1.3 times), and each phrase's last note leans to it.
+- **Breaths:** inside a section after a stretch of a bar or more (was 2.5 bars), a beat or two longer rest.
+- **Lead-ins:** inside a section too: about a third of phrases come in early, the first note held into it
+  (an 8th or a beat), or a quick pickup word an 8th before (a step below, or on the note).
+
+| On vs off: songs where the line changes (notes changed) | Single idea | Track |
+|---|---|---|
+| Slow line | 98% (84%) | 100% (92%) |
+| Breaths | 39% (3%) | 96% (3%) |
+| Lead-ins | 74% (7%) | 100% (9%) |
+
+Breaths only act where the line is tiring; many quiet verses already rest a lot.
+
 ## Next
 - Paul listens per genre and mood.
 - Maybe: the pattern changing with the section (a chorus busier), a pickup into a phrase, the anchor

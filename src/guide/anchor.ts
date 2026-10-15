@@ -16,6 +16,13 @@ import { GUIDE_SCALES, HEIGHT, LEAD_INS, LEAD_IN_P, SPINES, SPINE_BY, SPINE_GENR
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
+/** Slow line: how far the shape moves the anchors (times the guide line's own shapes, in scale steps). */
+const SPINE_DEPTH = 1.3;
+/** Breaths inside a section: after a stretch this tiring (bars, high notes counting more; the guide line's is 2.5). */
+const TIRED_IN = 1;
+/** Lead-ins inside a section: how often a phrase comes in early (held into it, or a quick pickup word). */
+const PICKUP_P = 0.35;
+
 /** A held note may run into the next bar or two (Paul), so up to 2 bars here (the line's own limit is a bar). */
 export const ANCHOR_HOLD_BARS = 2;
 
@@ -150,7 +157,9 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
     if (!ideas.spine || !SPINE_BY[kind]) return null;
     if (!spineOf.has(kind)) {
       const by = SPINE_BY[kind]!, gl = SPINE_GENRE[first.song.genre]?.[kind];
-      spineOf.set(kind, gl && sprng.chance(0.5) ? gl : by[mood] ?? by.all);
+      const sp = gl && sprng.chance(0.5) ? gl : by[mood] ?? by.all;
+      // (the anchor already stays on one note: "around one note" would change nothing, so a clear shape instead)
+      spineOf.set(kind, sp === 'drone' ? (mood === 'tense' ? 'rise' : 'drop') : sp);
     }
     return spineOf.get(kind)!;
   };
@@ -159,6 +168,8 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
   const firstOf = new Map<string, { degs: { step: number; len: number; deg: number; bend?: number; acc: boolean }[]; total: number; bars: number }>();
   const parts: GuideNote[][] = [];
   const roles = new Map<GuideNote, 'cell' | 'acc'>();
+  /** Each section's scale-note to MIDI (for the pickups added afterwards). */
+  const midiOfs: ((x: number) => number)[] = [];
   let prevAnchor: number | null = null;
 
   list.forEach((idea, si) => {
@@ -167,6 +178,7 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
     const home = homeMidi(keyOf(song), MID[0]);
     const scale = scaleOf(song);
     const midiOf = (x: number) => home + 12 * Math.floor(x / 7) + scale[mod(x, 7)];
+    midiOfs[si] = midiOf;
     const tonesAt = (g: number) => chordTones(song.key, chords.timeline[chords.chordIdx[Math.min(song.total - 1, Math.max(0, g))]].chord);
     const kind = (idea.section?.kind ?? 'verse') as SectionKind;
     const tension = (bar: number) => idea.section?.tension?.[bar] ?? 0.5;
@@ -210,6 +222,11 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
         for (let x = -35; x <= 42; x++) if (Math.abs(midiOf(x) - m) < Math.abs(midiOf(best) - m)) best = x;
         return best;
       };
+      /** Slow line: the shape's note at a bar (the section's height, moved by its shape there). */
+      const spineAt = (bar: number) => {
+        const sp = spineFor(kind);
+        return heightD(bar) + (sp ? Math.round(SPINE_DEPTH * SPINES[sp].f(bar / Math.max(1, song.bars.length - 1))) : 0);
+      };
       const push = (step: number, len: number, deg: number, role: 'cell' | 'acc') => {
         if (len <= 0) return;
         const note: GuideNote = { step, len, midi: midiOf(deg), deg };
@@ -224,7 +241,7 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
         // the anchor: near the section's height, a chord note through the block (leaning in), moving from the last
         // (Slow line: the section's shape moves the height, by where the block sits in the section)
         const spine = spineFor(kind);
-        const lift = spine ? Math.round(SPINES[spine].f(b0 / Math.max(1, song.bars.length - nBars))) : 0;
+        const lift = spine ? Math.round(SPINE_DEPTH * SPINES[spine].f(b0 / Math.max(1, song.bars.length - nBars))) : 0;
         const target = songEnd ? Math.round((heightD(b0) + 0) / 2) : heightD(b0) + lift;
         const blockSteps = [song.bars[b0].start, song.bars[b0 + nBars - 1].start + song.bars[b0 + nBars - 1].len];
         const chordFit = (x: number) => {
@@ -302,6 +319,8 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
             let w = (FIG_MOOD[mood][g.id] ?? 1) * (g.leap ? 0.25 : 1) * Math.max(0.15, 1 + (FIG_ENERGY[g.id] ?? 0) * (E - 0.5) * 2);
             w *= settle === g.settle ? 1.6 : 0.6;
             if (lean === 'in') w *= tonesAt(finStep).includes(mod(midiOf(anchor + g.fin), 12)) ? 2.5 : 0.5;
+            // (Slow line: the phrase's last note leans to the shape's note there too)
+            if (spine && !ending) w *= Math.exp(-0.8 * Math.abs(anchor + g.fin - spineAt(pbeats[f].bar)));
             return [g, w] as [Fig, number];
           }));
           stat.figs.set(fig.says, (stat.figs.get(fig.says) ?? 0) + 1);
@@ -421,7 +440,7 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
   });
 
   // Breaths and Lead-ins (switches; each its own dice, so the line elsewhere stays put)
-  const nb = { before: 0, tired: 0, beats: 0, leadIns: 0 };
+  const nb = { before: 0, tired: 0, beats: 0, leadIns: 0, pickups: 0 };
   if (ideas.breath || ideas.leadIn) {
     const brng = new Rng(`anchor-breath-${first.seeds.song}-${mood}-${salt}`);
     const lrng = new Rng(`anchor-leadin-${first.seeds.song}-${mood}-${salt}`);
@@ -447,9 +466,29 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
       // Breaths after a tiring stretch, inside the section: the rest before the next phrase made longer
       if (ideas.breath) for (let j = 1; j < p.length; j++) {
         const gap = p[j].step - (p[j - 1].step + p[j - 1].len);
-        if (gap < 4 || gap >= 12 || effortTo(p, j - 1, bar) < TIRED || !brng.chance(0.7)) continue;
+        if (gap < 4 || gap >= 16 || effortTo(p, j - 1, bar) < TIRED_IN || !brng.chance(0.8)) continue;
         const by = 4 * brng.int(1, 2);
         if (cut(p[j - 1], by)) { nb.tired++; nb.beats += by / 4; }
+      }
+      // Lead-ins inside the section: a phrase comes in early, its first note held into it (an 8th or a beat), or a
+      // quick pickup word an 8th before it (a step below, or on it); a beat's silence kept before (an 8th's before a pickup)
+      if (ideas.leadIn) for (let j = 1; j < p.length; j++) {
+        const n = p[j], before = p[j - 1];
+        const gap = n.step - (before.step + before.len);
+        if (gap < 4 || n.bend || n.step % 2 !== 0 || !lrng.chance(PICKUP_P)) continue;
+        if (gap >= 6 && lrng.chance(0.5)) {
+          const L = gap >= 8 && lrng.chance(0.5) ? 4 : 2;
+          if (n.len + L > ANCHOR_HOLD_BARS * bar) continue;
+          n.step -= L; n.len += L;
+        } else {
+          const midiOf = midiOfs[si];
+          const deg = midiOf(n.deg - 1) >= MID[0] && lrng.chance(0.6) ? n.deg - 1 : n.deg;
+          const x: GuideNote = { step: n.step - 2, len: 2, midi: midiOf(deg), deg };
+          roles.set(x, 'cell');
+          p.splice(j, 0, x);
+          j++;
+        }
+        nb.pickups++;
       }
       const prevP = si > 0 ? parts[si - 1] : undefined, prevIdea = list[si - 1];
       const pLast = prevP?.[prevP.length - 1];
@@ -545,7 +584,7 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
     `Sits out: ${list.map((i, si) => (silent[si] ? i.section?.label ?? '' : '')).filter(Boolean).join(', ') || 'nothing'}`,
     ...(ideas.spine ? [`Slow line: the anchors follow ${[...spineOf].map(([k, sp]) => `the ${k === 'prechorus' ? 'pre-chorus' : k} (${SPINES[sp].says})`).join(', ') || 'no shape here'}`] : []),
     ...(ideas.breath ? [`Breaths: ${nb.before} before a big section or after a tiring one, ${nb.tired} more after a tiring stretch; ${nb.beats} beats in all`] : []),
-    ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, the first note held into it`] : []),
+    ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, the first note held into it; ${nb.pickups} phrases come in early inside a section (held into it, or a quick pickup word)`] : []),
     'Not used here: quick notes, pushes and pulls, and the other switches (Breaths, Lead-ins, Slow line, Hard & soft, Range and Key & scale apply)',
   ];
   return { parts, silent, mood, notes };
