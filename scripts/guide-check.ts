@@ -12,6 +12,7 @@ import { generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { type Flicks, type GuideIdeas, type GuideRange, type GuideTonality, writeGuide } from '../src/guide/line';
 import { guideWords } from '../src/guide/words';
+import { ANCHOR_HOLD_BARS, writeAnchor } from '../src/guide/anchor';
 import { shapeDynamics } from '../src/guide/dynamics';
 import { MOODS } from '../src/tension';
 import type { HighVoice } from '../src/parts/singers';
@@ -36,12 +37,15 @@ const RANGES: GuideRange[] = [[24, 36], [36, 72], [55, 79], [40, 52], [78, 90], 
 const TONES: [number | null, GuideTonality['scale'], boolean][] = [[null, 'lydian', true], [1, null, true], [6, 'phrygian', false], [7, 'harmonic', true], [3, 'locrian', false]];
 const RUNS: [string, GuideIdeas, GuideRange | null, [number | null, GuideTonality['scale'], boolean] | null][] = [...IDEAS.map(([n, i]): [string, GuideIdeas, null, null] => [n, i, null, null]),
   ...RANGES.flatMap((r): [string, GuideIdeas, GuideRange, null][] => [[`range ${r.join('-')}`, {}, r, null], [`range ${r.join('-')}, all on`, ALL_ON, r, null]]),
+  // (Anchor line: a writer of its own; with Hard and soft, a range and a key and scale of its own)
+  ['Anchor line', { anchor: true }, null, null], ['Anchor line, Hard and soft', { anchor: true, dynamics: true }, null, null], ['Anchor line, range 40-52', { anchor: true }, [40, 52], null], ['Anchor line, range 24-90', { anchor: true }, [24, 90], null], ['Anchor line, key +6 phrygian', { anchor: true }, null, [6, 'phrygian', false]],
   ...TONES.flatMap((t): [string, GuideIdeas, null, [number | null, GuideTonality['scale'], boolean]][] => [[`key +${t[0] ?? 0} ${t[1] ?? 'same'}${t[2] ? ' guarded' : ''}`, {}, null, t], [`key +${t[0] ?? 0} ${t[1] ?? 'same'}${t[2] ? ' guarded' : ''}, all on`, ALL_ON, null, t]])];
 
 const out: Record<string, string> = {};
 const broken: string[] = [];
 let songs = 0;
 for (const [ideaName, ideas, range, tn] of RUNS) {
+if (process.env.ONLY && !ideaName.includes(process.env.ONLY)) continue;
 let k = 0;
 for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS) {
   const s = `gc-${genre}-${meter}-${mood}`;
@@ -50,7 +54,8 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   const idea = generate({ genre, meter, weirdness: 0.3 } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const tr = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never);
   const list = tr.sections;
-  const L = writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range, tn && { key: tn[0] === null ? null : (list[0].song.key + tn[0]) % 12, scale: tn[1], guard: tn[2] });
+  const tone = tn && { key: tn[0] === null ? null : (list[0].song.key + tn[0]) % 12, scale: tn[1], guard: tn[2] };
+  const L = ideas.anchor ? writeAnchor(list, tr.mood, lean, 0, range, tone) : writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range, tone);
   const W = guideWords(list, L);
   if (ideas.dynamics) shapeDynamics(list, L, W);
   const id = `${ideaName === 'all off' ? '' : `[${ideaName}] `}${mood}|${genre}|${meter}|${flicks}|${lean}|${high ?? 'mid'}`;
@@ -70,7 +75,7 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
       const at = o + n.step;
       if (at < lastEnd) broken.push(`${id} ${idea.section?.label}: two notes at once`);
       lastEnd = at + n.len;
-      if (n.len > bar) broken.push(`${id} ${idea.section?.label}: a note held over a bar`);
+      if (n.len > bar * (ideas.anchor ? ANCHOR_HOLD_BARS : 1)) broken.push(`${id} ${idea.section?.label}: a note held over ${ideas.anchor ? `${ANCHOR_HOLD_BARS} bars` : 'a bar'}`);
       if (!n.bend) changes.push(at);
       for (let t = 0; t < n.len; t++) want[at + t] = n.midi;
       for (const f of n.flicks ?? []) {

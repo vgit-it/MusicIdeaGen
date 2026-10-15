@@ -575,6 +575,9 @@ Measured (84 songs, held notes clashing with a chord under them, guard off → o
 18% → 5%; a semitone up 53% → 28%; a tritone 57% → 31%. (The song's own 15%: held over chord changes.)
 `npm run guide-check` also writes every song in 5 keys and scales, guarded and not, and checks the rules.
 
+## Anchor line (switch; 2026-10-14)
+A writer of its own behind the **Anchor line** switch: one main note per 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it. See `docs/GUIDE-ANCHOR.md`.
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
