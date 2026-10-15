@@ -57,6 +57,32 @@ words, the singer and MIDI all work as before. Off: the guide line exactly as be
 words on the tune, at most 4 changes in a second, the range, never two notes at once, a note held at most
 2 bars (the guide line's own limit, a bar, stays for the guide line).
 
+## Fewer long notes, moving ones, energy, more patterns (2026-10-15)
+Paul: too many long runs held across two bars; long ones could bend to the next note or start on the accent
+and bend down; more dynamic, by the song's energy and mood (following the song); more word patterns.
+
+- **Fewer long notes:** at most 2 long holds a section (3 in a chorus), fewer as the energy rises; half a bar
+  to a bar; two bars only to close a chorus or the song. Notes held a bar or more: 9.7 → 2.7 a song (over a
+  bar: 6.5 → 0.8).
+- **Long notes move**, by chance (mood and energy pick):
+  - bent away to the next step near its end (toward the next note)
+  - started a step above (the accent's note) and bent down onto it
+  - scooped up from a step below
+  - falling off a step at the very end
+  - sung again as new words on the same note
+  - or simply held
+  - Melancholic and dark fall off and start above; happy and triumphant scoop; angry and tense sing again;
+    dreamy bends away. High energy scoops and sings again; low energy falls off and bends away.
+- **Energy follows the song:** each section's energy level and tension, with the mood's lean (angry, tense,
+  triumphant push; dreamy, melancholic hold back). Low: fewer words a beat, longer rests, small accents (a
+  step, a dip, a fall). High: more words, shorter rests, bigger accents (a reach, a climb, a leap).
+  Words a beat by section energy: low 0.66, mid 0.77, high 0.86 (before: 0.64 everywhere).
+- **More rhythm patterns:** new beats: long-short (a dotted 8th and a 16th), short-long (a 16th and a
+  dotted 8th), two quick ones on the offbeat, a 16th late. 2-4 more cells per genre, and 8 classic vocal
+  rhythms any genre can use (a pickup into the beat, a call that breathes, long-short swing, a dotted push).
+  The cell is picked to suit the energy.
+- Still: about 80% of notes on the anchor; `npm run guide-check` passes (the guide line itself unchanged).
+
 ## Next
 - Paul listens per genre and mood.
 - Maybe: the pattern changing with the section (a chorus busier), a pickup into a phrase, the anchor
