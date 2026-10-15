@@ -84,6 +84,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
           <label title="The tune repeating itself: each section's phrases in a form by mood (A A B A, A B A B, A A B B): a phrase's rhythm comes back (moved with the main note), its accent again when it ends the same way, a new one when it answers. The chorus's first phrase is its hook, reaching up">Hook ${seg('g-hook', [['off', 'Off'], ['on', 'On']], 'off')}</label>
           <label title="Fewer words all on one note: a weak word a step up or down and back, the last word a step into the accent, a phrase now and then leaping in from a 3rd or 4th away, the strong last note now and then sung a step above first (a clash with the chord) and settling onto it. By mood">Less one-note ${seg('g-color', [['off', 'Off'], ['on', 'On']], 'off')}</label>
           <label title="Writes 8 lines and keeps the one that scores best: strong notes and phrase ends on the chord, easy steps, some bars repeating (about half), not too many words on one note, each section's top note once or twice, the choruses higher and the song's top in a chorus. The notes below show why">Best of several ${seg('g-best', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="The whole song's shape: choruses higher, with fewer words and longer notes; verses lower and talkier; the song's highest note saved for the last chorus, sung once">Song arc ${seg('g-arc', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Sings with the band: phrase ends land on a drum hit (now and then the snare), notes come in early when the band pushes a chord change, and no new words under the drum fills or Guitar 2's licks (the note before held)">Listen to band ${seg('g-listen', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         </div>
       </div>
       <div class="ggroup" id="g-for-guide">
@@ -320,6 +322,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   pickSeg('g-hook', (v) => { ideas.hook = v === 'on'; rewrite(); });
   pickSeg('g-color', (v) => { ideas.color = v === 'on'; rewrite(); });
   pickSeg('g-best', (v) => { ideas.best = v === 'on'; rewrite(); });
+  pickSeg('g-arc', (v) => { ideas.arc = v === 'on'; rewrite(); });
+  pickSeg('g-listen', (v) => { ideas.band = v === 'on'; rewrite(); });
   pickSeg('g-motif', (v) => { ideas.motif = v === 'on'; rewrite(); });
   pickSeg('g-spine', (v) => { ideas.spine = v === 'on'; rewrite(); });
   pickSeg('g-speech', (v) => { ideas.speech = v === 'on'; rewrite(); });

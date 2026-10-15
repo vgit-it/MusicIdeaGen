@@ -87,6 +87,10 @@ export interface GuideIdeas {
   color?: boolean;
   /** Anchor line, Best of several (anchor.ts): several lines written, the one that scores best kept (chord fit, easy to sing, repeats, shape, the song's top in a chorus). */
   best?: boolean;
+  /** Anchor line, Song-wide arc (anchor.ts): choruses higher with fewer words and longer notes, verses lower and talkier, the song's top note saved for the last chorus, sung once. */
+  arc?: boolean;
+  /** Anchor line, Listening to the band (anchor.ts): phrase ends on a drum hit (now and then the snare), pushed with the band's pushes, no new words under drum fills and Guitar 2's licks. */
+  band?: boolean;
 }
 /** The Anchor line's rhythm styles (the Rhythm menu). */
 export type AnchorRhythm = 'auto' | 'straight' | 'pushed' | 'busy' | 'sparse' | 'bouncy' | 'mixed';
