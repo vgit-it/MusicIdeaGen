@@ -38,7 +38,7 @@ const TONES: [number | null, GuideTonality['scale'], boolean][] = [[null, 'lydia
 const RUNS: [string, GuideIdeas, GuideRange | null, [number | null, GuideTonality['scale'], boolean] | null][] = [...IDEAS.map(([n, i]): [string, GuideIdeas, null, null] => [n, i, null, null]),
   ...RANGES.flatMap((r): [string, GuideIdeas, GuideRange, null][] => [[`range ${r.join('-')}`, {}, r, null], [`range ${r.join('-')}, all on`, ALL_ON, r, null]]),
   // (Anchor line: a writer of its own; with Hard and soft, a range and a key and scale of its own)
-  ['Anchor line', { anchor: true }, null, null], ['Anchor line, Hard and soft', { anchor: true, dynamics: true }, null, null], ['Anchor line, range 40-52', { anchor: true }, [40, 52], null], ['Anchor line, range 24-90', { anchor: true }, [24, 90], null], ['Anchor line, key +6 phrygian', { anchor: true }, null, [6, 'phrygian', false]],
+  ['Anchor line', { anchor: true }, null, null], ['Anchor line, Hard and soft', { anchor: true, dynamics: true }, null, null], ['Anchor line, range 40-52', { anchor: true }, [40, 52], null], ['Anchor line, Slow line', { anchor: true, spine: true }, null, null], ['Anchor line, Breaths', { anchor: true, breath: true }, null, null], ['Anchor line, Lead-ins', { anchor: true, leadIn: true }, null, null], ['Anchor line, all three, Hard and soft, range 40-52', { anchor: true, spine: true, breath: true, leadIn: true, dynamics: true }, [40, 52], null], ['Anchor line, range 24-90', { anchor: true }, [24, 90], null], ['Anchor line, key +6 phrygian', { anchor: true }, null, [6, 'phrygian', false]],
   ...TONES.flatMap((t): [string, GuideIdeas, null, [number | null, GuideTonality['scale'], boolean]][] => [[`key +${t[0] ?? 0} ${t[1] ?? 'same'}${t[2] ? ' guarded' : ''}`, {}, null, t], [`key +${t[0] ?? 0} ${t[1] ?? 'same'}${t[2] ? ' guarded' : ''}, all on`, ALL_ON, null, t]])];
 
 const out: Record<string, string> = {};
@@ -55,7 +55,7 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   const tr = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never);
   const list = tr.sections;
   const tone = tn && { key: tn[0] === null ? null : (list[0].song.key + tn[0]) % 12, scale: tn[1], guard: tn[2] };
-  const L = ideas.anchor ? writeAnchor(list, tr.mood, lean, 0, range, tone) : writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range, tone);
+  const L = ideas.anchor ? writeAnchor(list, tr.mood, lean, 0, range, tone, ideas) : writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range, tone);
   const W = guideWords(list, L);
   if (ideas.dynamics) shapeDynamics(list, L, W);
   const id = `${ideaName === 'all off' ? '' : `[${ideaName}] `}${mood}|${genre}|${meter}|${flicks}|${lean}|${high ?? 'mid'}`;

@@ -88,10 +88,10 @@ interface Feel { phrase: number; pace: number; jump: boolean }
 const PACES = [0.55, 1, 1.45];
 
 /** Breaths: how tiring the stretch just sung is (bars, a high note counting more), from which a breath is likely. */
-const TIRED = 2.5;
+export const TIRED = 2.5;
 /** Lead-ins: how often, and how early (steps before the section: an 8th, a beat, two beats). */
-const LEAD_IN_P = 0.35;
-const LEAD_INS: [number, number][] = [[2, 0.3], [4, 0.45], [8, 0.25]];
+export const LEAD_IN_P = 0.35;
+export const LEAD_INS: [number, number][] = [[2, 0.3], [4, 0.45], [8, 0.25]];
 /** Carry over: how often the line runs on into a section it sits out. */
 const CARRY_P = 0.5;
 
@@ -111,8 +111,8 @@ export const WORD_STARTS: Record<Genre, number> = { funk: 0.6, hardrock: 0.55, r
  * Slow line (Melody first's "spine", after Schenker): a slow shape under each section that the line follows,
  * in scale steps above or below the section's height, by where it is in the section (0 to 1); phrases end on it.
  */
-type Spine = 'fall' | 'rise' | 'arch' | 'drone' | 'wide' | 'hold' | 'drop';
-const SPINES: Record<Spine, { f: (x: number) => number; says: string }> = {
+export type Spine = 'fall' | 'rise' | 'arch' | 'drone' | 'wide' | 'hold' | 'drop';
+export const SPINES: Record<Spine, { f: (x: number) => number; says: string }> = {
   fall: { f: (x) => 2 - 3 * x, says: 'falls' },
   rise: { f: (x) => -1 + 3 * x, says: 'climbs' },
   arch: { f: (x) => (x < 0.35 ? (2 * x) / 0.35 : 2 - (3 * (x - 0.35)) / 0.65), says: 'arches (up early, then home)' },
@@ -122,7 +122,7 @@ const SPINES: Record<Spine, { f: (x: number) => number; says: string }> = {
   drop: { f: (x) => (x < 0.75 ? 1 : -2), says: 'high and flat, then drops' },
 };
 /** By section and mood (Melody first's table: happy rises, sad falls, dark and tense drone, dreamy wide arches, angry high then a drop). */
-const SPINE_BY: Partial<Record<SectionKind, Partial<Record<Mood, Spine>> & { all: Spine }>> = {
+export const SPINE_BY: Partial<Record<SectionKind, Partial<Record<Mood, Spine>> & { all: Spine }>> = {
   verse: { all: 'fall', happy: 'rise', triumphant: 'rise', dark: 'drone', tense: 'drone', angry: 'drone', dreamy: 'wide' },
   prechorus: { all: 'rise' },
   chorus: { all: 'arch', triumphant: 'hold', angry: 'drop', melancholic: 'fall', dreamy: 'wide' },
@@ -130,7 +130,7 @@ const SPINE_BY: Partial<Record<SectionKind, Partial<Record<Mood, Spine>> & { all
   interlude: { all: 'fall' }, breakdown: { all: 'drone' }, outro: { all: 'fall' },
 };
 /** Genre leans (now and then, per song): grunge drones its verses, metal holds its choruses high, pop arches. */
-const SPINE_GENRE: Partial<Record<Genre, Partial<Record<SectionKind, Spine>>>> = {
+export const SPINE_GENRE: Partial<Record<Genre, Partial<Record<SectionKind, Spine>>>> = {
   grunge: { verse: 'drone' }, metal: { chorus: 'hold' }, altmetal: { chorus: 'hold' }, pop: { chorus: 'arch' }, hardrock: { chorus: 'hold' },
 };
 

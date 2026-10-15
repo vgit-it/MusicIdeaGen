@@ -83,6 +83,25 @@ and bend down; more dynamic, by the song's energy and mood (following the song);
   The cell is picked to suit the energy.
 - Still: about 80% of notes on the anchor; `npm run guide-check` passes (the guide line itself unchanged).
 
+## Slow line, Breaths, Lead-ins with it (2026-10-15)
+Paul: make these three switches work with the Anchor line. (The others still don't apply to it: Repeat idea,
+Pitch by words, Question & answer, Section change, Carry over, Quick notes, Voice, Avoid clashes.)
+
+- **Slow line:** each section's shape (by mood: verses falling, pre-choruses climbing, choruses arching...)
+  moves where each 4-bar anchor sits, from the section's start to its end. Sections whose anchors go the
+  way their shape does (first 4 bars vs last 4): 53% off → 93% on.
+- **Breaths:**
+  - before a big section (a chorus, or one sung higher) or after a tiring one: a silence of 1-4 beats
+    before it (the last note cut short)
+  - inside a section, after a tiring stretch (long, or high): the rest before the next phrase a beat or
+    two longer
+  - about 2 a song; time silent 30% → 31%
+- **Lead-ins:** now and then (about a third of sections) the first note comes in early, an 8th, a beat or
+  two before the section, held into it, with a beat's breath before it. Also after a section the line sits
+  out. About 2 a song.
+- Each has its own dice: switching one on doesn't reshuffle the rest. `npm run guide-check` checks each,
+  and all three together with Hard & soft and a narrow range.
+
 ## Next
 - Paul listens per genre and mood.
 - Maybe: the pattern changing with the section (a chorus busier), a pickup into a phrase, the anchor

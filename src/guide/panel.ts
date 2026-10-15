@@ -71,7 +71,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
         <label title="Auto: mid, or high if the singer sings high. High: up to its top where the song is high">Voice ${seg('g-voice', [['auto', 'Auto'], ['mid', 'Mid'], ['high', 'High']], voice)}</label>
         <label title="Sing the line's words (the same tune) in one of the singer's voices, instead of the synth">Sing <select id="g-sing" class="gsing"><option value="off" selected>Off</option>${TIMBRE_CHOICES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('')}</select></label>
-        <label title="A different writer: one strong note every 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it (two up and one down, a step up and back, a turn, a fall), its last note strong and sometimes held a bar or two; bends into the accents now and then. The switches below don't apply to it, except Hard &amp; soft">Anchor line ${seg('g-anchor', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+        <label title="A different writer: one strong note every 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it (two up and one down, a step up and back, a turn, a fall), its last note strong and sometimes held a bar or two; bends into the accents now and then. Of the switches below, only Slow line, Breaths, Lead-ins and Hard &amp; soft apply to it">Anchor line ${seg('g-anchor', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="A short idea repeated: each section's phrases in the form A B A b (the first phrase comes back, moved to suit the height and chords; the second comes back with a new ending)">Repeat idea ${seg('g-motif', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="A slow shape under each section that the line follows, by mood: verses falling (rising when happy, around one note when dark), pre-choruses climbing, choruses arching; phrases end on it">Slow line ${seg('g-spine', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="Pitch follows how the words are said: a quick note going up starts a new stressed word, going down is a word's soft last syllable, the line coming back up into the next stress">Pitch by words ${seg('g-speech', [['off', 'Off'], ['on', 'On']], 'off')}</label>
@@ -119,7 +119,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   const rewrite = () => {
     if (!on || !list.length) { line = null; words = null; draw.innerHTML = ''; $('g-notes').innerHTML = ''; $('g-words').innerHTML = ''; return; }
     fillKeys();
-    line = ideas.anchor ? writeAnchor(list, mood, lean, salt, range, tonality) : writeGuide(list, mood, lean, salt, flicks, highNow(), ideas, range, tonality);
+    line = ideas.anchor ? writeAnchor(list, mood, lean, salt, range, tonality, ideas) : writeGuide(list, mood, lean, salt, flicks, highNow(), ideas, range, tonality);
     words = guideWords(list, line, salt);
     if (ideas.dynamics) line.notes.push(...shapeDynamics(list, line, words, salt));
     $('g-words').innerHTML = words.map((lines, si) => (lines.length ? `<p><b>${list[si].section?.label ?? 'Words'}</b> ${lines.map((l) => l.text).join(' / ')}</p>` : '')).join('');
