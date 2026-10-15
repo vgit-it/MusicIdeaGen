@@ -467,7 +467,7 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
       }
       // Lead-ins: the section's first note comes in early (an 8th, a beat or two), held into it, a beat's breath before it
       const f = p[0];
-      if (ideas.leadIn && f.step < 4 && !f.bend && lrng.chance(LEAD_IN_P)) {
+      if (ideas.leadIn && si > 0 && f.step < 4 && !f.bend && lrng.chance(LEAD_IN_P)) {
         let r = lrng.next();
         const L = (LEAD_INS.find(([, w]) => (r -= w) <= 0) ?? LEAD_INS[0])[0];
         const prevBar = prevIdea?.song.bars[prevIdea.song.bars.length - 1].len ?? bar;
