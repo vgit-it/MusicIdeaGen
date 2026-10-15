@@ -119,6 +119,9 @@ so a single 8-bar idea barely changed (and a lead-in before the song's very star
 
 Breaths only act where the line is tiring; many quiet verses already rest a lot.
 
+## Human feel
+The Human feel switch works with it too (`docs/GUIDE-FEEL.md`).
+
 ## Next
 - Paul listens per genre and mood.
 - Maybe: the pattern changing with the section (a chorus busier), a pickup into a phrase, the anchor

@@ -8,7 +8,9 @@ import type { Idea } from '../idea';
 import type { Mood } from '../tension';
 import type { HighVoice } from '../parts/singers';
 import { FLICK_LEVELS, type Flicks, type GuideIdeas, type GuideRange, RANGE_MIN_SPAN, type GuideScale, type GuideTonality, GUIDE_SCALES, NAMES, SCALE_LABEL, shared, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
-import { GuideSynth } from './synth';
+import { GuideSynth, type SynthFeel } from './synth';
+import { feelFor } from './feel';
+import { Rng } from '../rng';
 import { type GuideSing, GuideVoice } from './voice';
 import { TIMBRE_CHOICES } from '../audio/singer';
 import { type GuideSungLine, guideWords } from './words';
@@ -71,7 +73,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
         <label title="Auto: mid, or high if the singer sings high. High: up to its top where the song is high">Voice ${seg('g-voice', [['auto', 'Auto'], ['mid', 'Mid'], ['high', 'High']], voice)}</label>
         <label title="Sing the line's words (the same tune) in one of the singer's voices, instead of the synth">Sing <select id="g-sing" class="gsing"><option value="off" selected>Off</option>${TIMBRE_CHOICES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('')}</select></label>
-        <label title="A different writer: one strong note every 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it (two up and one down, a step up and back, a turn, a fall), its last note strong and sometimes held a bar or two; bends into the accents now and then. Of the switches below, only Slow line, Breaths, Lead-ins and Hard &amp; soft apply to it">Anchor line ${seg('g-anchor', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+        <label title="A different writer: one strong note every 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it (two up and one down, a step up and back, a turn, a fall), its last note strong and sometimes held a bar or two; bends into the accents now and then. Of the switches below, only Slow line, Breaths, Lead-ins, Hard &amp; soft and Human feel apply to it">Anchor line ${seg('g-anchor', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="A short idea repeated: each section's phrases in the form A B A b (the first phrase comes back, moved to suit the height and chords; the second comes back with a new ending)">Repeat idea ${seg('g-motif', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="A slow shape under each section that the line follows, by mood: verses falling (rising when happy, around one note when dark), pre-choruses climbing, choruses arching; phrases end on it">Slow line ${seg('g-spine', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="Pitch follows how the words are said: a quick note going up starts a new stressed word, going down is a word's soft last syllable, the line coming back up into the next stress">Pitch by words ${seg('g-speech', [['off', 'Off'], ['on', 'On']], 'off')}</label>
@@ -81,6 +83,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label title="Now and then a section's first note comes in early, at the end of the section before, held into it">Lead-ins ${seg('g-leadin', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="Now and then the last note runs on into a section the line sits out (a solo), held or bent a step, for up to a bar">Carry over ${seg('g-carry', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="Sung hard or soft (heard when Sing is on): louder with the tension and the section, high notes pushed, stressed words leaning in; quiet sections now and then sung soft; big lines belting their top note">Hard &amp; soft ${seg('g-dyn', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+        <label title="Like a person: glides between notes instead of jumps, scoops up into fresh notes, words swelling in and fading out, now and then a phrase's end falling off, vibrato on held notes, pushed top notes a hair sharp, a breath in before a phrase, its last word a touch late. By the singer (the synth: the song's genre) and the section's energy (quiet: slower and softer; loud: quick and punchy). Only how it's played and sung: the line stays the same">Human feel ${seg('g-feel', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         <label title="Quick notes on the long ones: a scale step up or down (in the key) for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
       </div>
       <div class="guiderow">
@@ -123,7 +126,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
     words = guideWords(list, line, salt);
     if (ideas.dynamics) line.notes.push(...shapeDynamics(list, line, words, salt));
     $('g-words').innerHTML = words.map((lines, si) => (lines.length ? `<p><b>${list[si].section?.label ?? 'Words'}</b> ${lines.map((l) => l.text).join(' / ')}</p>` : '')).join('');
-    if (sing) { singer2 ??= new GuideVoice(engine.mixer.sectionLevel); singer2.setLevel(level); singer2.set(list, words, singVoice, highNow()); }
+    if (sing) { singer2 ??= new GuideVoice(engine.mixer.sectionLevel); singer2.setLevel(level); singer2.set(list, words, singVoice, highNow(), !!ideas.feel); }
     $('g-notes').innerHTML = line.notes.map((n) => `<li>${n}</li>`).join('');
     drawLine();
   };
@@ -218,7 +221,31 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
       }
       // (a pull: silence, the note struck again on the next beat)
       for (const m of n.marks ?? []) if (m.back && m.at + m.back < n.len) taps.push((m.at + m.back) * six);
-      if (!sing) synth!.play(n.midi, time, len * six, 0.8, bends, taps, rests, (n.marks ?? []).map((m) => ({ at: m.at * six, kind: m.kind })));
+      // (human feel, Paul: no instant jumps; by the song's genre and the section's energy)
+      let feel: SynthFeel | undefined, late = 0;
+      if (ideas.feel && !sing) {
+        const f = feelFor(idea.song.genre, idea.section ? (idea.section.energy - 1) / 4 : 0.5, idea.song.bpm);
+        const rng = new Rng(`feel-synth-${salt}-${p}-${g}`);
+        const prev = notes[j - 1], next = notes[k + 1];
+        const gapBefore = prev ? (n.step - (prev.step + prev.len)) * six : Infinity;
+        const gapAfter = next ? (next.step - (n.step + len)) * six : Infinity;
+        const joined = gapBefore <= 0.13;
+        // (a phrase's top: higher than the notes around it)
+        const near = notes.slice(Math.max(0, j - 3), k + 4);
+        const top = n.midi >= Math.max(...near.map((x) => x.midi)) && len * six > 0.35;
+        const phraseEnd = gapAfter >= 0.4;
+        feel = {
+          from: joined ? prev.midi : undefined, glide: f.glide,
+          scoop: !joined && rng.chance(f.scoopP * 1.4) ? f.scoopBy * (0.6 + 0.6 * rng.next()) : 0, scoopLen: f.scoopLen,
+          swell: f.swell * (joined ? 0.6 : 1), fade: f.fade,
+          fall: phraseEnd && len * six > 0.25 && !bends.length && rng.chance(f.fallP) ? f.fallBy * (0.6 + 0.6 * rng.next()) : 0,
+          vib: f.vib, sharp: top && (idea.section?.energy ?? 3) >= 4 ? f.sharp : 0,
+          breath: gapBefore >= 0.5 ? f.breath : 0,
+        };
+        // (a phrase's last word a touch late)
+        if (phraseEnd && len * six > 0.2) late = Math.min(f.late, len * six * 0.3);
+      }
+      if (!sing) synth!.play(n.midi, time + late, len * six - late, feel ? 0.8 * (late ? 0.92 : 1) : 0.8, bends.map((b) => ({ ...b, at: b.at - late })), taps.map((t) => t - late), rests.map((r) => ({ ...r, at: r.at - late })), (n.marks ?? []).map((m) => ({ at: m.at * six - late, kind: m.kind })), feel);
     }
     if (cursor && g % 4 === 0) {
       const xx = ((offsets[p] + g) / drawnTotal) * drawnW;
@@ -272,6 +299,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   pickSeg('g-leadin', (v) => { ideas.leadIn = v === 'on'; rewrite(); });
   pickSeg('g-carry', (v) => { ideas.carry = v === 'on'; rewrite(); });
   pickSeg('g-dyn', (v) => { ideas.dynamics = v === 'on'; rewrite(); });
+  pickSeg('g-feel', (v) => { ideas.feel = v === 'on'; rewrite(); });
   pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
   $('g-sing').addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;

@@ -581,3 +581,6 @@ A writer of its own behind the **Anchor line** switch: one main note per 4 bars,
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.
+
+## Human feel
+Glides, scoops, swells, fades, falls, breaths: how the line is played and sung, by the singer and the energy. See `docs/GUIDE-FEEL.md`.
