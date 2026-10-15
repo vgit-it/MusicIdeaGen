@@ -181,7 +181,100 @@ const SHAPE_ENERGY: Record<Shape, number> = { scoop: 0.6, again: 0.7, plain: 0.2
 /** How a 4-bar block is split into phrases (bars). */
 const PLANS: [number[], number][] = [[[4], 0.35], [[2, 2], 0.45], [[1, 1, 2], 0.1], [[2, 1, 1], 0.1]];
 
+/**
+ * Hook (switch; Paul: the tune repeating itself, a hook): a section's phrases in a form, by mood. A letter's
+ * rhythm comes back (on the anchor of its block, so a sequence when the anchor has moved); its accent comes back
+ * when it ends the same way (open or settled), else a new one: the answer. A second round ends anew (C).
+ */
+const FORMS: Record<Mood, [string, number][]> = {
+  happy: [['AABA', 0.5], ['ABAB', 0.35], ['AABB', 0.15]], triumphant: [['AABA', 0.5], ['ABAB', 0.3], ['AABB', 0.2]],
+  melancholic: [['ABAB', 0.45], ['AABA', 0.4], ['AABB', 0.15]], nostalgic: [['ABAB', 0.45], ['AABA', 0.45], ['AABB', 0.1]],
+  dreamy: [['ABAB', 0.5], ['AABA', 0.4], ['AABB', 0.1]], dark: [['AABA', 0.4], ['AABB', 0.35], ['ABAB', 0.25]],
+  tense: [['AABB', 0.4], ['AABA', 0.4], ['ABAB', 0.2]], angry: [['AABB', 0.45], ['AABA', 0.4], ['ABAB', 0.15]],
+};
+/** The chorus's hook: its first phrase's accent leaning to the ones that stand out (open, reaching up). */
+const HOOK_FIG: Partial<Record<string, number>> = { reach: 2.2, climb: 1.8, twoup: 1.6, leap: 2.5, home2: 1.3 };
+/**
+ * Less one-note (switch; Paul: "can sound like chanting"): the words on the main note decorated. A weak note
+ * (off the beat) a step up (mostly) or down and back; the last word before the accent a step into it; a phrase
+ * now and then coming in from a 3rd or 4th away (a leap into the main note); the strong last note now and then
+ * sung a step above first, a clash with the chord, settling down onto a chord note. By mood.
+ */
+const NEIGHBOR_P = 0.4;
+const LEAP_IN_P = 0.2;
+const APPOG_P: Record<Mood, number> = { melancholic: 0.4, nostalgic: 0.4, dreamy: 0.35, dark: 0.3, tense: 0.3, happy: 0.2, triumphant: 0.2, angry: 0.12 };
+/** Best of several (switch): how many lines are written; the best scoring one kept. */
+const BEST_TRIES = 8;
+
 export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt = 0, range: GuideRange | null = null, tonality: GuideTonality | null = null, ideas: GuideIdeas = {}): GuideLine {
+  if (!ideas.best) return writeOnce(list, moodIn, lean, salt, range, tonality, ideas, '');
+  // Best of several: each try its own dice (the first the line as without the switch), the best scoring kept
+  const tries = Array.from({ length: BEST_TRIES }, (_, k) => writeOnce(list, moodIn, lean, salt, range, tonality, ideas, k ? `-try${k}` : ''));
+  const scores = tries.map((t) => scoreLine(list, t));
+  let bi = 0;
+  scores.forEach((s, k) => { if (s.total > scores[bi].total) bi = k; });
+  const s = scores[bi], pc = (x: number) => `${Math.round(100 * x)}%`;
+  const line = tries[bi];
+  line.notes.splice(line.notes.length - 1, 0,
+    `Best of ${BEST_TRIES}: kept try ${bi + 1} (score ${s.total.toFixed(2)}, the others ${scores.filter((_, k) => k !== bi).map((x) => x.total.toFixed(2)).join(', ')}): strong notes on the chord ${pc(s.fit)}, phrase ends on the chord ${pc(s.ends)}, easy steps ${pc(s.easy)}, bars repeating ${pc(s.repeat)}, words on the main note ${pc(s.same)}, the song's top ${s.topInChorus ? 'in a chorus' : 'not in a chorus'}`);
+  return line;
+}
+
+/**
+ * How good a line sounds, roughly (Best of several): strong notes on the chord, phrases ending on it, easy steps
+ * (no big jumps without a pause, no tritones), some bars repeating (about half: memory, not a loop), not too
+ * many words on one note (nor too few), each section's top note once or twice and not right at its start, the
+ * choruses higher than the verses and the song's top in a chorus.
+ */
+export function scoreLine(list: Idea[], line: GuideLine) {
+  let strong = 0, strongOk = 0, ends = 0, endsOk = 0, steps = 0, easy = 0, bars = 0, repeats = 0, shape = 0, shapes = 0, sameSum = 0, sameN = 0;
+  let songTop = -1, topKind: SectionKind | undefined;
+  const mean: Partial<Record<SectionKind, number[]>> = {};
+  line.parts.forEach((p, si) => {
+    if (!p.length) return;
+    const { song, chords } = list[si];
+    const kind = (list[si].section?.kind ?? 'verse') as SectionKind;
+    const tonesAt = (g: number) => chordTones(song.key, chords.timeline[chords.chordIdx[Math.min(song.total - 1, Math.max(0, g))]].chord);
+    const beatStarts = new Set(song.bars.flatMap((b) => groupStarts(b.groups).map((x) => b.start + x)));
+    p.forEach((n, j) => {
+      const next = p[j + 1], prev = p[j - 1];
+      if (beatStarts.has(n.step) || n.len >= 4) { strong++; if (tonesAt(Math.max(0, n.step)).includes(n.midi % 12)) strongOk++; }
+      if (!next || next.step - (n.step + n.len) >= 4) { ends++; if (tonesAt(Math.max(0, n.step)).includes(n.midi % 12)) endsOk++; }
+      if (prev && n.step - (prev.step + prev.len) < 4) {
+        steps++;
+        const d = Math.abs(n.midi - prev.midi);
+        easy += d === 6 || d > 7 ? 0 : d > 4 ? 0.6 : 1;
+      }
+      if (n.midi > songTop) { songTop = n.midi; topKind = kind; }
+    });
+    // (bars by their rhythm: the onsets inside the bar)
+    const sig = song.bars.map((b) => p.filter((n) => n.step >= b.start && n.step < b.start + b.len).map((n) => n.step - b.start).join(','));
+    const sung = sig.filter((x) => x);
+    bars += sung.length;
+    repeats += sung.length - new Set(sung).size;
+    // (words on the most used note)
+    const count = new Map<number, number>();
+    for (const n of p) count.set(n.midi, (count.get(n.midi) ?? 0) + 1);
+    sameSum += Math.max(...count.values()) / p.length;
+    sameN++;
+    // (the section's top: once or twice, not in its first part)
+    const top = Math.max(...p.map((n) => n.midi));
+    const tops = p.filter((n) => n.midi === top);
+    shapes++;
+    shape += (tops.length <= 2 ? 0.6 : 0.2) + (tops[0].step >= song.total * 0.2 ? 0.4 : 0);
+    (mean[kind] ??= []).push(p.reduce((a, n) => a + n.midi, 0) / p.length);
+  });
+  const fit = strongOk / Math.max(1, strong), endFit = endsOk / Math.max(1, ends), easyR = easy / Math.max(1, steps);
+  const repeat = repeats / Math.max(1, bars), same = sameSum / Math.max(1, sameN);
+  const avg = (k: SectionKind) => (mean[k]?.length ? mean[k]!.reduce((a, b) => a + b, 0) / mean[k]!.length : null);
+  const ch = avg('chorus'), vs = avg('verse');
+  const topInChorus = topKind === 'chorus';
+  const total = 2 * fit + 1.5 * endFit + 3 * easyR - 2 * Math.abs(repeat - 0.5) - 3 * Math.max(0, same - 0.7) - 2 * Math.max(0, 0.4 - same)
+    + shape / Math.max(1, shapes) + (topInChorus ? 0.5 : 0) + (ch !== null && vs !== null && ch > vs ? 0.3 : 0);
+  return { total, fit, ends: endFit, easy: easyR, repeat, same, topInChorus };
+}
+
+function writeOnce(list: Idea[], moodIn: Mood | undefined, lean: Lean, salt: number, range: GuideRange | null, tonality: GuideTonality | null, ideas: GuideIdeas, tag: string): GuideLine {
   const first = list[0];
   const mood = moodIn ?? autoMood(first.song, first.seeds.song);
   const genre = first.song.genre as Genre;
@@ -190,7 +283,8 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
   const tone = tonality && (tonality.key !== null || tonality.scale) ? tonality : null;
   const keyOf = (s: Idea['song']) => (tone?.key != null ? mod(s.key + tone.key - first.song.key, 12) : s.key);
   const scaleOf = (s: Idea['song']) => GUIDE_SCALES[tone?.scale ?? s.mode] as readonly number[];
-  const rng = new Rng(`anchor-${first.seeds.song}-${mood}-${lean}-${salt}`);
+  const rng = new Rng(`anchor-${first.seeds.song}-${mood}-${lean}-${salt}${tag}`);
+  const stat2 = { forms: [] as string[], hooks: 0, back: 0, neighbors: 0, passing: 0, leapsIn: 0, appogs: 0 };
   // (where it sits out: the same dice as the guide line, so the same sections)
   const srng = new Rng(`guide-silent-${first.seeds.song}-${salt}`);
   const silent = list.map((i) => {
@@ -288,6 +382,15 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
         out.push(note);
         roles.set(note, role);
       };
+      // Hook: the section's form (its own dice), each letter's rhythm and accents as first sung
+      const hrng = new Rng(`anchor-hook-${first.seeds.song}-${mood}-${salt}${tag}-${si}`);
+      const form = ideas.hook ? hrng.weighted(FORMS[mood]) : '';
+      if (ideas.hook) stat2.forms.push(`${idea.section?.label ?? kind} ${form.split('').join(' ')}`);
+      type Recipe = { cell: Beat[]; varied: Beat[]; r: number; long: boolean; twoBars: boolean; h: number };
+      const recipes = new Map<string, Recipe>();
+      const figsOf = new Map<string, [Fig, Brk]>();
+      let pIdx = 0;
+      const beatSet = new Set(beats.map((x) => x.step));
       // block by block (4 bars, the anchor each), phrase by phrase
       for (let b0 = 0; b0 < song.bars.length; b0 += 4) {
         const nBars = Math.min(4, song.bars.length - b0);
@@ -322,6 +425,8 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
         // the phrases of the block (6/8 and 7/8, with fewer beats a bar: 2 or 4 bars)
         let plan = nBars === 4 ? rng.weighted(short ? [[[4], 0.65], [[2, 2], 0.35]] as [number[], number][] : PLANS) : nBars === 3 ? (short ? [3] : rng.pick([[3], [2, 1]])) : nBars === 2 ? (short ? [2] : rng.pick([[2], [1, 1], [2]])) : [1];
         plan = [...plan];
+        // (Hook: even 2-bar phrases, so a phrase can come back as it was)
+        if (ideas.hook && nBars === 4 && !short) plan = [2, 2];
         // the block's rhythm cell (now and then its own for a phrase), as busy as the energy: more words when it's up
         const E = energyAt(b0);
         if (b0 === 0 && !again) stat.energy.push(`${idea.section?.label ?? kind} ${E < 0.35 ? 'low' : E < 0.65 ? 'mid' : 'high'}`);
@@ -334,24 +439,32 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
           const lastPhrase = pi === plan.length - 1;
           const settle = lastPhrase;
           const ending = songEnd && lastPhrase;
-          let cell = rng.chance(0.25) ? pickCell() : blockCell;
-          // (fast songs: fewer notes in a beat)
-          if (song.bpm > 125) cell = cell.map((x) => (PLAINER[x] && (x === 'run' || x === 'four' || rng.chance(0.6)) ? PLAINER[x]! : (x === 'two' || x === 'and') && rng.chance(0.5) ? 'one' : x));
-          // (long beats (6/8, 7/8): now and then two words in one)
-          else if (short) cell = cell.map((x) => (x === 'one' && rng.chance(0.5) ? 'two' : x));
-          // (the energy: fewer words in a beat when it's low, more when it's high)
-          if (E < 0.45) cell = cell.map((x) => (PLAINER[x] && rng.chance((0.45 - E) * 2) ? PLAINER[x]! : x)).map((x) => ((x === 'two' || x === 'dot' || x === 'snap' || x === 'and') && rng.chance((0.45 - E) * 2) ? 'one' : x));
-          // (the cell's repeats now and then a variation: one beat swapped for a near relation, Paul: more rhythms)
-          const varied = cell.slice();
-          if (rng.chance(0.55)) {
-            const at = cell.map((x, i) => (VARY[x] ? i : -1)).filter((i) => i >= 0);
-            for (let v = 0; v < (at.length > 3 && rng.chance(0.3) ? 2 : 1) && at.length; v++) {
-              const i = at.splice(rng.int(0, at.length - 1), 1)[0];
-              const opts = VARY[cell[i]]!.filter((x) => !(song.bpm > 125 && PLAINER[x]));
-              if (opts.length) varied[i] = rng.pick(opts);
+          // (Hook: the phrase's letter in the form; a second round ends anew)
+          const letter = ideas.hook ? (pIdx >= form.length && pIdx % form.length === form.length - 1 ? 'C' : form[pIdx % form.length]) : '';
+          pIdx++;
+          const rec = ideas.hook ? recipes.get(letter) : undefined;
+          let cell: Beat[], varied: Beat[];
+          if (rec) { stat2.back++; cell = rec.cell; varied = rec.varied; }
+          else {
+            cell = rng.chance(0.25) ? pickCell() : blockCell;
+            // (fast songs: fewer notes in a beat)
+            if (song.bpm > 125) cell = cell.map((x) => (PLAINER[x] && (x === 'run' || x === 'four' || rng.chance(0.6)) ? PLAINER[x]! : (x === 'two' || x === 'and') && rng.chance(0.5) ? 'one' : x));
+            // (long beats (6/8, 7/8): now and then two words in one)
+            else if (short) cell = cell.map((x) => (x === 'one' && rng.chance(0.5) ? 'two' : x));
+            // (the energy: fewer words in a beat when it's low, more when it's high)
+            if (E < 0.45) cell = cell.map((x) => (PLAINER[x] && rng.chance((0.45 - E) * 2) ? PLAINER[x]! : x)).map((x) => ((x === 'two' || x === 'dot' || x === 'snap' || x === 'and') && rng.chance((0.45 - E) * 2) ? 'one' : x));
+            // (the cell's repeats now and then a variation: one beat swapped for a near relation, Paul: more rhythms)
+            varied = cell.slice();
+            if (rng.chance(0.55)) {
+              const at = cell.map((x, i) => (VARY[x] ? i : -1)).filter((i) => i >= 0);
+              for (let v = 0; v < (at.length > 3 && rng.chance(0.3) ? 2 : 1) && at.length; v++) {
+                const i = at.splice(rng.int(0, at.length - 1), 1)[0];
+                const opts = VARY[cell[i]]!.filter((x) => !(song.bpm > 125 && PLAINER[x]));
+                if (opts.length) varied[i] = rng.pick(opts);
+              }
             }
+            else if (E > 0.65 && song.bpm <= 125) cell = cell.map((x) => (x === 'one' && rng.chance((E - 0.65) * 1.5) ? 'two' : x));
           }
-          else if (E > 0.65 && song.bpm <= 125) cell = cell.map((x) => (x === 'one' && rng.chance((E - 0.65) * 1.5) ? 'two' : x));
           const pbeats = beats.filter((x) => x.bar >= pb && x.bar < pb + pBars);
           const nb = pbeats.length;
           pb += pBars;
@@ -359,15 +472,16 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
           stat.phrases++;
           // the rest at the end (sparse: verses rest longer), and the last note: a beat or two, or held long
           const quiet = kind === 'verse' || kind === 'bridge' || kind === 'outro';
-          const r = Math.max(1, Math.min(rng.int(E < 0.35 ? 2 : 1, quiet || E < 0.35 ? 3 : E > 0.7 ? 1 : 2), Math.floor(nb / 4)));
+          const r = Math.max(1, Math.min(rec ? rec.r : rng.int(E < 0.35 ? 2 : 1, quiet || E < 0.35 ? 3 : E > 0.7 ? 1 : 2), Math.floor(nb / 4)));
           // (held long, now and then, fewer as the energy rises and only a few a section: half a bar to a bar;
           // two bars only to close a chorus or the song)
           const perBar = nb / pBars;
-          const long = pBars >= 2 && holdsLeft > 0 && rng.chance(HOLD_P[mood] * (1.3 - 0.8 * E) + (kind === 'chorus' ? 0.1 : 0) + (lastPhrase ? 0.05 : 0));
+          const long = rec ? rec.long && pBars >= 2 && holdsLeft > 0 : pBars >= 2 && holdsLeft > 0 && rng.chance(HOLD_P[mood] * (1.3 - 0.8 * E) + (kind === 'chorus' ? 0.1 : 0) + (lastPhrase ? 0.05 : 0));
           const closing = lastPhrase && lastBlock && (kind === 'chorus' || songEnd);
-          const twoBars = long && pBars >= 4 && closing && rng.chance(0.5);
+          const twoBars = rec ? rec.twoBars && long && pBars >= 4 && closing : long && pBars >= 4 && closing && rng.chance(0.5);
           if (long) holdsLeft--;
-          let h = long ? Math.round(perBar * (twoBars ? 2 : rng.pick([0.5, 0.75, 1]))) : rng.int(1, 2);
+          let h = rec ? (long ? rec.h : Math.min(2, rec.h)) : long ? Math.round(perBar * (twoBars ? 2 : rng.pick([0.5, 0.75, 1]))) : rng.int(1, 2);
+          if (ideas.hook && !rec) recipes.set(letter, { cell, varied, r, long, twoBars, h });
           h = Math.max(1, Math.min(nb - r - 2, h));
           // (the last note on a strong beat)
           let f = nb - r - h;
@@ -381,8 +495,14 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
           const finStep = pbeats[f].step;
           const ok = FIGS.filter((g) => (ending ? g.settle && !g.leap : true) && (!g.leap || (['chorus', 'prechorus', 'bridge'].includes(kind) && !settle))
             && [...g.pre, g.fin].every((x) => fits(anchor + x, pbeats[f].bar)));
-          const fig = rng.weighted((ok.length ? ok : [FIGS[0]]).map((g) => {
+          // (Hook: the letter's accent again when it ends the same way and still fits; the chorus's first its hook)
+          const figKey = `${letter}-${settle}`;
+          const figBack = ideas.hook ? figsOf.get(figKey) : undefined;
+          const hookHere = ideas.hook && kind === 'chorus' && letter === 'A' && !settle && !figBack;
+          if (hookHere) stat2.hooks++;
+          const fig = figBack && ok.includes(figBack[0]) ? figBack[0] : rng.weighted((ok.length ? ok : [FIGS[0]]).map((g) => {
             let w = (FIG_MOOD[mood][g.id] ?? 1) * (g.leap ? 0.25 : 1) * Math.max(0.15, 1 + (FIG_ENERGY[g.id] ?? 0) * (E - 0.5) * 2);
+            if (hookHere) w *= HOOK_FIG[g.id] ?? 1;
             w *= settle === g.settle ? 1.6 : 0.6;
             if (lean === 'in') w *= tonesAt(finStep).includes(mod(midiOf(anchor + g.fin), 12)) ? 2.5 : 0.5;
             // (Slow line: the phrase's last note leans to the shape's note there too)
@@ -397,7 +517,8 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
             finDeg = homes.reduce((bst, x) => (Math.abs(x - anchor) < Math.abs(bst - anchor) ? x : bst), homes[0] ?? 0);
           }
           // the break: its beats before the last note
-          const brk: Brk = fig.leap ? 'even' : rng.weighted(BREAKS);
+          const brk: Brk = fig.leap ? 'even' : figBack && figBack[0] === fig ? figBack[1] : rng.weighted(BREAKS);
+          if (ideas.hook && !figsOf.has(figKey)) figsOf.set(figKey, [fig, brk]);
           // (as many of its notes as there's room for before the last one)
           // (and the pattern first, at least about half the phrase: Paul's "most of the words on that note")
           const room = Math.max(0, f - Math.ceil((f + h) * 0.45));
@@ -406,12 +527,14 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
           const preBeats = fig.leap ? 1 : brk === 'quick' ? Math.ceil(k / 2) : k;
           const cellEnd = Math.max(0, f - preBeats);
           // the cell, repeated from the phrase's start up to the break (all on the anchor)
+          const p0 = out.length;
           for (let j = 0; j < cellEnd; j++) {
             const bt = pbeats[j], rep = Math.floor(j / cell.length), kindB = (rep % 2 ? varied : cell)[j % cell.length], L = bt.len;
             const last = out[out.length - 1];
             if (kindB === 'tie') { if (last && last.step + last.len === bt.step && last.len + L <= barLen) last.len += L; }
             else if (kindB !== 'rest') for (const [o, l] of BEAT_NOTES[kindB](L)) push(bt.step + o, l, anchor, 'cell');
           }
+          const a0 = out.length;
           // the accent notes, in the broken rhythm
           if (!fig.leap) {
             if (brk === 'quick') {
@@ -428,8 +551,41 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
           let at = finStep, len = finLen;
           const before = out[out.length - 1];
           if (brk === 'push' && before && before.step + before.len === at && before.len >= 4 && len + 2 <= ANCHOR_HOLD_BARS * barLen) { before.len -= 2; at -= 2; len += 2; }
-          push(at, len, finDeg, 'acc');
+          // Less one-note: the phrase's own dice (a phrase that comes back, its letter's: decorated alike)
+          const crng = ideas.color ? new Rng(`anchor-color-${first.seeds.song}-${mood}-${salt}${tag}-${si}-${ideas.hook ? letter : `${b0}-${pi}`}`) : null;
+          // (the strong last note now and then a step above first, a clash with the chord, settling down onto it)
+          const fm = mod(midiOf(finDeg), 12), am = mod(midiOf(finDeg + 1), 12);
+          if (crng && !long && !ending && len >= 4 && crng.chance(APPOG_P[mood]) && tonesAt(at).includes(fm) && !tonesAt(at).includes(am)
+            && fits(finDeg + 1, pbeats[f].bar) && out[out.length - 1]?.deg !== finDeg + 1) {
+            const a = len >= 8 ? 4 : 2;
+            push(at, a, finDeg + 1, 'acc');
+            push(at + a, len - a, finDeg, 'acc');
+            stat2.appogs++;
+          } else push(at, len, finDeg, 'acc');
           if (long && !ending) longFins.add(out[out.length - 1]);
+          // (the words on the main note: a weak one a step up or down and back, the last a step into the accent,
+          // now and then a leap into the phrase from a 3rd or 4th away)
+          if (crng) {
+            const C = out.slice(p0, a0);
+            const next = out[a0];
+            const pN = NEIGHBOR_P + 0.15 * E;
+            let skip = false;
+            C.forEach((n, i) => {
+              if (n.deg !== anchor) return;
+              const set = (d: number) => { if (fits(d, pbeats[0].bar)) { n.deg = d; n.midi = midiOf(d); return true; } return false; };
+              const after = C[i + 1] ?? next;
+              if (i === 0 && C.length >= 3 && crng.chance(LEAP_IN_P + (kind === 'chorus' || kind === 'prechorus' ? 0.1 : 0))) {
+                if (set(anchor + crng.weighted<number>([[-3, 0.35], [-2, 0.25], [2, 0.2], [3, 0.2]]))) { stat2.leapsIn++; skip = true; return; }
+              }
+              if (i === C.length - 1 && next && Math.abs(next.deg - anchor) === 2 && next.step === n.step + n.len && crng.chance(0.6)) {
+                if (set(anchor + Math.sign(next.deg - anchor))) { stat2.passing++; return; }
+              }
+              if (skip) { skip = false; return; }
+              if (i > 0 && !beatSet.has(n.step) && after && after.deg === anchor && C[i - 1].deg === anchor && crng.chance(pN)) {
+                if (set(anchor + (crng.chance(0.65) ? 1 : -1))) { stat2.neighbors++; skip = true; }
+              }
+            });
+          }
         });
       }
       // bends into the accents, now and then (into a step: a half or whole step, straight on)
@@ -651,7 +807,9 @@ export function writeAnchor(list: Idea[], moodIn: Mood | undefined, lean: Lean, 
     ...(ideas.spine ? [`Slow line: the anchors follow ${[...spineOf].map(([k, sp]) => `the ${k === 'prechorus' ? 'pre-chorus' : k} (${SPINES[sp].says})`).join(', ') || 'no shape here'}`] : []),
     ...(ideas.breath ? [`Breaths: ${nb.before} before a big section or after a tiring one, ${nb.tired} more after a tiring stretch; ${nb.beats} beats in all`] : []),
     ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, the first note held into it; ${nb.pickups} phrases come in early inside a section (held into it, or a quick pickup word)`] : []),
-    'Not used here: quick notes, pushes and pulls, and the other switches (Breaths, Lead-ins, Slow line, Hard & soft, Range and Key & scale apply)',
+    ...(ideas.hook ? [`Hook: sections in a form (${stat2.forms.join('; ') || 'none'}); ${stat2.back} phrases coming back (the same rhythm, its accent again when it ends the same way); ${stat2.hooks} chorus hooks (its first phrase reaching up)`] : []),
+    ...(ideas.color ? [`Less one-note: ${stat2.neighbors} words a step up or down and back, ${stat2.passing} steps into the accent, ${stat2.leapsIn} phrases leaping in from a 3rd or 4th, ${stat2.appogs} last notes sung a step above first (a clash settling onto the chord)`] : []),
+    'Not used here: quick notes, pushes and pulls, Repeat idea, Pitch by words, Question & answer, Section change, Carry over (Slow line, Breaths, Lead-ins, Hard & soft, Human feel, Range and Key & scale apply)',
   ];
   return { parts, silent, mood, notes };
 }

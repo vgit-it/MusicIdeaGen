@@ -149,3 +149,32 @@ The Human feel switch works with it too (`docs/GUIDE-FEEL.md`).
 - Paul listens per genre and mood.
 - Maybe: the pattern changing with the section (a chorus busier), a pickup into a phrase, the anchor
   following the slow line.
+
+## Hook, Less one-note, Best of several; controls grouped (2026-10-15)
+Paul: make it sound like a real, human vocal melody. Three switches in the Anchor line's own group.
+
+- **Hook:** each section's phrases in a form, by mood: A A B A, A B A B or A A B B (2-bar phrases; a second
+  round ends anew). A letter's rhythm comes back on its block's main note (so a sequence when the note has
+  moved); its accent comes back when it ends the same way (open or settled), else a new one: the answer. The
+  chorus's first phrase is its hook, leaning to accents that reach up (and every chorus sings it).
+- **Less one-note:** the words on the main note decorated: a weak word (off the beat) a step up (mostly) or
+  down and back; the last word before the accent a step into it; a phrase now and then leaping in from a 3rd or
+  4th away (more in choruses and pre-choruses); the strong last note now and then sung a step above first, a
+  clash with the chord, settling down onto a chord note (melancholic, nostalgic, dreamy the most; angry the
+  least). A phrase that comes back is decorated alike.
+- **Best of several:** 8 lines written, the best scoring kept: strong notes and phrase ends on the chord, easy
+  steps (no big jumps without a pause, no tritones), about half the bars repeating, not too many words on one
+  note (nor too few), each section's top note once or twice and not at its start, choruses higher than verses,
+  the song's top in a chorus. The notes say which try was kept and why. Off: the first try, as before.
+- **Controls:** a Writer choice (Guide line / Anchor line); each writer's own settings in its own group, the
+  other's hidden; the ones both use (Slow line, Breaths, Lead-ins, Hard & soft, Human feel) in a group of their own.
+
+Measured (168 songs):
+| | Off | Hook | Less one-note | Best | All three |
+|---|---|---|---|---|---|
+| Words on the 4 bars' main note | 80% | 78% | 65% | 80% | 65% |
+| Bars repeating a bar before (rhythm) | 24% | 41% | 22% | 29% | 44% |
+| Strong notes on the chord | 53% | 51% | 51% | 59% | 55% |
+| Phrase ends on the chord | 60% | 56% | 57% | 71% | 66% |
+| Song's top in a chorus (songs with one) | 89% | 89% | 90% | 99% | 99% |
+| Words a beat | 0.79 | 0.78 | 0.80 | 0.79 | 0.80 |

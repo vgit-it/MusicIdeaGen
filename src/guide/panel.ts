@@ -73,19 +73,39 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <label>Hear ${seg('g-band', [['band', 'With band'], ['alone', 'Line only']], 'band')}</label>
         <label title="Auto: mid, or high if the singer sings high. High: up to its top where the song is high">Voice ${seg('g-voice', [['auto', 'Auto'], ['mid', 'Mid'], ['high', 'High']], voice)}</label>
         <label title="Sing the line's words (the same tune) in one of the singer's voices, instead of the synth">Sing <select id="g-sing" class="gsing"><option value="off" selected>Off</option>${TIMBRE_CHOICES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('')}</select></label>
-        <label title="A different writer: one strong note every 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it (two up and one down, a step up and back, a turn, a fall), its last note strong and sometimes held a bar or two; bends into the accents now and then. Of the switches below, only Slow line, Breaths, Lead-ins, Hard &amp; soft and Human feel apply to it">Anchor line ${seg('g-anchor', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="The Anchor line's rhythm: Auto (by genre), Straight (words on the beats), Pushed (offbeats, notes ahead of the beat), Busy (quick, talky words), Sparse (few words, held and late), Bouncy (long-short, gallops), Mixed (a bit of everything, like talking)">Rhythm <select id="g-rhythm" class="gsing">${([['auto', 'Auto'], ['straight', 'Straight'], ['pushed', 'Pushed'], ['busy', 'Busy'], ['sparse', 'Sparse'], ['bouncy', 'Bouncy'], ['mixed', 'Mixed']] as const).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
-        <label title="A short idea repeated: each section's phrases in the form A B A b (the first phrase comes back, moved to suit the height and chords; the second comes back with a new ending)">Repeat idea ${seg('g-motif', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="A slow shape under each section that the line follows, by mood: verses falling (rising when happy, around one note when dark), pre-choruses climbing, choruses arching; phrases end on it">Slow line ${seg('g-spine', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Pitch follows how the words are said: a quick note going up starts a new stressed word, going down is a word's soft last syllable, the line coming back up into the next stress">Pitch by words ${seg('g-speech', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Pairs of phrases as a question and its answer, by mood: the first ends going up, the second falls to a settled note">Question &amp; answer ${seg('g-qa', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Like a person singing: a breath of a random length after a tiring stretch (long or high) and before a big section such as a chorus">Breaths ${seg('g-breath', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Each kind of section sings its own way: other phrase lengths, another pace, or a jump in the notes where it comes in">Section change ${seg('g-shift', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Now and then a section's first note comes in early, at the end of the section before, held into it">Lead-ins ${seg('g-leadin', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Now and then the last note runs on into a section the line sits out (a solo), held or bent a step, for up to a bar">Carry over ${seg('g-carry', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Sung hard or soft (heard when Sing is on): louder with the tension and the section, high notes pushed, stressed words leaning in; quiet sections now and then sung soft; big lines belting their top note">Hard &amp; soft ${seg('g-dyn', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Like a person: glides between notes instead of jumps, scoops up into fresh notes, words swelling in and fading out, now and then a phrase's end falling off, vibrato on held notes, pushed top notes a hair sharp, a breath in before a phrase, its last word a touch late. By the singer (the synth: the song's genre) and the section's energy (quiet: slower and softer; loud: quick and punchy). Only how it's played and sung: the line stays the same">Human feel ${seg('g-feel', [['off', 'Off'], ['on', 'On']], 'off')}</label>
-        <label title="Quick notes on the long ones: a scale step up or down (in the key) for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
+      </div>
+      <div class="guiderow">
+        <label title="Which writer makes the line. Guide line: one note line through the song, mostly small steps, quick notes on the long ones. Anchor line: one strong note every 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it (two up and one down, a step up and back, a turn, a fall), its last note strong and sometimes held a bar or two. Each shows its own settings below">Writer ${seg('g-anchor', [['off', 'Guide line'], ['on', 'Anchor line']], 'off')}</label>
+      </div>
+      <div class="ggroup" id="g-for-anchor" hidden>
+        <h3>Anchor line</h3>
+        <div class="guiderow">
+          <label title="The Anchor line's rhythm: Auto (by genre), Straight (words on the beats), Pushed (offbeats, notes ahead of the beat), Busy (quick, talky words), Sparse (few words, held and late), Bouncy (long-short, gallops), Mixed (a bit of everything, like talking)">Rhythm <select id="g-rhythm" class="gsing">${([['auto', 'Auto'], ['straight', 'Straight'], ['pushed', 'Pushed'], ['busy', 'Busy'], ['sparse', 'Sparse'], ['bouncy', 'Bouncy'], ['mixed', 'Mixed']] as const).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+          <label title="The tune repeating itself: each section's phrases in a form by mood (A A B A, A B A B, A A B B): a phrase's rhythm comes back (moved with the main note), its accent again when it ends the same way, a new one when it answers. The chorus's first phrase is its hook, reaching up">Hook ${seg('g-hook', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Fewer words all on one note: a weak word a step up or down and back, the last word a step into the accent, a phrase now and then leaping in from a 3rd or 4th away, the strong last note now and then sung a step above first (a clash with the chord) and settling onto it. By mood">Less one-note ${seg('g-color', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Writes 8 lines and keeps the one that scores best: strong notes and phrase ends on the chord, easy steps, some bars repeating (about half), not too many words on one note, each section's top note once or twice, the choruses higher and the song's top in a chorus. The notes below show why">Best of several ${seg('g-best', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+        </div>
+      </div>
+      <div class="ggroup" id="g-for-guide">
+        <h3>Guide line</h3>
+        <div class="guiderow">
+          <label title="A short idea repeated: each section's phrases in the form A B A b (the first phrase comes back, moved to suit the height and chords; the second comes back with a new ending)">Repeat idea ${seg('g-motif', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Pitch follows how the words are said: a quick note going up starts a new stressed word, going down is a word's soft last syllable, the line coming back up into the next stress">Pitch by words ${seg('g-speech', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Pairs of phrases as a question and its answer, by mood: the first ends going up, the second falls to a settled note">Question &amp; answer ${seg('g-qa', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Each kind of section sings its own way: other phrase lengths, another pace, or a jump in the notes where it comes in">Section change ${seg('g-shift', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Now and then the last note runs on into a section the line sits out (a solo), held or bent a step, for up to a bar">Carry over ${seg('g-carry', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Quick notes on the long ones: a scale step up or down (in the key) for an 8th, then back; in 2-bar clusters of frequent, moderate and sparse">Quick notes ${seg('g-flicks', FLICK_LEVELS, flicks)}</label>
+        </div>
+      </div>
+      <div class="ggroup">
+        <h3>Both writers</h3>
+        <div class="guiderow">
+          <label title="A slow shape under each section that the line follows, by mood: verses falling (rising when happy, around one note when dark), pre-choruses climbing, choruses arching; phrases end on it">Slow line ${seg('g-spine', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Like a person singing: a breath of a random length after a tiring stretch (long or high) and before a big section such as a chorus">Breaths ${seg('g-breath', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Now and then a section's first note comes in early, at the end of the section before, held into it">Lead-ins ${seg('g-leadin', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Sung hard or soft (heard when Sing is on): louder with the tension and the section, high notes pushed, stressed words leaning in; quiet sections now and then sung soft; big lines belting their top note">Hard &amp; soft ${seg('g-dyn', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Like a person: glides between notes instead of jumps, scoops up into fresh notes, words swelling in and fading out, now and then a phrase's end falling off, vibrato on held notes, pushed top notes a hair sharp, a breath in before a phrase, its last word a touch late. By the singer (the synth: the song's genre) and the section's energy (quiet: slower and softer; loud: quick and punchy). Only how it's played and sung: the line stays the same">Human feel ${seg('g-feel', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+        </div>
       </div>
       <div class="guiderow">
         <label title="The lowest and highest notes the line is written within. Auto: E3 to E5. Custom: set them yourself, to see how far it stretches (the woman's voice sings it an octave up when it's written low enough)">Range ${seg('g-range', [['auto', 'Auto'], ['custom', 'Custom']], 'auto')}</label>
@@ -290,7 +310,16 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
     root.querySelectorAll<HTMLElement>('.grange').forEach((e) => { e.hidden = !range; });
     rewrite();
   });
-  pickSeg('g-anchor', (v) => { ideas.anchor = v === 'on'; rewrite(); });
+  pickSeg('g-anchor', (v) => {
+    ideas.anchor = v === 'on';
+    // (each writer's own settings shown, the other's hidden)
+    $('g-for-anchor').hidden = !ideas.anchor;
+    $('g-for-guide').hidden = ideas.anchor;
+    rewrite();
+  });
+  pickSeg('g-hook', (v) => { ideas.hook = v === 'on'; rewrite(); });
+  pickSeg('g-color', (v) => { ideas.color = v === 'on'; rewrite(); });
+  pickSeg('g-best', (v) => { ideas.best = v === 'on'; rewrite(); });
   pickSeg('g-motif', (v) => { ideas.motif = v === 'on'; rewrite(); });
   pickSeg('g-spine', (v) => { ideas.spine = v === 'on'; rewrite(); });
   pickSeg('g-speech', (v) => { ideas.speech = v === 'on'; rewrite(); });
