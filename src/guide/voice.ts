@@ -15,6 +15,7 @@ import { polishFor } from '../audio/singer';
 import { SING_RATE, type SungNote, renderLine } from '../audio/sing';
 import type { GuideSungLine } from './words';
 import { DOWN } from './line';
+import { feelFor, feelSung, inhale } from './feel';
 
 /** Seconds of lead-in before a line's first note (onset consonants, a breath). */
 const PRE = 0.3;
@@ -25,7 +26,7 @@ const WOMAN_TOP = 79;
 export type GuideSing = 'auto' | Timbre | Character;
 const isCharacter = (v: string): v is Character => v in CHARACTERS;
 
-interface Placed { key: string; notes: SungNote[]; t0: number; idea: Idea; energy: number; sung: Timbre | Character }
+interface Placed { key: string; notes: SungNote[]; t0: number; idea: Idea; energy: number; sung: Timbre | Character; breath: number }
 
 export class GuideVoice {
   private ctx = Tone.getContext();
@@ -52,7 +53,7 @@ export class GuideVoice {
   }
 
   /** The lines to sing, per section of `list`; rendering starts in the background. */
-  set(list: Idea[], words: GuideSungLine[][], choice: GuideSing, high: HighVoice | null) {
+  set(list: Idea[], words: GuideSungLine[][], choice: GuideSing, high: HighVoice | null, feel = false) {
     const top = Math.max(0, ...words.flat().flatMap((l) => l.notes.map((n) => n.midi)));
     this.byStep = words.map((lines, si) => {
       const idea = list[si];
@@ -63,10 +64,16 @@ export class GuideVoice {
       const six = 15 / idea.song.bpm;
       const energy = idea.section ? (idea.section.energy - 1) / 4 : 0.5;
       const m = new Map<number, Placed[]>();
+      // (human feel: this singer's, at this section's energy)
+      const fl = feel ? feelFor(sung === 'clear' ? 'clear' : sung, energy, idea.song.bpm) : null;
+      let lastEnd = -Infinity;
       for (const L of lines) {
         if (!L.notes.length) continue;
         const t0 = GuideVoice.at(idea, L.notes[0].step);
-        const notes: SungNote[] = L.notes.map((n) => ({ t: GuideVoice.at(idea, n.step) - t0, end: GuideVoice.at(idea, n.step + n.len) - t0, midi: n.midi + shift, vel: n.vel, syl: n.syl,
+        // (a breath in before a line after a rest of half a second or more)
+        const restBefore = t0 - lastEnd;
+        lastEnd = GuideVoice.at(idea, L.notes[L.notes.length - 1].step + L.notes[L.notes.length - 1].len);
+        let notes: SungNote[] = L.notes.map((n) => ({ t: GuideVoice.at(idea, n.step) - t0, end: GuideVoice.at(idea, n.step + n.len) - t0, midi: n.midi + shift, vel: n.vel, syl: n.syl,
           // (a bend: glided into over its length, as the line plays it)
           ...(n.bend ? { bend: GuideVoice.at(idea, n.step + n.bend) - GuideVoice.at(idea, n.step) } : {}) }));
         // (a short breath between words, Paul: the word before let go a moment early; the tune's timing kept)
@@ -74,8 +81,10 @@ export class GuideVoice {
           const p = notes[j - 1], q = notes[j];
           if (q.syl.wordStart && q.syl.text !== '~' && Math.abs(p.end - q.t) < 1e-6) p.end -= Math.min(0.05, 0.2 * (p.end - p.t));
         }
-        const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ""},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}`;
-        const p: Placed = { key, notes, t0, idea, energy, sung };
+        if (fl) notes = feelSung(notes, fl, si * 1000 + L.notes[0].step);
+        const breath = fl && restBefore >= 0.5 ? fl.breath : 0;
+        const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ""},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}${fl ? `|feel${breath}|${notes.map((n) => `${n.t.toFixed(4)},${n.vel.toFixed(3)},${n.slide?.toFixed(3) ?? ''},${n.fall?.toFixed(3) ?? ''},${n.swell?.toFixed(3) ?? ''},${n.fade?.toFixed(3) ?? ''},${n.sharp?.toFixed(1) ?? ''}`).join(';')}` : ''}`;
+        const p: Placed = { key, notes, t0, idea, energy, sung, breath };
         const first = Math.max(0, L.notes[0].step - Math.ceil(PRE / six));
         (m.get(first) ?? m.set(first, []).get(first)!).push(p);
         if (!this.bufs.has(key)) this.queue.push(p);
@@ -106,6 +115,13 @@ export class GuideVoice {
     const rate = clear ? SING_RATE : FOF_RATE;
     const raw = clear ? renderLine(p.notes, { high: false, slides: 0.5, seed: v }, PRE)
       : renderFof(p.notes, { ...(isCharacter(p.sung) ? fofFor(base, v, p.sung === 'woman', p.sung) : fofFor(p.sung as Genre, v, false)), energy: p.energy }, PRE);
+    // (human feel: a breath in just before the line, in its lead-in)
+    if (p.breath) {
+      let peak = 0;
+      for (let i = 0; i < raw.length; i++) peak = Math.max(peak, Math.abs(raw[i]));
+      const len = 0.22, br = inhale(rate, len, seed), at = Math.round((PRE - len - 0.06) * rate);
+      for (let i = 0; i < br.length; i++) if (at + i >= 0 && at + i < raw.length) raw[at + i] += br[i] * peak * 0.06 * p.breath;
+    }
     const pcm = polishVoice(raw, rate, polishFor(p.idea, true, p.notes.some((n) => n.vel >= 0.85)));
     const ctx = this.ctx.rawContext as unknown as BaseAudioContext;
     const buf = ctx.createBuffer(1, pcm.length, rate);

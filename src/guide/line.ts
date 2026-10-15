@@ -77,6 +77,8 @@ export interface GuideIdeas {
   dynamics?: boolean;
   /** Anchor line (anchor.ts, docs/GUIDE-ANCHOR.md): a different writer: one strong note per 4 bars, sung in a rhythm pattern, broken by an accent. */
   anchor?: boolean;
+  /** Human feel (feel.ts, docs/GUIDE-FEEL.md): how the line is played and sung (glides, scoops, swells, fades, falls, vibrato, breaths); the written line unchanged. */
+  feel?: boolean;
 }
 
 /**
