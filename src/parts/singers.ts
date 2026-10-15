@@ -247,7 +247,7 @@ export function pickHigh(seed: string, genre: Genre): HighVoice {
   return new Rng(`${seed}-high`).weighted(HIGH_BY_GENRE[genre]);
 }
 /** The low singers among the characters: chosen with the voice on Auto, they sing low. */
-const LOW_CHARACTERS = ['deep', 'nasal', 'cornell'];
+const LOW_CHARACTERS = ['deep', 'nasal', 'cornell', 'onyx'];
 /**
  * Who sings the lead high, if anyone: Chester or the woman when chosen as the voice; otherwise, sung
  * high (the voice type High, or Auto and the song's own), the song's high singer. The clear voice keeps

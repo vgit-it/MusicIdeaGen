@@ -305,12 +305,12 @@ const lerp = (a: number, b: number, x: number) => a + (b - a) * Math.max(0, Math
 const lerp3 = (a: F3, b: F3, x: number): F3 => [lerp(a[0], b[0], x), lerp(a[1], b[1], x), lerp(a[2], b[2], x)];
 
 /** Lay the line out as segments: onset consonants before each note's vowel, codas at its end. */
-export function layout(notes: SungNote[], cScale = 1): Seg[] {
+export function layout(notes: SungNote[], cScale = 1, vowels: Record<Vowel, [F3, F3?]> = VOWELS): Seg[] {
   const segs: Seg[] = [];
   notes.forEach((n, i) => {
     const room = Math.max(0.03, Math.min(0.2, (n.t - (i > 0 ? notes[i - 1].t : n.t - 0.4)) * 0.45));
     // (a diphthong sung over a run glides only on its last note)
-    const vow: [F3, F3?] = notes[i + 1]?.syl.text === '~' ? [VOWELS[n.syl.vowel][0]] : VOWELS[n.syl.vowel];
+    const vow: [F3, F3?] = notes[i + 1]?.syl.text === '~' ? [vowels[n.syl.vowel][0]] : vowels[n.syl.vowel];
     const firstF = vow[0];
     // onset consonants before the beat (shrunk to fit the room the last note leaves)
     const on = n.syl.onset.map((c) => ({ ...CONS[c], dur: CONS[c].dur * cScale }));

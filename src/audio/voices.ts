@@ -8,6 +8,7 @@ import type { Genre } from '../genres';
 import type { Vowel } from '../parts/lyrics';
 import { HIGH_VOICES, type HighVoice, VOICE_DOWN } from '../parts/singers';
 import type { FofVoice } from './fof';
+import { ONYX } from './prints';
 import { type VoiceRecipe, autoRegisters } from './sing';
 
 /** Clip 73: the base every voice starts from (Edge: Paul, "excellent", the hollow "ah" filled). */
@@ -70,7 +71,7 @@ export const voiceDown = (g: Genre) => VOICE_DOWN[g];
  * Characters: a singer's own tone on top of a genre's voice (Paul, by ear: "more Alice in Chains, or a
  * voice like Eddie Vedder"), picked in the Voice menu.
  */
-export type Character = 'deep' | 'nasal' | 'scream' | 'cornell' | 'woman';
+export type Character = 'deep' | 'nasal' | 'scream' | 'cornell' | 'woman' | 'onyx';
 export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoice> }> = {
   // big and dark (Vedder-like): a long throat, round vowels, a full low end, a slow wobble, scoops and sags
   // (less operatic in its normal range, Paul: a less low throat, rounder vowels only a little, brighter, wider)
@@ -113,6 +114,9 @@ export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoic
     bright: 3, cover: 0.55, spread: 0.85, raw: 0, plain: 0.05, soft: 1, softPushed: 1, expr: 1, human: 0.65, scoop: 0.65, sag: 0.75,
     life: 0.8, vib: 43, vibHz: 6.2, drift: 5, brk: 63, up: 'belt', shift: 12, size: 1.23, brkUp: 12,
   } },
+  // Onyx (Paul: "Onyx clean is a good voice"): a real man's vowels, measured from Kokoro's Onyx (prints.ts),
+  // as measured (his own size: tract and size 1); clean: little rasp and breath
+  onyx: { label: 'Onyx (clean)', fof: { print: ONYX, tract: 1, size: 1, grit: 0.08, breath: -42 } },
   nasal: { label: 'Dark & nasal', fof: {
     tract: 0.86, body: 0, heft: 0.45, bw: 1.3, grit: 0.3, fry: 0.15, breath: -29, twang: 0.5, edge: 0.25, nasal: 0.16, bright: -1.25,
     cover: 1, spread: 0.65, raw: 0.5, plain: 1, scoop: 0.9, sag: 0.7, vib: 12, vibHz: 6, brk: 65,
