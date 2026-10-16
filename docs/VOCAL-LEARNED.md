@@ -38,6 +38,26 @@ Realism: 100 means the same spreads as real songs of the genre.
 - `src/realism/learned.json` (45 KB) holds only counts of steps in contexts that **25+ songs by 15+ artists** share. Rare counts are dropped. No melodies, no lyrics, nothing that can be played back as a song.
 - Rebuild: `npm run realism-learned` (needs `experiments/MidiCollection`, kept out of git).
 
+## Lines start somewhere strong
+Paul: make sure the starting note is a strong one (options 2 + 3).
+- **The first note** of every line: the root, 3rd or 5th of the chord under it, whatever beat it falls on.
+- **The landing** (the line's first note on a beat): a chord note. Pickups between the two sing free.
+- The writer picks them so, leaning to what real singers sing on beat 1 or 3.
+- **Kept to the end:** later steps (rhythm, tension, fitting, Real songs' notes off the chord) could move them off. A last pass moves them back to the nearest note that fits, 2 semitones at most (4 if none nearer). Real songs' "off the chord on purpose" notes skip them.
+- Signature moves' colour notes stay (a 9th held on purpose).
+- **Later (option 1):** `npm run realism-learned` now also counts how real lines land and which scale note they start on. Run it on the PC with the MIDI collection; the app then leans to those. Until then, no lean by scale note.
+
+| Setting | First note root/3rd/5th: before | after | First note on a beat a chord note: before | after |
+|---|---|---|---|---|
+| Learned | 70% | 99% | 77% | 98% |
+| + Real songs | 63% | 97% | 67% | 97% |
+| + Patterns | 70% | 99% | 78% | 98% |
+| + Real songs + Patterns | 59% | 98% | 64% | 96% |
+| Grid + Learned | 72% | 98% | 83% | 99% |
+| Words + Learned | 61% | 99% | 74% | 99% |
+
+(42 songs each, all genres. The rest: colour notes kept on purpose, or no fitting note within reach. Octave-or-more jumps: no more than before.)
+
 ## What to listen for
 - Choose **Melody: Learned** and compare with Shaped and Melody first on the same idea (the band stays the same).
 - It should sound **more like a real singer, less like a pattern**: more repeated notes, small steps, notes now and then just off the chord on a strong beat, lines that fall at the end.
