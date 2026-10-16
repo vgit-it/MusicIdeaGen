@@ -1039,6 +1039,44 @@ function writeGuitar2(idea: Idea, o: G2Options, rng: Rng, force?: Guitar2Style[]
 /** Figures (docs/LEAD-FIGURES.md): the chance a song's verses have a picked figure on Guitar 2, by genre (real songs: picked figures are 26% of lead bars in pop, 13-15% in rock and grunge). */
 const FIGURE_SONGS: Record<Genre, number> = { pop: 0.7, rock: 0.5, grunge: 0.5, altmetal: 0.4, hardrock: 0.25, metal: 0.2, funk: 0.3 };
 
+/**
+ * Room (docs/LEAD-ROOM.md): the chance the lead guitar keeps out from under the singer's lines through a
+ * four-bar run, by genre. Real lead guitar plays while the singer sings 15% of its notes in metal, 21% in
+ * hard rock, 35% in funk; about half in pop, rock, grunge and alt metal, as the app did (docs/STUDY-LEAD.md).
+ */
+const ROOM: Record<Genre, number> = { metal: 0.7, hardrock: 0.8, funk: 0.7, pop: 0.1, rock: 0, grunge: 0, altmetal: 0 };
+
+/**
+ * Room: in the runs where the lead keeps out of the way, Guitar 2's notes under a sung line go, and notes
+ * ringing into one stop where it starts; what's left plays in the gaps (answers, fills, the end of a
+ * verse into the chorus). Solos and sections with no singing are left alone.
+ */
+function makeRoom(sections: Idea[], genre: Genre, seed: string) {
+  const rng = new Rng(seed);
+  for (const x of sections) {
+    const voc = x.vocal ?? [];
+    if (x.section?.solo || !voc.length || !x.guitar2.length) continue;
+    // the sung lines (gaps under a beat joined)
+    const lines: [number, number][] = [];
+    for (const n of voc) {
+      const l = lines[lines.length - 1];
+      if (l && n.step - l[1] < 4) l[1] = Math.max(l[1], n.step + n.len);
+      else lines.push([n.step, n.step + n.len]);
+    }
+    const bars = x.song.bars;
+    const clear = new Set<number>(); // runs of four bars
+    for (let r = 0; r * 4 < bars.length; r++) if (rng.chance(ROOM[genre])) clear.add(r);
+    const runOf = (g: number) => Math.floor(Math.max(0, bars.findIndex((b) => g >= b.start && g < b.start + b.len)) / 4);
+    const under = (g: number) => lines.some(([a, b]) => g >= a - 1 && g < b);
+    x.guitar2 = x.guitar2.filter((h) => !(clear.has(runOf(h.step)) && under(h.step)));
+    for (const h of x.guitar2) {
+      if (!clear.has(runOf(h.step))) continue;
+      const next = lines.find(([a]) => a > h.step);
+      if (next && h.step + h.len > next[0]) h.len = Math.max(1, Math.floor(next[0] - h.step));
+    }
+  }
+}
+
 /** A role that plays (not 'rest'), picked as for an idea. */
 function playingStyle(rng: Rng, idea: Idea, run: number): Guitar2Style {
   const sec = idea.song.sections?.[run * 4] ?? null;
@@ -1363,6 +1401,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const leadPlan = new Rng(`${bandSeed}-lead-plan`);
   // Guitar 2's switches (Lines, Figures); with Figures, some songs (pop and rock most) have a picked figure through the verses
   const g2o: G2Options = { lines: src.opts.leadLines, figures: src.opts.leadFigures, figureSeed: `${bandSeed}-figure` };
+  const roomIntro = !!src.opts.leadRoom && new Rng(`${bandSeed}-room-intro`).chance(ROOM[src.song.partGenres.strum]);
   const figureVerses = !!src.opts.leadFigures && new Rng(`${bandSeed}-figure-song`).chance(FIGURE_SONGS[src.song.partGenres.strum]);
   const leadVerses = leadPlan.chance(lead.verses);
   const leadClimbs = leadVerses && leadPlan.chance(lead.climb);
@@ -1479,7 +1518,12 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     let g2 = 'Guitar 2: same as the idea';
     // the lead player's verse: mostly answering the singer, now and then another part for a change
     const answering = (k: number): Guitar2Style => (r.chance(lead.other) ? playingStyle(r, idea, k) : 'answerMore');
-    if (figureVerses && (s.kind === 'verse' || (s.g2 === 'pick' && r.chance(0.5))) && s.g2 !== 'keep') {
+    // Room: a lead line over the band's intro, where the lead keeps out of the verses
+    if (roomIntro && s.kind === 'intro' && s.intro === 'band') {
+      const style: Guitar2Style = riff ? 'lead' : 'fills';
+      g2 = writeGuitar2(idea, g2o, r, new Array<Guitar2Style>(runs).fill(style), lead.lick);
+      notes.push('Guitar 2 plays a line over the intro');
+    } else if (figureVerses && (s.kind === 'verse' || (s.g2 === 'pick' && r.chance(0.5))) && s.g2 !== 'keep') {
       // (a first verse that would have no Guitar 2 now and then lets the figure come in halfway)
       const late = s.g2 === 'drop' && runs > 1 && r.chance(0.5);
       g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => (late && k < runs / 2 ? 'rest' : 'figure')));
@@ -1681,6 +1725,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
   const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
   singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', words: src.opts.vocalRhythm === 'words', shaped: !!src.opts.vocalMelody, first: src.opts.vocalMelody === 'first', learned: src.opts.vocalMelody === 'learned', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger, energy: src.opts.vocalEnergy as EnergyStyle | 'off' | undefined, real: src.opts.vocalReal, patterns: src.opts.vocalPatterns }, arc.climax);
+  // Room (switch): the lead out from under the singer's lines, by genre
+  if (src.opts.leadRoom) makeRoom(sections, src.song.partGenres.strum, `${S.band ?? `${src.seeds.song}-band`}-room`);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
   const high = pickHigh(vocalSeed, src.song.partGenres.strum);
   for (const x of sections) { x.vocalVoice = voice; x.vocalHigh = high; }
