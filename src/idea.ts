@@ -55,6 +55,8 @@ export interface GenOptions {
   vocalReal?: boolean;
   /** Patterns (docs/PATTERNS.md): the vocal's rhythms and short shapes drawn from a library of common real ones. */
   vocalPatterns?: boolean;
+  /** Real strum mix (docs/STUDY-RHYTHM.md): strumming patterns from a library widened to what real guitarists play: held chords, quarters, 8ths in many shapes, 16ths, stabs. */
+  strumMix?: boolean;
   /** Guitar 2 (the lead player) plays whole lines, mostly by step, as well as short licks (docs/LEAD-LINES.md). Off: as before. */
   leadLines?: boolean;
   /** Guitar 2 plays a picked figure, the same each bar (some songs' verses), and its lines come back (docs/LEAD-FIGURES.md). Off: as before. */
@@ -271,6 +273,9 @@ export interface Idea {
   rhythmPick?: GuitarHit[];
   /** Rhythm guitar (strummed genres): how the player shapes its chords: a capo, higher up the neck, a smooth top line. */
   shapes?: { capo?: number; near?: number; smooth?: boolean };
+  /** Tracks, Guitar plan (src/players/presence.ts): the steps the rhythm guitar sits out (from, until), and the layer that covers its chords there (a piano, strings or pad, even if none was added). */
+  guitarOut?: { from: number; until: number };
+  cover?: 'keys' | 'strings' | 'pad';
   /** Rhythm guitar: a dotted-8th echo on it (ringing arpeggios). */
   rhythmEcho?: boolean;
   /** An idea on its own: its rhythm guitar as written, before the player played it (tracks start from this). */

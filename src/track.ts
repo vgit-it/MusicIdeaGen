@@ -24,6 +24,7 @@ import { naturalStrokes } from './parts/strum';
 import { applySheet, hasPins } from './parts/sheet';
 import { playBand } from './players/band';
 import { type LickKind, pickLead } from './players/lead';
+import { GUITAR_ROLE_DESC, applyGuitarShape, planGuitar } from './players/presence';
 import { pickRhythm, pickRiffPlayer, playRhythm, playRiffPart } from './players/rhythm';
 import { Rng } from './rng';
 import { SOUND_NAME, type SoundId, type SoundSlot, describeSounds, orchestrate } from './sounds';
@@ -52,6 +53,8 @@ export interface TrackOptions {
   riffVerse?: Choice;
   /** Played by the band: each player plays the written parts their own way (missing in older links: on). */
   band?: 'on' | 'off';
+  /** When the rhythm guitar plays (src/players/presence.ts): it sits out intros, verses and bridges, comes in late, drops out, as in real songs (missing in older links: off). */
+  guitarPlan?: 'on' | 'off';
   /** The song's mood, which shapes its tension and release (missing in older links: Auto). */
   mood?: MoodChoice;
   /** Sections in order, when edited by hand (otherwise the genre template decides). */
@@ -1714,6 +1717,12 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const { chords, guitar2 } = idea.section!.sound!;
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
   });
+  // when the guitar plays (docs/STUDY-RHYTHM.md): a role for the song, and each section they sit out, come in or drop out
+  if (opts.guitarPlan === 'on') {
+    const gp = planGuitar(bandSeed, src.song.partGenres.strum, riff, sections.map((x) => ({ kind: x.section!.kind, energy: x.section!.energy, bars: x.song.bars.length, hasG2: x.guitar2.length > 0 })));
+    sections.forEach((x, i) => { const n = applyGuitarShape(x, gp.shapes[i], gp.cover); if (n) x.notes.push(n); });
+    sections[0].notes.push(`Guitar plan: the rhythm guitarist ${GUITAR_ROLE_DESC[gp.role]}`);
+  }
   sections[0].notes.push(`Band feel: ${describeSounds(soundList, sounds)}`);
   sections[0].notes.splice(2, 0, arcNote(arc, moodAuto, sections.map((x) => x.section!.label)));
 

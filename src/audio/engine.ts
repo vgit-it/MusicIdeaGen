@@ -291,8 +291,22 @@ export class Engine {
     }
   }
 
+  /** Guitar plan: the layers that cover for the guitar in this list's sections (the piano, strings or a pad, even if none was added). */
+  private ensureCover() {
+    for (const i of this.list) {
+      if (!i.cover || !i.guitarOut) continue;
+      if (i.cover === 'keys') {
+        this.keysInst ??= inContext(this.ctx, () => new Piano(this.mixer.input('keys')));
+        if (!this.offline) void this.ensureLoaded(this.keysInst, 'piano');
+      } else if (i.cover === 'strings') {
+        this.stringsInst ??= inContext(this.ctx, () => new Strings(this.mixer.input('strings')));
+        if (!this.offline) void this.ensureLoaded(this.stringsInst, 'strings');
+      } else this.padInst ??= inContext(this.ctx, () => new Pad(this.mixer.input('pad')));
+    }
+  }
+
   private applyPadTone() {
-    const p = this.layers.pad;
+    const p = this.layers.pad ?? (this.list.some((i) => i.cover === 'pad' && i.guitarOut) ? 'auto' : undefined);
     if (!p || !this.padInst) return;
     this.padInst.setTone(p === 'auto' ? AUTO_PAD[this.idea?.song.genre ?? 'pop'] : p);
     this.padInst.setEnergy(this.idea?.section?.energy ?? 4, this.ctx.now());
@@ -304,16 +318,20 @@ export class Engine {
   }
 
   private layerAt(idea: Idea, part: LayerPart) {
-    const choice = this.layers[part];
+    const own = this.layers[part];
+    // (Guitar plan: where the guitar sits out, a layer covers its chords even if none was added)
+    const covers = idea.cover === part && !!idea.guitarOut;
+    const choice = own ?? (covers ? 'auto' : null);
     if (!choice) return null;
+    const coverOnly = !own;
     let m = this.layerCache.get(idea);
     if (!m) this.layerCache.set(idea, (m = new Map()));
     const all = !!this.layers.throughout?.includes(part);
-    const k = `${part}:${part === 'pad' ? '' : choice}:${all}`;
+    const k = `${part}:${part === 'pad' ? '' : choice}:${all}:${coverOnly}`;
     let v = m.get(k);
     if (!v) {
       const seed = idea.seeds[part] ?? `${idea.seeds.chords}-${part}`;
-      const layer = writeLayer(part, idea, choice, seed, all);
+      const layer = writeLayer(part, idea, choice, seed, all, coverOnly);
       m.set(k, (v = { layer, at: byStep(layer.notes, idea.song.total) }));
     }
     return v;
@@ -428,6 +446,7 @@ export class Engine {
     this.hitsAt2 = list.map((i) => index(i.guitar2, i.song.total));
     this.applyChordInstrument();
     this.applyGuitar2();
+    this.ensureCover();
     this.applyPadTone();
     // the singer renders its lines ahead
     if (this.vocalChoice !== 'off') this.syncSingers();
