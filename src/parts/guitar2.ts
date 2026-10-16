@@ -7,16 +7,18 @@ import type { Genre, RiffStyle } from '../genres';
 import type { LickKind } from '../players/lead';
 import { LICK_HABITS, type LibLick, licksFor, lickFit, placeLibLick, placedHit } from './licks';
 import type { ChordPart, GuitarHit, Song } from '../idea';
-import type { Rng } from '../rng';
+import { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
 import { type Chord, type Mode, QUALITIES, SCALES, chordPc } from '../theory';
 import { TUNINGS, type Tuning, powerChord, voicingsInTuning } from '../theory/fretboard';
-import { type BarPlan, developCell, pitchCell } from './motif';
+import { type BarPlan, chordScale, developCell, pitchCell, stepSemis } from './motif';
 
 export type Guitar2Style = 'lead' | 'harmony' | 'octaves' | 'arp' | 'swell' | 'funk' | 'rhythm' | 'fills' | 'rest'
   // tracks, the lead player: answering the singer at the end of each phrase (or every two bars), and
   // a line climbing through the pre-chorus into the chorus
-  | 'answer' | 'answerMore' | 'climb';
+  | 'answer' | 'answerMore' | 'climb'
+  // Figures (switch): a picked figure, the same each bar
+  | 'figure';
 
 export const GUITAR2_LABEL: Record<Guitar2Style, string> = {
   lead: 'melody',
@@ -31,6 +33,7 @@ export const GUITAR2_LABEL: Record<Guitar2Style, string> = {
   answer: 'answers the singer at the end of each phrase',
   answerMore: 'answers the singer every two bars',
   climb: 'a line climbing into the chorus',
+  figure: 'a picked figure, the same each bar',
 };
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -387,8 +390,12 @@ const LINE_HABIT: Record<LickKind, number> = { sung: 0.8, blues: 0.6, run: 0.8, 
  * a leap, stepped back from), falling, rising or arching, strong beats and held notes on chord notes
  * where a step allows, turning at the edges of the range. `prev`: the note played before it.
  */
+/** A line's rhythm and moves (scale steps), to play it again moved onto other chords (Figures: lead figures that repeat). */
+interface LineTpl { span: number; offs: number[]; strong: boolean[]; moves: number[] }
+
 function stepLine(
   rng: Rng, song: Song, chords: ChordPart, from: number, to: number, prev: number, riff: GuitarHit[] | null, lick: LickKind, home: boolean,
+  again?: LineTpl, keep?: (t: LineTpl) => void,
 ): NoteEv[] {
   const { key, mode, total } = song;
   const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(g, total - 1)]].chord;
@@ -406,40 +413,45 @@ function stepLine(
     groupStarts(b.groups).forEach((p, i) => { const g = b.start + p; if (g >= from && g < to) beats.push({ g, len: b.groups[i] }); });
   }
   if (beats.length < 3) return [];
+  if (again) again.offs.forEach((d, i) => onsets.push({ g: from + d, strong: again.strong[i] }));
   // the last beat (two now and then) holds the line's last note
-  const holdBeats = beats.length >= 5 && rng.chance(0.4) ? 2 : 1;
-  beats.slice(0, beats.length - holdBeats).forEach(({ g, len }) => {
+  const holdBeats = again ? 0 : beats.length >= 5 && rng.chance(0.4) ? 2 : 1;
+  if (!again) beats.slice(0, beats.length - holdBeats).forEach(({ g, len }) => {
     const cell = len === 4
       ? rng.weighted<number[]>([[[0, 2], 4], [[0], 1.2], [[0, 2, 3], 1.5], [[0, 1, 2], 1], [[0, 1, 2, 3], busy], [[2], 0.4], [[0, 3], 0.6]])
       : len === 6 ? rng.weighted<number[]>([[[0, 2, 4], 3], [[0], 1], [[0, 3], 1.5], [[0, 1, 2, 3, 4, 5], busy * 0.7]])
         : [0, 2, 4].filter((p) => p < len);
     for (const p of cell) onsets.push({ g: g + p, strong: p === 0 });
   });
-  onsets.push({ g: beats[beats.length - holdBeats].g, strong: true });
+  if (!again) onsets.push({ g: beats[beats.length - holdBeats].g, strong: true });
   // the key's full scale, in the lead's range
   const pool: number[] = [];
   for (let m = LEAD_RANGE[0]; m <= LEAD_RANGE[1]; m++) if ((SCALES[mode] as readonly number[]).includes(mod(m - key, 12))) pool.push(m);
   const near = (m: number) => pool.reduce((bi, x, i) => (Math.abs(x - m) < Math.abs(pool[bi] - m) ? i : bi), 0);
-  const contour = rng.weighted<'fall' | 'rise' | 'arch' | 'wave'>([['fall', 3], ['arch', 3], ['rise', 2], ['wave', 2]]);
-  let dir = contour === 'rise' || contour === 'arch' ? 1 : -1;
+  // (played again: the same moves from a note near the last one played)
+  const contour = again ? 'wave' : rng.weighted<'fall' | 'rise' | 'arch' | 'wave'>([['fall', 3], ['arch', 3], ['rise', 2], ['wave', 2]]);
+  let dir = again ? Math.sign(again.moves.find((m) => m) ?? 1) : contour === 'rise' || contour === 'arch' ? 1 : -1;
   // a start near the last note played, a little above it for a falling line, below for a rising one
-  let j = Math.max(0, Math.min(pool.length - 1, near(prev) + (contour === 'fall' ? rng.int(0, 2) : contour === 'rise' ? -rng.int(0, 2) : rng.int(-1, 1))));
+  let j = Math.max(0, Math.min(pool.length - 1, near(prev) + (again ? 0 : contour === 'fall' ? rng.int(0, 2) : contour === 'rise' ? -rng.int(0, 2) : rng.int(-1, 1))));
   const out: NoteEv[] = [];
+  const moves: number[] = [0];
   let backFromLeap = 0;
   onsets.forEach((o, i) => {
     const last = i === onsets.length - 1;
     const len = Math.max(1, (last ? to : onsets[i + 1].g) - o.g);
     if (i > 0) {
       if (contour === 'arch' && i === Math.round(onsets.length * 0.45)) dir = -1;
-      if (contour === 'wave' && i % 4 === 0) dir = -dir;
+      if (contour === 'wave' && i % 4 === 0 && !again) dir = -dir;
       let mv: number;
-      if (backFromLeap) { mv = backFromLeap; backFromLeap = 0; }
+      if (again) { mv = again.moves[i] ?? 0; if (mv) dir = Math.sign(mv); }
+      else if (backFromLeap) { mv = backFromLeap; backFromLeap = 0; }
       else {
         const r = rng.next();
         mv = r < 0.13 ? 0 : r < 0.75 ? dir : r < 0.84 ? -dir : r < 0.95 ? 2 * dir : rng.int(3, 4) * dir;
         if (Math.abs(mv) >= 3) backFromLeap = -dir;
       }
       if (j + mv < 0 || j + mv >= pool.length) { dir = -dir; mv = -mv; backFromLeap = 0; }
+      moves.push(mv);
       j = Math.max(0, Math.min(pool.length - 1, j + mv));
     } else if (!isTone(pool[j], o.g)) {
       // a line starts on a chord note
@@ -466,10 +478,98 @@ function stepLine(
         }
       }
     }
-    out.push({ step: o.g, midi: pool[j], len: last ? len : Math.min(len, len >= 2 && rng.chance(0.3) ? len - 1 : len), vel: i === 0 ? 0.86 : last ? 0.84 : o.strong ? 0.8 : 0.72 });
+    out.push({ step: o.g, midi: pool[j], len: last ? len : Math.min(len, len >= 2 && (again ? !o.strong && i % 3 === 2 : rng.chance(0.3)) ? len - 1 : len), vel: i === 0 ? 0.86 : last ? 0.84 : o.strong ? 0.8 : 0.72 });
+  });
+  keep?.({ span: to - from, offs: onsets.map((o) => o.g - from), strong: onsets.map((o) => o.strong), moves });
+  return out;
+}
+
+/**
+ * A picked figure (Figures, docs/LEAD-FIGURES.md): real lead guitar parts are often a figure over the
+ * chords, picked the same way bar after bar (The Edge, Andy Summers, the Pumpkins: 16% of real lead
+ * bars, pop 26%; the app had 2%, docs/STUDY-LEAD.md). One bar of slots: where each note falls and which
+ * of the chord's notes it plays (counted up from the bottom of a fixed window, so the figure moves onto
+ * each chord by the nearest notes), or the pedal note, or (a melodic figure) scale steps from the chord's 3rd.
+ */
+export type FigureKind = 'arp' | 'dotted' | 'pedal' | 'sixteenths' | 'melodic';
+export interface Figure { kind: FigureKind; slots: { pos: number; deg: number; len: number }[]; ring: boolean; low: number; turn: boolean }
+const FIGURE_KINDS: Record<Genre, [FigureKind, number][]> = {
+  pop: [['arp', 3], ['dotted', 2], ['pedal', 2], ['melodic', 2]],
+  rock: [['arp', 2], ['dotted', 2], ['pedal', 2], ['melodic', 2], ['sixteenths', 1]],
+  grunge: [['arp', 2], ['sixteenths', 2], ['melodic', 2], ['pedal', 1]],
+  altmetal: [['arp', 2], ['sixteenths', 2], ['melodic', 1], ['dotted', 1]],
+  hardrock: [['pedal', 2], ['melodic', 2], ['arp', 1]],
+  metal: [['arp', 2], ['melodic', 2], ['sixteenths', 1]],
+  funk: [['sixteenths', 1], ['melodic', 2], ['pedal', 1]],
+};
+const FIGURE_DESC: Record<FigureKind, string> = {
+  arp: 'picked through the chord', dotted: 'dotted 8ths with echo', pedal: 'around a ringing pedal note', sixteenths: 'picked 16ths', melodic: 'a short tune',
+};
+const PEDAL = -1;
+export function makeFigure(rng: Rng, genre: Genre): Figure {
+  const kind = rng.weighted(FIGURE_KINDS[genre]);
+  const low = rng.int(59, 64) - (genre === 'grunge' || genre === 'altmetal' || genre === 'metal' ? 3 : 0);
+  const turn = rng.chance(0.5);
+  const at = (pos: number[], deg: number[], len: number) => pos.map((p, i) => ({ pos: p, deg: deg[i % deg.length], len }));
+  if (kind === 'arp') {
+    const order = rng.pick([[0, 1, 2, 3, 2, 1, 2, 3], [0, 1, 2, 3, 0, 1, 2, 3], [0, 2, 1, 3, 0, 2, 1, 3], [0, 2, 1, 2, 0, 2, 1, 2], [3, 2, 1, 0, 3, 2, 1, 2]]);
+    return { kind, slots: at([0, 2, 4, 6, 8, 10, 12, 14], order, 4), ring: true, low, turn };
+  }
+  if (kind === 'dotted') return { kind, slots: at([0, 3, 6, 9, 12, 14], rng.pick([[0, 2, 1, 3, 2, 1], [3, 1, 2, 0, 2, 1], [0, 1, 2, 3, 2, 1]]), 3), ring: true, low, turn };
+  if (kind === 'pedal') {
+    const order = rng.pick([[PEDAL, 0, PEDAL, 1, PEDAL, 2, PEDAL, 1], [0, PEDAL, 1, PEDAL, 2, PEDAL, 1, PEDAL], [PEDAL, 1, 0, PEDAL, 2, 1, PEDAL, 0]]);
+    return { kind, slots: at([0, 2, 4, 6, 8, 10, 12, 14], order, 2), ring: true, low, turn };
+  }
+  if (kind === 'sixteenths') {
+    const order = rng.pick([[0, 1], [0, 1, 2, 1], [1, 0], [0, 2, 1, 2]]);
+    const pos = rng.pick([[...Array(16).keys()], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14], [0, 2, 3, 4, 6, 7, 8, 10, 11, 12, 14, 15]]);
+    return { kind, slots: at(pos, order, 1), ring: false, low, turn };
+  }
+  // a melodic figure: a bar of 5-7 notes moving by step from the chord's 3rd, a held note to end
+  const pos = rng.pick([[0, 2, 4, 6, 8], [0, 2, 3, 4, 6, 8], [0, 3, 6, 8, 10, 12], [0, 2, 4, 6, 7, 8, 12], [2, 4, 6, 8, 10]]);
+  const steps = pitchCell(rng, pos.length, 5, true);
+  return { kind, slots: pos.map((p, i) => ({ pos: p, deg: steps[i], len: i === pos.length - 1 ? 16 - p : pos[i + 1] - p })), ring: false, low, turn };
+}
+
+/** The figure over a run of bars: the same each bar, onto each chord; the run's last bar now and then turned, or cut to breathe. */
+function playFigure(f: Figure, song: Song, chords: ChordPart, runBars: Bar[], rng: Rng): NoteEv[] {
+  const { key, mode, total } = song;
+  const chordAt = (g: number) => chords.timeline[chords.chordIdx[Math.min(g, total - 1)]].chord;
+  // the pedal: the key's 5th or root above the window, unless it rubs against the chord
+  const pedal = (g: number) => {
+    const tones = chordTones(key, chordAt(g));
+    for (const iv of [7, 0, 4, 3]) {
+      const pc = mod(key + iv, 12);
+      if (tones.includes(pc)) return f.low + 12 + mod(pc - (f.low + 12), 12);
+    }
+    return f.low + 12 + mod(tones[0] - (f.low + 12), 12);
+  };
+  const out: NoteEv[] = [];
+  const cut = rng.chance(0.4);
+  runBars.forEach((b, bi) => {
+    const lastBar = bi === runBars.length - 1 && runBars.length > 1;
+    f.slots.forEach((s, si) => {
+      if (s.pos >= b.len || (lastBar && cut && s.pos >= b.len / 2)) return;
+      const g = b.start + s.pos;
+      const c = chordAt(g), tones = chordTones(key, c);
+      const turned = lastBar && f.turn && si >= f.slots.length / 2 ? 1 : 0;
+      let m: number;
+      if (s.deg === PEDAL) m = pedal(g);
+      else if (f.kind === 'melodic') {
+        const root = f.low + mod(chordPc(key, c) - f.low, 12);
+        m = root + stepSemis(chordScale(mode, c), 2 + s.deg + turned);
+      } else {
+        const win: number[] = [];
+        for (let x = f.low; x < f.low + 24; x++) if (tones.includes(mod(x, 12))) win.push(x);
+        m = win[Math.min(win.length - 1, s.deg + turned)];
+      }
+      const len = Math.max(1, Math.min(s.len, b.start + b.len - g));
+      out.push({ step: g, midi: m, len, vel: (s.pos % 4 === 0 ? 0.74 : 0.64) + (f.kind === 'sixteenths' && s.pos % 4 === 0 ? 0.08 : 0) });
+    });
   });
   return out;
 }
+
 
 /** A melody shape for a run, by style and genre. */
 function pickShape(rng: Rng, genre: Genre, octaves: boolean, lines = false): Shape {
@@ -500,6 +600,9 @@ export function generateHook(rng: Rng, song: Song, chords: ChordPart, riff: Guit
   });
 }
 
+/** Guitar 2's switches: Lines (docs/LEAD-LINES.md); Figures (docs/LEAD-FIGURES.md), with the song's own figure from `figureSeed`. */
+export interface G2Options { lines?: boolean; figures?: boolean; figureSeed?: string }
+
 export interface Guitar2Part {
   hits: GuitarHit[];
   notes: string[];
@@ -511,7 +614,7 @@ export interface Guitar2Part {
  */
 export function generateGuitar2(
   rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, force?: Guitar2Style[], lick: LickKind = 'sung',
-  o: { lines?: boolean } = {},
+  o: G2Options = {},
 ): Guitar2Part {
   const { key, w, bars, mode } = song;
   const t = song.tuning ?? TUNINGS.standard;
@@ -560,16 +663,21 @@ export function generateGuitar2(
     hits.push(...l);
     return true;
   };
+  // Figures: the song's figure (the same in every section), and the first line played, to come back
+  const figure = o.figures ? makeFigure(new Rng(o.figureSeed ?? `${song.key}-figure`), genre) : null;
+  let lineTpl: LineTpl | null = null;
   /** Lines (switch): a whole line of `beats` beats ending with bar `b` (not before `earliest`), in place of what's there. */
   const lineIn = (b: Bar, beats: number, earliest: number, pos: number, clean: boolean, home: boolean) => {
     const end = b.start + b.len;
-    let from = Math.max(earliest, end - beats * 4);
+    // (Figures: the first line comes back, the same rhythm and moves on the new chords, more often than not)
+    const again = o.figures && lineTpl && end - lineTpl.span >= earliest && rng.chance(0.6) ? lineTpl : undefined;
+    let from = again ? end - again.span : Math.max(earliest, end - beats * 4);
     // (from a beat)
     const fb = bars.find((x) => from >= x.start && from < x.start + x.len) ?? b;
     from = fb.start + Math.max(...groupStarts(fb.groups).filter((p) => fb.start + p <= from));
     const before = hits.filter((h) => h.step < from);
     const prev = before.length ? before[before.length - 1].notes[before[before.length - 1].notes.length - 1] : 69;
-    const line = stepLine(rng, song, chords, from, end, prev, riff, lick, home);
+    const line = stepLine(rng, song, chords, from, end, prev, riff, lick, home, again, (tp) => { if (o.figures && !lineTpl) lineTpl = tp; });
     if (line.length < 4) return false;
     for (let i = hits.length - 1; i >= 0; i--) if (hits[i].step >= from && hits[i].step < end) hits.splice(i, 1);
     for (const h of hits) if (h.step < from && h.step + h.len > from) h.len = Math.max(1, from - h.step);
@@ -584,6 +692,8 @@ export function generateGuitar2(
     let style = force?.[ri] ?? pickStyle(rng, genre, section);
     // the second half should usually answer the first; never leave both empty
     if (!force && ri > 0 && styles[ri - 1] === 'rest' && style === 'rest') style = section === 'arp' ? 'swell' : 'lead';
+    // (Figures: picked arpeggios become the song's figure)
+    if (figure && style === 'arp') style = 'figure';
     const runBars = run.map((i) => bars[i]);
     const last = runBars[runBars.length - 1];
     const from = runBars[0].start, to = last.start + last.len;
@@ -634,6 +744,12 @@ export function generateGuitar2(
         if (o.lines && rng.chance(LINE_HABIT[lick]) && lineIn(b, lineBeats(bi === n - 1), from, pos, clean, bi === n - 1 && ri === runs.length - 1)) return;
         swapIn(b, pos, clean);
       });
+    } else if (style === 'figure') {
+      const f = figure ?? makeFigure(new Rng(o.figureSeed ?? `${song.key}-figure`), genre);
+      labels[labels.length - 1] = `a picked figure (${FIGURE_DESC[f.kind]}), the same each bar`;
+      for (const n of playFigure(f, song, chords, runBars, rng)) {
+        hits.push({ step: n.step, ...leadFret(n.midi, t, pos), len: n.len, vel: n.vel, clean: clean || f.ring, ...(f.ring ? { letRing: true } : {}) });
+      }
     } else if (style === 'climb') {
       // a line climbing into the chorus: a held chord note each bar, then a scale run up a note a beat
       // in the last bar to its top note. Worked out backwards from that top note, so it always arrives

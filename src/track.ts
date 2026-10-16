@@ -15,7 +15,7 @@ import type {
   ChordEvent, ChordPart, ChordSheet, DrumPart, GuitarHit, Idea, SectionInfo, SectionKind, Seeds, Song, Stroke,
 } from './idea';
 import { type DrumBar, addFill } from './parts/drums';
-import { type Guitar2Style, generateGuitar2, generateHook, leadFret, pickStyle } from './parts/guitar2';
+import { type G2Options, type Guitar2Style, generateGuitar2, generateHook, leadFret, pickStyle } from './parts/guitar2';
 import { TUNINGS } from './theory/fretboard';
 import { generateSolo } from './parts/solo';
 import { BASS_LINE_DESC } from './parts/bass';
@@ -1033,11 +1033,14 @@ function g2Pickup(a: Idea, b: Idea, rng: Rng): boolean {
 const runCount = (idea: Idea) => Math.ceil(idea.song.bars.length / 4);
 
 /** Rewrite guitar 2 for a section: forced roles, or picked like an idea (undefined). Returns its description. */
-function writeGuitar2(idea: Idea, rng: Rng, force?: Guitar2Style[], lick?: LickKind): string {
-  const g2 = generateGuitar2(rng, idea.song, idea.chords, idea.guitar ?? null, force, lick, { lines: idea.opts.leadLines });
+function writeGuitar2(idea: Idea, o: G2Options, rng: Rng, force?: Guitar2Style[], lick?: LickKind): string {
+  const g2 = generateGuitar2(rng, idea.song, idea.chords, idea.guitar ?? null, force, lick, o);
   idea.guitar2 = g2.hits;
   return g2.notes[0];
 }
+
+/** Figures (docs/LEAD-FIGURES.md): the chance a song's verses have a picked figure on Guitar 2, by genre (real songs: picked figures are 26% of lead bars in pop, 13-15% in rock and grunge). */
+const FIGURE_SONGS: Record<Genre, number> = { pop: 0.7, rock: 0.5, grunge: 0.5, altmetal: 0.4, hardrock: 0.25, metal: 0.2, funk: 0.3 };
 
 /** A role that plays (not 'rest'), picked as for an idea. */
 function playingStyle(rng: Rng, idea: Idea, run: number): Guitar2Style {
@@ -1361,6 +1364,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const bandSeed = S.band ?? `${src.seeds.song}-band`;
   const lead = pickLead(bandSeed, src.song.partGenres.strum);
   const leadPlan = new Rng(`${bandSeed}-lead-plan`);
+  // Guitar 2's switches (Lines, Figures); with Figures, some songs (pop and rock most) have a picked figure through the verses
+  const g2o: G2Options = { lines: src.opts.leadLines, figures: src.opts.leadFigures, figureSeed: `${bandSeed}-figure` };
+  const figureVerses = !!src.opts.leadFigures && new Rng(`${bandSeed}-figure-song`).chance(FIGURE_SONGS[src.song.partGenres.strum]);
   const leadVerses = leadPlan.chance(lead.verses);
   const leadClimbs = leadVerses && leadPlan.chance(lead.climb);
   const seen: Partial<Record<SectionKind, number>> = {};
@@ -1476,19 +1482,23 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     let g2 = 'Guitar 2: same as the idea';
     // the lead player's verse: mostly answering the singer, now and then another part for a change
     const answering = (k: number): Guitar2Style => (r.chance(lead.other) ? playingStyle(r, idea, k) : 'answerMore');
-    if (s.g2 === 'drop') { idea.guitar2 = []; g2 = 'Guitar 2: sits out'; }
-    else if (s.g2 === 'pick') g2 = writeGuitar2(idea, r);
+    if (figureVerses && (s.kind === 'verse' || (s.g2 === 'pick' && r.chance(0.5))) && s.g2 !== 'keep') {
+      // (a first verse that would have no Guitar 2 now and then lets the figure come in halfway)
+      const late = s.g2 === 'drop' && runs > 1 && r.chance(0.5);
+      g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => (late && k < runs / 2 ? 'rest' : 'figure')));
+    } else if (s.g2 === 'drop') { idea.guitar2 = []; g2 = 'Guitar 2: sits out'; }
+    else if (s.g2 === 'pick') g2 = writeGuitar2(idea, g2o, r);
     else if (s.g2 === 'build' && leadVerses) {
-      g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => (k < runs / 2 ? 'answer' : answering(k))), lead.lick);
+      g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => (k < runs / 2 ? 'answer' : answering(k))), lead.lick);
       notes.push('Plays twice through; Guitar 2 answers the singer more the second time');
     } else if (s.g2 === 'build') {
-      g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => (k < runs / 2 ? 'rest' : playingStyle(r, idea, k))));
+      g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => (k < runs / 2 ? 'rest' : playingStyle(r, idea, k))));
       notes.push('Plays twice through; Guitar 2 joins the second time');
-    } else if (s.g2 === 'answer') g2 = writeGuitar2(idea, r, new Array<Guitar2Style>(runs).fill('answer'), lead.lick);
-    else if (s.g2 === 'answerMore') g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => answering(k)), lead.lick);
+    } else if (s.g2 === 'answer') g2 = writeGuitar2(idea, g2o, r, new Array<Guitar2Style>(runs).fill('answer'), lead.lick);
+    else if (s.g2 === 'answerMore') g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => answering(k)), lead.lick);
     else if (s.g2 === 'climb') {
       // (a long pre-chorus answers first, then climbs in its last four bars)
-      g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => (k === runs - 1 ? 'climb' : 'answer')), lead.lick);
+      g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => (k === runs - 1 ? 'climb' : 'answer')), lead.lick);
     } else if (s.g2 === 'solo') {
       // (how far it goes: where it sits on the song's curve; the climax goes highest)
       const tt = arc.sections[si].tension;
@@ -1500,8 +1510,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       g2 = sol.notes[0];
       if (s.kind === 'solo') notes.push(`Guitar solo, ${idea.song.bars.length} bars over the ${soloOverChorus ? 'chorus' : 'verse'} chords; the rhythm guitar backs off`);
       else notes.push('Guitar 2 solos over the outro');
-    } else if (s.g2 === 'play') g2 = writeGuitar2(idea, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));
-    else if (s.g2 === 'swell') g2 = writeGuitar2(idea, r, new Array<Guitar2Style>(runs).fill('swell'));
+    } else if (s.g2 === 'play') g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));
+    else if (s.g2 === 'swell') g2 = writeGuitar2(idea, g2o, r, new Array<Guitar2Style>(runs).fill('swell'));
     else if (s.g2 === 'hook') {
       placeHook(idea, s.intro === 'layered' ? 4 : s.intro === 'long' ? 12 : 0, s.kind === 'chorus' ? idea.song.bars.length : 4);
       g2 = hookNote;
@@ -1511,7 +1521,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       const style = r.weighted<Guitar2Style>(idea.song.partGenres.strum === 'funk' ? [['funk', 2], ['lead', 1]]
         : rs === 'picked' ? [['rhythm', 2], ['octaves', 1]]
           : [['lead', 3], ['octaves', 2], ...(twin ? [['harmony', 3] as [Guitar2Style, number]] : [])]);
-      g2 = writeGuitar2(idea, r, new Array<Guitar2Style>(runs).fill(style));
+      g2 = writeGuitar2(idea, g2o, r, new Array<Guitar2Style>(runs).fill(style));
     } else if (s.g2 === 'keep' && !idea.guitar2.length) g2 = 'Guitar 2: sits out';
     if (s.kind === 'interlude') notes.push(riff ? 'The hook riff comes back with the full band' : 'The hook comes back over the chorus chords');
     if (s.kind === 'verse' && riffVerse) notes.push('The idea\'s riff carries on under the verse');
