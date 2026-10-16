@@ -402,6 +402,15 @@ throughout the song and not jump around wildly".
 | Notes, 10th to 95th percentile (as played) | 10.4 dB | 4.7 dB |
 | The same, prepared (polished) | 1.7 / 4.2 dB | 1.0 / 2.2 dB |
 
+## 9b. No lone spikes (Paul: big jumps "not very good sounding")
+- The problem: a line jumping up an octave to a held high note and straight back down (Paul's example: F#3, up to F#4, back to F#3). A jump up that keeps going sounded fine, so it stays.
+- Mostly the wails (a held note lifted near the top of the range, the notes around it left low); also the climax's lift, following the tension and the energy styles.
+- Now, on every section's finished line (`smoothSpikes` in `src/parts/vocal.ts`, all writers; the Vocal tune follows):
+  - A note a 6th or more over the note before and the note after (half a bar's rest or less between them) comes down to a 5th at most over the note before (a chord note, else a note of the key).
+  - A drop of a 6th or more off a high note that was jumped to steps down: the next note (and the one after, if still a big drop) moves to a chord note a 3rd or so under it. Never a line's last note.
+- 784 songs (7 writers × 7 genres × 8 moods × 2): spikes 1,005 → 1; big drops off a jump 1,219 → 139; jumps of an octave or more 1.3% → 0.65% of moves; the songs' top notes the same (half a semitone lower on average).
+- `npm run guide-check` still passes (Guide and Anchor lines unchanged).
+
 ## 10. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the
