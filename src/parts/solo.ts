@@ -89,7 +89,7 @@ const HANDS_OF: Record<LickKind, { legato: number; slide: number; vib: number; s
 };
 
 type Art = 'pick' | 'legato' | 'slide';
-export interface Ev extends Omit<PlacedNote, 'bend'> { bend?: number; slide?: number; art?: Art; peak?: boolean }
+export interface Ev extends Omit<PlacedNote, 'bend'> { bend?: number; slide?: number; art?: Art; peak?: boolean; shift?: number }
 interface Motif { rhythm: number[]; moves: number[] }
 
 /**
@@ -470,7 +470,8 @@ export function playSolo(rng: Rng, evs: Ev[], o: SoloHands): GuitarHit[] {
   const hits: GuitarHit[] = all.map((e, i) => {
     const next = all[i + 1]?.step ?? total;
     const h = placedHit({ ...e, bend: e.bend ?? 0, len: Math.max(1, Math.min(e.len, next - e.step)), vel: Math.min(1, e.vel) }, t, pos);
-    return e.slide ? { ...h, slide: e.slide } : h;
+    const h2 = e.slide ? { ...h, slide: e.slide } : h;
+    return e.shift ? { ...h2, shift: e.shift } : h2;
   });
   return hits;
 }

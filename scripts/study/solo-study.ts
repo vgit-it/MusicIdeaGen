@@ -46,6 +46,14 @@ interface Solo {
   pitches: number; range: number;
   /** triplet onsets, notes in 3-note groups of a quick sequence (a pattern moved down or up the scale) */
   trip: number;
+  /** bars (3+ notes): played again exactly (notes and rhythm), rhythm only, the next bar the same rhythm, the rhythm back after 2+ bars */
+  rep?: { bars: number; exact: number; rhythm: number; next: number; later: number };
+  /** notes outside the pentatonic: by degree (above the key root), how many quick (a 16th or less to the next), on a beat */
+  out?: { deg: number[]; quick: number; onBeat: number; n: number };
+  /** triplet notes by kind (a third of a beat apart: 8th triplets; a sixth: 16th triplets; two thirds: quarter triplets), and 8th-triplet groups going down, up, turning */
+  trips?: { t8: number; t16: number; t4: number; down: number; up: number; turn: number };
+  /** times the line comes back to within a step of its top note (separate visits) */
+  topVisits?: number;
 }
 const solos: Solo[] = [];
 
@@ -133,6 +141,49 @@ function measure(side: 'real' | 'app', top: BN[], b0: number, b1: number, low: n
     pitches: new Set(pitch).size, range: hi - sorted[0],
     trip: ns.filter((n) => { const f = mod(n.s, 1); return Math.abs(f - 1 / 3) < 0.05 || Math.abs(f - 2 / 3) < 0.05; }).length / ns.length,
   });
+  // repetition in detail
+  {
+    const bk: { b: number; r: string; e: string }[] = [];
+    for (let b = b0; b <= b1; b++) {
+      const bn = ns.map((n, i) => i).filter((i) => ns[i].s >= b * 4 && ns[i].s < b * 4 + 4);
+      if (bn.length < 3) continue;
+      const r = bn.map((i) => Math.round((ns[i].s - b * 4) * 4)).join(',');
+      bk.push({ b, r, e: r + '|' + bn.map((i) => pitch[i]).join(',') });
+    }
+    const rep = { bars: bk.length, exact: 0, rhythm: 0, next: 0, later: 0 };
+    for (const x of bk) {
+      if (bk.some((y) => y !== x && y.e === x.e)) rep.exact++;
+      if (bk.some((y) => y !== x && y.r === x.r)) rep.rhythm++;
+      if (bk.some((y) => Math.abs(y.b - x.b) === 1 && y.r === x.r)) rep.next++;
+      if (bk.some((y) => Math.abs(y.b - x.b) >= 2 && y.r === x.r)) rep.later++;
+    }
+    solos[solos.length - 1].rep = rep;
+    // notes outside the pentatonic
+    const out = { deg: new Array(12).fill(0), quick: 0, onBeat: 0, n: 0 };
+    pitch.forEach((p, i) => {
+      if (PENTA[mode].includes(deg(p))) return;
+      out.deg[deg(p)]++; out.n++;
+      if (i + 1 < ns.length && ns[i + 1].s - ns[i].s <= 0.27) out.quick++;
+      if (Math.abs(ns[i].s - Math.round(ns[i].s)) < 0.06) out.onBeat++;
+    });
+    solos[solos.length - 1].out = out;
+    // triplets
+    const trips = { t8: 0, t16: 0, t4: 0, down: 0, up: 0, turn: 0 };
+    for (let i = 0; i + 1 < ns.length; i++) {
+      const d = ns[i + 1].s - ns[i].s;
+      if (Math.abs(d - 1 / 3) < 0.04) trips.t8++; else if (Math.abs(d - 1 / 6) < 0.03) trips.t16++; else if (Math.abs(d - 2 / 3) < 0.05) trips.t4++;
+    }
+    for (let i = 0; i + 2 < ns.length; i++) {
+      if (Math.abs(mod(ns[i].s, 1)) > 0.05 && Math.abs(mod(ns[i].s, 1) - 1) > 0.05) continue;
+      if (Math.abs(ns[i + 1].s - ns[i].s - 1 / 3) > 0.04 || Math.abs(ns[i + 2].s - ns[i + 1].s - 1 / 3) > 0.04) continue;
+      const a = pitch[i + 1] - pitch[i], b = pitch[i + 2] - pitch[i + 1];
+      if (a < 0 && b < 0) trips.down++; else if (a > 0 && b > 0) trips.up++; else trips.turn++;
+    }
+    solos[solos.length - 1].trips = trips;
+    let visits = 0, near = false;
+    for (const p of pitch) { const n = p >= hi - 2; if (n && !near) visits++; near = n; }
+    solos[solos.length - 1].topVisits = visits;
+  }
   if (side === 'app') return;
   // the licks: 4-7 notes in a row inside a phrase, as notes above the key's root (rhythm free), and with their rhythm (16ths)
   const phrases: number[][] = [];

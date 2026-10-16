@@ -984,9 +984,11 @@ export class Engine {
       const hits = this.hitsAt2[this.idx][g] ?? [];
       const next = hits.length ? toNext(this.hitsAt2) : 0;
       for (const h of hits) {
-        this.playHit(this.g2Inst, held(h, next), time + (idea.g2Feel ?? 0) / 1000, six);
+        // (a triplet sounds between the steps)
+        const off = (h.shift ?? 0) * six;
+        this.playHit(this.g2Inst, held(h, next), time + off + (idea.g2Feel ?? 0) / 1000, six);
         // Twin: the second guitar, a hair late, its own hands (no hand moves of Guitar 2's)
-        if (h.twin && this.g2Twin) this.playHit(this.g2Twin, { ...held(h, next), notes: h.twin, touch: undefined }, time + (idea.g2Feel ?? 0) / 1000 + 0.012, six, 0.75);
+        if (h.twin && this.g2Twin) this.playHit(this.g2Twin, { ...held(h, next), notes: h.twin, touch: undefined }, time + off + (idea.g2Feel ?? 0) / 1000 + 0.012, six, 0.75);
       }
     }
     if (others && this.onStep && !this.offline) this.onStep(idea, this.idx, g, time, six);

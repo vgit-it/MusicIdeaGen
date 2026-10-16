@@ -44,6 +44,19 @@ What this says:
 6. **They end in passing.** The last note is short (half a beat) and leads into the next section, instead of a long note on the root.
 7. Triplets (7%) the app hardly plays; a little less pentatonic than the app (75%).
 
+### In detail (for the second round)
+| | Real | Real, minor keys | Real, major keys |
+|---|---|---|---|
+| bars played again exactly (notes and rhythm) | 42% | 42% | 42% |
+| bars whose rhythm comes back: anywhere / the next bar / 2+ bars later | 55 / 24 / 53% | | |
+| notes outside the pentatonic | 24% | 22% | 26% |
+| which (share of those) | | 2 36%, b6 21%, 6 13% | 4 39%, 7 18%, b7 17%, b3 11% |
+| of them quick (a 16th) / on a beat | 33 / 35% | | |
+| triplet steps a 100 notes: 8th / 16th / quarter | 5.0 / 3.9 / 1.8 | | |
+| solos with 8th triplets | 18% | | |
+| 8th-triplet groups: falling / rising / turning | 36 / 15 / 49% | 29 / 17 / 54% | 43 / 13 / 44% |
+| times the line comes back to the top (median) | 4 | | |
+
 ## The licks real solos share
 Note shapes (any rhythm) played by many songs from many artists, in solos. Notes are named from the key's root (1, b3, 4, 5, b7...; ' an octave up, , an octave down). 1,094 shapes are shared by 10+ songs from 8+ artists; the most common:
 
