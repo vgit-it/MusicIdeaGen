@@ -45,7 +45,16 @@ Paul: make sure the starting note is a strong one (options 2 + 3).
 - The writer picks them so, leaning to what real singers sing on beat 1 or 3.
 - **Kept to the end:** later steps (rhythm, tension, fitting, Real songs' notes off the chord) could move them off. A last pass moves them back to the nearest note that fits, 2 semitones at most (4 if none nearer). Real songs' "off the chord on purpose" notes skip them.
 - Signature moves' colour notes stay (a 9th held on purpose).
-- **Later (option 1):** `npm run realism-learned` now also counts how real lines land and which scale note they start on. Run it on the PC with the MIDI collection; the app then leans to those. Until then, no lean by scale note.
+- **Option 1, done:** `npm run realism-learned` was run on the MIDI collection. It counted how real lines land and which scale note they start on. Real lines start on the key's root about a quarter of the time (metal 41%), then its 5th and 3rd. The first note now leans to those, within the chord rule above.
+
+| Setting | Line starts on the key's root: before | after (real songs: 26%) | Start notes off real songs' |
+|---|---|---|---|
+| Learned | 23% | 26% | 16% (same) |
+| Grid + Learned | 23% | 26% | 16% (same) |
+| Words + Learned | 28% | 31% | 17% (same) |
+
+- Realism scores: the same, within a point. A stronger lean put too many starts on the root and helped nothing else, so it stays gentle. Most of the rest is the chord rule (the first note must be the chord's root, 3rd or 5th) and few songs per genre.
+- Check it: `STARTS_DETAIL=1 MODE=learned npm run realism-lab` (the lab's "line starts" line, per genre with the switch).
 
 | Setting | First note root/3rd/5th: before | after | First note on a beat a chord note: before | after |
 |---|---|---|---|---|
