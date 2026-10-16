@@ -170,7 +170,7 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
     notes.push(`Mixed genres: chords ${song.genre}, drums ${pg.drums}, strum ${pg.strum}, bass ${pg.bass}`);
   }
 
-  const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, null, undefined, undefined, { lines: opts.leadLines });
+  const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, null, undefined, undefined, { lines: opts.leadLines, figures: opts.leadFigures, figureSeed: `${seeds.guitar2 ?? seeds.strum}-figure` });
   notes.splice(1, 0, ...g2.notes);
 
   return { seeds, opts, song, chords, drums, strum, bass, bassLen, bassLine, guitar2: clearFills(song, drums, g2.hits), notes };
@@ -187,7 +187,7 @@ function generateRiffIdea(opts: GenOptions, seeds: Seeds, song: Song, chords: Ch
       (drums.halfTime ? ' · half-time feel' : '') + ' · kick and bass follow the riff',
     ...chords.notes,
   ];
-  const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, riff.hits, undefined, undefined, { lines: opts.leadLines });
+  const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, riff.hits, undefined, undefined, { lines: opts.leadLines, figures: opts.leadFigures, figureSeed: `${seeds.guitar2 ?? seeds.strum}-figure` });
   notes.splice(1, 0, ...g2.notes);
   const strum = new Array<Stroke>(song.total).fill('.');
   return { seeds, opts, song, chords, drums, strum, bass, bassLen: lens, guitar: riff.hits, guitar2: g2.hits, notes };

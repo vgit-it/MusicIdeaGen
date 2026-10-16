@@ -239,7 +239,7 @@ if (process.env.REAL !== '0') {
 for (const g of GENRES) {
   for (let i = 0; i < N_APP; i++) {
     const s = `${g}-lead-${i}`;
-    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LINES ? { leadLines: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
+    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LINES ? { leadLines: true } : {}), ...(process.env.FIGURES ? { leadFigures: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
     const tr = buildTrack(idea, defaultTrackOptions(idea));
     const id = g === 'pop' || g === 'funk' ? 'electric-clean' : g === 'rock' ? 'electric-crunch' : 'electric-dist';
     const bytes = toMidi(tr.sections, { chordIdFor: () => id, guitar2IdFor: () => id, vocal: 'auto', backing: 'off' });
