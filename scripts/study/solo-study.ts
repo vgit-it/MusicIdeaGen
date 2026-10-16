@@ -36,7 +36,10 @@ interface Solo {
   runs: { n: number; up: number; down: number; both: number; scale: number; notes: number };
   /** the bar before the highest note: a run up into it, a jump to it, a step */
   into: string;
-  heldNotes: number; penta: number; blue: number; repeatedNote: number;
+  heldNotes: number;
+  /** notes held 2 beats or more, and the longest note (beats) */
+  long: number; longest: number;
+  penta: number; blue: number; repeatedNote: number;
   /** 1-bar rhythms played again in the solo, and 1-bar shapes played again a step or more away (a sequence) */
   rhyAgain: number; seq: number;
   /** distinct notes over the solo */
@@ -121,6 +124,7 @@ function measure(side: 'real' | 'app', top: BN[], b0: number, b1: number, low: n
     },
     runs, into,
     heldNotes: ns.filter((n) => n.e - n.s >= 1).length / (T / 4),
+    long: ns.filter((n) => n.e - n.s >= 2).length / ns.length, longest: Math.max(...ns.map((n) => n.e - n.s)),
     penta: pitch.filter((p) => PENTA[mode].includes(deg(p))).length / ns.length,
     blue: pitch.filter((p) => BLUES[mode].includes(deg(p))).length / ns.length,
     repeatedNote: pitch.slice(1).filter((p, i) => p === pitch[i]).length / (ns.length - 1),
@@ -202,7 +206,7 @@ const N_APP = Number(process.env.N ?? 40);
 for (const g of ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'] as Genre[]) {
   for (let i = 0; i < N_APP; i++) {
     const s = `${g}-solo-${i}`;
-    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LICKS ? { leadLicks: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
+    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LICKS ? { leadLicks: true } : {}), ...(process.env.SOLO ? { leadSolo: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
     const tr = buildTrack(idea, { ...defaultTrackOptions(idea), solo: 'on' });
     const id = g === 'pop' || g === 'funk' ? 'electric-clean' : g === 'rock' ? 'electric-crunch' : 'electric-dist';
     const r = read(toMidi(tr.sections, { chordIdFor: () => id, guitar2IdFor: () => id, vocal: 'auto', backing: 'off' }))!;
@@ -217,5 +221,11 @@ for (const g of ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal
 
 const shared = (m: Map<string, Seen>, s: number, ar: number) => [...m].filter(([, r]) => r.songs >= s && r.artists.size >= ar).sort((x, y) => y[1].songs - x[1].songs)
   .map(([k, r]) => ({ k, songs: r.songs, artists: r.artists.size, genres: r.genres }));
+// the new solo writer's vocabulary (src/parts/solo2.ts): every shape shared by 10+ songs from 8+ artists
+if (REAL && process.env.WRITE) {
+  const GENRES = ['pop', 'rock', 'hardrock', 'metal', 'grunge', 'altmetal', 'funk'];
+  const v = shared(licks, 10, 8).map(({ k, songs: n, genres }) => { const [m, d0, st] = k.split('|'); return [m, +d0, st.split(',').map(Number), n, GENRES.map((g) => genres[g] ?? 0)]; });
+  fs.writeFileSync('src/realism/solo-licks.json', JSON.stringify({ about: 'docs/STUDY-SOLO.md: note shapes (from the key root, then the steps) played in real guitar solos by 10+ songs from 8+ artists (Lakh MIDI collection); counts only', genres: GENRES, shapes: v }));
+}
 fs.writeFileSync(OUT, JSON.stringify({ songs, solos, licks: shared(licks, 10, 8).slice(0, 400), licksR: shared(licksR, 6, 5).slice(0, 300) }));
 console.log('songs with a lead', songs, 'solos', solos.length, 'solo songs', new Set(solos.map((s) => s.artist + s.n)).size, 'licks seen', licks.size, 'shared', shared(licks, 10, 8).length, 'with rhythm', shared(licksR, 6, 5).length);

@@ -69,6 +69,8 @@ export interface GenOptions {
   leadTwin?: boolean;
   /** Real licks: solos and verse fills also play licks written from real lead guitar parts (shared rhythms, real note-to-note odds; docs/LEAD-LICKS.md). Off: as before. */
   leadLicks?: boolean;
+  /** Solo New: the new solo writer, built from real solos (docs/SOLO-NEW.md). Off: the classic writer. */
+  leadSolo?: boolean;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */

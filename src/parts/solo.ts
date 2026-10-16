@@ -17,7 +17,7 @@ import type { LickKind } from '../players/lead';
 import type { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
 import { SCALES, chordPc } from '../theory';
-import { TUNINGS } from '../theory/fretboard';
+import { TUNINGS, type Tuning } from '../theory/fretboard';
 import { type Guitar2Part, MINORISH, chordTones, leadScale } from './guitar2';
 import { type PlacedNote, licksFor, lickFit, placeLibLick, placedHit } from './licks';
 import { REAL_SOLO, realCell, realLick } from './reallicks';
@@ -89,7 +89,7 @@ const HANDS_OF: Record<LickKind, { legato: number; slide: number; vib: number; s
 };
 
 type Art = 'pick' | 'legato' | 'slide';
-interface Ev extends Omit<PlacedNote, 'bend'> { bend?: number; slide?: number; art?: Art; peak?: boolean }
+export interface Ev extends Omit<PlacedNote, 'bend'> { bend?: number; slide?: number; art?: Art; peak?: boolean }
 interface Motif { rhythm: number[]; moves: number[] }
 
 /**
@@ -425,10 +425,25 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     }
   });
 
-  // how each note is played, from where it sits in the solo: quick notes in a run legato (a pick on each
-  // beat, hammered up or pulled off down between), slower connected notes picked or slid, a phrase
-  // started picked or slid into, held chord notes bent now and then, vibrato on held notes (wider on the
-  // peak); what a lick says, it keeps
+  const hits = playSolo(rng, evs, { lick, key, minor, isTone, inScale, total, t });
+  return {
+    hits,
+    notes: [`Guitar 2: a solo: ${quoted ? 'starts by quoting the hook' : 'starts low and sparse'}, phrases in call and answer (slow sung lines against fast licks), builds to its highest note about two-thirds of the way (${st.peak}), lands on the root`],
+  };
+}
+
+/** What the solo writers' notes need to be played: the player, the key, the chord and scale tests, the length, the tuning. */
+export interface SoloHands { lick: LickKind; key: number; minor: boolean; isTone: (m: number, g: number) => boolean; inScale: (m: number) => boolean; total: number; t: Tuning }
+
+/**
+ * How each note is played, from where it sits in the solo: quick notes in a run legato (a pick on each
+ * beat, hammered up or pulled off down between), slower connected notes picked or slid, a phrase
+ * started picked or slid into, held chord notes bent now and then, vibrato on held notes (wider on the
+ * peak); what a lick says, it keeps.
+ */
+export function playSolo(rng: Rng, evs: Ev[], o: SoloHands): GuitarHit[] {
+  const { lick, key, minor, isTone, inScale, total, t } = o;
+  const st = STYLE[lick];
   evs.sort((x, y) => x.step - y.step);
   const all = evs.filter((e, i) => i === 0 || e.step > evs[i - 1].step);
   const hd = HANDS_OF[lick];
@@ -457,8 +472,5 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     const h = placedHit({ ...e, bend: e.bend ?? 0, len: Math.max(1, Math.min(e.len, next - e.step)), vel: Math.min(1, e.vel) }, t, pos);
     return e.slide ? { ...h, slide: e.slide } : h;
   });
-  return {
-    hits,
-    notes: [`Guitar 2: a solo: ${quoted ? 'starts by quoting the hook' : 'starts low and sparse'}, phrases in call and answer (slow sung lines against fast licks), builds to its highest note about two-thirds of the way (${st.peak}), lands on the root`],
-  };
+  return hits;
 }
