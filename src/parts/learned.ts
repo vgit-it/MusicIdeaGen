@@ -58,11 +58,13 @@ export function learnedLine(rng: Rng, c: LearnedCtx, L: LearnedStyle, onsets: Le
   copied: (number | undefined)[], before: { midi: number; g: number; step: number | null } | null, closed: boolean, hang: boolean): number[] {
   const n = onsets.length;
   const out: number[] = [];
-  // the line's landing: its first note on a beat (a pickup before it sings free), else its first stressed note, else
-  // its first; always a chord note, so a line starts from somewhere strong
+  // a line starts from somewhere strong: its first note the chord's root, 3rd or 5th, and its landing (its first
+  // note on a beat, else its first stressed note, else its first) a chord note; the notes between them sing free
   let land = onsets.findIndex((o) => o.g % 4 === 0);
   if (land < 0) land = onsets.findIndex((o) => o.stress);
   if (land < 0) land = 0;
+  const main = (m: number, g: number) => { const r = c.relAt(m, g); return r === 'R' || r === '3' || r === '5'; };
+  const strongAt = (oi: number, m: number, g: number) => (oi === 0 ? main(m, g) : oi === land ? c.isTone(m, g) : true);
   const dLo = degOf(c, c.lo) + (midiOf(c, degOf(c, c.lo)) < c.lo ? 1 : 0), dHi = degOf(c, c.hi);
   const keyPc = mod(c.key, 12);
   let prevM = before?.midi ?? null, prevG = before?.g ?? 0, prevStep: number | null = before?.step ?? null, same = 0;
@@ -92,6 +94,7 @@ export function learnedLine(rng: Rng, c: LearnedCtx, L: LearnedStyle, onsets: Le
       // (the section's contour: a soft pull back past a 4th from it)
       w *= Math.exp(-Math.max(0, Math.abs(m - t) - 4) / 2.5);
       const r = c.relAt(m, g);
+      if (oi === 0 && !main(m, g)) return [m, 0];
       if (oi === land) {
         if (!c.isTone(m, g)) return [m, 0];
         w *= L.land[r];
@@ -115,9 +118,9 @@ export function learnedLine(rng: Rng, c: LearnedCtx, L: LearnedStyle, onsets: Le
     };
     let ws = cands.map(weigh).filter(([, w]) => w > 0);
     // (nothing the odds allow fits: the nearest chord note to the contour)
-    if (!ws.length) ws = cands.length ? cands.map(([m]) => [m, (c.isTone(m, g) ? 1 : oi === land ? 0 : 0.05) / (1 + Math.abs(m - t))] as [number, number]).filter(([, w]) => w > 0) : [];
-    // (the landing with no chord note in reach: the chord note nearest the contour, anywhere in the range)
-    if (!ws.length && oi === land) for (let d = dLo; d <= dHi; d++) { const x = midiOf(c, d); if (c.isTone(x, g)) ws.push([x, 1 / (1 + Math.abs(x - t))]); }
+    if (!ws.length) ws = cands.length ? cands.map(([m]) => [m, (!strongAt(oi, m, g) ? 0 : c.isTone(m, g) ? 1 : 0.05) / (1 + Math.abs(m - t))] as [number, number]).filter(([, w]) => w > 0) : [];
+    // (the first note or the landing with none in reach: the nearest to the contour, anywhere in the range)
+    if (!ws.length && (oi === 0 || oi === land)) for (let d = dLo; d <= dHi; d++) { const x = midiOf(c, d); if (strongAt(oi, x, g)) ws.push([x, 1 / (1 + Math.abs(x - t))]); }
     if (!ws.length) ws = [[midiOf(c, degOf(c, t)), 1]];
     const m = rng.weighted(ws);
     prevStep = prevM === null || oi === 0 ? null : degOf(c, m) - degOf(c, prevM);

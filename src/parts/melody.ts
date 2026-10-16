@@ -1692,7 +1692,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
    * note before kept over the new chord (held over), or the scale note next to it; never one that rubs
    * against the chord or grinds with the bass, never a line's last note, a high note or a colour already
    * there. Marked `colour`, so following the tension and fitting to the band leave it be. Learned: never a line's
-   * landing (its first note on a beat), which lands on the chord.
+   * first note or landing (its first note on a beat), which sit on the chord.
    */
   const realLean = (ns: TuneNote[]) => {
     const R = style.real!;
@@ -1702,7 +1702,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const ok = (m: number, g: number) => pool.includes(m) && !rubs(m, g) && !grindsBass(m, g);
     const sung = ns.filter((n) => !n.tie);
     const landing = new Set<TuneNote>();
-    if (style.learned) for (const n of sung) if (n.step % 4 === 0 && ![...landing].some((x) => x.line === n.line)) landing.add(n);
+    if (style.learned) sung.forEach((n, k) => { if (sung[k - 1]?.line !== n.line || (n.step % 4 === 0 && ![...landing].some((x) => x.line === n.line && x.step % 4 === 0))) landing.add(n); });
     sung.forEach((n, k) => {
       const p = sung[k - 1], nx = sung[k + 1];
       if (!nx || nx.line !== n.line || landing.has(n) || !(n.stress || n.len >= 4) || n.colour || n.peak || n.belt || !isTone(n.midi, n.step) || !rng.chance(hold)) return;
