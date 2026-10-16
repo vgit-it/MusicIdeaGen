@@ -6,6 +6,7 @@
 import type { Genre, RiffStyle } from '../genres';
 import type { LickKind } from '../players/lead';
 import { LICK_HABITS, type LibLick, licksFor, lickFit, placeLibLick, placedHit } from './licks';
+import { REAL_VERSE, realLick } from './reallicks';
 import type { ChordPart, GuitarHit, Song } from '../idea';
 import { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
@@ -601,7 +602,8 @@ export function generateHook(rng: Rng, song: Song, chords: ChordPart, riff: Guit
 }
 
 /** Guitar 2's switches: Lines (docs/LEAD-LINES.md); Figures (docs/LEAD-FIGURES.md), with the song's own figure from `figureSeed`. */
-export interface G2Options { lines?: boolean; figures?: boolean; figureSeed?: string }
+/** `licks`: Real licks (docs/LEAD-LICKS.md), with the rhythms the song has used so far (each once a song). */
+export interface G2Options { lines?: boolean; figures?: boolean; figureSeed?: string; licks?: Set<string> }
 
 export interface Guitar2Part {
   hits: GuitarHit[];
@@ -638,6 +640,17 @@ export function generateGuitar2(
     const end = b.start + b.len;
     const before = hits.filter((h) => h.step < earliest);
     const prev = before.length ? before[before.length - 1].notes[before[before.length - 1].notes.length - 1] : 69;
+    // Real licks: now and then one written from real lead parts instead
+    if (o.licks && rng.chance(REAL_VERSE)) {
+      const real = realLick(rng, {
+        key, minor: MINORISH.includes(song.mode), genre, who: lick, speed: null, start: earliest, end, lo: LEAD_RANGE[0], hi: LEAD_RANGE[1],
+        prev, close: 'any', vel: 0.8, fit, changes: new Set(chords.timeline.map((e) => e.step)), used: o.licks,
+      });
+      if (real) {
+        if (lick === 'muted') real[real.length - 1].len = Math.min(real[real.length - 1].len, 3);
+        return real.map((e, i) => placedHit({ ...e, bend: 0, art: i === 0 ? 'pick' : undefined }, t, pos, clean || lick === 'muted'));
+      }
+    }
     const options = rng.shuffle(licksFor(lick, null, fit.chordAt(Math.max(earliest, end - 8)), end - earliest).filter((l) => l !== lastLib));
     for (const l of options.slice(0, 8)) {
       // (now and then cut down: its first notes left off)

@@ -6,12 +6,12 @@
 // Run: npm run lead-study (REAL=0 to skip the collection, N=40 app songs per genre; writes OUT, default lead-study.json)
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseMidi } from 'midi-file';
 import { generate } from '../../src/generator';
 import type { Genre } from '../../src/genres';
 import { buildTrack, defaultTrackOptions } from '../../src/track';
 import { toMidi } from '../../src/export/midi';
-import { MAJ as KMAJ, MIN as KMIN, corr, findVox, genreOf, norm, type N } from './lakh-songs';
+import { MAJ as KMAJ, MIN as KMIN, corr, findVox, genreOf, norm } from './lakh-songs';
+import { type BN, type Track, isLead, guitarish, onsets, read } from './lead-read';
 
 const ROOT = process.argv[2] ?? 'experiments/MidiCollection';
 const GENRES: Genre[] = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'];
@@ -20,46 +20,6 @@ const mod = (n: number, m: number) => ((n % m) + m) % m;
 const median = (a: number[]) => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 const SCALE = { maj: [0, 2, 4, 5, 7, 9, 11], min: [0, 2, 3, 5, 7, 8, 10] };
 const PENTA = { maj: [0, 2, 4, 7, 9], min: [0, 3, 5, 7, 10] };
-
-interface BN extends N { bent?: boolean }
-interface Track { name: string; ch: number; prog: number; ns: BN[] }
-
-/** Every track's notes (in beats), with notes bent by pitch-bend events marked. */
-function read(bytes: Uint8Array): { T: Track[]; ts: string; bpm: number } | null {
-  let m; try { m = parseMidi(bytes); } catch { return null; }
-  const ppq = (m.header as { ticksPerBeat?: number }).ticksPerBeat;
-  if (!ppq) return null;
-  let ts = '', bpm = 0;
-  const T = m.tracks.map((t) => {
-    let tick = 0, name = '', ch = -1, prog = -1;
-    const on: Record<number, number> = {}, ns: BN[] = [], bends: number[] = [];
-    for (const e of t as any[]) {
-      tick += e.deltaTime;
-      if (e.type === 'trackName' && !name) name = (e.text || '').trim();
-      else if (e.type === 'timeSignature' && !ts) ts = `${e.numerator}/${e.denominator}`;
-      else if (e.type === 'setTempo' && !bpm) bpm = 60000000 / e.microsecondsPerBeat;
-      else if (e.type === 'programChange' && prog < 0) prog = e.programNumber;
-      else if (e.type === 'pitchBend' && Math.abs(e.value) > 400) bends.push(tick / ppq);
-      else if (e.type === 'noteOn' && e.velocity > 0) { on[e.channel * 128 + e.noteNumber] = tick; ch = e.channel; }
-      else if (e.type === 'noteOff' || (e.type === 'noteOn' && e.velocity === 0)) { const k = e.channel * 128 + e.noteNumber; if (on[k] !== undefined) { ns.push({ s: on[k] / ppq, e: tick / ppq, p: e.noteNumber }); delete on[k]; } }
-    }
-    ns.sort((x, y) => x.s - y.s || x.p - y.p);
-    if (bends.length) { let j = 0; for (const n of ns) { while (j < bends.length && bends[j] < n.s - 0.01) j++; if (j < bends.length && bends[j] < n.e) n.bent = true; } }
-    return { name, ch, prog, ns };
-  });
-  return { T, ts, bpm: bpm || 120 };
-}
-
-/** Onsets: notes struck together (within a 32nd) are one. */
-const onsets = (ns: BN[]) => { const o: BN[][] = []; for (const n of ns) { const l = o[o.length - 1]; if (l && n.s - l[0].s < 0.12) l.push(n); else o.push([n]); } return o; };
-const NOT_GTR = /vo(c|x|ice)|sax|key|synth|piano|organ|string|bass|trump|flute|horn|brass|harp|pad|sing|melod/i;
-const guitarish = (t: Track) => t.ch !== 9 && !/bass/i.test(t.name) && ((t.prog >= 24 && t.prog <= 31 && !NOT_GTR.test(t.name)) || (/guit|gtr|solo|lead|\bgt\b/i.test(t.name) && !NOT_GTR.test(t.name) && (t.prog < 0 || t.prog <= 31)));
-/** A lead line: mostly one note at a time, above the rhythm register, more than a few pitches. */
-function isLead(t: Track) {
-  if (t.ns.length < 30) return false;
-  const o = onsets(t.ns), ps = t.ns.map((n) => n.p);
-  return o.filter((x) => new Set(x.map((n) => n.p)).size >= 3).length / o.length < 0.25 && median(ps) >= 57 && new Set(ps).size >= 7;
-}
 
 interface Rec {
   side: 'real' | 'app'; genre: string; artist: string;
@@ -239,7 +199,7 @@ if (process.env.REAL !== '0') {
 for (const g of GENRES) {
   for (let i = 0; i < N_APP; i++) {
     const s = `${g}-lead-${i}`;
-    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LINES ? { leadLines: true } : {}), ...(process.env.FIGURES ? { leadFigures: true } : {}), ...(process.env.ROOM ? { leadRoom: true } : {}), ...(process.env.BREAKS ? { leadBreaks: true } : {}), ...(process.env.TWIN ? { leadTwin: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
+    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LINES ? { leadLines: true } : {}), ...(process.env.FIGURES ? { leadFigures: true } : {}), ...(process.env.ROOM ? { leadRoom: true } : {}), ...(process.env.BREAKS ? { leadBreaks: true } : {}), ...(process.env.TWIN ? { leadTwin: true } : {}), ...(process.env.LICKS ? { leadLicks: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
     const tr = buildTrack(idea, defaultTrackOptions(idea));
     const id = g === 'pop' || g === 'funk' ? 'electric-clean' : g === 'rock' ? 'electric-crunch' : 'electric-dist';
     const bytes = toMidi(tr.sections, { chordIdFor: () => id, guitar2IdFor: () => id, vocal: 'auto', backing: 'off' });
