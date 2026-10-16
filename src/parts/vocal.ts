@@ -445,6 +445,8 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       against = deliverEnergy(idea, es, sections.length > 1 ? againstFor(new Rng(`${ctx.seed}-against-${si}`), info.energy, si === firstSung) : null, FLOOR + melody.up, PEAK + melody.up + 1 + melody.top);
     }
     if (ctx.high) fitHigh(idea, ctx.high);
+    // (no lone spikes: a jump up of a 6th or more coming straight back down is a 5th at most, and a big drop off a high note steps down)
+    const spikes = smoothSpikes(idea);
     const trips = tripletize(idea.vocal);
     const quick = quicken(idea.vocal, 15 / idea.song.bpm, new Rng(`${ctx.seed}-quick-${si}`));
     // (patterns: the copy guard once more, on the line as finally sung)
@@ -465,6 +467,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
       if (quick) fitBits.push(`${quick === 1 ? 'a run' : `${quick} runs`} sung quicker than the beat`);
       if (unCopied) fitBits.push(`${unCopied === 1 ? 'a note' : `${unCopied} notes`} moved a step so no 2 bars copy a real song`);
+      if (spikes) fitBits.push(`${spikes === 1 ? 'a high note' : `${spikes} high notes`} brought nearer the line (no octave up and straight back)`);
       if (trips) fitBits.push(`${trips === 1 ? 'a triplet' : `${trips} triplets`}`);
       if (fitBits.length) idea.notes.push(`Vocal fits the band: ${fitBits.join(', ')}`);
       if (against) idea.notes.push(`Vocal against the band: ${against}`);
@@ -549,6 +552,60 @@ function fitHigh(idea: Idea, h: HighVoice) {
     while (m > lim - 12 && !tones.includes(mod(m, 12))) m--;
     n.midi = m;
   }
+}
+
+/**
+ * Spikes (Paul: a line jumping up an octave to a held high note and straight back down "is not very good
+ * sounding"; a jump up that keeps going is fine). Inside a line, a note (with its vowel carried on at the
+ * same pitch) a 6th or more over the note before and the note after (half a bar's rest or less between them) is brought down to a 5th at most over
+ * the one before (a chord note, else a note of the key). And a drop of a 6th or more off a high note that was
+ * jumped to steps down: the next note (and, if still a big drop, the one after) moved up to a chord note a
+ * 3rd or so under it; never a line's last note (its ending stays). Returns the notes changed.
+ */
+function smoothSpikes(idea: Idea): number {
+  const v = idea.vocal;
+  if (!v?.length) return 0;
+  const { key, total } = idea.song;
+  const scale = (SCALES[idea.song.mode] as readonly number[]).map((x) => (key + x) % 12);
+  const tonesAt = (g: number) => chordTones(key, idea.chords.timeline[idea.chords.chordIdx[Math.min(total - 1, Math.max(0, Math.floor(g)))]].chord);
+  const lead = v.filter((n) => !n.role).sort((a, b) => a.step - b.step);
+  const lines: VocalNote[][] = [];
+  for (const n of lead) { if (n.start || !lines.length) lines.push([]); lines[lines.length - 1].push(n); }
+  let changed = 0;
+  for (const line of lines) {
+    // (runs of notes at one pitch: a syllable and its vowel held on)
+    const G: VocalNote[][] = [];
+    for (const n of line) { const last = G[G.length - 1]; if (last && last[0].midi === n.midi) last.push(n); else G.push([n]); }
+    const pitch = (g: VocalNote[]) => g[0].midi;
+    const set = (g: VocalNote[], m: number) => { for (const n of g) n.midi = m; changed++; };
+    const close = (a: VocalNote[], b: VocalNote[]) => b[0].step - (a[a.length - 1].step + a[a.length - 1].len) <= 8;
+    // (the nearest chord note to a pitch in a span, else a note of the key)
+    const best = (g: number, lo: number, hi: number, near: number) => {
+      const t = tonesAt(g), ms = Array.from({ length: hi - lo + 1 }, (_, k) => lo + k);
+      const by = (ok: (m: number) => boolean) => ms.filter(ok).sort((x, y) => Math.abs(x - near) - Math.abs(y - near))[0];
+      return by((m) => t.includes(mod(m, 12))) ?? by((m) => scale.includes(mod(m, 12)));
+    };
+    for (let i = 1; i + 1 < G.length; i++) {
+      const A = G[i - 1], B = G[i], C = G[i + 1];
+      if (!close(A, B) || !close(B, C)) continue;
+      const up = pitch(B) - pitch(A);
+      // a spike: up a 6th or more and straight back down: a 5th at most
+      if (up >= 8 && pitch(B) - pitch(C) >= 7) {
+        const m = best(B[0].step, pitch(A) + 3, pitch(A) + 7, pitch(A) + 7);
+        if (m !== undefined) set(B, m);
+      }
+      // the way down off a high note that was jumped to: a step or two at a time
+      if (pitch(B) - pitch(A) < 5) continue;
+      for (let j = i + 1, k = 0; k < 2 && j + 1 < G.length; j++, k++) {
+        const hi = G[j - 1], X = G[j];
+        if (!close(hi, X) || pitch(hi) - pitch(X) < 8) break;
+        const m = best(X[0].step, pitch(hi) - 7, pitch(hi) - 2, pitch(hi) - 4);
+        if (m === undefined) break;
+        set(X, m);
+      }
+    }
+  }
+  return changed;
 }
 
 /** A held note stops where Guitar 2's answer starts (the singer breathes, the lead answers; a full beat's room, breathe()); a wail holds on. */
