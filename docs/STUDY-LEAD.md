@@ -11,7 +11,7 @@ Goal (Paul): study the lead guitar parts in the song collection and set them bes
   npx rolldown scripts/study/lead-study.ts --platform node --format esm -o node_modules/.cache/lead-study.mjs && node node_modules/.cache/lead-study.mjs
   node scripts/study/lead-report.cjs lead-study.json
   ```
-  Options: `N=40` app songs per genre, `REAL=0` app only, `OUT=` the file. About 4 minutes.
+  Options: `N=40` app songs per genre, `REAL=0` app only, `LINES=1` the app with Lines on, `OUT=` the file. About 4 minutes.
 
 ## What matches real songs (good)
 - **How much it plays:** the lead plays in about half the bars (real 50%, app 54%) and about half its notes fall while the singer sings (47% both).
@@ -28,6 +28,7 @@ Goal (Paul): study the lead guitar parts in the song collection and set them bes
 |---|---|---|
 | notes in a phrase (between rests of a beat) | **9** | **3** |
 | phrase length | 7.8 beats | 3.0 beats |
+| notes in phrases of 6+ notes | 85% | 51% |
 | notes a bar where it plays | 5.4 | 3.3 |
 | under the singer | 4.8 | 3.0 |
 | in solos | 6.3 | 4.9 |
@@ -97,6 +98,8 @@ Hard rock and metal leads mostly play between the sung sections (intros, gaps be
 - Genres are by artist (hand-tagged); alt metal is 37 songs.
 
 ## What to build, in order (a suggestion)
+Done: 1 and 2, the Lines switch (`docs/LEAD-LINES.md`).
+
 1. **Longer lines:** let Guitar 2 play 1-2 bar melodic lines (6-10 notes, mostly steps) as well as short licks, in verses and between choruses.
 2. **Fewer leaps, more steps** in its licks and lines (pop and funk most).
 3. **A picked figure part:** an arpeggio or repeated figure over the chords, kept bar to bar (pop, rock, grunge), and lead figures that repeat.
