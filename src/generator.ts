@@ -130,7 +130,7 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
   if (b.chords) chords = b.chords(chords);
   if (song.sections) return generateRiffIdea(opts, seeds, song, chords);
   const drums = generateDrums(new Rng(seeds.drums), song);
-  const { strum, name: pattern } = generateStrum(new Rng(seeds.strum), song, chords);
+  const { strum, name: pattern } = generateStrum(new Rng(seeds.strum), song, chords, opts.strumMix);
   // a player, not a loop: small changes from bar to bar, and a turn at the end of each phrase
   const developed = developStrum(new Rng(`${seeds.strum}-develop`), song, chords, strum);
   // where a chord carries on into the next bar, the strumming can too

@@ -15,6 +15,7 @@
     "timbre-lab": "rolldown scripts/timbre-lab.ts --platform node --format esm -o node_modules/.cache/timbre-lab.mjs && node node_modules/.cache/timbre-lab.mjs",
     "ess-lab": "rolldown scripts/ess-lab.ts --platform node --format esm -o node_modules/.cache/ess-lab.mjs && node node_modules/.cache/ess-lab.mjs",
     "level-lab": "rolldown scripts/level-lab.ts --platform node --format esm -o node_modules/.cache/level-lab.mjs && node node_modules/.cache/level-lab.mjs",
+    "rhythm-study": "rolldown scripts/study/rhythm-app.ts --platform node --format esm -o node_modules/.cache/rhythm-app.mjs && node node_modules/.cache/rhythm-app.mjs",
     "melody-lab": "rolldown scripts/melody-stats.ts --platform node --format esm -o node_modules/.cache/melody-stats.mjs && node node_modules/.cache/melody-stats.mjs",
     "voice-lab": "rolldown scripts/voice-lab.ts --platform node --format esm -o node_modules/.cache/voice-lab.mjs && node node_modules/.cache/voice-lab.mjs",
     "guide-check": "rolldown scripts/guide-check.ts --platform node --format esm -o node_modules/.cache/guide-check.mjs && node node_modules/.cache/guide-check.mjs",
