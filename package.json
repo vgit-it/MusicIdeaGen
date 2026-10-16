@@ -28,7 +28,8 @@
     "skeleton-lean": "rolldown scripts/study/skeleton-app.ts --platform node --format esm -o node_modules/.cache/skeleton-app.mjs && node node_modules/.cache/skeleton-app.mjs",
     "realism-arc": "rolldown scripts/study/lakh-sections.ts --platform node --format esm -o node_modules/.cache/lakh-sections.mjs && node node_modules/.cache/lakh-sections.mjs",
     "realism-words": "rolldown scripts/study/lakh-words.ts --platform node --format esm -o node_modules/.cache/lakh-words.mjs && node node_modules/.cache/lakh-words.mjs",
-    "realism-learned": "rolldown scripts/study/lakh-learned.ts --platform node --format esm -o node_modules/.cache/lakh-learned.mjs && node node_modules/.cache/lakh-learned.mjs"
+    "realism-learned": "rolldown scripts/study/lakh-learned.ts --platform node --format esm -o node_modules/.cache/lakh-learned.mjs && node node_modules/.cache/lakh-learned.mjs",
+    "band-sprites": "rolldown scripts/band-sprites.ts --platform node --format esm -o node_modules/.cache/band-sprites.mjs && node node_modules/.cache/band-sprites.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
