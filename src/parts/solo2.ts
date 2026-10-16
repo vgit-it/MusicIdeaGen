@@ -330,7 +330,7 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
       const bi = barIx(at.start);
       const later = bars.slice(0, Math.max(0, bi - 1)).filter((b) => evs.filter((e) => e.step >= b.start && e.step < b.start + b.len).length >= 3);
       const prevBar = bars[bi - 1];
-      const src = later.length && rng.chance(0.3) ? rng.pick(later) : prevBar && rng.chance(0.06) ? prevBar : null;
+      const src = later.length && rng.chance(0.08) ? rng.pick(later) : prevBar && rng.chance(0.02) ? prevBar : null;
       if (src && src.len === at.len) {
         const two = rng.chance(0.25) && bars[bi + 1] && bars[barIx(src.start) + 1] && barIx(src.start) + 1 < bi && bars[bi + 1].len === bars[barIx(src.start) + 1].len;
         const span = two ? 2 * at.len : at.len;
@@ -356,7 +356,7 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     // an earlier lick back, 2+ bars on, at the same place in its bar: as it was, a new ending, or moved along the scale
     const near = bars.find((b) => b.start >= cursor && b.start - cursor <= 6);
     const old = near ? sayings.filter((x) => barIx(near.start) - x.bar >= 2) : [];
-    if (near && old.length && rng.chance(0.15)) {
+    if (near && old.length && rng.chance(0.05)) {
       const o = rng.pick(old.slice(-3));
       const laid = lay(o.r, near.start + o.rel);
       if (laid.end <= end) {
@@ -381,7 +381,7 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
       if (run) { push(run.ms, run.steps, run.lens); cursor = run.end + (rng.chance(0.3) ? 2 : 0); units++; continue; }
     }
     // worked over: played again 1-3 times, changed, at the same place in the bar
-    let again = rng.weighted<number>([[0, 35], [1, 45], [2, 15], [3, 5]]);
+    let again = rng.weighted<number>([[0, 65], [1, 30], [2, 5]]);
     const half = rng.chance(0.35);
     // (a lick to be played again starts at a bar line, within a beat, and stays inside its bar)
     const bar = bars.find((b) => b.start >= cursor && b.start - cursor <= 6);
@@ -405,7 +405,7 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     // (remembered to come back later: any lick starting in the first half of its bar)
     { const b = bars[barIx(l.at)]; if (b && l.at - b.start < 8 && l.end - b.start <= b.len + 2) sayings.push({ bar: barIx(l.at), rel: l.at - b.start, r: l.r, ms: l.ms }); }
     for (let k = 0; k < again; k++) {
-      const v = rng.weighted<Variation>([['same', 25], ['ending', 40], ['answer', 25], ['octave', 10]]);
+      const v = rng.weighted<Variation>([['same', 15], ['ending', 45], ['answer', 30], ['octave', 10]]);
       // (a bar on from the last time, now and then half a bar for a short lick: the note before rings on to it)
       const P = l.end - l.at <= 8 && half ? 8 : 16;
       const from = l.at + P * (k + 1);
