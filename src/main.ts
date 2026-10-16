@@ -405,7 +405,7 @@ function newIdea() {
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
   // (the vocal's rhythm and the singer's lift carry over to the new idea; the lift then set for its own
   // singer: the new song may sing in the other voice)
-  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns, strumMix: idea?.opts.strumMix, leadLines: idea?.opts.leadLines, leadFigures: idea?.opts.leadFigures };
+  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns, strumMix: idea?.opts.strumMix, leadLines: idea?.opts.leadLines, leadFigures: idea?.opts.leadFigures, leadRoom: idea?.opts.leadRoom };
   let next = generate(opts, seeds);
   const h = singerFor(next);
   if ((next.opts.vocalLift ?? 0) !== (h ? HIGH_VOICES[h].lift : 0) || next.opts.vocalSinger !== (h ?? undefined)) next = generate({ ...opts, ...singerOpts(h) }, seeds);
@@ -630,7 +630,7 @@ const partsPanel = buildPartsPanel($('parts'), engine, () => {
 }, {
   // how the vocal is written: its rhythm (Classic / Grid, docs/VOCAL-RHYTHM.md) and its pitches (Classic /
   // Shaped, docs/VOCAL-MELODY.md / Melody first, docs/VOCAL-FIRST.md / Learned, docs/VOCAL-LEARNED.md); rewrites the vocal, same seeds, the band unchanged
-  get: (k) => (k === 'rhythm' ? (idea?.opts.vocalRhythm ?? 'classic') : k === 'melody' ? (idea?.opts.vocalMelody ?? 'classic') : k === 'energy' ? (idea?.opts.vocalEnergy ?? 'auto') : k === 'real' ? (idea?.opts.vocalReal ? 'on' : 'off') : k === 'patterns' ? (idea?.opts.vocalPatterns ? 'on' : 'off') : k === 'lines' ? (idea?.opts.leadLines ? 'on' : 'off') : k === 'figures' ? (idea?.opts.leadFigures ? 'on' : 'off') : k === 'strum' ? (idea?.opts.strumMix ? 'on' : 'off') : k === 'plan' ? (track?.opts.guitarPlan === 'on' ? 'on' : 'off') : (idea?.opts.vocalMove ?? 'auto')),
+  get: (k) => (k === 'rhythm' ? (idea?.opts.vocalRhythm ?? 'classic') : k === 'melody' ? (idea?.opts.vocalMelody ?? 'classic') : k === 'energy' ? (idea?.opts.vocalEnergy ?? 'auto') : k === 'real' ? (idea?.opts.vocalReal ? 'on' : 'off') : k === 'patterns' ? (idea?.opts.vocalPatterns ? 'on' : 'off') : k === 'lines' ? (idea?.opts.leadLines ? 'on' : 'off') : k === 'figures' ? (idea?.opts.leadFigures ? 'on' : 'off') : k === 'room' ? (idea?.opts.leadRoom ? 'on' : 'off') : k === 'strum' ? (idea?.opts.strumMix ? 'on' : 'off') : k === 'plan' ? (track?.opts.guitarPlan === 'on' ? 'on' : 'off') : (idea?.opts.vocalMove ?? 'auto')),
   set: (k, v) => {
     if (!idea) return;
     // (the guitar plan is a track choice: the song stays, the guitar's part in it changes)
@@ -644,6 +644,7 @@ const partsPanel = buildPartsPanel($('parts'), engine, () => {
       : k === 'strum' ? { ...idea.opts, strumMix: v === 'on' ? true : undefined }
       : k === 'lines' ? { ...idea.opts, leadLines: v === 'on' ? true : undefined }
       : k === 'figures' ? { ...idea.opts, leadFigures: v === 'on' ? true : undefined }
+      : k === 'room' ? { ...idea.opts, leadRoom: v === 'on' ? true : undefined }
       : { ...idea.opts, vocalMove: v === 'auto' ? undefined : v, ...(v !== 'auto' && !idea.opts.vocalMelody ? { vocalMelody: 'shaped' as const } : {}) };
     showIdea(generate(opts, idea.seeds), true);
     partsPanel.sync();

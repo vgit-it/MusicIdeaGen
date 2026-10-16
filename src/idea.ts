@@ -61,6 +61,8 @@ export interface GenOptions {
   leadLines?: boolean;
   /** Guitar 2 plays a picked figure, the same each bar (some songs' verses), and its lines come back (docs/LEAD-FIGURES.md). Off: as before. */
   leadFigures?: boolean;
+  /** Guitar 2 keeps out from under the singer's lines, by genre (metal and hard rock most), and plays a line over a band intro (docs/LEAD-ROOM.md). Off: as before. */
+  leadRoom?: boolean;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */

@@ -184,7 +184,9 @@ export class MultiSampler {
     pr.setValueAtTime(v.rate!, from);
     pr.exponentialRampToValueAtTime(rate, from + glide);
     v.rate = rate;
-    v.free = 0;
+    // (nothing before the new note may be scheduled again: a short note's fall-off landing inside the last
+    // note's vibrato threw "overlaps setValueCurveAtTime")
+    v.free = from;
     // a hammer-on taps the string, a pull-off plucks it a little
     v.src.hold(from, time + dur, move === 'pull' ? 1.2 : move === 'hammer' ? 1.08 : 1);
     v.endAt = time + dur;
