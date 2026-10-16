@@ -10,7 +10,7 @@ import type { Rng } from '../rng';
 import { groupStarts } from '../rhythm';
 
 /** One bar of 4/4 (16 steps): D down, U up, x muted scratch, p palm-muted, . rest (the chord rings on). */
-interface Pattern { name: string; p: string; spice?: string }
+interface Pattern { name: string; p: string; spice?: string; /** How busy, for the real mix: 0 held chords, 1 quarters or stabs, 2 8ths, 3 16ths. */ c?: 0 | 1 | 2 | 3 }
 
 const PATTERNS: Record<'rock' | 'pop' | 'funk', [Pattern, number][]> = {
   rock: [
@@ -46,6 +46,86 @@ const PATTERNS: Record<'rock' | 'pop' | 'funk', [Pattern, number][]> = {
   ],
 };
 
+/**
+ * The real mix (docs/STUDY-RHYTHM.md): the library widened to what the guitar does in real songs: held
+ * chords, quarter-note strums and backbeat chops, 8ths in their many shapes, 16th strums, sparse stabs.
+ * Weights follow the shares measured in the Lakh MIDI collection per genre (chord parts only); the
+ * rhythms are 1-bar shapes found in 40+ real songs. `c`: how busy (0 held, 1 quarters or stabs, 2 8ths, 3 16ths).
+ */
+const MIX: Record<'rock' | 'pop' | 'funk', [Pattern, number][]> = {
+  rock: [
+    // held chords (about 9%)
+    [{ name: 'whole-note chords', p: 'D...............', spice: '..............U.', c: 0 }, 5],
+    [{ name: 'hit and let ring', p: 'D.......D.....U.', c: 0 }, 3],
+    [{ name: 'a chord on beat 3', p: '........D.......', spice: '..............U.', c: 0 }, 1.5],
+    [{ name: 'a push into the next bar', p: 'D.............D.', c: 0 }, 2],
+    // quarters and stabs (about 25%)
+    [{ name: 'quarter strums', p: 'D...D...D...D...', spice: '..............U.', c: 1 }, 7],
+    [{ name: 'quarters with a 16th push', p: 'D...D...D...D..U', c: 1 }, 4],
+    [{ name: 'backbeat chops', p: '....D.......D...', c: 1 }, 3],
+    [{ name: 'beats 2, 3 and 4', p: '....D...D...D...', c: 1 }, 2],
+    [{ name: 'quarters, then 8ths', p: 'D...D...D.D.D.D.', c: 1 }, 4],
+    [{ name: 'stabs and space', p: 'D.....D...D.....', spice: '..............D.', c: 1 }, 2.5],
+    [{ name: 'two stabs', p: 'D.....D.........', c: 1 }, 1.5],
+    [{ name: 'accents and a choke', p: 'D..D..D...D.x...', c: 1 }, 1.5],
+    // 8ths (about 45%)
+    [{ name: 'down, down-up', p: 'D...D.U...U.D.U.', spice: '........D.......', c: 2 }, 7],
+    [{ name: 'driving 8ths', p: 'D.D.D.D.D.D.D.D.', c: 2 }, 6],
+    [{ name: 'driving 8ths, 16th push', p: 'D.D.D.DUD.D.D.DU', c: 2 }, 5],
+    [{ name: 'a beat, then 8ths', p: 'D...D.D.D.D.D.D.', c: 2 }, 4],
+    [{ name: '8ths from the and of 1', p: '..D.D.D.D.D.D.D.', c: 2 }, 2],
+    [{ name: '8ths with a gap on beat 3', p: 'D.D.D.D...D.D.D.', c: 2 }, 2],
+    [{ name: '8ths, the last beat open', p: 'D.D.D.D.D.D.D...', c: 2 }, 2.5],
+    [{ name: 'push on the and of 2', p: 'D.....D.....D.U.', c: 2 }, 3],
+    [{ name: 'the old faithful', p: 'D.D.U.U.D.U.D.U.', c: 2 }, 3],
+    [{ name: 'palm-muted chug, open on the beat', p: 'D.p.p.p.D.p.p.p.', spice: '..............D.', c: 2 }, 4],
+    // 16ths (about 13%)
+    [{ name: 'steady 16ths', p: 'DUDUDUDUDUDUDUDU', c: 3 }, 7],
+    [{ name: '16th push before every beat', p: 'D..UD..UD..UD..U', c: 3 }, 4],
+    [{ name: 'ghosted 16ths', p: 'DxUxDxUxDxUxDxUx', c: 3 }, 3],
+    [{ name: 'down-up, a gap, up', p: 'DU.UDU.UDU.UDU.U', c: 3 }, 2.5],
+  ],
+  pop: [
+    [{ name: 'whole-note chords', p: 'D...............', spice: '..............U.', c: 0 }, 6],
+    [{ name: 'half notes', p: 'D.......D.......', spice: '......U.........', c: 0 }, 3.5],
+    [{ name: 'let it ring, then 8ths', p: 'D.......D.U.D.U.', c: 0 }, 2.5],
+    [{ name: 'a chord on beat 3', p: '........D.......', c: 0 }, 1.5],
+    [{ name: 'a push into the next bar', p: 'D.............D.', c: 0 }, 1.5],
+    [{ name: 'quarter strums', p: 'D...D...D...D...', spice: '..............U.', c: 1 }, 8],
+    [{ name: 'quarters with a 16th push', p: 'D...D...D...D..U', c: 1 }, 4],
+    [{ name: 'backbeat chops', p: '....D.......D...', c: 1 }, 4],
+    [{ name: 'quarters, then 8ths', p: 'D...D...D.D.D.D.', c: 1 }, 3],
+    [{ name: 'a stab on 2 and the and of 3', p: '....D.....D.....', c: 1 }, 2],
+    [{ name: 'muted backbeat', p: 'D...x.U.D.U.x.U.', c: 2 }, 1.5],
+    [{ name: 'down, down-up', p: 'D...D.U...U.D.U.', spice: '..U.............', c: 2 }, 6],
+    [{ name: 'island strum', p: 'D...D.U...U.D.U.', spice: '.............U..', c: 2 }, 2],
+    [{ name: '3-3-2 strum', p: 'D..D..D.D...D.U.', c: 2 }, 2],
+    [{ name: 'a beat, then 8ths', p: 'D...D.D.D.D.D.D.', c: 2 }, 3],
+    [{ name: '8ths from the and of 1', p: '..D.D.D.D.D.D.D.', c: 2 }, 2],
+    [{ name: '8ths, the last beat open', p: 'D.D.D.D.D.D.D...', c: 2 }, 2.5],
+    [{ name: 'driving 8ths, 16th push', p: 'D.D.D.DUD.D.D.DU', c: 2 }, 3],
+    [{ name: 'tresillo on 16ths', p: 'D..D..D.D..D..D.', c: 3 }, 3],
+    [{ name: 'folk 16ths', p: 'D..UD.U..UD.D.U.', c: 3 }, 3],
+    [{ name: '16th push before every beat', p: 'D..UD..UD..UD..U', c: 3 }, 4],
+    [{ name: 'steady 16ths', p: 'DUDUDUDUDUDUDUDU', c: 3 }, 7],
+    [{ name: 'down-up, a gap, up', p: 'DU.UDU.UDU.UDU.U', c: 3 }, 3],
+    [{ name: 'ghosted 16ths', p: 'DxUxDxUxDxUxDxUx', c: 3 }, 3],
+  ],
+  funk: [
+    [{ name: '16th scratch groove', p: 'D.xUx.xUD.xUx.xU', c: 3 }, 3],
+    [{ name: 'off-beat stabs', p: '..D...D.x.D...D.', spice: '.............U..', c: 1 }, 2],
+    [{ name: 'chank on 2 and 4 with scratches', p: 'x.x.D.x.x.x.D.x.', c: 1 }, 2],
+    [{ name: 'syncopated stabs', p: 'D..D..x.x.D..D..', c: 2 }, 2],
+    [{ name: 'chucking 16ths', p: 'x.xDx.D.x.xDx.D.', c: 3 }, 2.5],
+    [{ name: 'chicken scratch', p: 'xUx.D.xUx.xUD.x.', c: 3 }, 1.5],
+    [{ name: 'backbeat chops', p: '....D.......D...', c: 1 }, 1.5],
+    [{ name: 'a long chord and a stab', p: 'D.........D.....', c: 0 }, 1],
+    [{ name: 'quarter strums', p: 'D...D...D...D...', c: 1 }, 1],
+    [{ name: 'driving 8ths, 16th push', p: 'D.D.D.DUD.D.D.DU', c: 2 }, 1.5],
+    [{ name: '16th push before every beat', p: 'D..UD..UD..UD..U', c: 3 }, 2],
+  ],
+};
+
 const strokes = (s: string): Stroke[] => [...s] as Stroke[];
 
 /** Any meter: a pattern from the beat groups, each group's figure decided once. */
@@ -66,15 +146,16 @@ function groupPattern(rng: Rng, len: number, groups: number[], genre: 'rock' | '
 }
 
 /** The strum lane, and the pattern's name for the notes (null in odd meters, where it's built from the beat groups). */
-export function generateStrum(rng: Rng, song: Song, chords: ChordPart): { strum: Stroke[]; name: string | null } {
+export function generateStrum(rng: Rng, song: Song, chords: ChordPart, mix = false): { strum: Stroke[]; name: string | null } {
   const { w, bars, total, groupsFor, plan } = song;
   const g = song.partGenres.strum;
   // riff genres only strum when borrowed into another genre: treat them as rock
   const genre = GENRES[g].riff ? 'rock' : (g as 'rock' | 'pop' | 'funk');
-  const lib = PATTERNS[genre];
+  const lib = mix ? MIX[genre] : PATTERNS[genre];
   const pat = rng.weighted(lib);
-  // the second half can lift to a sibling pattern (when the song's plan has a B section)
-  const lift = rng.weighted(lib.filter(([x]) => x.name !== pat.name));
+  // the second half can lift to a sibling pattern (when the song's plan has a B section); in the real
+  // mix one of about the same busyness (a held chord doesn't jump to 16ths)
+  const lift = rng.weighted(lib.filter(([x]) => x.name !== pat.name && (!mix || Math.abs((x.c ?? 2) - (pat.c ?? 2)) <= 1)));
   const spice = w >= 0.3 && rng.chance(0.3 + w);
   const second = plan.slice(4).some((v) => v === 'B' || v === 'C') && rng.chance(0.6);
   // how this player phrases the pattern: as written, with a breath before the next bar (the last
