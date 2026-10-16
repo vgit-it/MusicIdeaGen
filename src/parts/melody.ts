@@ -29,6 +29,7 @@ import { type FirstStyle, spineAt } from './first';
 import { type LearnedStyle, degOf, learnedLine, midiOf } from './learned';
 import type { RealLean } from './realism';
 import { RHYTHMS, SHAPES, type Row, leanOf, weightIn } from '../realism/patterns';
+import { cellOdds } from '../realism/learned';
 import { type RunKind, type Singer, type Timbre, VOICE_DOWN, phrasePlan, pickSinger, pickTimbre } from './singers';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -377,7 +378,7 @@ export const gridUnit = (bpm: number) => (bpm < 90 ? 1 : 2);
  * or just after the downbeat now and then, choruses on 1; the last syllable lands on beat 1 or the
  * middle beat of the last bar and holds to a beat before the next line (the breath).
  */
-function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: SectionKind): LineRhythm {
+function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: SectionKind, learned?: { genre: Genre; bpm: number }): LineRhythm {
   const verse = kind === 'verse' || kind === 'prechorus';
   const dens = o.busy * (verse ? 1.2 : 0.75);
   // the beats: the bar's groups, by strength (3: the downbeat, 2: the middle beat, 1: the others)
@@ -399,7 +400,8 @@ function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: Secti
   // where the line starts, by section: verses a pickup or just after the downbeat now and then, choruses on 1
   const start: Start = verse ? rng.weighted<Start>([['pickup', 2], ['after', 1.5], ['down', 1.5]]) : kind === 'chorus' || kind === 'outro' ? 'down' : o.start;
   const onsets: { g: number; stress: boolean; quick?: boolean }[] = [];
-  if (start === 'pickup') { onsets.push({ g: b1.start - u, stress: false }); if (rng.chance(0.35)) onsets.push({ g: b1.start - 2 * u, stress: false }); }
+  const pu = learned ? 2 : u;
+  if (start === 'pickup') { onsets.push({ g: b1.start - pu, stress: false }); if (rng.chance(0.35)) onsets.push({ g: b1.start - 2 * pu, stress: false }); }
   // a slot's weight inside its beat: its first (the beat's own), a quarter inside a long group, an 8th, a 16th
   const slotSt = (off: number, st: number) => (off === 0 ? st : off % 4 === 0 ? 1 : off % 2 === 0 ? 0.5 : 0.2);
   // a beat's pattern: a cell real vocal lines use, by its size in grid steps (Paul: the grid gave "a bunch
@@ -419,14 +421,27 @@ function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: Secti
     const ws = CELLS[slots].map(([c, w]): [string, number] => [c, c[0] === '.' ? w * (st >= 3 ? 0.08 : st >= 2 ? 0.2 : 1) : w]);
     return [...rng.weighted(ws)].map((c) => c === 'x');
   };
-  const pattern = (bt: { len: number; st: number }) => cell(Math.max(1, Math.ceil(bt.len / u)), bt.st);
+  // (Learned, docs/VOCAL-LEARNED.md: a quarter-note beat of a 4/4 bar sung as real singers sing it, by the learnt
+  // odds of which of its 16ths are sung: by genre, the beat in the bar, a push into it, the tempo; busier sections
+  // leaning a little to the fuller cells)
+  let pushed = false;
+  const learntCell = (bt: { g: number; len: number }, bar: Bar): boolean[] | null => {
+    if (!learned || bt.len !== 4 || bar.len !== 16 || bar.groups.length !== 4) return null;
+    const odds = cellOdds(learned.genre, (bt.g - bar.start) / 4, pushed, learned.bpm);
+    if (!odds) return null;
+    const bits = (c: number) => [0, 1, 2, 3].filter((k) => c & (1 << k)).length;
+    const c = rng.weighted(odds.map((w, c): [number, number] => [c, w * dens ** (0.3 * (bits(c) - 1.5))]).filter(([, w]) => w > 0));
+    return [0, 1, 2, 3].map((k) => !!(c & (1 << k)));
+  };
+  const barOf = (g: number) => bars.find((b) => g >= b.start && g < b.start + b.len) ?? bl;
+  const pattern = (bt: { g: number; len: number; st: number }) => learntCell(bt, barOf(bt.g)) ?? cell(Math.max(1, Math.ceil(bt.len / (learned ? 2 : u))), bt.st);
   const before = beats.filter((x) => x.g < hold);
   const half = Math.max(1, before.filter((x) => x.g < b1.start + b1.len / 2).length);
   const motif: boolean[][] = [];
   let tiedIn = false;
   before.forEach((bt, i) => {
     const m = motif[i % half];
-    let p = i >= half && m && m.length === Math.floor(bt.len / u) + (bt.len % u ? 1 : 0) && rng.chance(0.65) ? [...m] : pattern(bt);
+    let p = i >= half && m && m.length === (learned ? (bt.len === 4 && barOf(bt.g).len === 16 ? 4 : Math.ceil(bt.len / 2)) : Math.floor(bt.len / u) + (bt.len % u ? 1 : 0)) && rng.chance(0.65) ? [...m] : pattern(bt);
     if (i < half) motif.push([...p]);
     // (a beat pushed into: its stress came early, nothing on the beat itself)
     if (tiedIn) p[0] = false;
@@ -436,11 +451,14 @@ function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: Secti
     const next = before[i + 1] ?? { g: hold, st: 3, len: 0 };
     // (a push: the last 8th before a strong beat, now and then)
     const lastSlot = p.length - 1;
-    if (lastSlot > 0 && next.st >= 2 && next.g === bt.g + bt.len && !p[lastSlot] && i > 0 && rng.chance(o.syncop * 0.25)) p[lastSlot] = true;
+    if (!learned && lastSlot > 0 && next.st >= 2 && next.g === bt.g + bt.len && !p[lastSlot] && i > 0 && rng.chance(o.syncop * 0.25)) p[lastSlot] = true;
+    // (Learned: the learnt cells hold real singers' pushes already, the next beat's odds knowing a push came into it)
+    const step = learned ? Math.max(1, Math.round(bt.len / p.length)) : u;
+    if (learned) pushed = !!p[lastSlot] && bt.g + (lastSlot + 1) * step === bt.g + bt.len && step === 1;
     p.forEach((on, j) => {
       if (!on) return;
-      const off = j * u;
-      const push = j === lastSlot && j > 0 && next.st >= 2 && next.g === bt.g + bt.len && rng.chance(0.5);
+      const off = j * step;
+      const push = !learned && j === lastSlot && j > 0 && next.st >= 2 && next.g === bt.g + bt.len && rng.chance(0.5);
       onsets.push({ g: bt.g + off, stress: push || slotSt(off, bt.st) >= 1 });
       if (push) tiedIn = true;
     });
@@ -1401,9 +1419,15 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     });
   };
 
-  /** A line's rhythm: from the pattern library (Patterns on, 4/4), on the grid, or as spoken. */
+  const ownBeat = style.learned && !style.grid && !style.words ? rng.next() : 0;
+  /** A line's rhythm: from the pattern library (Patterns on, 4/4), on the grid, real singers' beats (Learned), or as spoken. */
   const lineRhythm = (rng: Rng, L: Bar[], o: PhraseOpts) => (style.patterns && patternFits(L) ? patternRhythm(rng, L, o, genre)
-    : style.grid ? gridRhythm(rng, L, o, gridUnit(song.bpm), kind) : phraseRhythm(rng, L, o));
+    : style.grid ? gridRhythm(rng, L, o, gridUnit(song.bpm), kind)
+    // (Learned with the Classic rhythm: its own rhythm, real singers' beats on the grid; docs/VOCAL-LEARNED.md)
+    // (the line's tries share it, only their notes differ: scored with the band, the tries on the beat won, and
+    // the real singers' beats were lost)
+    : style.learned ? gridRhythm(new Rng(`${ownBeat}-${L[0].start}-${o.start}-${o.busy}`), L, o, gridUnit(song.bpm), kind, { genre, bpm: song.bpm })
+    : phraseRhythm(rng, L, o));
 
   lines.forEach((L, li) => {
     const letter = form[li];

@@ -11,7 +11,7 @@ Option 5 from `docs/STUDY-LAKH.md`. A fourth melody writer in the vocal row: **M
   - where it is in the line (first note, middle, last)
   - the genre (rock and pop have enough songs of their own; the other genres use all songs)
 - It also learnt which kinds of notes real singers put on beats 1 and 3, and where real lines end (which scale note).
-- **Pitches only.** The rhythm still comes from the Rhythm menu (Classic, Grid or Words).
+- **Its own rhythm too** (with Rhythm: Classic; Grid and Words as before, to compare). See *Rhythm* below.
 
 ## The app's forms on top (so lines don't wander)
 - A line that comes back sings its notes again (moved to fit the new chord).
@@ -75,3 +75,23 @@ Paul: make sure the starting note is a strong one (options 2 + 3).
 
 ## Files
 `scripts/study/lakh-learned.ts` (counts), `src/realism/learned.ts` + `learned.json` (the odds), `src/parts/learned.ts` (the writer), `src/parts/melody.ts` (`learnedTuneLine`), `src/parts/vocal.ts`, `scripts/realism-lab.ts` (the learned rows).
+
+## Rhythm (Paul: learn the rhythm of real vocals too, without copying any song)
+- The study also counts, inside real sung lines, **which 16ths of each beat are sung** (16 possible cells: on the beat, the "&", a 16th before the beat...), by the genre, the beat in the bar, whether the 16th before the beat was sung (a push into it), and the tempo (under 95 bpm, 95-130, faster). About 490,000 beats from 2,551 songs.
+- **Not copying:** a beat's cell is kept only when 25+ songs by 15+ artists sing it in that context. A one-beat cell is too small to be anyone's rhythm. Genres with too few songs lean on all songs.
+- **The writer:** with Rhythm: Classic, Learned writes each line on the grid, each 4/4 beat sung by those odds (busier sections a little fuller); the app's line shape stays (where it starts, its held last note, a breath, the first half-bar's rhythm coming back now and then). Other meters: the Grid writer's beats.
+- **One rhythm per line:** its tries only change the notes. With the rhythm in the tries too, the band-fit score kept picking the tries on the beat and the real singers' rhythm was lost (61-67% of notes on the beat; real songs 40-45%).
+- No speech-rhythm pushes on top (the learnt beats have real pushes already).
+
+| Genre | 16ths ("e" + "a"): Learned before | now | real songs | On the beat: before | now | real |
+|---|---|---|---|---|---|---|
+| rock | 1% | 2% | 17% | 61% | 61% | 45% |
+| pop | 2% | 5% | 21% | 58% | 56% | 41% |
+| funk | 1% | 9% | 24% | 53% | 50% | 40% |
+| hard rock | 2% | 11% | 24% | 61% | 51% | 40% |
+| metal | 1% | 6% | 13% | | 58% | 47% |
+| grunge | 1% | 22% | 21% | | 48% | 40% |
+| alt metal | 1% | 10% | 22% | | 50% | 39% |
+
+- Realism score: about the same overall (85-86; grunge 85 to 89). The copy check: no finished line copies a real 2-bar stretch. The other writers are unchanged.
+- Rock and pop still sing on the beat more than real singers: most of their real 16ths are in hand-played files the on-grid study leaves out.

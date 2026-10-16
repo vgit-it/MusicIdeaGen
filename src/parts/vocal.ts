@@ -445,7 +445,9 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
       // (written at its section's energy, by the energy style's dials)
       const st = es ? energize(melody, dialsFor(es, levelOf(src.section?.energy ?? 3, eLo, eHi)), as, bandBusy(src), es) : melody;
-      const write = (salt: string) => spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}${salt}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}${salt}`), st.singer.syncop, melody.grid, !!melody.words, melody.real && !melody.grid && !melody.words ? realSixteenthsOf(ctx.genre) : undefined), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}${salt}`));
+      // (Learned with the Classic rhythm: its own rhythm, real singers' beats; on the grid, no speech pushes on top)
+      const ownBeat = !!melody.learned && !melody.grid && !melody.words;
+      const write = (salt: string) => spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}${salt}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}${salt}`), st.singer.syncop, melody.grid || ownBeat, !!melody.words, melody.real && !melody.grid && !melody.words && !ownBeat ? realSixteenthsOf(ctx.genre) : undefined), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}${salt}`));
       let tune = write('');
       // (patterns: the copy guard: a tune with a 2-bar stretch a real song sings is written again, a few times at most)
       for (let k = 1; melody.patterns && k <= GUARD_TRIES && copiesReal(tune.notes, src.song.bars[0]?.len ?? 16); k++) { tune = write(`-guard${k}`); guardRewrites++; }
