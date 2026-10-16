@@ -24,28 +24,28 @@ A new solo writer built from how real guitar solos go (`docs/STUDY-SOLO.md`: 2,9
 |---|---|---|---|
 | top note first in the first 30% | 55% | 12% | 45% |
 | top note first at 60-85% | 14% | 72% | 21% |
-| top note played once only | 26% | 72% | 42% |
-| visits back to the top (median) | 4 | | 3 |
+| top note played once only | 26% | 72% | 43% |
+| visits back to the top (median) | 4 | | 2 |
 | climbs steadily | 17% | 46% | 19% |
-| notes a bar | 6.0 | 5.0 | 6.1 |
-| notes a bar, by quarter | 7 7 7 7 | 4 5 6 5 | 7 6 6 6 |
+| notes a bar | 6.0 | 5.0 | 6.5 |
+| notes a bar, by quarter | 7 7 7 7 | 4 5 6 5 | 7 7 6 6 |
 | silent beats, by quarter | 7 5 5 4% | 18 9 5 7% | 5 4 5 7% |
 | straight scale runs | 6% | 33% | 7% |
 | into the top note by a jump | 43% | 14% | 46% |
-| bars whose rhythm comes back (anywhere) | 55% | 13% | 25% |
-| the next bar | 24% | | 14% |
-| 2+ bars later | 53% | | 18% |
-| bars played again exactly | 42% | | 9% |
-| outside the pentatonic | 24% | 14% | 21% |
+| bars whose rhythm comes back (anywhere) | 55% | 13% | 15% |
+| the next bar | 24% | | 10% |
+| 2+ bars later | 53% | | 9% |
+| bars played again exactly | 42% | | 5% |
+| outside the pentatonic | 24% | 14% | 20% |
 | triplet notes | 7% | 1% | 5% |
 | solos with 8th triplets | 18% | 0% | 16% |
-| 8th-triplet groups falling / rising / turning | 36 / 15 / 49% | | 43 / 9 / 47% |
+| 8th-triplet groups falling / rising / turning | 36 / 15 / 49% | | 38 / 10 / 52% |
 | held notes (a beat+) a bar | 2.5 | 2.3 | 2.3 |
 | longest note (beats) | 2.0 | 2.2 | 2.2 |
-| 5-note runs heard in 3+ other songs (`lick-variety.ts`) | | 28% | 2% |
-| 5-note runs played twice or more in the same song | | 6% | 14% |
+| 5-note runs heard in 3+ other songs (`lick-variety.ts`) | | 28% | 4% |
+| 5-note runs played twice or more in the same song | | 6% | 8% |
 
-Repetition dialled down by ear (Paul: too much at 40% of bars coming back): about half the real amount, most of it changed (the real 42% of exact copies is likely raised by copied bars in fan-made files). Still apart: 16th-note triplets in fast runs (real: 4 in 100 notes; Guitar 2 plays one note a step, so six to a beat isn't possible yet).
+Repetition dialled down by ear (Paul: too much at 40% of bars coming back, then at 25%): to about 10%, close to Classic, most of it changed (the real 42% of exact copies is likely raised by copied bars in fan-made files). Still apart: 16th-note triplets in fast runs (real: 4 in 100 notes; Guitar 2 plays one note a step, so six to a beat isn't possible yet).
 
 ## Next
 - Paul listens: Solo New against Classic, rock, hard rock, metal.
