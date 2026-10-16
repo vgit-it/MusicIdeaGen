@@ -28,9 +28,9 @@ export class Percussion {
       for (const p of Object.keys(PAN) as (PercPiece | 'clap')[]) {
         const pan = new Tone.Panner(PAN[p]).connect(out);
         // shakers and tambourines: no low rumble from the room
-        const hp = new Tone.Filter({ type: 'highpass', frequency: p.startsWith('conga') ? 60 : p === 'clap' ? 500 : 250, rolloff: -12 }).connect(pan);
+        const hp = new Tone.BiquadFilter({ type: 'highpass', frequency: p.startsWith('conga') ? 60 : p === 'clap' ? 500 : 250 }).connect(pan);
         this.outs[p] = p === 'clap'
-          ? new Tone.Filter({ type: 'peaking', frequency: 1100, gain: 4, Q: 0.8 }).connect(hp)
+          ? new Tone.BiquadFilter({ type: 'peaking', frequency: 1100, gain: 4, Q: 0.8 }).connect(hp)
           : hp;
       }
     });

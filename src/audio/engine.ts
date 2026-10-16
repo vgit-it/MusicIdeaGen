@@ -73,9 +73,10 @@ const TAIL_STEPS = 32;
 const PREP_XFADE = 0.03;
 /**
  * How far ahead notes are scheduled (s): the usual, and if guitars are being prepared during playback
- * (building each render holds up the page for a moment, which made live notes late).
+ * (building each render holds up the page for a moment, which made live notes late). The usual is a quarter
+ * second (was a tenth): on a phone, a busy moment on the page made notes late and the playback stutter.
  */
-const LOOKAHEAD = 0.1;
+const LOOKAHEAD = 0.25;
 const LOOKAHEAD_PREP = 0.6;
 
 export const INSTRUMENT_NAMES: Record<string, string> = {
@@ -792,9 +793,20 @@ export class Engine {
     return v;
   }
 
+  private starting = false;
+
   async start() {
     await Tone.start();
-    if (this.playing) return;
+    if (this.playing || this.starting) return;
+    // the singers' first lines made before the band starts (they're made in the background from the
+    // moment the music is written; this waits only for the ones still on their way)
+    const idea = this.list[this.idx];
+    if (idea && (this.singer || this.backer) && this.vocalChoice !== 'off') {
+      this.starting = true;
+      this.onStatus('Getting the singer ready…');
+      try { await Promise.all([this.singer?.readyFor(idea), this.backingOn ? this.backer?.readyFor(idea) : undefined]); } finally { this.starting = false; this.onStatus(''); }
+      if (this.playing) return;
+    }
     this.step = 0;
     this.tail = -1;
     if (this.chordIdFor() !== this.chordId) this.applyChordInstrument();

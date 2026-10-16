@@ -8,11 +8,12 @@ import * as Tone from 'tone';
 import type { Idea } from '../idea';
 import type { Genre } from '../genres';
 import type { HighVoice, Timbre } from '../parts/singers';
-import { FOF_RATE, renderFof } from '../audio/fof';
+import { FOF_RATE } from '../audio/fof';
 import { CHARACTERS, type Character, fofFor } from '../audio/voices';
 import { polishVoice } from '../audio/polish';
 import { polishFor } from '../audio/singer';
-import { SING_RATE, type SungNote, renderLine } from '../audio/sing';
+import { SING_RATE, type SungNote } from '../audio/sing';
+import { type RenderJob, singPool } from '../audio/singPool';
 import type { GuideSungLine } from './words';
 import { DOWN } from './line';
 import { feelFor, feelSung, inhale } from './feel';
@@ -34,8 +35,11 @@ export class GuideVoice {
   private bufs = new Map<string, AudioBuffer>();
   private byStep: Map<number, Placed[]>[] = [];
   private queue: Placed[] = [];
-  private working = false;
+  /** Lines being made in the background workers (singPool.ts), by key. */
+  private pending = new Map<string, Promise<void>>();
   private sources = new Set<AudioBufferSourceNode>();
+  /** Bumped on a stop: a line arriving late doesn't start after it. */
+  private session = 0;
 
   constructor(out: Tone.InputNode) {
     this.vol = new Tone.Volume(-2).connect(out);
@@ -92,21 +96,22 @@ export class GuideVoice {
       }
       return m;
     });
-    if (!this.working) void this.work();
+    this.work();
   }
 
-  private async work() {
-    this.working = true;
-    while (this.queue.length) {
-      const p = this.queue.shift()!;
-      if (!this.bufs.has(p.key)) this.bufs.set(p.key, this.render(p));
-      // (a breather between lines, so playback never waits on it)
-      await new Promise((r) => setTimeout(r, 0));
+  /** Hand the waiting lines to the background workers, in the song's order. */
+  private work() {
+    let order = 0;
+    for (const p of this.queue.splice(0)) {
+      if (this.bufs.has(p.key) || this.pending.has(p.key)) continue;
+      const { job, seed } = this.spec(p);
+      this.pending.set(p.key, singPool().render(job, order++).then((d) => { this.bufs.set(p.key, this.finish(p, d.pcm, job.rate, seed)); })
+        .finally(() => this.pending.delete(p.key)));
     }
-    this.working = false;
   }
 
-  private render(p: Placed): AudioBuffer {
+  /** What the background worker needs to make a line (the voice only: the breath and polish are added here, quickly). */
+  private spec(p: Placed): { job: RenderJob; seed: number } {
     let seed = 0;
     for (let i = 0; i < p.key.length; i += 7) seed = (seed * 31 + p.key.charCodeAt(i)) >>> 0;
     const base = p.idea.song.genre as Genre;
@@ -114,8 +119,13 @@ export class GuideVoice {
     // (the clear voice: the formant synth; the others: the FOF singer, a character on top of the song's genre voice)
     const clear = p.sung === 'clear';
     const rate = clear ? SING_RATE : FOF_RATE;
-    const raw = clear ? renderLine(p.notes, { high: false, slides: 0.5, seed: v }, PRE)
-      : renderFof(p.notes, { ...(isCharacter(p.sung) ? fofFor(base, v, p.sung === 'woman', p.sung) : fofFor(p.sung as Genre, v, false)), energy: p.energy }, PRE);
+    const job: RenderJob = clear ? { kind: 'line', notes: p.notes, pre: PRE, rate, shape: { high: false, slides: 0.5, seed: v } }
+      : { kind: 'fof', notes: p.notes, pre: PRE, rate, fof: { ...(isCharacter(p.sung) ? fofFor(base, v, p.sung === 'woman', p.sung) : fofFor(p.sung as Genre, v, false)), energy: p.energy } };
+    return { job, seed };
+  }
+
+  /** The made line: a breath in before it (human feel), polished like the vocals. */
+  private finish(p: Placed, raw: Float32Array, rate: number, seed: number): AudioBuffer {
     // (human feel: a breath in just before the line, in its lead-in)
     if (p.breath) {
       let peak = 0;
@@ -136,10 +146,22 @@ export class GuideVoice {
     if (!lines) return;
     const raw = this.ctx.rawContext as unknown as BaseAudioContext;
     for (const p of lines) {
-      // (not rendered yet: render it now, it's short)
-      let buf = this.bufs.get(p.key);
-      if (!buf) { buf = this.render(p); this.bufs.set(p.key, buf); }
       const start = time + (p.t0 - PRE - GuideVoice.at(p.idea, g));
+      const buf = this.bufs.get(p.key);
+      if (!buf) {
+        // (still being made: never made on the spot, which held up the band; it comes in once it's ready)
+        if (!this.pending.has(p.key)) { this.queue.push(p); this.work(); }
+        const s = this.session;
+        void this.pending.get(p.key)?.then(() => { if (s === this.session && this.bufs.has(p.key)) this.start(this.bufs.get(p.key)!, start, this.ctx.now() + 0.05, raw); });
+        continue;
+      }
+      this.start(buf, start, time, raw);
+    }
+  }
+
+  private start(buf: AudioBuffer, start: number, time: number, raw: BaseAudioContext) {
+    {
+      if (start + buf.duration <= time) return;
       const src = raw.createBufferSource();
       src.buffer = buf;
       Tone.connect(src, this.vol);
@@ -151,6 +173,7 @@ export class GuideVoice {
   }
 
   releaseAll() {
+    this.session++;
     for (const s of this.sources) { try { s.stop(); } catch { /* already stopped */ } }
     this.sources.clear();
   }

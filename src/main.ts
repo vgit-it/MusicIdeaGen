@@ -1,3 +1,4 @@
+import './audio/live';
 import './style.css';
 import { TIMBRE_CHOICES, type TimbreChoice, type VocalChoice } from './audio/singer';
 import { HIGH_VOICES, type HighVoice, leadHigh } from './parts/singers';
