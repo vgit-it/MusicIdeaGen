@@ -4,6 +4,8 @@
 // idea switched off, every note, quick note, push, pull and word must be the same as before.
 // Also checks the rules with whatever is on: the words sit exactly on the tune, at most 4 changes heard in any
 // second, the range, the levels, a new note inside a word only ever a bend, never two notes at once, a note held at most a bar.
+// The Vocal tune (tune.ts) checked apart: with its switches off, the vocal's own notes and words exactly; with them on,
+// the same pitches and words, no two notes at once, the words on the tune (each vocal writer taken in turn).
 //   npm run guide-check          compare with the reference
 //   npm run guide-check -- save  save a new reference (only when a change to the line is meant)
 
@@ -15,6 +17,7 @@ import { guideWords } from '../src/guide/words';
 import { writeLine } from '../src/guide/real';
 import { ANCHOR_HOLD_BARS, writeAnchor } from '../src/guide/anchor';
 import { shapeDynamics } from '../src/guide/dynamics';
+import { tuneWords, writeTune } from '../src/guide/tune';
 import { MOODS } from '../src/tension';
 import type { HighVoice } from '../src/parts/singers';
 
@@ -107,6 +110,52 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   for (let i = 0; i + 4 < at.length; i++) if ((at[i + 4] - at[i]) * six < 1 - 1e-9) { broken.push(`${id}: over 4 changes in a second`); break; }
 }
 }
+
+// the Vocal tune: the vocal's own tune, its switches only moving starts and ends
+const WRITERS = [{}, { vocalMelody: 'shaped' }, { vocalMelody: 'first' }, { vocalMelody: 'learned', vocalRhythm: 'words' }, { vocalMelody: 'learned', vocalReal: true, vocalPatterns: true }, { vocalRhythm: 'grid' }];
+const TUNE_RUNS: [string, GuideIdeas, GuideRange | null][] = [['Vocal tune', { tune: true }, null], ['Vocal tune, Breaths, Lead-ins, Carry over, Hard and soft', { tune: true, breath: true, leadIn: true, carry: true, dynamics: true }, null], ['Vocal tune, range 40-60', { tune: true }, [40, 60]], ['Vocal tune, all three, range 60-84', { tune: true, breath: true, leadIn: true, carry: true }, [60, 84]]];
+let tuneSongs = 0;
+for (const [name, ideas, range] of TUNE_RUNS) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) continue;
+  let k = 0;
+  for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS) {
+    const s = `gc-${genre}-${meter}-${mood}`;
+    const w = WRITERS[k++ % WRITERS.length];
+    const idea = generate({ genre, meter, weirdness: 0.3, ...w } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
+    const list = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never).sections;
+    const L = writeTune(list, mood, 0, ideas, range);
+    const W = tuneWords(L);
+    if (ideas.dynamics) shapeDynamics(list, L, W);
+    const id = `[${name}] ${mood}|${genre}|${meter}|${JSON.stringify(w)}`;
+    tuneSongs++;
+    const lead = list.map((i) => (i.vocal ?? []).filter((n) => !n.role));
+    const plain = !ideas.breath && !ideas.leadIn && !ideas.carry;
+    // (the same pitches and words in order, the Range moving them by whole octaves)
+    const flat = L.parts.flat().filter((n) => n.syl.text !== '~' || !n.bend), want = lead.flat();
+    const shift = flat.length ? flat[0].midi - want[0].midi : 0;
+    if (shift % 12) broken.push(`${id}: moved by ${shift}, not octaves`);
+    if (flat.length !== want.length || flat.some((n, j) => n.midi - shift !== want[j].midi || n.syl.text !== want[j].syl.text)) broken.push(`${id}: not the vocal's notes and words`);
+    if (plain && L.parts.some((p, si) => p.length !== lead[si].length || p.some((n, j) => n.step !== lead[si][j].step || n.len !== lead[si][j].len))) broken.push(`${id}: switches off, but not the vocal's rhythm`);
+    if (range && flat.length) {
+      const out = (x: number) => flat.filter((n) => n.midi + x < range[0] || n.midi + x > range[1]).length;
+      if (out(12) < out(0) || out(-12) < out(0)) broken.push(`${id}: an octave would sit better in the range`);
+    }
+    // (never two notes at once, nothing too short, the words exactly on the tune)
+    let tot = 0, lastEnd = -1;
+    list.forEach((i, si) => {
+      for (const n of L.parts[si]) {
+        if (tot + n.step < lastEnd - 1e-6) broken.push(`${id} ${i.section?.label}: two notes at once`);
+        if (n.len <= 0) broken.push(`${id} ${i.section?.label}: an empty note`);
+        lastEnd = tot + n.step + n.len;
+      }
+      const ws = W[si].flatMap((l) => l.notes);
+      if (ws.length !== L.parts[si].length || ws.some((x, j) => x.step !== L.parts[si][j].step || x.len !== L.parts[si][j].len || x.midi !== L.parts[si][j].midi)) broken.push(`${id} ${i.section?.label}: the words are off the tune`);
+      if (ws.some((x) => !(x.vel >= 0 && x.vel <= 1))) broken.push(`${id} ${i.section?.label}: a level out of range`);
+      tot += i.song.total;
+    });
+  }
+}
+if (tuneSongs) console.log(`Vocal tune: ${tuneSongs} songs checked.`);
 
 if (save) {
   writeFileSync(REF, JSON.stringify(out, null, 1) + '\n');

@@ -85,7 +85,8 @@ export class GuideVoice {
         const breath = fl && restBefore >= 0.5 ? fl.breath : 0;
         const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ""},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}${fl ? `|feel${breath}|${notes.map((n) => `${n.t.toFixed(4)},${n.vel.toFixed(3)},${n.slide?.toFixed(3) ?? ''},${n.fall?.toFixed(3) ?? ''},${n.swell?.toFixed(3) ?? ''},${n.fade?.toFixed(3) ?? ''},${n.sharp?.toFixed(1) ?? ''}`).join(';')}` : ''}`;
         const p: Placed = { key, notes, t0, idea, energy, sung, breath };
-        const first = Math.max(0, L.notes[0].step - Math.ceil(PRE / six));
+        // (a line starting between steps (the Vocal tune's triplets): from the step before)
+        const first = Math.max(0, Math.floor(L.notes[0].step - Math.ceil(PRE / six)));
         (m.get(first) ?? m.set(first, []).get(first)!).push(p);
         if (!this.bufs.has(key)) this.queue.push(p);
       }

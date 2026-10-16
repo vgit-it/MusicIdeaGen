@@ -78,6 +78,8 @@ export interface GuideIdeas {
   dynamics?: boolean;
   /** Anchor line (anchor.ts, docs/GUIDE-ANCHOR.md): a different writer: one strong note per 4 bars, sung in a rhythm pattern, broken by an accent. */
   anchor?: boolean;
+  /** Vocal tune (tune.ts, docs/GUIDE-TUNE.md): a third writer: the main vocal's own tune and words, as the vocal row writes them. */
+  tune?: boolean;
   /** Human feel (feel.ts, docs/GUIDE-FEEL.md): how the line is played and sung (glides, scoops, swells, fades, falls, vibrato, breaths); the written line unchanged. */
   feel?: boolean;
   /** The Anchor line's rhythm style (anchor.ts; left out: Auto, by genre). */
