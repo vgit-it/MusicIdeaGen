@@ -96,6 +96,10 @@ pop "island strum", "tresillo on 16ths" (3-3-2), "folk 16ths"; funk "chucking 16
 - [R] Under a solo: the core pattern, power chords, softer, no colours or licks. ✓
 - [R] No lick where the drums fill. ✓
 
+## Real-song switches (`docs/STUDY-RHYTHM.md`)
+- Strum mix (Rhythm row): patterns from a library widened to the real mix per genre (held chords, quarters, 8ths, 16ths, stabs). ✓ off by default
+- Guitar plan (Rhythm row, tracks): the guitar sits out the start or a verse, comes in for the chorus, drops out for a bridge (`src/players/presence.ts`). ✓ off by default
+
 ## The players (`src/players/rhythm.ts`)
 One per track, picked with the band (an idea uses its default band's player).
 | Player | Accents | Voicing | Quiet parts | Between chords | Mostly in |
