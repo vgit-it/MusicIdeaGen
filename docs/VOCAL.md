@@ -408,7 +408,7 @@ throughout the song and not jump around wildly".
 - Now, on every section's finished line (`smoothSpikes` in `src/parts/vocal.ts`, all writers; the Vocal tune follows):
   - A note a 6th or more over the note before and the note after (half a bar's rest or less between them) comes down to a 5th at most over the note before (a chord note, else a note of the key).
   - A drop of a 6th or more off a high note that was jumped to steps down: the next note (and the one after, if still a big drop) moves to a chord note a 3rd or so under it. Never a line's last note.
-- 784 songs (7 writers × 7 genres × 8 moods × 2): spikes 1,005 → 1; big drops off a jump 1,219 → 139; jumps of an octave or more 1.3% → 0.65% of moves; the songs' top notes the same (half a semitone lower on average).
+- 784 songs (7 writers × 7 genres × 8 moods × 2): spikes 905 → 1; big drops off a jump 1,219 → 139; jumps of an octave or more 1.3% → 0.65% of moves; the songs' top notes the same (0.2 of a semitone lower on average).
 - `npm run guide-check` still passes (Guide and Anchor lines unchanged).
 
 ## 10. Later
