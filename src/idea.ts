@@ -63,6 +63,10 @@ export interface GenOptions {
   leadFigures?: boolean;
   /** Guitar 2 keeps out from under the singer's lines, by genre (metal and hard rock most), and plays a line over a band intro (docs/LEAD-ROOM.md). Off: as before. */
   leadRoom?: boolean;
+  /** Songs without a solo: now and then no lead guitar at all (pop most), else a short lead break after a chorus (docs/LEAD-BREAKS.md). Off: as before. */
+  leadBreaks?: boolean;
+  /** A second lead guitar on the hook and the solo's peak: a harmony, an octave or a double (hard rock and metal most; docs/LEAD-TWIN.md). Off: as before. */
+  leadTwin?: boolean;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */
@@ -214,6 +218,8 @@ export interface GuitarHit {
   tremolo?: boolean;
   /** Raked into: the pick drags across this many muted strings just before the note. */
   rake?: number;
+  /** A second lead guitar plays this with it (Twin, docs/LEAD-TWIN.md): a harmony, an octave or the same notes, panned the other way. */
+  twin?: number[];
   /** Fade the note in (volume swell). */
   swell?: boolean;
   /** The low pedal note of a pedal riff (a harmony part skips it). */

@@ -15,7 +15,7 @@ import type {
   ChordEvent, ChordPart, ChordSheet, DrumPart, GuitarHit, Idea, SectionInfo, SectionKind, Seeds, Song, Stroke,
 } from './idea';
 import { type DrumBar, addFill } from './parts/drums';
-import { type G2Options, type Guitar2Style, generateGuitar2, generateHook, leadFret, pickStyle } from './parts/guitar2';
+import { type G2Options, type Guitar2Style, chordTones, generateGuitar2, generateHook, leadFret, pickStyle } from './parts/guitar2';
 import { TUNINGS } from './theory/fretboard';
 import { generateSolo } from './parts/solo';
 import { BASS_LINE_DESC } from './parts/bass';
@@ -1080,6 +1080,46 @@ function makeRoom(sections: Idea[], genre: Genre, seed: string) {
   }
 }
 
+/**
+ * Breaks (docs/LEAD-BREAKS.md): in songs with no solo, the chance there's no lead guitar at all (real songs
+ * with a lead guitar: pop 29%, funk 36%, rock 48%; docs/STUDY-LEAD.md), else of a short lead break after a
+ * chorus (real pop and funk songs with a lead: 54% / 76% have one; the app's pop 25%, funk 13%).
+ */
+const NO_LEAD: Record<Genre, number> = { pop: 0.65, funk: 0.6, altmetal: 0.5, rock: 0.3, grunge: 0.25, hardrock: 0.1, metal: 0.05 };
+const BREAK: Record<Genre, number> = { pop: 0.45, funk: 0.7, rock: 0.5, grunge: 0.5, altmetal: 0.5, hardrock: 0.5, metal: 0.5 };
+
+/**
+ * Twin (docs/LEAD-TWIN.md): the chance a song has a second lead guitar on the hook and the solo's peak (real
+ * hard rock and metal songs with a lead: 55% have a second lead line, 70% of those in the same bars), and
+ * what it plays: a harmony a scale 3rd up, an octave below, or the same notes (a double).
+ */
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+type TwinKind = 'harmony' | 'octave' | 'double';
+const TWIN: Record<Genre, number> = { hardrock: 0.55, metal: 0.55, rock: 0.3, grunge: 0.2, altmetal: 0.15, pop: 0.1, funk: 0.1 };
+const TWIN_KINDS: Record<Genre, [TwinKind, number][]> = {
+  metal: [['harmony', 3], ['octave', 1], ['double', 1]], hardrock: [['harmony', 2], ['double', 2], ['octave', 1]],
+  rock: [['double', 2], ['octave', 2], ['harmony', 1]], grunge: [['octave', 2], ['double', 2]], altmetal: [['octave', 2], ['double', 2]],
+  pop: [['double', 2], ['octave', 1], ['harmony', 1]], funk: [['octave', 2], ['double', 1]],
+};
+
+/** Twin: a second lead guitar on Guitar 2's notes from step `from` (a harmony stays a double where it would rub on a held note). */
+function addTwin(idea: Idea, kind: TwinKind, from: number) {
+  const { key, mode, total } = idea.song;
+  const sc: readonly number[] = SCALES[mode];
+  const chordAt = (g: number) => idea.chords.timeline[idea.chords.chordIdx[Math.min(g, total - 1)]].chord;
+  const third = (m: number, g: number, held: boolean) => {
+    const d = sc.indexOf(mod(m - key, 12));
+    const up = m + (d < 0 ? 3 : mod(sc[(d + 2) % 7] - sc[d], 12));
+    const tones = chordTones(key, chordAt(g));
+    return held && tones.some((t) => [1, 11].includes(mod(up - t, 12))) ? m : up;
+  };
+  idea.guitar2 = idea.guitar2.map((h) => {
+    if (h.step < from || h.swell || h.mute) return h;
+    const twin = kind === 'double' ? [...h.notes] : kind === 'octave' ? h.notes.map((m) => (m >= 64 ? m - 12 : m + 12)) : h.notes.map((m) => third(m, h.step, h.len >= 4));
+    return { ...h, twin };
+  });
+}
+
 /** A role that plays (not 'rest'), picked as for an idea. */
 function playingStyle(rng: Rng, idea: Idea, run: number): Guitar2Style {
   const sec = idea.song.sections?.[run * 4] ?? null;
@@ -1100,7 +1140,9 @@ interface Slot {
   /** Guitar 2: keep what the block has, drop it, rewrite it, force roles, or play the track's hook. */
   g2: 'keep' | 'drop' | 'pick' | 'play' | 'lead' | 'swell' | 'hook' | 'build' | 'solo'
     // the lead player: answering the singer (sparse, or busier in later verses), a climb into the chorus
-    | 'answer' | 'answerMore' | 'climb';
+    | 'answer' | 'answerMore' | 'climb'
+    // Breaks: a lead break (a short melodic solo, no singing)
+    | 'break';
   intro?: 'alone' | 'band' | 'layered' | 'long';
   /** Number for repeated kinds ("Verse 2"). */
   n?: number;
@@ -1359,6 +1401,18 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     }
     outroSolo = sr.chance(0.2);
   }
+  // Breaks (switch): a song with no solo has no lead guitar now and then, else a lead break after a chorus
+  const breakRng = new Rng(`${S.structure}-breaks`);
+  const breaksOn = !!src.opts.leadBreaks && !order.includes('solo');
+  const noLead = breaksOn && breakRng.chance(NO_LEAD[genre]);
+  let leadBreak = false;
+  // (an interlude the song already has becomes the break; else one goes in after a chorus)
+  if (breaksOn && !noLead && !opts.order?.length && breakRng.chance(BREAK[genre])) {
+    const cs = order.flatMap((k, i) => (k === 'chorus' ? [i] : []));
+    const at = cs.length >= 3 ? cs[1] : cs[0];
+    if (order.includes('interlude')) leadBreak = true;
+    else if (at !== undefined) { order.splice(at + 1, 0, 'interlude'); leadBreak = true; }
+  }
   // over the verse's chords or the chorus's; 16 bars for heavier styles, now and then
   const soloOverChorus = sr.chance(0.4);
   const soloBars = (genre === 'metal' || genre === 'hardrock') && sr.chance(0.5) ? 16 : 8;
@@ -1405,6 +1459,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   // Guitar 2's switches (Lines, Figures); with Figures, some songs (pop and rock most) have a picked figure through the verses
   const g2o: G2Options = { lines: src.opts.leadLines, figures: src.opts.leadFigures, figureSeed: `${bandSeed}-figure` };
   const roomIntro = !!src.opts.leadRoom && new Rng(`${bandSeed}-room-intro`).chance(ROOM[src.song.partGenres.strum]);
+  const twinRng = new Rng(`${bandSeed}-twin`);
+  const twinKind = src.opts.leadTwin && twinRng.chance(TWIN[src.song.partGenres.strum]) ? twinRng.weighted(TWIN_KINDS[src.song.partGenres.strum]) : null;
   const figureVerses = !!src.opts.leadFigures && new Rng(`${bandSeed}-figure-song`).chance(FIGURE_SONGS[src.song.partGenres.strum]);
   const leadVerses = leadPlan.chance(lead.verses);
   const leadClimbs = leadVerses && leadPlan.chance(lead.climb);
@@ -1417,6 +1473,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
         : { kind, n, energy: verse2E, segs: verse, g2: leadVerses ? 'answerMore' : 'play' };
     }
     if (kind === 'prechorus') return { kind, n, energy: 3, segs: pre ?? take(verse, 4), g2: leadClimbs ? 'climb' : 'drop' };
+    // (a lead break: eight bars over the chorus chords)
+    if (kind === 'interlude' && leadBreak) return { kind, n, energy: 4, segs: take(chorus, 8), g2: 'break' };
     if (kind === 'interlude') return { kind, n, energy: 4, segs: hookSegs, g2: riff ? 'keep' : 'hook' };
     if (kind === 'bridge' || kind === 'breakdown') return { kind, n, energy: bridgeE, segs: bridge, g2: bridgeE <= 2 ? 'swell' : 'pick' };
     if (kind === 'solo') {
@@ -1554,6 +1612,11 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       g2 = sol.notes[0];
       if (s.kind === 'solo') notes.push(`Guitar solo, ${idea.song.bars.length} bars over the ${soloOverChorus ? 'chorus' : 'verse'} chords; the rhythm guitar backs off`);
       else notes.push('Guitar 2 solos over the outro');
+    } else if (s.g2 === 'break') {
+      // Breaks: a short melodic solo, quoting the hook, lower and sparer than a full one; the band as it is
+      const sol = generateSolo(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3);
+      idea.guitar2 = sol.hits;
+      g2 = 'Guitar 2: a lead break, a short melodic solo over the chorus chords';
     } else if (s.g2 === 'play') g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));
     else if (s.g2 === 'swell') g2 = writeGuitar2(idea, g2o, r, new Array<Guitar2Style>(runs).fill('swell'));
     else if (s.g2 === 'hook') {
@@ -1567,7 +1630,15 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
           : [['lead', 3], ['octaves', 2], ...(twin ? [['harmony', 3] as [Guitar2Style, number]] : [])]);
       g2 = writeGuitar2(idea, g2o, r, new Array<Guitar2Style>(runs).fill(style));
     } else if (s.g2 === 'keep' && !idea.guitar2.length) g2 = 'Guitar 2: sits out';
-    if (s.kind === 'interlude') notes.push(riff ? 'The hook riff comes back with the full band' : 'The hook comes back over the chorus chords');
+    // Breaks: no lead guitar in this song (its solo, if it has one, and swells stay)
+    if (noLead && s.g2 !== 'solo' && s.g2 !== 'swell' && idea.guitar2.length) { idea.guitar2 = []; g2 = 'Guitar 2: sits out (no lead guitar in this song)'; }
+    // Twin: a second lead guitar on the hook, a lead line and the solo's second half
+    if (twinKind && idea.guitar2.length && (s.g2 === 'hook' || s.g2 === 'lead' || s.g2 === 'solo')) {
+      addTwin(idea, twinKind, s.g2 === 'solo' ? Math.floor(idea.song.total / 2) : 0);
+      notes.push(`A second lead guitar ${twinKind === 'harmony' ? 'harmonises a 3rd up' : twinKind === 'octave' ? 'plays it in octaves' : 'doubles it'}${s.g2 === 'solo' ? ' in the second half of the solo' : ''}`);
+    }
+    if (s.kind === 'interlude' && leadBreak) notes.push('A lead break: eight bars of lead guitar over the chorus chords, no singing');
+    else if (s.kind === 'interlude') notes.push(riff ? 'The hook riff comes back with the full band' : 'The hook comes back over the chorus chords');
     if (s.kind === 'verse' && riffVerse) notes.push('The idea\'s riff carries on under the verse');
     if (s.kind === 'chorus' && newChorus) notes.push('A new chorus: its own chords and big chords, so the riff stands out in the verses');
 
