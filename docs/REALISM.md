@@ -7,7 +7,7 @@ Option 1 from `docs/STUDY-LAKH.md`. Three parts:
 3. **The same switch for the Guide line and the Anchor line** (Guide line card, Both writers). See below.
 
 ## The targets
-- `src/realism/targets.json`: 2,548 real vocal lines from the Lakh MIDI collection, measured per genre and per genre + major/minor (artists tagged by hand), with the middle half of songs (p25-p75) for the per-song figures. 28 KB, **numbers only**: no notes, phrases or lyrics. It ships with the app now (the Guide card scores against it).
+- `src/realism/targets.json`: 5,353 real vocal lines (2,548 before the vocal tracks with odd names were found, `docs/STUDY-LAKH.md`) from the Lakh MIDI collection, measured per genre and per genre + major/minor (artists tagged by hand), with the middle half of songs (p25-p75) for the per-song figures. 28 KB, **numbers only**: no notes, phrases or lyrics. It ships with the app now (the Guide card scores against it).
 - Rebuild: `npm run realism-targets` (needs `experiments/MidiCollection`, git-ignored; about 40 seconds).
 - Thin genres: alt metal 16 songs, funk 51 (with funk-leaning pop). Treat those two as rough.
 

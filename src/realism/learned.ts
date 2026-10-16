@@ -21,6 +21,11 @@ export type Ph = 's' | 'm' | 'e';
 /** The context keys, finest first: [prev, pos, rel, ph], [prev, pos, ph], [prev, ph]. */
 export const ctxKeys = (prev: string, pos: string, rel: Rel, ph: Ph) => [`${prev}|${pos}|${rel}|${ph}`, `${prev}|${pos}|${ph}`, `${prev}|${ph}`];
 
+/** A song's tempo band for the rhythm odds: slow (under 95 bpm), mid, fast (130 and up). */
+export const tempoKey = (bpm: number) => (bpm < 95 ? 's' : bpm < 130 ? 'm' : 'f');
+/** The rhythm's context: the beat in the bar (0-3), whether the 16th just before it was sung, the tempo band. */
+export const cellKey = (beat: number, pushed: boolean, tempo: string) => `${beat}|${pushed ? 1 : 0}|${tempo}`;
+
 interface Data {
   genres: string[];
   /** Per genre (and 'all'): context key -> counts of each step (-MAX_STEP..MAX_STEP). */
@@ -34,6 +39,8 @@ interface Data {
   /** Per genre (and 'all'): counts of each Rel on a phrase's first note on a beat (its landing, after any pickup), and of a phrase's first note's scale degree (0-6). Absent until npm run realism-learned is run again. */
   land?: Record<string, number[]>;
   startDeg?: Record<string, number[]>;
+  /** Per genre (and 'all'): rhythm context (cellKey, and without its tempo) -> counts of each beat's cell (bit k: its k-th 16th sung). */
+  rhythm?: Record<string, Record<string, number[]>>;
 }
 const D = data as unknown as Data;
 
@@ -69,3 +76,20 @@ export const endDegrees = (genre: string) => mix(D.endDeg, genre);
 
 /** The share of phrase starts on each scale degree (0: the key's root ... 6), real songs of the genre; null until counted. */
 export const startDegrees = (genre: string) => (D.startDeg ? mix(D.startDeg, genre) : null);
+
+/**
+ * The odds of each cell for a beat (16 weights; bit k: the beat's k-th 16th sung), as real singers sing inside a
+ * line: the genre's own counts leaning on all songs' while it has few, at the song's tempo, else any tempo; null
+ * when nothing is known (or until counted).
+ */
+export function cellOdds(genre: string, beat: number, pushed: boolean, bpm: number): number[] | null {
+  if (!D.rhythm) return null;
+  const k = cellKey(beat, pushed, tempoKey(bpm)), k2 = k.slice(0, k.lastIndexOf('|'));
+  const G = D.rhythm[genre], A = D.rhythm.all;
+  const pick = (t?: Record<string, number[]>) => t?.[k] ?? t?.[k2];
+  const g = pick(G), a = pick(A);
+  if (!g && !a) return null;
+  const sg = g ? share(g) : null, sa = a ? share(a) : null;
+  const ng = g ? g.reduce((x, y) => x + y, 0) : 0, w = sa ? ng / (ng + 400) : 1;
+  return Array.from({ length: 16 }, (_, c) => w * (sg ? sg[c] : 0) + (1 - w) * (sa ? sa[c] : 0));
+}

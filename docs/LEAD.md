@@ -160,3 +160,4 @@ players' style, not copied from songs. All checked to fit minor, Dorian, major a
 ## 6. Later
 - Pinch harmonics, whammy dives, feedback (need their own sounds).
 - A tab view; locking a solo.
+- Lead guitar vs real songs: `docs/STUDY-LEAD.md` (1,967 real lead guitar parts measured against Guitar 2: longer lines, more steps, picked figures, heavy leads out of the singer's way).

@@ -27,7 +27,7 @@ export const stepSemis = (cs: number[], step: number) => cs[mod(step, 7)] + 12 *
  * A pitch cell of `n` notes, as scale steps from 0. Built from shapes melodies actually use
  * (steps, neighbour notes, arpeggios, a leap filled in by steps back) rather than a random walk.
  */
-export function pitchCell(rng: Rng, n: number, range = 7): number[] {
+export function pitchCell(rng: Rng, n: number, range = 7, steps = false): number[] {
   const shapes: [number[], number][] = [
     [[0, 1, 2, 3, 4], 2], // run up
     [[4, 3, 2, 1, 0], 2], // run down
@@ -40,7 +40,8 @@ export function pitchCell(rng: Rng, n: number, range = 7): number[] {
     [[0, 2, 1, 3, 2], 2], // climbing thirds
     [[0, 7, 4, 2, 0], 1], // octave leap and fall
   ];
-  const base = rng.weighted(shapes);
+  // (steps: lead Lines, docs/LEAD-LINES.md: the leaping shapes kept rare)
+  const base = rng.weighted(steps ? shapes.map(([c, w]): [number[], number] => [c, c.some((x, i) => i > 0 && Math.abs(x - c[i - 1]) >= 3) ? w * 0.15 : w]) : shapes);
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
     if (i < base.length) out.push(base[i]);

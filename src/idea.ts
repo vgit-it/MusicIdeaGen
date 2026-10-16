@@ -55,6 +55,20 @@ export interface GenOptions {
   vocalReal?: boolean;
   /** Patterns (docs/PATTERNS.md): the vocal's rhythms and short shapes drawn from a library of common real ones. */
   vocalPatterns?: boolean;
+  /** Real strum mix (docs/STUDY-RHYTHM.md): strumming patterns from a library widened to what real guitarists play: held chords, quarters, 8ths in many shapes, 16ths, stabs. */
+  strumMix?: boolean;
+  /** Guitar 2 (the lead player) plays whole lines, mostly by step, as well as short licks (docs/LEAD-LINES.md). Off: as before. */
+  leadLines?: boolean;
+  /** Guitar 2 plays a picked figure, the same each bar (some songs' verses), and its lines come back (docs/LEAD-FIGURES.md). Off: as before. */
+  leadFigures?: boolean;
+  /** Guitar 2 keeps out from under the singer's lines, by genre (metal and hard rock most), and plays a line over a band intro (docs/LEAD-ROOM.md). Off: as before. */
+  leadRoom?: boolean;
+  /** Songs without a solo: now and then no lead guitar at all (pop most), else a short lead break after a chorus (docs/LEAD-BREAKS.md). Off: as before. */
+  leadBreaks?: boolean;
+  /** A second lead guitar on the hook and the solo's peak: a harmony, an octave or a double (hard rock and metal most; docs/LEAD-TWIN.md). Off: as before. */
+  leadTwin?: boolean;
+  /** Real licks: solos and verse fills also play licks written from real lead guitar parts (shared rhythms, real note-to-note odds; docs/LEAD-LICKS.md). Off: as before. */
+  leadLicks?: boolean;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */
@@ -206,6 +220,8 @@ export interface GuitarHit {
   tremolo?: boolean;
   /** Raked into: the pick drags across this many muted strings just before the note. */
   rake?: number;
+  /** A second lead guitar plays this with it (Twin, docs/LEAD-TWIN.md): a harmony, an octave or the same notes, panned the other way. */
+  twin?: number[];
   /** Fade the note in (volume swell). */
   swell?: boolean;
   /** The low pedal note of a pedal riff (a harmony part skips it). */
@@ -265,6 +281,9 @@ export interface Idea {
   rhythmPick?: GuitarHit[];
   /** Rhythm guitar (strummed genres): how the player shapes its chords: a capo, higher up the neck, a smooth top line. */
   shapes?: { capo?: number; near?: number; smooth?: boolean };
+  /** Tracks, Guitar plan (src/players/presence.ts): the steps the rhythm guitar sits out (from, until), and the layer that covers its chords there (a piano, strings or pad, even if none was added). */
+  guitarOut?: { from: number; until: number };
+  cover?: 'keys' | 'strings' | 'pad';
   /** Rhythm guitar: a dotted-8th echo on it (ringing arpeggios). */
   rhythmEcho?: boolean;
   /** An idea on its own: its rhythm guitar as written, before the player played it (tracks start from this). */

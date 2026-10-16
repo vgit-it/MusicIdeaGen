@@ -3,7 +3,7 @@
 Option 2 from `docs/STUDY-LAKH.md`, on top of `docs/REALISM.md`. A **Patterns** switch in the vocal row and in the Guide line card (Both writers). Off by default; off, everything is exactly as before (checked: vocals, backing and notes byte for byte against the last commit, `npm run melody-lab` identical, `npm run guide-check` all 168 songs the same).
 
 ## The library (`src/realism/patterns.json`, 32 KB)
-- Mined from the Lakh MIDI collection's vocal lines on a tight grid: 1,159 songs.
+- Mined from the Lakh MIDI collection's vocal lines on a tight grid: 2,551 songs (was 1,159; more vocal tracks found, `docs/STUDY-LAKH.md`).
 - **Kept only when found in 25+ songs by 15+ different artists.** So no pattern is any one song's.
 - **243 one-bar rhythms:** where the notes start in the bar (16ths), whether a note is held into the bar, whether a phrase ends in it.
 - **584 note shapes of 4-6 notes:** scale steps between the notes, where the first note starts (beat 1/3, beat 2/4, offbeat 8th, in-between 16th), and what it is against the band (root, 3rd, 5th, another chord note, none).
@@ -25,7 +25,7 @@ Option 2 from `docs/STUDY-LAKH.md`, on top of `docs/REALISM.md`. A **Patterns** 
 - **Guide line** (the default writer, `src/guide/line.ts`): its main notes timed and shaped by real vocal lines' slow line (below). Its quick notes, pushes and pulls are left as they were.
 
 ## The Guide line: a slow-line library (`src/realism/skeleton.json`, 14 KB)
-The library above is per syllable; the Guide line moves about a note a bar with quick notes on top. So it gets a library of its own, from the same 1,159 on-grid songs:
+The library above is per syllable; the Guide line moves about a note a bar with quick notes on top. So it gets a library of its own, from the same on-grid songs:
 - **Each real vocal line reduced to its slow line** (`src/realism/skeleton.ts`): the notes held a beat or longer and the notes on beats 1 and 3; the quick ones between left out (about a third of the notes stay). The same note sung on straight after itself is one note.
 - **220 2-bar timings:** where the slow line's notes change, in 8ths: on the beat, on the "&" before it, held over the bar line, a rest.
 - **117 shapes of 4-5 notes:** scale steps between the slow line's notes, with what the first is against the chord (root, 3rd, 5th, another chord note, none).

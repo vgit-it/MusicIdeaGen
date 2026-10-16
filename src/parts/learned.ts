@@ -1,7 +1,8 @@
 // Learned (docs/VOCAL-LEARNED.md, option 5 of docs/STUDY-LAKH.md): the vocal's pitches picked note by note by the
 // odds learnt from real vocal lines (src/realism/learned.ts: the scale step from the note before, by the step before
 // it, where the note starts in the bar, what the note before was against the chord, where it sits in its phrase,
-// the genre). Only the pitches: the rhythm comes from the chosen rhythm writer (Classic / Grid / Words). The app's
+// the genre). The rhythm: with Rhythm Classic its own, each beat sung as real singers sing it (melody.ts gridRhythm,
+// src/realism/learned.ts cellOdds); with Grid or Words theirs. The app's
 // forms stay on top so a line doesn't wander: a letter that comes back sings its notes again, each line leans toward
 // the section's contour within its range (the chorus lifted as for Shaped), strong notes lean to what real singers
 // put on the beat, a line ends on a chord note (closed on the root, or open), several tries scored, the best kept.

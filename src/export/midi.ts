@@ -76,6 +76,8 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
   const rhythm = mk('Rhythm guitar', 0, PROGRAM[most(list.map(o.chordIdFor))]);
   const withG2 = list.filter((i) => i.guitar2.length);
   const g2 = mk('Guitar 2', 1, PROGRAM[most((withG2.length ? withG2 : list).map(o.guitar2IdFor))]);
+  // (Twin: the second lead guitar, on its own track)
+  const g2twin = mk('Guitar 2 twin', 8, PROGRAM[most((withG2.length ? withG2 : list).map(o.guitar2IdFor))]);
   const bass = mk('Bass', 2, 33);
   const drums = mk('Drums', 9, 0); // channel 10 (index 9): the GM drum kit
   const piano = mk('Piano', 3, 0);
@@ -135,7 +137,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
     song.bars.forEach((b, bi) => {
       if (bi > 0 && !idea.section?.db) return;
       const expression = Math.round(127 * 10 ** (levelAt(idea.section, bi) / 20));
-      for (const t of [vocal, backing, rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
+      for (const t of [vocal, backing, rhythm, g2, g2twin, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
     });
 
     const isGuitar = (id: ChordInstrumentId) => id !== 'piano';
@@ -183,7 +185,10 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
         else (st === 'U' ? [...notes].reverse() : notes).forEach((m, i) => note(rhythm, m, t0 + i * 10, secToTicks(ring), v));
       }
 
-      for (const h of idea.guitar2) if (h.step === g) hit(g2, h, h.vel, false, idea.g2Feel ?? 0);
+      for (const h of idea.guitar2) if (h.step === g) {
+        hit(g2, h, h.vel, false, idea.g2Feel ?? 0);
+        if (h.twin) hit(g2twin, { ...h, notes: h.twin }, h.vel * 0.75, false, (idea.g2Feel ?? 0) + 12);
+      }
       if (o.vocal !== 'off') {
         for (const n of idea.vocal ?? []) {
           // (a run's quick notes fall between the 16ths: written in the 16th they start in)

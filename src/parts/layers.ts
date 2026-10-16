@@ -498,7 +498,20 @@ export type LayerChoice = KeysChoice | StringsChoice | PercChoice | string;
  * A layer's part for an idea or track section, played where its plan puts it: the whole section,
  * from or until a bar, only a few moments, or not at all (`throughout`: every bar).
  */
-export function writeLayer(part: LayerName, idea: Idea, choice: LayerChoice, seed: string, throughout = false): Layer {
+export function writeLayer(part: LayerName, idea: Idea, choice: LayerChoice, seed: string, throughout = false, coverOnly = false): Layer {
+  const out = idea.guitarOut;
+  // the cover: where the guitar sits out (Guitar plan) this layer plays the chords, and only there
+  if (coverOnly && out) {
+    const { total } = idea.song;
+    const src = idea.section?.bandFrom ? { ...idea, section: { ...idea.section, bandFrom: 0 } } : idea;
+    const full = part === 'keys' ? writeKeys(src, choice as KeysChoice, seed)
+      : part === 'strings' ? writeStrings(src, choice as StringsChoice, seed) : writePad(src, seed);
+    const win: Presence = out.from <= 0 && out.until >= total ? { kind: 'full' } : { kind: 'window', from: out.from, until: out.until };
+    const layer = applyPresence(part, idea, full, win);
+    const name = layer.desc.slice(0, layer.desc.indexOf(':'));
+    const what = layer.desc.slice(layer.desc.indexOf(':') + 2);
+    return { notes: layer.notes, desc: `${name} (covering for the guitar): ${what}` };
+  }
   const { presence, role, early } = presenceOf(part, idea, seed, throughout);
   // playing with the guitar before the band comes in: written as if the band were there from the start
   const src = early && idea.section?.bandFrom ? { ...idea, section: { ...idea.section, bandFrom: 0 } } : idea;
@@ -506,6 +519,12 @@ export function writeLayer(part: LayerName, idea: Idea, choice: LayerChoice, see
     : part === 'strings' ? writeStrings(src, choice as StringsChoice, seed)
       : part === 'perc' ? writePerc(src, choice as PercChoice, seed) : writePad(src, seed);
   const layer = applyPresence(part, idea, full, presence);
+  // a layer you added also covers the chords where the guitar sits out (Guitar plan), whatever its own plan says
+  if (out && idea.cover === part && presence.kind !== 'full' && full.notes.length) {
+    const have = new Set(layer.notes.map((n) => n.step));
+    const extra = full.notes.filter((n) => n.step >= out.from && n.step < out.until && !have.has(n.step));
+    if (extra.length) layer.notes = [...layer.notes, ...extra].sort((a, b) => a.step - b.step);
+  }
   const [name, what] = [layer.desc.slice(0, layer.desc.indexOf(':')), layer.desc.slice(layer.desc.indexOf(':') + 2)];
   return { notes: layer.notes, desc: `${name}${role ? ` (${ROLE_DESC[role]})` : ''}: ${what}` };
 }
