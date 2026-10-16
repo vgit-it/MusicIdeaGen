@@ -79,7 +79,9 @@ export class GuideVoice {
         lastEnd = GuideVoice.at(idea, L.notes[L.notes.length - 1].step + L.notes[L.notes.length - 1].len);
         let notes: SungNote[] = L.notes.map((n) => ({ t: GuideVoice.at(idea, n.step) - t0, end: GuideVoice.at(idea, n.step + n.len) - t0, midi: n.midi + shift, vel: n.vel, syl: n.syl,
           // (a bend: glided into over its length, as the line plays it)
-          ...(n.bend ? { bend: GuideVoice.at(idea, n.step + n.bend) - GuideVoice.at(idea, n.step) } : {}) }));
+          ...(n.bend ? { bend: GuideVoice.at(idea, n.step + n.bend) - GuideVoice.at(idea, n.step) } : {}),
+          // (the Vocal tune's Bends: the vocal's own scoop in and fall off)
+          ...(n.slide ? { slide: n.slide } : {}), ...(n.fall ? { fall: n.fall } : {}) }));
         // (a short breath between words, Paul: the word before let go a moment early; the tune's timing kept)
         for (let j = 1; j < notes.length; j++) {
           const p = notes[j - 1], q = notes[j];
@@ -92,7 +94,7 @@ export class GuideVoice {
           if (past > 0.3) notes[notes.length - 1] = { ...last, fade: Math.max(last.fade ?? 0, Math.min(past, last.end - last.t - 0.05)) };
         }
         const breath = fl && restBefore >= 0.5 ? fl.breath : 0;
-        const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ""},${n.fade?.toFixed(2) ?? ''},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}${fl ? `|feel${breath}|${notes.map((n) => `${n.t.toFixed(4)},${n.vel.toFixed(3)},${n.slide?.toFixed(3) ?? ''},${n.fall?.toFixed(3) ?? ''},${n.swell?.toFixed(3) ?? ''},${n.fade?.toFixed(3) ?? ''},${n.sharp?.toFixed(1) ?? ''}`).join(';')}` : ''}`;
+        const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ""},${n.fade?.toFixed(2) ?? ''},${n.slide ?? ''},${n.fall ?? ''},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}${fl ? `|feel${breath}|${notes.map((n) => `${n.t.toFixed(4)},${n.vel.toFixed(3)},${n.slide?.toFixed(3) ?? ''},${n.fall?.toFixed(3) ?? ''},${n.swell?.toFixed(3) ?? ''},${n.fade?.toFixed(3) ?? ''},${n.sharp?.toFixed(1) ?? ''}`).join(';')}` : ''}`;
         const p: Placed = { key, notes, t0, idea, energy, sung, breath };
         // (a line starting between steps (the Vocal tune's triplets): from the step before)
         const first = Math.max(0, Math.floor(L.notes[0].step - Math.ceil(PRE / six)));

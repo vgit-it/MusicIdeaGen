@@ -27,6 +27,10 @@ export interface TuneLine extends GuideLine { parts: TuneNote[][] }
 const CARRY_P = 0.5;
 /** Carry over: at least this many bars into the silent section (now and then one more), fading out. */
 export const CARRY_BARS = 2;
+/** Bends: the widest bend (semitones; MIDI's pitch bend carries a whole step). */
+const BEND_MAX = 2;
+/** Bends (More): how readily a held note slides into the next word, by genre. */
+const SLIDE_P: Record<string, number> = { grunge: 0.6, rock: 0.5, hardrock: 0.45, altmetal: 0.4, metal: 0.35, pop: 0.3, funk: 0.25 };
 /** Breaths and lead-ins leave at least this much of a note (steps). */
 const MIN_LEFT = 2;
 
@@ -44,11 +48,13 @@ export function writeTune(list: Idea[], moodIn: Mood | undefined, salt: number |
       let i = scale.length - 1;
       while (scale[i] > pc) i--;
       return { step: n.step, len: n.len, midi: n.midi, deg: 7 * Math.floor(r / 12) + i, syl: { ...n.syl }, vel: n.vel,
-        ...(scale.includes(pc) ? {} : { colour: true }), ...(n.start ? { start: true } : {}) };
+        ...(scale.includes(pc) ? {} : { colour: true }), ...(n.start ? { start: true } : {}),
+        // (Bends: the vocal's own scoop into the note and fall off its end, heard in the synth and the singer)
+        ...(ideas.bends && n.slide ? { slide: n.slide } : {}), ...(ideas.bends && n.fall ? { fall: n.fall } : {}) };
     });
   });
   const silent = parts.map((p) => !p.length);
-  const nb = { shift: 0, before: 0, tired: 0, beats: 0, leadIns: 0, carries: 0, carryBends: 0 };
+  const nb = { shift: 0, before: 0, tired: 0, beats: 0, leadIns: 0, carries: 0, carryBends: 0, glides: 0, slides: 0 };
 
   // Range: the whole tune moved by octaves to sit inside the sliders as best it can (Auto: as the vocal sings it)
   if (range) {
@@ -139,6 +145,40 @@ export function writeTune(list: Idea[], moodIn: Mood | undefined, salt: number |
     }
   });
 
+  // Bends (Paul: "bends to connect between notes ... not too many"), after everything that moves notes about:
+  // - Some: a syllable sung over two notes a step or two apart glides between them (a bend inside a word)
+  // - More: also, now and then, a note held a beat or more slides a step or two into the next word
+  //   (at most one every two bars; more at phrase ends and in slow songs; by genre)
+  if (ideas.bends) {
+    const brng2 = new Rng(`tune-bends-${first.seeds.song}-${mood}-${salt}`);
+    const slideP = SLIDE_P[first.song.genre] ?? 0.35;
+    parts.forEach((p, si) => {
+      const bar = list[si].song.bars[0]?.len ?? 16, slow = list[si].song.bpm < 100;
+      let lastSlide = -Infinity;
+      p.forEach((n, k) => {
+        const q = p[k - 1];
+        if (!q || n.bend || Math.abs(n.step - (q.step + q.len)) > 0.01) return;
+        const d = Math.abs(n.midi - q.midi);
+        if (d < 1 || d > BEND_MAX) return;
+        if (n.syl.text === '~') {
+          n.bend = Math.min(2, n.len * 0.75);
+          nb.glides++;
+          return;
+        }
+        if (ideas.bends !== 'more' || q.len < 4 || n.step - lastSlide < 2 * bar) return;
+        const next = p[k + 1];
+        const phraseEnd = !next || !!next.start || next.step - (n.step + n.len) >= 4;
+        if (!brng2.chance(slideP * (phraseEnd ? 1.5 : 1) * (slow ? 1.2 : 1))) return;
+        n.bend = Math.min(2, n.len * 0.6);
+        n.newWord = true;
+        // (no scoop under a slide: it comes from the note before)
+        delete n.slide;
+        lastSlide = n.step;
+        nb.slides++;
+      });
+    });
+  }
+
   const o = first.opts;
   const sung = parts.flat();
   const lo = sung.length ? Math.min(...sung.map((n) => n.midi)) : 0, hi = sung.length ? Math.max(...sung.map((n) => n.midi)) : 0;
@@ -149,6 +189,7 @@ export function writeTune(list: Idea[], moodIn: Mood | undefined, salt: number |
     `Sits out: ${list.map((i, si) => (silent[si] ? i.section?.label ?? '' : '')).filter(Boolean).join(', ') || 'nothing'}`,
     ...(ideas.breath ? [`Breaths: ${nb.before} before a big section or after a tiring one, ${nb.tired} more after a tiring stretch; ${nb.beats} beats in all`] : []),
     ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, the first word held into it`] : []),
+    ...(ideas.bends ? [`Bends (${ideas.bends === 'more' ? 'More' : 'Some'}): ${nb.glides} glides inside a word${ideas.bends === 'more' ? `, ${nb.slides} slides out of a held note into the next word` : ''}; the vocal's own ${sung.filter((n) => n.slide).length} scoops and ${sung.filter((n) => n.fall).length} falls`] : []),
     ...(ideas.carry ? [`Carry over: ${nb.carries} last ${nb.carries === 1 ? 'note runs' : 'notes run'} on into a section the tune sits out, two or three bars, fading out (${nb.carryBends} bent a step)`] : []),
     'Not used here (they write the tune, and the vocal row does that): quick notes, Slow line, Repeat idea, Pitch by words, Question & answer, Section change, the Anchor line\'s settings, Real songs and Patterns (the vocal row\'s own), Key & scale, Chords lean. Used: Sing, Human feel, Hard & soft, Breaths, Lead-ins, Carry over, Range (by octaves)',
   ];
@@ -161,7 +202,7 @@ export function tuneWords(line: TuneLine): GuideSungLine[][] {
     const lines: GuideSyl[][] = [];
     p.forEach((n, k) => {
       const prev = p[k - 1];
-      const syl: GuideSyl = { step: n.step, len: n.len, midi: n.midi, vel: n.vel, syl: { ...n.syl }, ...(n.bend ? { bend: n.bend } : {}) };
+      const syl: GuideSyl = { step: n.step, len: n.len, midi: n.midi, vel: n.vel, syl: { ...n.syl }, ...(n.bend ? { bend: n.bend } : {}), ...(n.slide ? { slide: n.slide } : {}), ...(n.fall ? { fall: n.fall } : {}) };
       if (!prev || (n.start && n.syl.text !== '~') || n.step - (prev.step + prev.len) >= 4) lines.push([syl]);
       else lines[lines.length - 1].push(syl);
     });

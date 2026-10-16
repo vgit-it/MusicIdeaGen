@@ -51,6 +51,11 @@ export interface GuideNote {
   flicks?: Flick[];
   /** Pushes and pulls on it: `at` steps in. */
   marks?: Mark[];
+  /** The Vocal tune's Bends (tune.ts): a scoop up into it from so many semitones below, a fall off its end by so many (the vocal's own). */
+  slide?: number;
+  fall?: number;
+  /** The Vocal tune's Bends: bent into from the note before, but a new word (a slide into the next word, not a word carried on). */
+  newWord?: boolean;
 }
 
 /** A push (a lift, like a word starting) or a pull (a dip, like a word ending) inside a held note. */
@@ -80,6 +85,8 @@ export interface GuideIdeas {
   anchor?: boolean;
   /** Vocal tune (tune.ts, docs/GUIDE-TUNE.md): a third writer: the main vocal's own tune and words, as the vocal row writes them. */
   tune?: boolean;
+  /** Vocal tune, Bends (tune.ts): Some: glides inside a word and the vocal's own scoops and falls; More: also slides out of a held note into the next word. */
+  bends?: 'some' | 'more';
   /** Human feel (feel.ts, docs/GUIDE-FEEL.md): how the line is played and sung (glides, scoops, swells, fades, falls, vibrato, breaths); the written line unchanged. */
   feel?: boolean;
   /** The Anchor line's rhythm style (anchor.ts; left out: Auto, by genre). */

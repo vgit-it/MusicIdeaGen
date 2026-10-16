@@ -101,6 +101,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         <p class="hint">The vocal's tune, note for note: change how it's written in the vocal row (Rhythm, Melody, Moves, Energy, Real songs, Patterns). Mute the vocal there to hear this one alone.</p>
         <div class="guiderow">
           <label title="The words sung: the vocal's own (its lines, as the vocal sings them), or new ones written onto the same tune as for the other writers">Words ${seg('g-twords', [['own', "Vocal's"], ['new', 'New']], 'new')}</label>
+          <label title="Bends between the notes (not too many). Some: a syllable sung over two notes a step or two apart glides between them, and the vocal's own scoops into notes and falls off their ends are heard. More: also, now and then, a note held a beat or more slides a step or two into the next word (at most one every two bars; more at phrase ends, in slow songs and in grunge and rock, fewer in pop and funk)">Bends ${seg('g-tbends', [['off', 'Off'], ['some', 'Some'], ['more', 'More']], 'off')}</label>
         </div>
       </div>
       <div class="ggroup" id="g-for-guide">
@@ -283,14 +284,18 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
         const phraseEnd = gapAfter >= 0.4;
         feel = {
           from: joined ? prev.midi : undefined, glide: f.glide,
-          scoop: !joined && rng.chance(f.scoopP * 1.4) ? f.scoopBy * (0.6 + 0.6 * rng.next()) : 0, scoopLen: f.scoopLen,
+          // (the Vocal tune's Bends: the vocal's own scoop and fall, else by chance)
+          scoop: n.slide ? n.slide : !joined && rng.chance(f.scoopP * 1.4) ? f.scoopBy * (0.6 + 0.6 * rng.next()) : 0, scoopLen: f.scoopLen,
           swell: f.swell * (joined ? 0.6 : 1), fade: f.fade,
-          fall: phraseEnd && len * six > 0.25 && !bends.length && rng.chance(f.fallP) ? f.fallBy * (0.6 + 0.6 * rng.next()) : 0,
+          fall: n.fall && !bends.length ? n.fall : phraseEnd && len * six > 0.25 && !bends.length && rng.chance(f.fallP) ? f.fallBy * (0.6 + 0.6 * rng.next()) : 0,
           vib: f.vib, sharp: top && (idea.section?.energy ?? 3) >= 4 ? f.sharp : 0,
           breath: gapBefore >= 0.5 ? f.breath : 0,
         };
         // (a phrase's last word a touch late)
         if (phraseEnd && len * six > 0.2) late = Math.min(f.late, len * six * 0.3);
+      } else if (ideas.tune && ideas.bends && (n.slide || n.fall)) {
+        // (Bends without Human feel: only the vocal's own scoop into the note and fall off its end)
+        feel = { glide: 0, scoop: n.slide ?? 0, scoopLen: 0.08, swell: 0.035, fade: 0, fall: n.fall && !bends.length ? n.fall : 0, vib: 0, sharp: 0, breath: 0 };
       }
       // (Vocal tune: a note carried on into a section it sits out fades away over the part past this one's end)
       const outFade = ideas.tune && line.silent[p + 1] ? Math.max(0, n.step + len - idea.song.total) * six : 0;
@@ -351,6 +356,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   showWriter('tune');
   pickSeg('g-writer', (v) => { showWriter(v); rewrite(); });
   pickSeg('g-twords', (v) => { ownWords = v === 'own'; rewrite(); });
+  pickSeg('g-tbends', (v) => { ideas.bends = v === 'off' ? undefined : (v as 'some' | 'more'); rewrite(); });
   pickSeg('g-hook', (v) => { ideas.hook = v === 'on'; rewrite(); });
   pickSeg('g-color', (v) => { ideas.color = v === 'on'; rewrite(); });
   pickSeg('g-best', (v) => { ideas.best = v === 'on'; rewrite(); });
