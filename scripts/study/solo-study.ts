@@ -54,6 +54,8 @@ interface Solo {
   trips?: { t8: number; t16: number; t4: number; down: number; up: number; turn: number };
   /** times the line comes back to within a step of its top note (separate visits) */
   topVisits?: number;
+  /** notes on a note the band is sounding: all, on a beat, held half a beat or more */
+  chord?: { all: number; beat: number; nBeat: number; held: number; nHeld: number; n: number };
 }
 const solos: Solo[] = [];
 
@@ -67,7 +69,7 @@ const count = (m: Map<string, Seen>, key: string, song: number, artist: string, 
   r.last = song; r.songs++; r.artists.add(artist); r.genres[genre] = (r.genres[genre] ?? 0) + 1;
 };
 
-function measure(side: 'real' | 'app', top: BN[], b0: number, b1: number, low: number[], tonic: number, minor: boolean, song: number, artist: string, genre: string) {
+function measure(side: 'real' | 'app', top: BN[], b0: number, b1: number, low: number[], slots: Set<number>[], tonic: number, minor: boolean, song: number, artist: string, genre: string) {
   const ns = top.filter((n) => n.s >= b0 * 4 && n.s < (b1 + 1) * 4);
   if (ns.length < 12) return;
   const t0 = b0 * 4, T = (b1 + 1 - b0) * 4;
@@ -183,6 +185,16 @@ function measure(side: 'real' | 'app', top: BN[], b0: number, b1: number, low: n
     let visits = 0, near = false;
     for (const p of pitch) { const n = p >= hi - 2; if (n && !near) visits++; near = n; }
     solos[solos.length - 1].topVisits = visits;
+    const ch = { all: 0, beat: 0, nBeat: 0, held: 0, nHeld: 0, n: 0 };
+    ns.forEach((n, i) => {
+      const s = slots[Math.round(n.s * 4)];
+      if (!s || !s.size) return;
+      const on = s.has(mod(pitch[i], 12)) ? 1 : 0;
+      ch.n++; ch.all += on;
+      if (Math.abs(n.s - Math.round(n.s)) < 0.06) { ch.nBeat++; ch.beat += on; }
+      if (n.e - n.s >= 0.5) { ch.nHeld++; ch.held += on; }
+    });
+    solos[solos.length - 1].chord = ch;
   }
   if (side === 'app') return;
   // the licks: 4-7 notes in a row inside a phrase, as notes above the key's root (rhythm free), and with their rhythm (16ths)
@@ -229,15 +241,15 @@ for (const a of REAL ? fs.readdirSync(ROOT) : []) {
     const pc = new Array(12).fill(0); for (const n of band.concat(T[vi].ns)) pc[n.p % 12] += n.e - n.s;
     let best = -2, tonic = 0, minor = false;
     for (let k = 0; k < 12; k++) { const rot = pc.slice(k).concat(pc.slice(0, k)); const x = corr(rot, MAJ), y = corr(rot, MIN); if (x > best) { best = x; tonic = k; minor = false; } if (y > best) { best = y; tonic = k; minor = true; } }
-    const low: number[] = [];
-    for (const n of band) for (let s = Math.ceil((n.s - 0.02) * 4); s < n.e * 4 - 0.08 && s < 40000; s++) if (!low[s] || n.p < low[s]) low[s] = n.p;
+    const low: number[] = [], slots: Set<number>[] = [];
+    for (const n of band) for (let s = Math.ceil((n.s - 0.02) * 4); s < n.e * 4 - 0.08 && s < 40000; s++) { if (!low[s] || n.p < low[s]) low[s] = n.p; (slots[s] ??= new Set()).add(n.p % 12); }
     songs++;
-    findSolos('real', T, vi, leads[0].t, low, tonic, minor, songs, a, genre);
+    findSolos('real', T, vi, leads[0].t, low, slots, tonic, minor, songs, a, genre);
   }
 }
 
 /** The solos (as the lead guitar study finds them): 4+ bars with no singing, the lead playing 3+ notes a bar. */
-function findSolos(side: 'real' | 'app', T: Track[], vi: number, L: Track, low: number[], tonic: number, minor: boolean, song: number, artist: string, genre: string) {
+function findSolos(side: 'real' | 'app', T: Track[], vi: number, L: Track, low: number[], slots: Set<number>[], tonic: number, minor: boolean, song: number, artist: string, genre: string) {
   const top = onsets(L.ns).map((o) => o.reduce((x, y) => (y.p > x.p ? y : x)));
   const end = Math.max(...T.flatMap((t) => t.ns.map((n) => n.e))), nBars = Math.ceil(end / 4);
   const leadBar = new Array(nBars).fill(0), voxBar = new Array(nBars).fill(0);
@@ -247,7 +259,7 @@ function findSolos(side: 'real' | 'app', T: Track[], vi: number, L: Track, low: 
   for (let i = 0; i < nBars;) {
     if (!soloBar[i]) { i++; continue; }
     let k = i; while (k + 1 < nBars && (soloBar[k + 1] || (k + 2 < nBars && soloBar[k + 2] && voxBar[k + 1] === 0))) k++;
-    if (k - i + 1 >= 4) measure(side, top, i, k, low, tonic, minor, song, artist, genre);
+    if (k - i + 1 >= 4) measure(side, top, i, k, low, slots, tonic, minor, song, artist, genre);
     i = k + 1;
   }
 }
@@ -264,9 +276,9 @@ for (const g of ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal
     const vi = findVox(r.T), li = r.T.findIndex((t) => t.name === 'Guitar 2');
     if (vi < 0 || li < 0) continue;
     const band = r.T.filter((t, k) => k !== vi && k !== li && t.ch !== 9 && !/vo(cal|x|ice)|twin/i.test(t.name)).flatMap((t) => t.ns);
-    const low: number[] = [];
-    for (const n of band) for (let x = Math.ceil((n.s - 0.02) * 4); x < n.e * 4 - 0.08 && x < 40000; x++) if (!low[x] || n.p < low[x]) low[x] = n.p;
-    findSolos('app', r.T, vi, r.T[li], low, idea.song.key, MINORISH.includes(idea.song.mode), -1 - i, 'app', g);
+    const low: number[] = [], slots: Set<number>[] = [];
+    for (const n of band) for (let x = Math.ceil((n.s - 0.02) * 4); x < n.e * 4 - 0.08 && x < 40000; x++) { if (!low[x] || n.p < low[x]) low[x] = n.p; (slots[x] ??= new Set()).add(n.p % 12); }
+    findSolos('app', r.T, vi, r.T[li], low, slots, idea.song.key, MINORISH.includes(idea.song.mode), -1 - i, 'app', g);
   }
 }
 
