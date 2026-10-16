@@ -29,6 +29,10 @@ Measured offline: the share of one CPU core needed to play in real time (this se
 - The audio context asks for `latencyHint: 'playback'` (`src/audio/live.ts`): bigger chunks for the audio thread, so a busy moment doesn't crackle. Nothing is played live, so the small extra delay doesn't matter.
 - Notes are scheduled a quarter second ahead (was a tenth): a busy moment on the page no longer makes them late.
 
+## Fix: the guitars went silent (after the first version)
+- Paul: "the rhythm guitar is not playing at all now". With the context's look-ahead at a quarter second from the start, the switch from the stand-in cabinet to the real one (made when the cabinet sounds load) was scheduled a quarter second ahead, and the browser sometimes dropped it: the amp's real-cabinet path stayed at zero (both guitars, about half the songs).
+- Now that switch is made at once. Checked: 6 of 6 trials with sound (was 1-3 of 6), and 40 s tracks in four genres with the rhythm guitar in every second.
+
 ## Same sound
 - Renders before and after with the randomness fixed: band and lead singer the same to -89 dB or lower (float noise; the same code rendered twice differs as much).
 - With the backing singer on, takes differ only by chance: its voice synth draws random noise, which used to come from the page's random numbers (and so moved the drummer's timing jitter).
