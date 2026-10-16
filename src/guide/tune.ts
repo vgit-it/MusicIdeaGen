@@ -25,6 +25,8 @@ export interface TuneLine extends GuideLine { parts: TuneNote[][] }
 
 /** Carry over: how often the last note runs on into a section the tune sits out. */
 const CARRY_P = 0.5;
+/** Carry over: at least this many bars into the silent section (now and then one more), fading out. */
+export const CARRY_BARS = 2;
 /** Breaths and lead-ins leave at least this much of a note (steps). */
 const MIN_LEFT = 2;
 
@@ -90,13 +92,13 @@ export function writeTune(list: Idea[], moodIn: Mood | undefined, salt: number |
     const pTotal = pIdea.song.total, bar = idea.song.bars[0]?.len ?? 16;
     const pLast = pv[pv.length - 1];
     // Carry over: the last note (ending up to two beats before the end: the vocal leaves a beat or two) runs on into a
-    // section the tune sits out (a solo), held or bent a step, up to a bar
+    // section the tune sits out (a solo), held or bent a step, for two or three bars, fading out as it goes (Paul:
+    // "hold it for a couple of bars at least and fade out during these"; the fade: the panel and voice, CARRY_BARS)
     if (silent[si]) {
       if (!ideas.carry || !pLast || pLast.step + pLast.len < pTotal - 8 || !orng.chance(CARRY_P)) return;
-      const x = 4 * orng.int(1, Math.max(1, Math.floor(bar / 4)));
-      // (held while it stays within a bar, else, or by chance, bent a step)
-      const canHold = pTotal - pLast.step + x <= bar;
-      if (canHold && orng.chance(0.5)) pLast.len = pTotal - pLast.step + x;
+      const x = Math.min(idea.song.total, bar * (CARRY_BARS + (orng.chance(0.4) ? 1 : 0)));
+      // (held, or now and then bent a step as it goes in)
+      if (orng.chance(0.5)) pLast.len = pTotal - pLast.step + x;
       else {
         const { key, mode } = pIdea.song;
         const scale = GUIDE_SCALES[mode] as readonly number[];
@@ -147,7 +149,7 @@ export function writeTune(list: Idea[], moodIn: Mood | undefined, salt: number |
     `Sits out: ${list.map((i, si) => (silent[si] ? i.section?.label ?? '' : '')).filter(Boolean).join(', ') || 'nothing'}`,
     ...(ideas.breath ? [`Breaths: ${nb.before} before a big section or after a tiring one, ${nb.tired} more after a tiring stretch; ${nb.beats} beats in all`] : []),
     ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, the first word held into it`] : []),
-    ...(ideas.carry ? [`Carry over: ${nb.carries} last ${nb.carries === 1 ? 'note runs' : 'notes run'} on into a section the tune sits out (${nb.carryBends} bent a step)`] : []),
+    ...(ideas.carry ? [`Carry over: ${nb.carries} last ${nb.carries === 1 ? 'note runs' : 'notes run'} on into a section the tune sits out, two or three bars, fading out (${nb.carryBends} bent a step)`] : []),
     'Not used here (they write the tune, and the vocal row does that): quick notes, Slow line, Repeat idea, Pitch by words, Question & answer, Section change, the Anchor line\'s settings, Real songs and Patterns (the vocal row\'s own), Key & scale, Chords lean. Used: Sing, Human feel, Hard & soft, Breaths, Lead-ins, Carry over, Range (by octaves)',
   ];
   return { parts, silent, mood, notes };

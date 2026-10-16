@@ -65,6 +65,15 @@ const guide = buildGuidePanel($('guide'), engine, {
     await playIfStopped();
   },
   async togglePlay() { playBtn.click(); },
+  async playFromStart() {
+    // (playing: stop; stopped: from the top, a track from its first section)
+    if (engine.playing) { playBtn.click(); return; }
+    if (track) { $('playall').click(); return; }
+    if (idea) engine.setList([idea], true, 0);
+    await Tone.start();
+    await playIfStopped();
+  },
+  rerollVocal() { reroll('vocal'); },
 });
 
 /** The section strip, labelled with the instrument each section's rhythm part plays on. */
