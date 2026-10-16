@@ -67,6 +67,8 @@ export interface GenOptions {
   leadBreaks?: boolean;
   /** A second lead guitar on the hook and the solo's peak: a harmony, an octave or a double (hard rock and metal most; docs/LEAD-TWIN.md). Off: as before. */
   leadTwin?: boolean;
+  /** Real licks: solos and verse fills also play licks written from real lead guitar parts (shared rhythms, real note-to-note odds; docs/LEAD-LICKS.md). Off: as before. */
+  leadLicks?: boolean;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */

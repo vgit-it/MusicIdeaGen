@@ -98,7 +98,7 @@ Hard rock and metal leads mostly play between the sung sections (intros, gaps be
 - Genres are by artist (hand-tagged); alt metal is 37 songs.
 
 ## What to build, in order (a suggestion)
-Done: 1 and 2, the Lines switch (`docs/LEAD-LINES.md`); 3, the Figures switch (`docs/LEAD-FIGURES.md`); 4, the Room switch (`docs/LEAD-ROOM.md`); 5 and 6, the Breaks and Twin switches (`docs/LEAD-BREAKS.md`).
+Done: 1 and 2, the Lines switch (`docs/LEAD-LINES.md`); 3, the Figures switch (`docs/LEAD-FIGURES.md`); 4, the Room switch (`docs/LEAD-ROOM.md`); 5 and 6, the Breaks and Twin switches (`docs/LEAD-BREAKS.md`). After: the Licks switch (`docs/LEAD-LICKS.md`), solo licks from real lead parts.
 
 1. **Longer lines:** let Guitar 2 play 1-2 bar melodic lines (6-10 notes, mostly steps) as well as short licks, in verses and between choruses.
 2. **Fewer leaps, more steps** in its licks and lines (pop and funk most).
