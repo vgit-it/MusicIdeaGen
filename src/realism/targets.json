@@ -1,0 +1,1968 @@
+{
+ "source": "Lakh MIDI Dataset, clean set (Colin Raffel, CC-BY 4.0): vocal/melody tracks, 4/4, one version per song. Aggregate numbers only (docs/REALISM.md).",
+ "all": {
+  "songs": 2548,
+  "hist": {
+   "interval": {
+    "step": 0.435,
+    "repeat": 0.301,
+    "third": 0.17,
+    "4th-5th": 0.07,
+    "6th-octave": 0.022,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.569,
+    "repeat": 0.284,
+    "keeps going": 0.147
+   },
+   "onset16": {
+    "beat": 0.431,
+    "&": 0.368,
+    "a": 0.128,
+    "e": 0.073
+   },
+   "phraseBars": {
+    "1-2": 0.374,
+    "2-4": 0.222,
+    "0.5-1": 0.197,
+    "4+": 0.118,
+    "<0.5": 0.089
+   },
+   "phraseSpan": {
+    "4th-5th": 0.332,
+    "≤3rd": 0.307,
+    "≤octave": 0.292,
+    ">octave": 0.07
+   },
+   "peakWhere": {
+    "early": 0.588,
+    "middle": 0.209,
+    "late": 0.203
+   },
+   "phraseEndDegree": {
+    "1": 0.308,
+    "2": 0.106,
+    "3": 0.136,
+    "4": 0.074,
+    "5": 0.179,
+    "6": 0.087,
+    "7": 0.043,
+    "off-key": 0.066
+   }
+  },
+  "chordTone": 0.633,
+  "strongCT": 0.671,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.475,
+  "iqr": {
+   "same": [
+    0.191,
+    0.378
+   ],
+   "strongCT": [
+    0.531,
+    0.84
+   ],
+   "range": [
+    9,
+    14
+   ],
+   "repeat2bar": [
+    0.211,
+    0.73
+   ],
+   "early": [
+    0.433,
+    0.741
+   ]
+  }
+ },
+ "all/major": {
+  "songs": 1858,
+  "hist": {
+   "interval": {
+    "step": 0.434,
+    "repeat": 0.303,
+    "third": 0.169,
+    "4th-5th": 0.069,
+    "6th-octave": 0.023,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.568,
+    "repeat": 0.285,
+    "keeps going": 0.147
+   },
+   "onset16": {
+    "beat": 0.436,
+    "&": 0.37,
+    "a": 0.125,
+    "e": 0.07
+   },
+   "phraseBars": {
+    "1-2": 0.37,
+    "2-4": 0.228,
+    "0.5-1": 0.196,
+    "4+": 0.123,
+    "<0.5": 0.083
+   },
+   "phraseSpan": {
+    "4th-5th": 0.328,
+    "≤octave": 0.301,
+    "≤3rd": 0.298,
+    ">octave": 0.072
+   },
+   "peakWhere": {
+    "early": 0.582,
+    "middle": 0.212,
+    "late": 0.206
+   },
+   "phraseEndDegree": {
+    "1": 0.3,
+    "2": 0.124,
+    "3": 0.124,
+    "4": 0.06,
+    "5": 0.183,
+    "6": 0.11,
+    "7": 0.028,
+    "off-key": 0.071
+   }
+  },
+  "chordTone": 0.644,
+  "strongCT": 0.683,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.469,
+  "iqr": {
+   "same": [
+    0.193,
+    0.378
+   ],
+   "strongCT": [
+    0.545,
+    0.848
+   ],
+   "range": [
+    9,
+    14
+   ],
+   "repeat2bar": [
+    0.213,
+    0.71
+   ],
+   "early": [
+    0.429,
+    0.739
+   ]
+  }
+ },
+ "all/minor": {
+  "songs": 690,
+  "hist": {
+   "interval": {
+    "step": 0.437,
+    "repeat": 0.298,
+    "third": 0.174,
+    "4th-5th": 0.071,
+    "6th-octave": 0.018,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.57,
+    "repeat": 0.283,
+    "keeps going": 0.147
+   },
+   "onset16": {
+    "beat": 0.418,
+    "&": 0.363,
+    "a": 0.136,
+    "e": 0.084
+   },
+   "phraseBars": {
+    "1-2": 0.384,
+    "2-4": 0.207,
+    "0.5-1": 0.201,
+    "4+": 0.106,
+    "<0.5": 0.102
+   },
+   "phraseSpan": {
+    "4th-5th": 0.34,
+    "≤3rd": 0.329,
+    "≤octave": 0.268,
+    ">octave": 0.064
+   },
+   "peakWhere": {
+    "early": 0.602,
+    "middle": 0.201,
+    "late": 0.196
+   },
+   "phraseEndDegree": {
+    "1": 0.329,
+    "2": 0.062,
+    "3": 0.165,
+    "4": 0.108,
+    "5": 0.169,
+    "6": 0.031,
+    "7": 0.081,
+    "off-key": 0.055
+   }
+  },
+  "chordTone": 0.602,
+  "strongCT": 0.64,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.492,
+  "iqr": {
+   "same": [
+    0.187,
+    0.375
+   ],
+   "strongCT": [
+    0.481,
+    0.818
+   ],
+   "range": [
+    9,
+    14
+   ],
+   "repeat2bar": [
+    0.207,
+    0.769
+   ],
+   "early": [
+    0.455,
+    0.75
+   ]
+  }
+ },
+ "pop": {
+  "songs": 143,
+  "hist": {
+   "interval": {
+    "step": 0.484,
+    "repeat": 0.268,
+    "third": 0.159,
+    "4th-5th": 0.07,
+    "6th-octave": 0.017,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.535,
+    "repeat": 0.284,
+    "keeps going": 0.181
+   },
+   "onset16": {
+    "beat": 0.423,
+    "&": 0.394,
+    "a": 0.115,
+    "e": 0.067
+   },
+   "phraseBars": {
+    "1-2": 0.395,
+    "2-4": 0.222,
+    "0.5-1": 0.186,
+    "4+": 0.125,
+    "<0.5": 0.072
+   },
+   "phraseSpan": {
+    "4th-5th": 0.329,
+    "≤octave": 0.317,
+    "≤3rd": 0.28,
+    ">octave": 0.074
+   },
+   "peakWhere": {
+    "early": 0.584,
+    "middle": 0.21,
+    "late": 0.206
+   },
+   "phraseEndDegree": {
+    "1": 0.296,
+    "2": 0.123,
+    "3": 0.129,
+    "4": 0.087,
+    "5": 0.182,
+    "6": 0.097,
+    "7": 0.035,
+    "off-key": 0.052
+   }
+  },
+  "chordTone": 0.676,
+  "strongCT": 0.736,
+  "range": [
+   12,
+   8,
+   17
+  ],
+  "repeat2bar": 0.492,
+  "iqr": {
+   "same": [
+    0.189,
+    0.338
+   ],
+   "strongCT": [
+    0.619,
+    0.9
+   ],
+   "range": [
+    10,
+    14
+   ],
+   "repeat2bar": [
+    0.316,
+    0.708
+   ],
+   "early": [
+    0.467,
+    0.733
+   ]
+  }
+ },
+ "pop/major": {
+  "songs": 110,
+  "hist": {
+   "interval": {
+    "step": 0.484,
+    "repeat": 0.27,
+    "third": 0.156,
+    "4th-5th": 0.069,
+    "6th-octave": 0.019,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.553,
+    "repeat": 0.274,
+    "keeps going": 0.174
+   },
+   "onset16": {
+    "beat": 0.424,
+    "&": 0.398,
+    "a": 0.113,
+    "e": 0.065
+   },
+   "phraseBars": {
+    "1-2": 0.395,
+    "2-4": 0.219,
+    "0.5-1": 0.178,
+    "4+": 0.14,
+    "<0.5": 0.068
+   },
+   "phraseSpan": {
+    "4th-5th": 0.33,
+    "≤octave": 0.322,
+    "≤3rd": 0.267,
+    ">octave": 0.081
+   },
+   "peakWhere": {
+    "early": 0.588,
+    "middle": 0.216,
+    "late": 0.196
+   },
+   "phraseEndDegree": {
+    "1": 0.279,
+    "2": 0.143,
+    "3": 0.108,
+    "4": 0.072,
+    "5": 0.185,
+    "6": 0.129,
+    "7": 0.021,
+    "off-key": 0.063
+   }
+  },
+  "chordTone": 0.684,
+  "strongCT": 0.74,
+  "range": [
+   12,
+   9,
+   17
+  ],
+  "repeat2bar": 0.464,
+  "iqr": {
+   "same": [
+    0.189,
+    0.347
+   ],
+   "strongCT": [
+    0.636,
+    0.893
+   ],
+   "range": [
+    10,
+    15
+   ],
+   "repeat2bar": [
+    0.207,
+    0.689
+   ],
+   "early": [
+    0.467,
+    0.737
+   ]
+  }
+ },
+ "pop/minor": {
+  "songs": 33,
+  "hist": {
+   "interval": {
+    "step": 0.486,
+    "repeat": 0.259,
+    "third": 0.167,
+    "4th-5th": 0.072,
+    "6th-octave": 0.014,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.475,
+    "repeat": 0.318,
+    "keeps going": 0.207
+   },
+   "onset16": {
+    "beat": 0.42,
+    "&": 0.383,
+    "a": 0.123,
+    "e": 0.075
+   },
+   "phraseBars": {
+    "1-2": 0.394,
+    "2-4": 0.229,
+    "0.5-1": 0.207,
+    "4+": 0.087,
+    "<0.5": 0.083
+   },
+   "phraseSpan": {
+    "4th-5th": 0.326,
+    "≤3rd": 0.31,
+    "≤octave": 0.306,
+    ">octave": 0.058
+   },
+   "peakWhere": {
+    "early": 0.575,
+    "late": 0.233,
+    "middle": 0.193
+   },
+   "phraseEndDegree": {
+    "1": 0.337,
+    "2": 0.074,
+    "3": 0.18,
+    "4": 0.122,
+    "5": 0.174,
+    "6": 0.019,
+    "7": 0.07,
+    "off-key": 0.023
+   }
+  },
+  "chordTone": 0.647,
+  "strongCT": 0.722,
+  "range": [
+   12,
+   7,
+   16
+  ],
+  "repeat2bar": 0.588,
+  "iqr": {
+   "same": [
+    0.191,
+    0.298
+   ],
+   "strongCT": [
+    0.544,
+    0.904
+   ],
+   "range": [
+    9,
+    14
+   ],
+   "repeat2bar": [
+    0.421,
+    0.769
+   ],
+   "early": [
+    0.467,
+    0.711
+   ]
+  }
+ },
+ "hardrock": {
+  "songs": 85,
+  "hist": {
+   "interval": {
+    "step": 0.401,
+    "repeat": 0.337,
+    "third": 0.18,
+    "4th-5th": 0.066,
+    "6th-octave": 0.015,
+    "over octave": 0.001
+   },
+   "afterLeap": {
+    "turns back": 0.56,
+    "repeat": 0.302,
+    "keeps going": 0.138
+   },
+   "onset16": {
+    "beat": 0.403,
+    "&": 0.37,
+    "a": 0.13,
+    "e": 0.098
+   },
+   "phraseBars": {
+    "1-2": 0.366,
+    "0.5-1": 0.258,
+    "2-4": 0.156,
+    "<0.5": 0.147,
+    "4+": 0.073
+   },
+   "phraseSpan": {
+    "≤3rd": 0.39,
+    "4th-5th": 0.329,
+    "≤octave": 0.229,
+    ">octave": 0.052
+   },
+   "peakWhere": {
+    "early": 0.605,
+    "middle": 0.218,
+    "late": 0.178
+   },
+   "phraseEndDegree": {
+    "1": 0.342,
+    "2": 0.084,
+    "3": 0.1,
+    "4": 0.077,
+    "5": 0.183,
+    "6": 0.063,
+    "7": 0.046,
+    "off-key": 0.104
+   }
+  },
+  "chordTone": 0.546,
+  "strongCT": 0.561,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.359,
+  "iqr": {
+   "same": [
+    0.239,
+    0.415
+   ],
+   "strongCT": [
+    0.421,
+    0.709
+   ],
+   "range": [
+    9,
+    15
+   ],
+   "repeat2bar": [
+    0.049,
+    0.633
+   ],
+   "early": [
+    0.5,
+    0.708
+   ]
+  }
+ },
+ "hardrock/major": {
+  "songs": 58,
+  "hist": {
+   "interval": {
+    "step": 0.382,
+    "repeat": 0.356,
+    "third": 0.176,
+    "4th-5th": 0.069,
+    "6th-octave": 0.016,
+    "over octave": 0.001
+   },
+   "afterLeap": {
+    "turns back": 0.552,
+    "repeat": 0.312,
+    "keeps going": 0.136
+   },
+   "onset16": {
+    "beat": 0.394,
+    "&": 0.376,
+    "a": 0.129,
+    "e": 0.102
+   },
+   "phraseBars": {
+    "1-2": 0.299,
+    "0.5-1": 0.28,
+    "<0.5": 0.175,
+    "2-4": 0.164,
+    "4+": 0.082
+   },
+   "phraseSpan": {
+    "≤3rd": 0.398,
+    "4th-5th": 0.289,
+    "≤octave": 0.257,
+    ">octave": 0.056
+   },
+   "peakWhere": {
+    "early": 0.599,
+    "middle": 0.234,
+    "late": 0.167
+   },
+   "phraseEndDegree": {
+    "1": 0.288,
+    "2": 0.102,
+    "3": 0.089,
+    "4": 0.075,
+    "5": 0.195,
+    "6": 0.092,
+    "7": 0.015,
+    "off-key": 0.145
+   }
+  },
+  "chordTone": 0.553,
+  "strongCT": 0.572,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.31,
+  "iqr": {
+   "same": [
+    0.247,
+    0.424
+   ],
+   "strongCT": [
+    0.447,
+    0.712
+   ],
+   "range": [
+    9,
+    15
+   ],
+   "repeat2bar": [
+    0,
+    0.583
+   ],
+   "early": [
+    0.467,
+    0.697
+   ]
+  }
+ },
+ "grunge": {
+  "songs": 38,
+  "hist": {
+   "interval": {
+    "step": 0.406,
+    "repeat": 0.361,
+    "third": 0.151,
+    "4th-5th": 0.068,
+    "6th-octave": 0.012,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.566,
+    "repeat": 0.315,
+    "keeps going": 0.12
+   },
+   "onset16": {
+    "beat": 0.405,
+    "&": 0.396,
+    "a": 0.11,
+    "e": 0.089
+   },
+   "phraseBars": {
+    "1-2": 0.39,
+    "2-4": 0.215,
+    "0.5-1": 0.198,
+    "4+": 0.126,
+    "<0.5": 0.072
+   },
+   "phraseSpan": {
+    "≤3rd": 0.474,
+    "4th-5th": 0.301,
+    "≤octave": 0.182,
+    ">octave": 0.043
+   },
+   "peakWhere": {
+    "early": 0.636,
+    "middle": 0.202,
+    "late": 0.162
+   },
+   "phraseEndDegree": {
+    "1": 0.207,
+    "2": 0.045,
+    "3": 0.166,
+    "4": 0.077,
+    "5": 0.248,
+    "6": 0.098,
+    "7": 0.079,
+    "off-key": 0.08
+   }
+  },
+  "chordTone": 0.457,
+  "strongCT": 0.442,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.535,
+  "iqr": {
+   "same": [
+    0.251,
+    0.449
+   ],
+   "strongCT": [
+    0.275,
+    0.63
+   ],
+   "range": [
+    9,
+    13
+   ],
+   "repeat2bar": [
+    0.257,
+    0.833
+   ],
+   "early": [
+    0.5,
+    0.789
+   ]
+  }
+ },
+ "grunge/major": {
+  "songs": 21,
+  "hist": {
+   "interval": {
+    "step": 0.403,
+    "repeat": 0.356,
+    "third": 0.15,
+    "4th-5th": 0.074,
+    "6th-octave": 0.016
+   },
+   "afterLeap": {
+    "turns back": 0.516,
+    "repeat": 0.345,
+    "keeps going": 0.139
+   },
+   "onset16": {
+    "beat": 0.457,
+    "&": 0.438,
+    "a": 0.059,
+    "e": 0.046
+   },
+   "phraseBars": {
+    "1-2": 0.392,
+    "2-4": 0.271,
+    "4+": 0.157,
+    "0.5-1": 0.154,
+    "<0.5": 0.026
+   },
+   "phraseSpan": {
+    "≤3rd": 0.42,
+    "4th-5th": 0.318,
+    "≤octave": 0.223,
+    ">octave": 0.038
+   },
+   "peakWhere": {
+    "early": 0.579,
+    "late": 0.212,
+    "middle": 0.209
+   },
+   "phraseEndDegree": {
+    "1": 0.252,
+    "2": 0.074,
+    "3": 0.188,
+    "4": 0.081,
+    "5": 0.171,
+    "6": 0.14,
+    "7": 0.01,
+    "off-key": 0.086
+   }
+  },
+  "chordTone": 0.484,
+  "strongCT": 0.507,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.599,
+  "iqr": {
+   "same": [
+    0.28,
+    0.421
+   ],
+   "strongCT": [
+    0.3,
+    0.678
+   ],
+   "range": [
+    9,
+    13
+   ],
+   "repeat2bar": [
+    0.485,
+    0.833
+   ],
+   "early": [
+    0.375,
+    0.773
+   ]
+  }
+ },
+ "funk": {
+  "songs": 51,
+  "hist": {
+   "interval": {
+    "step": 0.419,
+    "repeat": 0.31,
+    "third": 0.182,
+    "4th-5th": 0.065,
+    "6th-octave": 0.021,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.62,
+    "repeat": 0.268,
+    "keeps going": 0.112
+   },
+   "onset16": {
+    "beat": 0.394,
+    "&": 0.377,
+    "a": 0.147,
+    "e": 0.081
+   },
+   "phraseBars": {
+    "1-2": 0.366,
+    "0.5-1": 0.26,
+    "2-4": 0.155,
+    "<0.5": 0.147,
+    "4+": 0.072
+   },
+   "phraseSpan": {
+    "4th-5th": 0.366,
+    "≤3rd": 0.295,
+    "≤octave": 0.273,
+    ">octave": 0.066
+   },
+   "peakWhere": {
+    "early": 0.552,
+    "middle": 0.239,
+    "late": 0.209
+   },
+   "phraseEndDegree": {
+    "1": 0.3,
+    "2": 0.123,
+    "3": 0.11,
+    "4": 0.085,
+    "5": 0.145,
+    "6": 0.1,
+    "7": 0.052,
+    "off-key": 0.085
+   }
+  },
+  "chordTone": 0.679,
+  "strongCT": 0.715,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.481,
+  "iqr": {
+   "same": [
+    0.154,
+    0.414
+   ],
+   "strongCT": [
+    0.561,
+    0.92
+   ],
+   "range": [
+    9,
+    16
+   ],
+   "repeat2bar": [
+    0.269,
+    0.714
+   ],
+   "early": [
+    0.422,
+    0.732
+   ]
+  }
+ },
+ "funk/major": {
+  "songs": 34,
+  "hist": {
+   "interval": {
+    "step": 0.402,
+    "repeat": 0.334,
+    "third": 0.174,
+    "4th-5th": 0.062,
+    "6th-octave": 0.026,
+    "over octave": 0.003
+   },
+   "afterLeap": {
+    "turns back": 0.611,
+    "repeat": 0.271,
+    "keeps going": 0.119
+   },
+   "onset16": {
+    "beat": 0.41,
+    "&": 0.374,
+    "a": 0.14,
+    "e": 0.076
+   },
+   "phraseBars": {
+    "1-2": 0.335,
+    "0.5-1": 0.272,
+    "2-4": 0.167,
+    "<0.5": 0.16,
+    "4+": 0.066
+   },
+   "phraseSpan": {
+    "4th-5th": 0.349,
+    "≤3rd": 0.315,
+    "≤octave": 0.267,
+    ">octave": 0.069
+   },
+   "peakWhere": {
+    "early": 0.521,
+    "late": 0.24,
+    "middle": 0.24
+   },
+   "phraseEndDegree": {
+    "1": 0.251,
+    "2": 0.168,
+    "3": 0.09,
+    "4": 0.075,
+    "5": 0.165,
+    "6": 0.137,
+    "7": 0.033,
+    "off-key": 0.082
+   }
+  },
+  "chordTone": 0.677,
+  "strongCT": 0.708,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.493,
+  "iqr": {
+   "same": [
+    0.198,
+    0.437
+   ],
+   "strongCT": [
+    0.561,
+    0.894
+   ],
+   "range": [
+    9,
+    16
+   ],
+   "repeat2bar": [
+    0.279,
+    0.714
+   ],
+   "early": [
+    0.409,
+    0.682
+   ]
+  }
+ },
+ "funk/minor": {
+  "songs": 17,
+  "hist": {
+   "interval": {
+    "step": 0.452,
+    "repeat": 0.266,
+    "third": 0.197,
+    "4th-5th": 0.071,
+    "6th-octave": 0.014,
+    "over octave": 0.001
+   },
+   "afterLeap": {
+    "turns back": 0.637,
+    "repeat": 0.263,
+    "keeps going": 0.1
+   },
+   "onset16": {
+    "&": 0.384,
+    "beat": 0.365,
+    "a": 0.16,
+    "e": 0.09
+   },
+   "phraseBars": {
+    "1-2": 0.435,
+    "0.5-1": 0.233,
+    "2-4": 0.128,
+    "<0.5": 0.119,
+    "4+": 0.084
+   },
+   "phraseSpan": {
+    "4th-5th": 0.402,
+    "≤octave": 0.288,
+    "≤3rd": 0.251,
+    ">octave": 0.059
+   },
+   "peakWhere": {
+    "early": 0.622,
+    "middle": 0.239,
+    "late": 0.139
+   },
+   "phraseEndDegree": {
+    "1": 0.409,
+    "2": 0.026,
+    "3": 0.152,
+    "4": 0.106,
+    "5": 0.103,
+    "6": 0.018,
+    "7": 0.094,
+    "off-key": 0.092
+   }
+  },
+  "chordTone": 0.682,
+  "strongCT": 0.729,
+  "range": [
+   12,
+   7,
+   22
+  ],
+  "repeat2bar": 0.457,
+  "iqr": {
+   "same": [
+    0.131,
+    0.301
+   ],
+   "strongCT": [
+    0.608,
+    0.98
+   ],
+   "range": [
+    9,
+    16
+   ],
+   "repeat2bar": [
+    0.2,
+    0.6
+   ],
+   "early": [
+    0.5,
+    0.76
+   ]
+  }
+ },
+ "rock": {
+  "songs": 301,
+  "hist": {
+   "interval": {
+    "step": 0.421,
+    "repeat": 0.305,
+    "third": 0.185,
+    "4th-5th": 0.071,
+    "6th-octave": 0.018,
+    "over octave": 0.001
+   },
+   "afterLeap": {
+    "turns back": 0.569,
+    "repeat": 0.291,
+    "keeps going": 0.14
+   },
+   "onset16": {
+    "beat": 0.448,
+    "&": 0.386,
+    "a": 0.107,
+    "e": 0.06
+   },
+   "phraseBars": {
+    "1-2": 0.359,
+    "2-4": 0.238,
+    "0.5-1": 0.206,
+    "4+": 0.12,
+    "<0.5": 0.077
+   },
+   "phraseSpan": {
+    "4th-5th": 0.341,
+    "≤3rd": 0.331,
+    "≤octave": 0.271,
+    ">octave": 0.057
+   },
+   "peakWhere": {
+    "early": 0.622,
+    "late": 0.193,
+    "middle": 0.184
+   },
+   "phraseEndDegree": {
+    "1": 0.355,
+    "2": 0.088,
+    "3": 0.135,
+    "4": 0.074,
+    "5": 0.174,
+    "6": 0.07,
+    "7": 0.047,
+    "off-key": 0.057
+   }
+  },
+  "chordTone": 0.591,
+  "strongCT": 0.639,
+  "range": [
+   10,
+   7,
+   16
+  ],
+  "repeat2bar": 0.413,
+  "iqr": {
+   "same": [
+    0.212,
+    0.381
+   ],
+   "strongCT": [
+    0.52,
+    0.797
+   ],
+   "range": [
+    8,
+    12
+   ],
+   "repeat2bar": [
+    0.161,
+    0.625
+   ],
+   "early": [
+    0.444,
+    0.8
+   ]
+  }
+ },
+ "rock/major": {
+  "songs": 229,
+  "hist": {
+   "interval": {
+    "step": 0.414,
+    "repeat": 0.309,
+    "third": 0.189,
+    "4th-5th": 0.068,
+    "6th-octave": 0.019,
+    "over octave": 0.001
+   },
+   "afterLeap": {
+    "turns back": 0.57,
+    "repeat": 0.292,
+    "keeps going": 0.138
+   },
+   "onset16": {
+    "beat": 0.453,
+    "&": 0.393,
+    "a": 0.1,
+    "e": 0.054
+   },
+   "phraseBars": {
+    "1-2": 0.355,
+    "2-4": 0.251,
+    "0.5-1": 0.2,
+    "4+": 0.129,
+    "<0.5": 0.065
+   },
+   "phraseSpan": {
+    "4th-5th": 0.343,
+    "≤3rd": 0.317,
+    "≤octave": 0.28,
+    ">octave": 0.059
+   },
+   "peakWhere": {
+    "early": 0.615,
+    "late": 0.195,
+    "middle": 0.19
+   },
+   "phraseEndDegree": {
+    "1": 0.358,
+    "2": 0.106,
+    "3": 0.125,
+    "4": 0.051,
+    "5": 0.175,
+    "6": 0.083,
+    "7": 0.039,
+    "off-key": 0.063
+   }
+  },
+  "chordTone": 0.587,
+  "strongCT": 0.63,
+  "range": [
+   10,
+   7,
+   16
+  ],
+  "repeat2bar": 0.407,
+  "iqr": {
+   "same": [
+    0.221,
+    0.386
+   ],
+   "strongCT": [
+    0.5,
+    0.783
+   ],
+   "range": [
+    8,
+    12
+   ],
+   "repeat2bar": [
+    0.167,
+    0.605
+   ],
+   "early": [
+    0.417,
+    0.8
+   ]
+  }
+ },
+ "hardrock/minor": {
+  "songs": 27,
+  "hist": {
+   "interval": {
+    "step": 0.444,
+    "repeat": 0.294,
+    "third": 0.19,
+    "4th-5th": 0.058,
+    "6th-octave": 0.013,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.582,
+    "repeat": 0.273,
+    "keeps going": 0.145
+   },
+   "onset16": {
+    "beat": 0.422,
+    "&": 0.356,
+    "a": 0.132,
+    "e": 0.089
+   },
+   "phraseBars": {
+    "1-2": 0.485,
+    "0.5-1": 0.218,
+    "2-4": 0.142,
+    "<0.5": 0.099,
+    "4+": 0.056
+   },
+   "phraseSpan": {
+    "4th-5th": 0.4,
+    "≤3rd": 0.377,
+    "≤octave": 0.179,
+    ">octave": 0.044
+   },
+   "peakWhere": {
+    "early": 0.615,
+    "late": 0.196,
+    "middle": 0.189
+   },
+   "phraseEndDegree": {
+    "1": 0.438,
+    "2": 0.053,
+    "3": 0.12,
+    "4": 0.08,
+    "5": 0.162,
+    "6": 0.013,
+    "7": 0.102,
+    "off-key": 0.033
+   }
+  },
+  "chordTone": 0.533,
+  "strongCT": 0.536,
+  "range": [
+   12,
+   8,
+   16
+  ],
+  "repeat2bar": 0.463,
+  "iqr": {
+   "same": [
+    0.202,
+    0.375
+   ],
+   "strongCT": [
+    0.4,
+    0.696
+   ],
+   "range": [
+    9,
+    14
+   ],
+   "repeat2bar": [
+    0.15,
+    0.786
+   ],
+   "early": [
+    0.545,
+    0.714
+   ]
+  }
+ },
+ "rock/minor": {
+  "songs": 72,
+  "hist": {
+   "interval": {
+    "step": 0.444,
+    "repeat": 0.289,
+    "third": 0.173,
+    "4th-5th": 0.079,
+    "6th-octave": 0.014,
+    "over octave": 0.001
+   },
+   "afterLeap": {
+    "turns back": 0.566,
+    "repeat": 0.288,
+    "keeps going": 0.146
+   },
+   "onset16": {
+    "beat": 0.428,
+    "&": 0.363,
+    "a": 0.129,
+    "e": 0.08
+   },
+   "phraseBars": {
+    "1-2": 0.372,
+    "0.5-1": 0.224,
+    "2-4": 0.199,
+    "<0.5": 0.11,
+    "4+": 0.095
+   },
+   "phraseSpan": {
+    "≤3rd": 0.371,
+    "4th-5th": 0.334,
+    "≤octave": 0.245,
+    ">octave": 0.05
+   },
+   "peakWhere": {
+    "early": 0.645,
+    "late": 0.187,
+    "middle": 0.168
+   },
+   "phraseEndDegree": {
+    "1": 0.346,
+    "2": 0.037,
+    "3": 0.162,
+    "4": 0.138,
+    "5": 0.174,
+    "6": 0.03,
+    "7": 0.071,
+    "off-key": 0.042
+   }
+  },
+  "chordTone": 0.605,
+  "strongCT": 0.665,
+  "range": [
+   10,
+   7,
+   15
+  ],
+  "repeat2bar": 0.434,
+  "iqr": {
+   "same": [
+    0.179,
+    0.368
+   ],
+   "strongCT": [
+    0.554,
+    0.826
+   ],
+   "range": [
+    8,
+    13
+   ],
+   "repeat2bar": [
+    0.154,
+    0.72
+   ],
+   "early": [
+    0.526,
+    0.818
+   ]
+  }
+ },
+ "grunge/minor": {
+  "songs": 17,
+  "hist": {
+   "interval": {
+    "step": 0.409,
+    "repeat": 0.367,
+    "third": 0.153,
+    "4th-5th": 0.061,
+    "6th-octave": 0.007,
+    "over octave": 0.005
+   },
+   "afterLeap": {
+    "turns back": 0.631,
+    "repeat": 0.275,
+    "keeps going": 0.094
+   },
+   "onset16": {
+    "&": 0.348,
+    "beat": 0.346,
+    "a": 0.169,
+    "e": 0.138
+   },
+   "phraseBars": {
+    "1-2": 0.388,
+    "0.5-1": 0.243,
+    "2-4": 0.155,
+    "<0.5": 0.12,
+    "4+": 0.093
+   },
+   "phraseSpan": {
+    "≤3rd": 0.531,
+    "4th-5th": 0.283,
+    "≤octave": 0.138,
+    ">octave": 0.048
+   },
+   "peakWhere": {
+    "early": 0.705,
+    "middle": 0.193,
+    "late": 0.102
+   },
+   "phraseEndDegree": {
+    "1": 0.16,
+    "2": 0.015,
+    "3": 0.143,
+    "4": 0.073,
+    "5": 0.328,
+    "6": 0.053,
+    "7": 0.153,
+    "off-key": 0.075
+   }
+  },
+  "chordTone": 0.424,
+  "strongCT": 0.362,
+  "range": [
+   12,
+   7,
+   17
+  ],
+  "repeat2bar": 0.456,
+  "iqr": {
+   "same": [
+    0.251,
+    0.581
+   ],
+   "strongCT": [
+    0.222,
+    0.467
+   ],
+   "range": [
+    9,
+    12
+   ],
+   "repeat2bar": [
+    0,
+    0.8
+   ],
+   "early": [
+    0.556,
+    0.789
+   ]
+  }
+ },
+ "altmetal": {
+  "songs": 16,
+  "hist": {
+   "interval": {
+    "step": 0.381,
+    "repeat": 0.358,
+    "third": 0.15,
+    "4th-5th": 0.084,
+    "6th-octave": 0.024,
+    "over octave": 0.005
+   },
+   "afterLeap": {
+    "turns back": 0.584,
+    "repeat": 0.321,
+    "keeps going": 0.095
+   },
+   "onset16": {
+    "&": 0.407,
+    "beat": 0.353,
+    "a": 0.127,
+    "e": 0.114
+   },
+   "phraseBars": {
+    "1-2": 0.473,
+    "0.5-1": 0.194,
+    "2-4": 0.141,
+    "<0.5": 0.109,
+    "4+": 0.083
+   },
+   "phraseSpan": {
+    "≤3rd": 0.432,
+    "4th-5th": 0.319,
+    "≤octave": 0.204,
+    ">octave": 0.044
+   },
+   "peakWhere": {
+    "early": 0.762,
+    "late": 0.119,
+    "middle": 0.119
+   },
+   "phraseEndDegree": {
+    "1": 0.174,
+    "2": 0.063,
+    "3": 0.154,
+    "4": 0.172,
+    "5": 0.188,
+    "6": 0.02,
+    "7": 0.069,
+    "off-key": 0.162
+   }
+  },
+  "chordTone": 0.426,
+  "strongCT": 0.443,
+  "range": [
+   14,
+   7,
+   19
+  ],
+  "repeat2bar": 0.528,
+  "iqr": {
+   "same": [
+    0.231,
+    0.44
+   ],
+   "strongCT": [
+    0.264,
+    0.59
+   ],
+   "range": [
+    11,
+    17
+   ],
+   "repeat2bar": [
+    0.349,
+    0.855
+   ],
+   "early": [
+    0.583,
+    0.885
+   ]
+  }
+ },
+ "altmetal/minor": {
+  "songs": 11,
+  "hist": {
+   "interval": {
+    "repeat": 0.388,
+    "step": 0.375,
+    "third": 0.127,
+    "4th-5th": 0.077,
+    "6th-octave": 0.028,
+    "over octave": 0.006
+   },
+   "afterLeap": {
+    "turns back": 0.601,
+    "repeat": 0.324,
+    "keeps going": 0.075
+   },
+   "onset16": {
+    "&": 0.399,
+    "beat": 0.337,
+    "a": 0.135,
+    "e": 0.13
+   },
+   "phraseBars": {
+    "1-2": 0.469,
+    "0.5-1": 0.186,
+    "2-4": 0.143,
+    "<0.5": 0.103,
+    "4+": 0.1
+   },
+   "phraseSpan": {
+    "≤3rd": 0.437,
+    "4th-5th": 0.349,
+    "≤octave": 0.171,
+    ">octave": 0.043
+   },
+   "peakWhere": {
+    "early": 0.761,
+    "middle": 0.121,
+    "late": 0.118
+   },
+   "phraseEndDegree": {
+    "1": 0.206,
+    "2": 0.06,
+    "3": 0.169,
+    "4": 0.14,
+    "5": 0.214,
+    "6": 0.017,
+    "7": 0.097,
+    "off-key": 0.097
+   }
+  },
+  "chordTone": 0.432,
+  "strongCT": 0.46,
+  "range": [
+   14,
+   7,
+   19
+  ],
+  "repeat2bar": 0.539,
+  "iqr": {
+   "same": [
+    0.2,
+    0.513
+   ],
+   "strongCT": [
+    0.262,
+    0.667
+   ],
+   "range": [
+    7,
+    17
+   ],
+   "repeat2bar": [
+    0.13,
+    0.861
+   ],
+   "early": [
+    0.5,
+    0.885
+   ]
+  }
+ },
+ "altmetal/major": {
+  "songs": 5,
+  "hist": {
+   "interval": {
+    "step": 0.401,
+    "repeat": 0.262,
+    "third": 0.222,
+    "4th-5th": 0.103,
+    "6th-octave": 0.011,
+    "over octave": 0.002
+   },
+   "afterLeap": {
+    "turns back": 0.531,
+    "repeat": 0.31,
+    "keeps going": 0.159
+   },
+   "onset16": {
+    "&": 0.431,
+    "beat": 0.402,
+    "a": 0.101,
+    "e": 0.066
+   },
+   "phraseBars": {
+    "1-2": 0.483,
+    "0.5-1": 0.214,
+    "2-4": 0.138,
+    "<0.5": 0.124,
+    "4+": 0.041
+   },
+   "phraseSpan": {
+    "≤3rd": 0.421,
+    "≤octave": 0.283,
+    "4th-5th": 0.248,
+    ">octave": 0.048
+   },
+   "peakWhere": {
+    "early": 0.763,
+    "late": 0.122,
+    "middle": 0.115
+   },
+   "phraseEndDegree": {
+    "1": 0.097,
+    "2": 0.069,
+    "3": 0.117,
+    "4": 0.248,
+    "5": 0.124,
+    "6": 0.028,
+    "off-key": 0.317
+   }
+  },
+  "chordTone": 0.413,
+  "strongCT": 0.405,
+  "range": [
+   14,
+   8,
+   19
+  ],
+  "repeat2bar": 0.503,
+  "iqr": {
+   "same": [
+    0.231,
+    0.274
+   ],
+   "strongCT": [
+    0.264,
+    0.556
+   ],
+   "range": [
+    12,
+    16
+   ],
+   "repeat2bar": [
+    0.5,
+    0.611
+   ],
+   "early": [
+    0.742,
+    0.792
+   ]
+  }
+ },
+ "metal": {
+  "songs": 45,
+  "hist": {
+   "interval": {
+    "repeat": 0.407,
+    "step": 0.382,
+    "third": 0.134,
+    "4th-5th": 0.069,
+    "6th-octave": 0.008,
+    "over octave": 0
+   },
+   "afterLeap": {
+    "turns back": 0.543,
+    "repeat": 0.346,
+    "keeps going": 0.111
+   },
+   "onset16": {
+    "beat": 0.452,
+    "&": 0.397,
+    "a": 0.09,
+    "e": 0.061
+   },
+   "phraseBars": {
+    "1-2": 0.433,
+    "2-4": 0.242,
+    "0.5-1": 0.163,
+    "<0.5": 0.106,
+    "4+": 0.056
+   },
+   "phraseSpan": {
+    "≤3rd": 0.491,
+    "4th-5th": 0.345,
+    "≤octave": 0.138,
+    ">octave": 0.027
+   },
+   "peakWhere": {
+    "early": 0.6,
+    "late": 0.219,
+    "middle": 0.18
+   },
+   "phraseEndDegree": {
+    "1": 0.354,
+    "2": 0.138,
+    "3": 0.146,
+    "4": 0.033,
+    "5": 0.106,
+    "6": 0.042,
+    "7": 0.083,
+    "off-key": 0.099
+   }
+  },
+  "chordTone": 0.476,
+  "strongCT": 0.464,
+  "range": [
+   8,
+   5,
+   15
+  ],
+  "repeat2bar": 0.452,
+  "iqr": {
+   "same": [
+    0.269,
+    0.55
+   ],
+   "strongCT": [
+    0.31,
+    0.6
+   ],
+   "range": [
+    7,
+    12
+   ],
+   "repeat2bar": [
+    0.167,
+    0.744
+   ],
+   "early": [
+    0.467,
+    0.711
+   ]
+  }
+ },
+ "metal/major": {
+  "songs": 10,
+  "hist": {
+   "interval": {
+    "repeat": 0.435,
+    "step": 0.364,
+    "third": 0.121,
+    "4th-5th": 0.075,
+    "6th-octave": 0.006
+   },
+   "afterLeap": {
+    "turns back": 0.669,
+    "repeat": 0.274,
+    "keeps going": 0.057
+   },
+   "onset16": {
+    "&": 0.453,
+    "beat": 0.415,
+    "a": 0.072,
+    "e": 0.061
+   },
+   "phraseBars": {
+    "1-2": 0.341,
+    "2-4": 0.245,
+    "<0.5": 0.223,
+    "0.5-1": 0.167,
+    "4+": 0.025
+   },
+   "phraseSpan": {
+    "≤3rd": 0.623,
+    "4th-5th": 0.275,
+    "≤octave": 0.076,
+    ">octave": 0.027
+   },
+   "peakWhere": {
+    "early": 0.552,
+    "late": 0.257,
+    "middle": 0.191
+   },
+   "phraseEndDegree": {
+    "1": 0.309,
+    "2": 0.127,
+    "3": 0.042,
+    "4": 0.042,
+    "5": 0.069,
+    "6": 0.13,
+    "7": 0.029,
+    "off-key": 0.252
+   }
+  },
+  "chordTone": 0.436,
+  "strongCT": 0.411,
+  "range": [
+   8,
+   7,
+   19
+  ],
+  "repeat2bar": 0.462,
+  "iqr": {
+   "same": [
+    0.34,
+    0.575
+   ],
+   "strongCT": [
+    0.242,
+    0.571
+   ],
+   "range": [
+    7,
+    14
+   ],
+   "repeat2bar": [
+    0.167,
+    0.758
+   ],
+   "early": [
+    0.458,
+    0.611
+   ]
+  }
+ },
+ "metal/minor": {
+  "songs": 35,
+  "hist": {
+   "interval": {
+    "repeat": 0.4,
+    "step": 0.387,
+    "third": 0.138,
+    "4th-5th": 0.067,
+    "6th-octave": 0.008,
+    "over octave": 0
+   },
+   "afterLeap": {
+    "turns back": 0.51,
+    "repeat": 0.365,
+    "keeps going": 0.126
+   },
+   "onset16": {
+    "beat": 0.462,
+    "&": 0.382,
+    "a": 0.095,
+    "e": 0.061
+   },
+   "phraseBars": {
+    "1-2": 0.464,
+    "2-4": 0.242,
+    "0.5-1": 0.161,
+    "<0.5": 0.067,
+    "4+": 0.066
+   },
+   "phraseSpan": {
+    "≤3rd": 0.448,
+    "4th-5th": 0.368,
+    "≤octave": 0.158,
+    ">octave": 0.026
+   },
+   "peakWhere": {
+    "early": 0.615,
+    "late": 0.208,
+    "middle": 0.177
+   },
+   "phraseEndDegree": {
+    "1": 0.368,
+    "2": 0.141,
+    "3": 0.18,
+    "4": 0.03,
+    "5": 0.118,
+    "6": 0.013,
+    "7": 0.101,
+    "off-key": 0.049
+   }
+  },
+  "chordTone": 0.487,
+  "strongCT": 0.479,
+  "range": [
+   9,
+   5,
+   14
+  ],
+  "repeat2bar": 0.449,
+  "iqr": {
+   "same": [
+    0.262,
+    0.55
+   ],
+   "strongCT": [
+    0.337,
+    0.617
+   ],
+   "range": [
+    6,
+    12
+   ],
+   "repeat2bar": [
+    0.121,
+    0.744
+   ],
+   "early": [
+    0.486,
+    0.75
+   ]
+  }
+ }
+}

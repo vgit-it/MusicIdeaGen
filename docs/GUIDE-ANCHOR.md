@@ -202,3 +202,6 @@ Measured (168 songs):
 | Chorus: average pitch / words a beat | 65.7 / 0.84 | 69.5 / 0.72 | 65.7 / 0.78 | 69.6 / 0.67 |
 | Chorus: long notes (half a bar or more) | 10% | 13% | 12% | 16% |
 | Phrase ends on a drum hit (on the snare) | 76% (19%) | 74% (20%) | 86% (28%) | 86% (29%) |
+
+## Patterns (2026-10-16)
+The Guide card's Patterns switch, on the Anchor line: rhythm cells mostly from real songs (notes held over the bar line too), half the accents a common real shape, runs of words on the main note a real shape now and then, all leaning to what the Anchor line lacks. Details and numbers: `docs/PATTERNS.md`.

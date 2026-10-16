@@ -18,7 +18,16 @@
     "melody-lab": "rolldown scripts/melody-stats.ts --platform node --format esm -o node_modules/.cache/melody-stats.mjs && node node_modules/.cache/melody-stats.mjs",
     "voice-lab": "rolldown scripts/voice-lab.ts --platform node --format esm -o node_modules/.cache/voice-lab.mjs && node node_modules/.cache/voice-lab.mjs",
     "guide-check": "rolldown scripts/guide-check.ts --platform node --format esm -o node_modules/.cache/guide-check.mjs && node node_modules/.cache/guide-check.mjs",
-    "energy-lab": "rolldown scripts/energy-lab.ts --platform node --format esm -o node_modules/.cache/energy-lab.mjs && node node_modules/.cache/energy-lab.mjs"
+    "energy-lab": "rolldown scripts/energy-lab.ts --platform node --format esm -o node_modules/.cache/energy-lab.mjs && node node_modules/.cache/energy-lab.mjs",
+    "realism-targets": "rolldown scripts/study/lakh-targets.ts --platform node --format esm -o node_modules/.cache/lakh-targets.mjs && node node_modules/.cache/lakh-targets.mjs",
+    "realism-lab": "rolldown scripts/realism-lab.ts --platform node --format esm -o node_modules/.cache/realism-lab.mjs && node node_modules/.cache/realism-lab.mjs",
+    "realism-patterns": "rolldown scripts/study/lakh-patterns.ts --platform node --format esm -o node_modules/.cache/lakh-patterns.mjs && node node_modules/.cache/lakh-patterns.mjs",
+    "realism-lean": "rolldown scripts/study/patterns-app.ts --platform node --format esm -o node_modules/.cache/patterns-app.mjs && node node_modules/.cache/patterns-app.mjs",
+    "skeleton-patterns": "rolldown scripts/study/lakh-skeleton.ts --platform node --format esm -o node_modules/.cache/lakh-skeleton.mjs && node node_modules/.cache/lakh-skeleton.mjs",
+    "skeleton-lean": "rolldown scripts/study/skeleton-app.ts --platform node --format esm -o node_modules/.cache/skeleton-app.mjs && node node_modules/.cache/skeleton-app.mjs",
+    "realism-arc": "rolldown scripts/study/lakh-sections.ts --platform node --format esm -o node_modules/.cache/lakh-sections.mjs && node node_modules/.cache/lakh-sections.mjs",
+    "realism-words": "rolldown scripts/study/lakh-words.ts --platform node --format esm -o node_modules/.cache/lakh-words.mjs && node node_modules/.cache/lakh-words.mjs",
+    "realism-learned": "rolldown scripts/study/lakh-learned.ts --platform node --format esm -o node_modules/.cache/lakh-learned.mjs && node node_modules/.cache/lakh-learned.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
