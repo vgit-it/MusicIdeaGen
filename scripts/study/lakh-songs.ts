@@ -28,8 +28,8 @@ const sings = (ns: N[]) => {
   const ps = ns.map((n) => n.p).sort((x, y) => x - y);
   return ps[Math.floor(ps.length * 0.05)] >= 45 && ps[Math.floor(ps.length * 0.95)] <= 86 && ps[ps.length >> 1] >= 55 && ps[ps.length >> 1] <= 80;
 };
-interface Tr { name: string; ns: N[]; ch: number; prog: number }
-function findVox(T: Tr[]): number {
+export interface Tr { name: string; ns: N[]; ch: number; prog: number }
+export function findVox(T: Tr[]): number {
   const most = (ok: (t: Tr) => boolean) => { let b = -1; T.forEach((t, i) => { if (t.ch !== 9 && ok(t) && sings(t.ns) && (b < 0 || t.ns.length > T[b].ns.length)) b = i; }); return b; };
   let i = most((t) => VOX.test(t.name) && !NOT_LEAD_VOX.test(t.name));
   if (i < 0) i = T.findIndex((t) => LEAD.test(t.name) && t.ns.length > 40 && t.ch !== 9);
