@@ -20,6 +20,8 @@ export interface TuneNote extends GuideNote {
   vel: number;
   /** The first note of a sung line (the vocal's). */
   start?: boolean;
+  /** The second half of an off-key note, bent out to the key (not one of the vocal's own notes). */
+  split?: boolean;
 }
 export interface TuneLine extends GuideLine { parts: TuneNote[][] }
 
@@ -54,7 +56,7 @@ export function writeTune(list: Idea[], moodIn: Mood | undefined, salt: number |
     });
   });
   const silent = parts.map((p) => !p.length);
-  const nb = { shift: 0, before: 0, tired: 0, beats: 0, leadIns: 0, carries: 0, carryBends: 0, glides: 0, slides: 0 };
+  const nb = { shift: 0, before: 0, tired: 0, beats: 0, leadIns: 0, carries: 0, carryBends: 0, glides: 0, slides: 0, outs: 0, offKey: 0 };
 
   // Range: the whole tune moved by octaves to sit inside the sliders as best it can (Auto: as the vocal sings it)
   if (range) {
@@ -145,6 +147,40 @@ export function writeTune(list: Idea[], moodIn: Mood | undefined, salt: number |
     }
   });
 
+  // Off-key notes bent out to the key (Paul; always on): sung on their own pitch for a moment, then bent a half or
+  // whole step to the nearest note in the key, toward where the tune goes next (else down, a sigh). The clash is
+  // heard, then it settles. Not a carry over's bent note, nor one too short to bend (under a 16th's worth).
+  parts.forEach((p, si) => {
+    const { key, mode, total } = list[si].song;
+    const scale = GUIDE_SCALES[mode] as readonly number[];
+    const inKey = (m: number) => scale.includes(mod(m - key, 12));
+    for (let k = 0; k < p.length; k++) {
+      const n = p[k];
+      if (inKey(n.midi) || n.step >= total || n.split) continue;
+      nb.offKey++;
+      if (n.len < 0.75) continue;
+      const next = p.slice(k + 1).find((x) => !x.split);
+      const toward = next && next.step - (n.step + n.len) < 4 ? Math.sign(next.midi - n.midi) : 0;
+      const opts = [1, 2].flatMap((d) => [n.midi - d, n.midi + d]).filter(inKey)
+        .sort((a, b) => Math.abs(a - n.midi) - Math.abs(b - n.midi) || (toward ? (Math.sign(b - n.midi) === toward ? 1 : 0) - (Math.sign(a - n.midi) === toward ? 1 : 0) : a - b));
+      const to = opts[0];
+      if (to === undefined) continue;
+      // (the clash held a moment: up to half the note, at most an 8th; then the bend, over most of the rest)
+      const head = Math.min(n.len * 0.5, 2), rest = n.len - head;
+      const r = to - key, pc = mod(r, 12);
+      let i = scale.length - 1;
+      while (scale[i] > pc) i--;
+      const out: TuneNote = { step: n.step + head, len: rest, midi: to, deg: 7 * Math.floor(r / 12) + i, bend: Math.min(rest * 0.7, 2), vel: n.vel, split: true,
+        syl: { onset: [], vowel: n.syl.vowel, coda: n.syl.coda, stress: false, text: '~', wordStart: false }, ...(n.fall ? { fall: n.fall } : {}) };
+      n.len = head;
+      n.syl = { ...n.syl, coda: [] };
+      delete n.fall;
+      p.splice(k + 1, 0, out);
+      nb.outs++;
+      k++;
+    }
+  });
+
   // Bends (Paul: "bends to connect between notes ... not too many"), after everything that moves notes about:
   // - Some: a syllable sung over two notes a step or two apart glides between them (a bend inside a word)
   // - More: also, now and then, a note held a beat or more slides a step or two into the next word
@@ -189,6 +225,7 @@ export function writeTune(list: Idea[], moodIn: Mood | undefined, salt: number |
     `Sits out: ${list.map((i, si) => (silent[si] ? i.section?.label ?? '' : '')).filter(Boolean).join(', ') || 'nothing'}`,
     ...(ideas.breath ? [`Breaths: ${nb.before} before a big section or after a tiring one, ${nb.tired} more after a tiring stretch; ${nb.beats} beats in all`] : []),
     ...(ideas.leadIn ? [`Lead-ins: ${nb.leadIns} ${nb.leadIns === 1 ? 'section comes' : 'sections come'} in early, the first word held into it`] : []),
+    ...(nb.offKey ? [`Off-key notes: ${nb.outs} of ${nb.offKey} bent out to the nearest note in the key, toward where the tune goes next${nb.offKey > nb.outs ? ' (the rest too short to bend)' : ''}`] : []),
     ...(ideas.bends ? [`Bends (${ideas.bends === 'more' ? 'More' : 'Some'}): ${nb.glides} glides inside a word${ideas.bends === 'more' ? `, ${nb.slides} slides out of a held note into the next word` : ''}; the vocal's own ${sung.filter((n) => n.slide).length} scoops and ${sung.filter((n) => n.fall).length} falls`] : []),
     ...(ideas.carry ? [`Carry over: ${nb.carries} last ${nb.carries === 1 ? 'note runs' : 'notes run'} on into a section the tune sits out, two or three bars, fading out (${nb.carryBends} bent a step)`] : []),
     'Not used here (they write the tune, and the vocal row does that): quick notes, Slow line, Repeat idea, Pitch by words, Question & answer, Section change, the Anchor line\'s settings, Real songs and Patterns (the vocal row\'s own), Key & scale, Chords lean. Used: Sing, Human feel, Hard & soft, Breaths, Lead-ins, Carry over, Range (by octaves)',

@@ -18,6 +18,7 @@ import { writeLine } from '../src/guide/real';
 import { ANCHOR_HOLD_BARS, writeAnchor } from '../src/guide/anchor';
 import { shapeDynamics } from '../src/guide/dynamics';
 import { tuneWords, writeTune } from '../src/guide/tune';
+import { GUIDE_SCALES } from '../src/guide/line';
 import { MOODS } from '../src/tension';
 import type { HighVoice } from '../src/parts/singers';
 
@@ -133,11 +134,22 @@ for (const [name, ideas, range] of TUNE_RUNS) {
     const plain = !ideas.breath && !ideas.leadIn && !ideas.carry;
     // (the same pitches and words in order, the Range moving them by whole octaves)
     // (a carry over's bent note, past its section's end, isn't the vocal's)
-    const flat = L.parts.flatMap((p, si) => p.filter((n) => n.step < list[si].song.total - 1e-9)), want = lead.flat();
+    // (and an off-key note's bent-out half isn't either: the note is the vocal's, its length the two halves')
+    const merged = L.parts.map((p) => p.flatMap((n, j) => (n.split ? [] : [{ ...n, len: n.len + (p[j + 1]?.split ? p[j + 1].len : 0) }])));
+    const flat = merged.flatMap((p, si) => p.filter((n) => n.step < list[si].song.total - 1e-9)), want = lead.flat();
     const shift = flat.length ? flat[0].midi - want[0].midi : 0;
     if (shift % 12) broken.push(`${id}: moved by ${shift}, not octaves`);
     if (flat.length !== want.length || flat.some((n, j) => n.midi - shift !== want[j].midi || n.syl.text !== want[j].syl.text)) broken.push(`${id}: not the vocal's notes and words`);
-    if (plain && L.parts.some((p, si) => p.length !== lead[si].length || p.some((n, j) => n.step !== lead[si][j].step || n.len !== lead[si][j].len))) broken.push(`${id}: switches off, but not the vocal's rhythm`);
+    if (plain && merged.some((p, si) => p.length !== lead[si].length || p.some((n, j) => n.step !== lead[si][j].step || Math.abs(n.len - lead[si][j].len) > 1e-9))) broken.push(`${id}: switches off, but not the vocal's rhythm`);
+    // (every off-key note long enough bent out to the key, a half or whole step)
+    list.forEach((sec, si) => {
+      const sc = GUIDE_SCALES[sec.song.mode] as readonly number[], inKey = (m: number) => sc.includes((((m - sec.song.key) % 12) + 12) % 12);
+      L.parts[si].forEach((n, j) => {
+        const nx = L.parts[si][j + 1];
+        if (n.split) { if (!inKey(n.midi)) broken.push(`${id} ${sec.section?.label}: bent out to a note off the key`); return; }
+        if (!inKey(n.midi) && n.step < sec.song.total && (n.len + (nx?.split ? nx.len : 0)) >= 0.75 && !nx?.split) broken.push(`${id} ${sec.section?.label}: an off-key note not bent out`);
+      });
+    });
     if (range && flat.length) {
       const out = (x: number) => flat.filter((n) => n.midi + x < range[0] || n.midi + x > range[1]).length;
       if (out(12) < out(0) || out(-12) < out(0)) broken.push(`${id}: an octave would sit better in the range`);
@@ -161,7 +173,7 @@ for (const [name, ideas, range] of TUNE_RUNS) {
         if (!n.bend) return;
         if (!q || Math.abs(q.step + q.len - n.step) > 0.01 || Math.abs(n.midi - q.midi) > 2) broken.push(`${id} ${i.section?.label}: a bend not from the note just before, or over a whole step`);
         if (n.newWord) { if (n.step - lastSlide < 2 * bar) broken.push(`${id} ${i.section?.label}: slides closer than two bars`); lastSlide = n.step; }
-        if (!ideas.bends && n.step < i.song.total) broken.push(`${id} ${i.section?.label}: a bend with Bends off`);
+        if (!ideas.bends && !n.split && n.step < i.song.total) broken.push(`${id} ${i.section?.label}: a bend with Bends off`);
       });
       // (new words on the same tune: on its notes, a new note inside a word only ever a bend)
       if (ideas.bends) {

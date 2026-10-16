@@ -25,6 +25,11 @@ A third choice in the Guide card's **Writer** menu: Guide line / Anchor line / *
 
 Hidden for Vocal tune (they write a tune, and the vocal row does that): Chords lean, Key, Scale, Avoid clashes, Slow line, the card's Real songs and Patterns (the vocal row has its own), quick notes and the Guide and Anchor lines' own settings.
 
+## Off-key notes bent out (always on)
+- Paul: off-key notes in the vocal "bend out". A note outside the song's key is sung on its own pitch for a moment (up to half the note, at most an 8th), then bent to the nearest note in the key, toward where the tune goes next (else down, a sigh). The clash is heard, then it settles.
+- About 4% of the vocal's notes are off the key (24 songs: 138 notes, about 0.8 every 8 sung bars); all half-step bends, 70% down. Notes shorter than a 16th's worth stay as they are.
+- Always on in the Vocal tune, whatever the Bends switch says. With New words the bend carries the word on.
+
 ## Bends: how many (24 songs, per 4 sung bars)
 | | Glides in a word | Slides into the next word | The vocal's scoops | The vocal's falls |
 |---|---|---|---|---|
