@@ -3,7 +3,7 @@
 // a flash on crashes, a spotlight on solos. Plus a check view: each player's fretboard and the drums,
 // to see the playing is right.
 
-import { type Atlas, draw, loadAtlas } from './atlas';
+import { type Atlas, draw, loadAtlas, loadImage } from './atlas';
 import { type Actor, type Cmd, type Moment, drummerActor, guitarActor, singerActor } from './actors';
 import { type Score, lastAt } from './score';
 
@@ -12,15 +12,12 @@ export const W = 480, H = 270;
 export interface Cast { stage: HTMLImageElement; singer: Atlas; rhythm: Atlas; lead: Atlas; bassist: Atlas; drummer: Atlas }
 
 export async function loadCast(base = 'band/'): Promise<Cast> {
-  const stage = new Image();
-  stage.src = `${base}stage.png`;
-  const [singer, rhythm, lead, bassist, drummer] = await Promise.all(['singer', 'rhythm', 'lead', 'bassist', 'drummer'].map((n) => loadAtlas(base, n)));
-  await stage.decode();
+  const [stage, singer, rhythm, lead, bassist, drummer] = await Promise.all([loadImage(`${base}stage.png`), ...['singer', 'rhythm', 'lead', 'bassist', 'drummer'].map((n) => loadAtlas(base, n))]) as [HTMLImageElement, ...Atlas[]];
   return { stage, singer, rhythm, lead, bassist, drummer };
 }
 
 /** Where each player stands (their feet), back to front. */
-const SPOTS = { drummer: [240, 175], bassist: [168, 202], rhythm: [86, 246], lead: [394, 246], singer: [252, 258] } as const;
+const SPOTS = { drummer: [240, 176], bassist: [166, 204], rhythm: [84, 250], lead: [392, 250], singer: [252, 262] } as const;
 
 /** Light colours per kind of section (two each). */
 const LIGHTS: Record<string, [string, string]> = {
@@ -31,8 +28,10 @@ const LIGHTS: Record<string, [string, string]> = {
 export class Stage {
   private actors: { name: keyof typeof SPOTS; act: Actor }[];
   private beats: { at: number }[];
+  private barList: { at: number }[];
   constructor(private cast: Cast, private score: Score, private genre: string) {
     this.beats = score.beats.map((at) => ({ at }));
+    this.barList = score.bars.map((at) => ({ at }));
     this.actors = [
       { name: 'drummer', act: drummerActor(cast.drummer, score) },
       { name: 'bassist', act: guitarActor(cast.bassist, score, 'bass', 2) },
@@ -42,17 +41,17 @@ export class Stage {
     ];
   }
 
-  moment(t: number): Moment {
+  moment(t: number, wall = t * this.score.six): Moment {
     const s = this.score;
     const section = s.sections.find((x) => t >= x.from && t < x.to) ?? (t < 0 ? s.sections[0] : s.sections[s.sections.length - 1]);
     const bi = Math.max(0, lastAt(this.beats, t));
     const b0 = s.beats[bi] ?? 0, b1 = s.beats[bi + 1] ?? b0 + 4;
-    return { t, six: s.six, section, beat: clamp01((t - b0) / (b1 - b0)), beatNo: bi, heavy: ['metal', 'hardrock', 'altmetal', 'grunge'].includes(this.genre) };
+    return { t, six: s.six, section, beat: clamp01((t - b0) / (b1 - b0)), beatNo: bi, heavy: ['metal', 'hardrock', 'altmetal', 'grunge'].includes(this.genre), wall };
   }
 
-  /** Draw the moment `t` (song steps; below 0: waiting to start). */
-  render(ctx: CanvasRenderingContext2D, t: number) {
-    const m = this.moment(Math.max(t, 0));
+  /** Draw the moment `t` (song steps; below 0: waiting to start). `wall`: seconds on a clock that always runs. */
+  render(ctx: CanvasRenderingContext2D, t: number, wall = performance.now() / 1000) {
+    const m = this.moment(Math.max(t, 0), t >= 0 ? t * this.score.six : wall);
     const playing = t >= 0;
     ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
@@ -64,8 +63,12 @@ export class Stage {
     this.beams(ctx, m, playing);
     for (const { name, act } of this.actors) {
       const [x, y] = SPOTS[name];
-      const cmds: Cmd[] = playing ? act(m) : act({ ...m, t: -100, section: { ...m.section, energy: 1 } });
-      for (const c of cmds) draw(ctx, c.a, c.f, x + c.x, y + c.y, c.alpha);
+      // (waiting: the band nods along slowly, ready to go)
+      const cmds: Cmd[] = playing ? act(m) : act({ ...m, t: -100, beat: (wall / 0.9) % 1, beatNo: Math.floor(wall / 0.9), section: { ...m.section, energy: 3, solo: false } });
+      for (const c of cmds) {
+        if ('line' in c) for (let k = 0; k < (c.w ?? 1); k++) pixelLine(ctx, x + c.line[0] + k, y + c.line[1], x + c.line[2] + k, y + c.line[3], c.color, c.alpha);
+        else draw(ctx, c.a, c.f, x + c.x, y + c.y, c.alpha);
+      }
     }
     // a flash on a crash, a pulse on the downbeat of loud sections
     if (playing) {
@@ -85,13 +88,17 @@ export class Stage {
     const [c1, c2] = LIGHTS[m.section.solo ? 'solo' : m.section.kind] ?? LIGHTS.verse;
     const e = playing ? m.section.energy : 1;
     const sway = e >= 4 ? Math.sin((m.beatNo + m.beat) * Math.PI * 0.5) * 18 : 0;
+    // loud sections: the lights punch on every bar's downbeat
+    const bi = lastAt(this.barList, m.t);
+    const sinceBar = playing && bi >= 0 ? (m.t - this.barList[bi].at) * m.six : Infinity;
+    const punch = e >= 4 && sinceBar < 0.18 ? 0.12 * (1 - sinceBar / 0.18) : 0;
     ctx.globalCompositeOperation = 'lighter';
     const lamps = [40, 106, 172, 238, 304, 370, 436];
     lamps.forEach((lx, i) => {
       const target = lx + (i % 2 ? sway : -sway);
       const g = ctx.createLinearGradient(0, 16, 0, 260);
       const col = i % 2 ? c1 : c2;
-      g.addColorStop(0, hexA(col, 0.18 + e * 0.04));
+      g.addColorStop(0, hexA(col, 0.18 + e * 0.04 + punch));
       g.addColorStop(1, hexA(col, 0));
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -117,6 +124,18 @@ export class Stage {
 }
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+/** A 1px line on the pixel grid (no smoothing), for effects like a ringing string. */
+function pixelLine(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, color: string, alpha: number) {
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.fillStyle = color;
+  const n = Math.max(1, Math.ceil(Math.abs(x1 - x0)));
+  for (let k = 0; k <= n; k++) {
+    const x = x0 + ((x1 - x0) * k) / n, y = y0 + ((y1 - y0) * k) / n;
+    ctx.fillRect(Math.floor(x), Math.floor(y), 1, 1);
+  }
+  ctx.globalAlpha = 1;
+}
 function hexA(hex: string, a: number) {
   return `rgba(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)}, ${a})`;
 }

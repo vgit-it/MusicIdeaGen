@@ -51,13 +51,19 @@ file: frame name, where it is on the sheet, and its origin.
 | legs, body | `legs/stand`, `body/idle`, `body/lean` |
 | head, face | `head/front` `head/up` `head/down`; `eyes/open half closed wide squeeze left right`; `brows/neutral raised furrow sad`; `mouth/rest M F S E I A A+ O O+ U` |
 | guitar, bass | `inst/body` (the neck's ends and strings listed in the JSON, for the fret maths) |
-| fretting hand | `fret/<grip>/<fret>/<string>`: grips `single bend open chord barre power mute` |
-| pick hand | `pick/up mid down mute a b`, bass `pluck/a b rest` |
+| fretting hand | `fret/palm/<fret>` (the palm under the neck, thumb over the top, at the index finger's fret), `fret/off/<fret>` (relaxed, off the strings); `tip/press`, `tip/light` (a fingertip, its origin the pressed pixel) |
+| pick hand | `pick/up mid down blurD blurU mute mute2 a b rest`, bass `pluck/a b rest` (`a`/`b` drawn on the middle string; the view moves them to the string picked) |
 | drummer | `kit/...` per drum (`/rest`, `/hit`), cymbals (`/hit1`, `/hit2`), hi-hat open/closed; `armR/<drum>/<up mid hit>`, `armL/...` |
 | singer | `armL/mic`, `armL/down`, `armR/down up out chest`, `stand` |
 
-The fretting hand: draw as many frets as you like. With only every 3rd fret drawn, the view slides the
-nearest frame along the neck. The same for strings.
+The fretting hand is accurate to every note: the view puts a fingertip on each fretted string at its
+real fret (a chord's whole shape, a power chord, a barre laid across the strings, a bend pushing the
+string up), and draws each finger from the knuckles to its tip in the skin colour. Ringing strings
+shimmer from their fret to the bridge. Fingers and string shimmer are drawn by the view (thin lines);
+everything else is sprites.
+
+Proportions follow the Scott Pilgrim game's sprites: about 3.5 heads tall, long thin legs, a narrow
+torso, big eyes with whites and pupils, chunky shoes, thick dark outlines.
 
 **Making them in Aseprite** (later): one file per player, a layer per part, a tag per frame name;
 export the sheet with JSON; a small converter maps it to this format.

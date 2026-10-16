@@ -7,27 +7,13 @@ export interface NeckGeo { bridge: [number, number]; nut: [number, number]; stri
 export interface Atlas {
   img: HTMLImageElement;
   frames: Record<string, number[]>;
-  geo: { neck?: NeckGeo; poses?: Record<string, [number, number]>; kit?: Record<string, [number, number]>; lift?: number; mic?: [number, number] };
-  /** Frets drawn for each grip (and string), for finding the nearest drawn frame. */
-  fretsFor: Map<string, number[]>;
+  geo: { neck?: NeckGeo; skin?: string; skinDark?: string; poses?: Record<string, [number, number]>; kit?: Record<string, [number, number]>; lift?: number; mic?: [number, number] };
 }
 
 export async function loadAtlas(base: string, name: string): Promise<Atlas> {
   const json = await (await fetch(`${base}${name}.json`)).json();
-  const img = new Image();
-  img.src = `${base}${json.image}`;
-  await img.decode();
-  const fretsFor = new Map<string, number[]>();
-  for (const key of Object.keys(json.frames)) {
-    const m = /^fret\/(\w+)\/(\d+)(?:\/(\d+))?$/.exec(key);
-    if (!m) continue;
-    const k = m[3] === undefined ? m[1] : `${m[1]}/${m[3]}`;
-    const list = fretsFor.get(k) ?? [];
-    list.push(+m[2]);
-    fretsFor.set(k, list);
-  }
-  for (const l of fretsFor.values()) l.sort((a, b) => a - b);
-  return { img, frames: json.frames, geo: json.geo, fretsFor };
+  const img = await loadImage(`${base}${json.image}`);
+  return { img, frames: json.frames, geo: json.geo };
 }
 
 /** Draw a frame with its origin at (x, y). Missing frames are skipped (an artist may leave some out). */
@@ -46,29 +32,12 @@ export function onNeck(n: NeckGeo, fret: number, string: number): [number, numbe
   return [x, y + (string - (n.strings - 1) / 2) * n.spacing];
 }
 
-/**
- * The fretting hand's frame for a grip at a fret (and string), and how far to slide it: the nearest
- * drawn fret and string, moved along the neck to the real one (so an artist can draw every 3rd fret).
- */
-export function fretFrame(a: Atlas, grip: string, fret: number, string: number): { name: string; dx: number; dy: number } | null {
-  const n = a.geo.neck;
-  if (!n) return null;
-  let key = `${grip}/${string}`;
-  let frets = a.fretsFor.get(key);
-  let s = string;
-  if (!frets) {
-    // the nearest string drawn for this grip, or a grip drawn without strings
-    const strings = [...a.fretsFor.keys()].filter((k) => k.startsWith(`${grip}/`)).map((k) => +k.split('/')[1]);
-    if (strings.length) {
-      s = strings.reduce((b, x) => (Math.abs(x - string) < Math.abs(b - string) ? x : b));
-      key = `${grip}/${s}`;
-      frets = a.fretsFor.get(key);
-    } else { key = grip; frets = a.fretsFor.get(grip); }
-  }
-  if (!frets?.length) return grip === 'single' ? null : fretFrame(a, 'single', fret, string);
-  const r = Math.round(fret);
-  const near = frets.reduce((b, x) => (Math.abs(x - r) < Math.abs(b - r) ? x : b));
-  const name = key.includes('/') ? `fret/${grip}/${near}/${s}` : `fret/${grip}/${near}`;
-  const want = onNeck(n, Math.max(fret - 0.35, 0.6), string), got = onNeck(n, Math.max(near - 0.35, 0.6), key.includes('/') ? s : string);
-  return { name, dx: want[0] - got[0], dy: want[1] - got[1] };
+/** An image, loaded (a load event, not decode(): decode() waits forever in a hidden tab). */
+export function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((ok, fail) => {
+    const img = new Image();
+    img.onload = () => ok(img);
+    img.onerror = () => fail(new Error(`Couldn't load ${src}`));
+    img.src = src;
+  });
 }

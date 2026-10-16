@@ -26,7 +26,7 @@ engine.setVocal('auto');
 // (band.html?mute: silent, for automated checks)
 if (new URLSearchParams(location.search).has('mute')) Tone.getDestination().mute = true;
 // (for checks from the console)
-Object.assign(window, { bandDebug: () => ({ engine, score, clock, track, renderAt: (t: number) => stage?.render(ctx, t), newSong }) });
+Object.assign(window, { bandDebug: () => ({ engine, score, clock, track, renderAt: (t: number) => stage?.render(ctx, t), newSong, freeze: (t: number | null) => { frozen = t; } }) });
 let cast: Cast | null = null;
 let track: Track | null = null;
 let score: Score | null = null;
@@ -34,6 +34,9 @@ let stage: Stage | null = null;
 let clock: StepClock | null = null;
 let offs: number[] = [];
 let delay = 0;
+/** A moment held still (checks: bandDebug().freeze(step)). */
+let frozen: number | null = null;
+let shownLabel = '';
 
 engine.onStep = (_idea, idx, g, time) => clock?.record(offs[idx] + g, time);
 engine.onEnd = () => { engine.stop(); };
@@ -92,10 +95,19 @@ sizeCheck();
 function frame() {
   requestAnimationFrame(frame);
   if (!stage || !score) return;
-  const t = songNow();
+  const t = frozen ?? songNow();
   stage.render(ctx, t);
   const m = stage.moment(Math.max(0, t));
   $('sect').textContent = t >= 0 ? `${m.section.label} · energy ${m.section.energy}` : '';
+  // a banner as each section starts
+  const label = t >= 0 ? m.section.label : '';
+  if (label !== shownLabel) {
+    shownLabel = label;
+    const b = $('banner');
+    b.textContent = label;
+    b.classList.remove('show');
+    if (label) { void b.offsetWidth; b.classList.add('show'); }
+  }
   // the sung line, the syllable sounding now in bold
   const lines = score.vocal.lines, li = lastAt(lines, t + 2);
   const line = lines[li];
@@ -111,9 +123,10 @@ function frame() {
 
 ctx.fillStyle = '#000';
 ctx.fillRect(0, 0, W, H);
-Promise.all([loadCast(), engine.loadCore()]).then(([c]) => {
+// the band shows up as soon as the sprites are in; Play waits for the drum and bass samples
+loadCast().then((c) => {
   cast = c;
   newSong();
-  playBtn.disabled = false;
   requestAnimationFrame(frame);
-}).catch((e) => status(`Couldn't load: ${e}`));
+  return engine.loadCore();
+}).then(() => { playBtn.disabled = false; }).catch((e) => status(`Couldn't load: ${e}`));
