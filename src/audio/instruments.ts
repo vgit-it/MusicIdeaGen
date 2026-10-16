@@ -273,8 +273,10 @@ class Amp {
     const ir = this.cabs[this.tone];
     if (!ir) return;
     this.convolver.buffer = new Tone.ToneAudioBuffer(resample(ir, this.ctx.sampleRate));
-    this.irPath.gain.value = 1;
-    this.filterPath.gain.value = 0;
+    // (switched at once, not a look-ahead later: the browser sometimes dropped the later switch, made as the
+    // cabinet is rewired, and the guitar stayed silent; it showed once notes were scheduled a quarter second ahead)
+    this.irPath.gain.cancelScheduledValues(0).setValueAtTime(1, 0);
+    this.filterPath.gain.cancelScheduledValues(0).setValueAtTime(0, 0);
     if (!this.cabOn) {
       this.treble.disconnect(this.fallbackCab);
       this.cabOn = true;
