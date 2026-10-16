@@ -112,9 +112,12 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     let s = -Math.abs(ms[0] - target);
     // (now and then back up to the solo's top: real solos come back to it about four times)
     if (toTop && evs.length) { const top = Math.max(...evs.map((e) => e.midi)), hi = Math.max(...ms); if (hi >= top - 2 && hi <= top) s += 6; }
+    // (chord notes where they're heard: bar lines, chord changes, held notes, the last note, then any beat or 8th held)
     ms.forEach((m, i) => {
+      const tone = fit.isTone(m, steps[i]);
       const strong = barStarts.has(steps[i]) || changes.has(steps[i]) || lens[i] >= 4 || i === ms.length - 1;
-      if (strong) s += fit.isTone(m, steps[i]) ? 1.5 : -1.5;
+      if (strong) s += tone ? 3 : -3;
+      else if (steps[i] % 4 === 0 || lens[i] >= 2) s += tone ? 1.5 : -1;
     });
     return s + rng.next();
   };
@@ -160,7 +163,8 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
   const colour = (ms: number[], steps: number[], lens: number[]) => {
     const out = [...ms];
     for (let i = 0; i < out.length - 1; i++) {
-      if (!box.includes(mod(out[i] - key, 12)) || !rng.chance(0.22)) continue;
+      // (on the off-beats and quick notes: the beats are the chord's)
+      if (!box.includes(mod(out[i] - key, 12)) || steps[i] % 4 === 0 || lens[i] > 2 || !rng.chance(0.3)) continue;
       const opts: [number, number][] = [];
       for (const [d, w, quick] of COLOUR[boxMinor ? 'm' : 'M']) {
         if (quick && lens[i] > 2) continue;
@@ -467,6 +471,17 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
       e.len = half;
     }
   }
+
+  // leaning on the chord: a note on a beat, or held an 8th or more, that isn't one of the chord's notes moves to the
+  // nearest one (a step at most, the way the line was going) now and then
+  evs.forEach((e, i) => {
+    if (e.peak || e.dyad !== undefined || e.shift || fit.isTone(e.midi, e.step) || (e.step % 4 !== 0 && e.len < 2) || !rng.chance(0.9)) return;
+    const dir = i > 0 && e.midi < evs[i - 1].midi ? -1 : 1;
+    for (const d of [dir, -dir, 2 * dir, -2 * dir]) {
+      const m = e.midi + d;
+      if (fit.isTone(m, e.step) && !fit.clash(m, e.step)) { e.midi = m; break; }
+    }
+  });
 
   const hits = playSolo(rng, evs, { lick, key, minor, isTone: fit.isTone, inScale, total, t });
   return {

@@ -15,6 +15,7 @@ A new solo writer built from how real guitar solos go (`docs/STUDY-SOLO.md`: 2,9
 - **Second round** (`docs/STUDY-SOLO.md`, "In detail"):
   - **Bars back later:** at a bar line, now and then a bar played earlier (or two) comes back, two or more bars on most often, the very next bar sometimes; as it was, or with a new ending; moved a note or two along the scale where the chords have changed. Single licks come back too. A repeat that no longer fits the chord is moved along the scale instead of dropped.
   - **More of the scale:** shapes with notes outside the box count more, and now and then a box note becomes the scale note next to it, as real solos use them: over minor keys the 2nd, b6 and 6th; over major keys the 4th, the 7th, and the b7 and b3 (quick only).
+  - **Leaning on the chord** (Paul: more of the chord's notes, not just the scale): chord notes count more when choosing a lick (on bar lines, chord changes and held notes, then any beat or held 8th); notes from outside the box only off the beat and quick; and a note on a beat or held an 8th+ that isn't one of the chord's moves to the nearest one (a step at most, the way the line was going), 9 times in 10. (The real songs' figures count every instrument's notes, keys and strings too; the app's export has fewer, so its numbers come out a little low.)
   - **Back to the top:** half the licks lean toward reaching back up to the solo's high point.
   - **Triplets:** about one solo in ten (more for blues players and shredders; fewer than real solos, by ear) plays 8th-note triplets, a beat or two at a time (now and then three quarter triplets over two beats), mostly falling or turning, landing on a held chord note on the next beat; from the shared shapes, else a triplet figure through the box. Guitar 2's notes can now sound between the 16ths (`shift`), in playback, Prepare real sound and the MIDI export.
 
@@ -36,7 +37,8 @@ A new solo writer built from how real guitar solos go (`docs/STUDY-SOLO.md`: 2,9
 | the next bar | 24% | | 10% |
 | 2+ bars later | 53% | | 9% |
 | bars played again exactly | 42% | | 5% |
-| outside the pentatonic | 24% | 14% | 20% |
+| outside the pentatonic | 24% | 14% | 18% |
+| on a note the band is playing: all / on a beat / held half a beat+ | 64 / 67 / 68% | 44 / 53 / 61% | 50 / 61 / 64% |
 | triplet notes | 7% | 1% | 3% |
 | solos with 8th triplets | 18% | 0% | 8% |
 | 8th-triplet groups falling / rising / turning | 36 / 15 / 49% | | 25 / 13 / 63% |
