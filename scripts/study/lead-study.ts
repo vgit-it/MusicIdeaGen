@@ -66,7 +66,7 @@ interface Rec {
   has: number; named?: number; leads?: number; doubles?: number; twin?: number;
   presence?: number; withVox?: number; voxBarsFilled?: number; solos?: number; soloBars?: number[]; soloAt?: number[];
   nps?: number; npsSolo?: number; npsVerse?: number;
-  len?: number[]; pos?: number[]; step?: number[]; up?: number; phraseNotes?: number; phraseBeats?: number;
+  len?: number[]; pos?: number[]; step?: number[]; up?: number; phraseNotes?: number; inLong?: number; phraseBeats?: number;
   range?: number; height?: number; aboveVox?: number; onBand?: number; onBandHeld?: number; inScale?: number; inPenta?: number; blue?: number;
   bent?: number; dbl?: number; grace?: number; onGtr?: number; soloWhere?: number[]; answered?: number; second?: number; fast?: number; fastest?: number; repeat2?: number; barKind?: number[]; bpm?: number;
   appTech?: Record<string, number>;
@@ -175,6 +175,7 @@ function measure(T: Track[], bpm: number, side: 'real' | 'app', genre: string, a
   top.forEach((n, i) => { const p = top[i - 1]; if (p && n.s - p.e < 1 && n.s - p.s < 3) { phrases[phrases.length - 1].push(n); const d = Math.abs(n.p - p.p); rec.step![d === 0 ? 0 : d <= 2 ? 1 : d <= 4 ? 2 : d <= 7 ? 3 : 4]++; nSteps++; if (d) { moves++; if (n.p > p.p) up++; } } else phrases.push([n]); });
   rec.step = rec.step.map((x) => x / Math.max(1, nSteps)); rec.up = up / Math.max(1, moves);
   rec.phraseNotes = median(phrases.map((p) => p.length));
+  rec.inLong = phrases.filter((p) => p.length >= 6).reduce((s, p) => s + p.length, 0) / top.length;
   rec.phraseBeats = median(phrases.map((p) => p[p.length - 1].e - p[0].s));
   const ps = top.map((n) => n.p).sort((a, b) => a - b);
   rec.range = ps[Math.floor(ps.length * 0.95)] - ps[Math.floor(ps.length * 0.05)];
@@ -238,7 +239,7 @@ if (process.env.REAL !== '0') {
 for (const g of GENRES) {
   for (let i = 0; i < N_APP; i++) {
     const s = `${g}-lead-${i}`;
-    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3 } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
+    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LINES ? { leadLines: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
     const tr = buildTrack(idea, defaultTrackOptions(idea));
     const id = g === 'pop' || g === 'funk' ? 'electric-clean' : g === 'rock' ? 'electric-crunch' : 'electric-dist';
     const bytes = toMidi(tr.sections, { chordIdFor: () => id, guitar2IdFor: () => id, vocal: 'auto', backing: 'off' });

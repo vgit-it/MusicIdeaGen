@@ -1034,7 +1034,7 @@ const runCount = (idea: Idea) => Math.ceil(idea.song.bars.length / 4);
 
 /** Rewrite guitar 2 for a section: forced roles, or picked like an idea (undefined). Returns its description. */
 function writeGuitar2(idea: Idea, rng: Rng, force?: Guitar2Style[], lick?: LickKind): string {
-  const g2 = generateGuitar2(rng, idea.song, idea.chords, idea.guitar ?? null, force, lick);
+  const g2 = generateGuitar2(rng, idea.song, idea.chords, idea.guitar ?? null, force, lick, { lines: idea.opts.leadLines });
   idea.guitar2 = g2.hits;
   return g2.notes[0];
 }
@@ -1261,7 +1261,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       hook = hookBase.guitar2;
       hookNote = 'Guitar 2: the idea\'s melody, as the hook';
     } else {
-      hook = generateHook(new Rng(S.hook), hookBase.song, hookBase.chords, null);
+      hook = generateHook(new Rng(S.hook), hookBase.song, hookBase.chords, null, { lines: src.opts.leadLines });
       hookNote = 'Guitar 2: the hook, a melody that comes back through the track';
     }
   }
