@@ -660,34 +660,34 @@ const AMP_TONES: Record<BassAmpTone, { level: number; chain: () => Tone.ToneAudi
   fuller: {
     level: 0.63,
     chain: () => [
-      new Tone.Filter({ type: 'highpass', frequency: 30, rolloff: -12 }),
+      new Tone.BiquadFilter({ type: 'highpass', frequency: 30 }),
       new Tone.Compressor({ threshold: -22, ratio: 4, attack: 0.012, release: 0.15 }),
-      new Tone.Filter({ type: 'lowshelf', frequency: 110, gain: 5 }),
-      new Tone.Filter({ type: 'peaking', frequency: 1000, Q: 1, gain: -3 }),
-      new Tone.Filter({ type: 'highshelf', frequency: 3000, gain: -3 }),
+      new Tone.BiquadFilter({ type: 'lowshelf', frequency: 110, gain: 5 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 1000, Q: 1, gain: -3 }),
+      new Tone.BiquadFilter({ type: 'highshelf', frequency: 3000, gain: -3 }),
     ],
   },
   punchy: {
     level: 0.77,
     chain: () => [
-      new Tone.Filter({ type: 'highpass', frequency: 35, rolloff: -12 }),
+      new Tone.BiquadFilter({ type: 'highpass', frequency: 35 }),
       new Tone.Compressor({ threshold: -22, ratio: 4, attack: 0.02, release: 0.12 }),
-      new Tone.Filter({ type: 'lowshelf', frequency: 90, gain: 3 }),
-      new Tone.Filter({ type: 'peaking', frequency: 250, Q: 1, gain: -3 }),
-      new Tone.Filter({ type: 'peaking', frequency: 800, Q: 0.9, gain: 4 }),
-      new Tone.Filter({ type: 'peaking', frequency: 2000, Q: 1, gain: 2 }),
-      new Tone.Filter({ type: 'lowpass', frequency: 6000, rolloff: -12 }),
+      new Tone.BiquadFilter({ type: 'lowshelf', frequency: 90, gain: 3 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 250, Q: 1, gain: -3 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 800, Q: 0.9, gain: 4 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 2000, Q: 1, gain: 2 }),
+      new Tone.BiquadFilter({ type: 'lowpass', frequency: 6000 }),
     ],
   },
   warm: {
     level: 0.275,
     chain: () => [
-      new Tone.Filter({ type: 'highpass', frequency: 35, rolloff: -12 }),
+      new Tone.BiquadFilter({ type: 'highpass', frequency: 35 }),
       new Tone.Compressor({ threshold: -24, ratio: 4, attack: 0.01, release: 0.15 }),
       new Tone.Gain(1.5), tanh(2),
-      new Tone.Filter({ type: 'peaking', frequency: 100, Q: 0.8, gain: 4 }),
-      new Tone.Filter({ type: 'peaking', frequency: 500, Q: 0.8, gain: 2 }),
-      new Tone.Filter({ type: 'lowpass', frequency: 2200, rolloff: -24 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 100, Q: 0.8, gain: 4 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 500, Q: 0.8, gain: 2 }),
+      ...steep('lowpass', 2200, 1, 2),
     ],
   },
 };
@@ -699,13 +699,13 @@ class BassRig {
   private dist = new Tone.Gain(1);
   private level = new Tone.Gain(1);
   private comp = new Tone.Compressor({ threshold: -24, ratio: 4, attack: 0.008, release: 0.15, knee: 6 });
-  private top = new Tone.Filter({ type: 'highshelf', frequency: 800, gain: -9 });
+  private top = new Tone.BiquadFilter({ type: 'highshelf', frequency: 800, gain: -9 });
   private readonly ctx = Tone.getContext();
   /** Real amps: in a render that prepares them, the preamp's input is recorded instead (see realamp.ts). */
   private captured = false;
   tone: BassTone = 'clean';
   /** Where the input goes: the DI rig, or another tone's chain. */
-  private readonly di = new Tone.Filter({ type: 'highpass', frequency: 28, rolloff: -12 });
+  private readonly di = new Tone.BiquadFilter({ type: 'highpass', frequency: 28 });
   private route: Tone.ToneAudioNode = this.di;
   private amps = new Map<BassAmpTone, Tone.ToneAudioNode>();
 
@@ -716,23 +716,23 @@ class BassRig {
     // the DI: plenty of weight down low (deep and round, not twangy), a touch less 250 Hz mud and
     // 700 Hz honk, the top rolled off, no fizz
     comp.chain(
-      new Tone.Filter({ type: 'lowshelf', frequency: 130, gain: 7 }),
-      new Tone.Filter({ type: 'peaking', frequency: 60, Q: 1, gain: 2 }),
-      new Tone.Filter({ type: 'peaking', frequency: 250, Q: 1, gain: -2 }),
-      new Tone.Filter({ type: 'peaking', frequency: 700, Q: 1, gain: -3 }),
+      new Tone.BiquadFilter({ type: 'lowshelf', frequency: 130, gain: 7 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 60, Q: 1, gain: 2 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 250, Q: 1, gain: -2 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 700, Q: 1, gain: -3 }),
       this.top,
-      new Tone.Filter({ type: 'lowpass', frequency: 2800, rolloff: -24 }),
+      ...steep('lowpass', 2800, 1, 2),
       sum,
     );
     // the preamp: no lows into the distortion (keeps it tight), growl in the mids, a speaker's top
     const shaper = new Tone.WaveShaper((x) => Math.tanh(5 * x) / Math.tanh(5), 4096);
     shaper.oversample = '4x';
     comp.connect(this.drive);
-    this.drive.chain(new Tone.Filter({ type: 'highpass', frequency: 180, rolloff: -24 }), new Tone.Gain(4), shaper, this.dist);
+    this.drive.chain(...steep('highpass', 180, 1, 2), new Tone.Gain(4), shaper, this.dist);
     this.dist.chain(
-      new Tone.Filter({ type: 'highpass', frequency: 300, rolloff: -12 }),
-      new Tone.Filter({ type: 'peaking', frequency: 900, Q: 0.8, gain: 3 }),
-      new Tone.Filter({ type: 'lowpass', frequency: 3500, rolloff: -24 }),
+      new Tone.BiquadFilter({ type: 'highpass', frequency: 300 }),
+      new Tone.BiquadFilter({ type: 'peaking', frequency: 900, Q: 0.8, gain: 3 }),
+      ...steep('lowpass', 3500, 1, 2),
       sum,
     );
     sum.chain(new Tone.Compressor({ threshold: -18, ratio: 3, attack: 0.01, release: 0.15 }), this.level, out);
@@ -793,18 +793,24 @@ export class Bass {
   useSynth = false;
   private sampler: MultiSampler | null = null;
   private last: Voice | undefined;
-  private synth: Tone.MonoSynth;
+  /** The synth fallback (no samples, or the Synth bass): built when first played (idle, its nodes still cost CPU on phones). */
+  private synthNow: Tone.MonoSynth | null = null;
+  private readonly out: Tone.InputNode;
   private readonly rig: BassRig;
   /** The audio context it was made in (its voices play there, whichever context is current). */
   private ctx = Tone.getContext();
 
   constructor(out: Tone.InputNode) {
     this.rig = new BassRig(out);
-    this.synth = new Tone.MonoSynth({
+    this.out = out;
+  }
+
+  private get synth() {
+    return (this.synthNow ??= inContext(this.ctx, () => new Tone.MonoSynth({
       oscillator: { type: 'sawtooth' }, filter: { Q: 1, type: 'lowpass' },
       filterEnvelope: { attack: 0.005, decay: 0.18, sustain: 0.25, release: 0.2, baseFrequency: 70, octaves: 2.6 },
       envelope: { attack: 0.005, decay: 0.2, sustain: 0.6, release: 0.12 }, volume: -9,
-    }).connect(out);
+    }).connect(this.out)));
   }
 
   /** Bass sound to match the style (more growl for heavier genres). */
@@ -856,7 +862,7 @@ export class Bass {
   releaseAll(time?: number) {
     this.sampler?.stopAll(time);
     this.last = undefined;
-    this.synth.triggerRelease(time);
+    this.synthNow?.triggerRelease(time);
   }
 }
 
@@ -909,9 +915,12 @@ export class DrumKit {
   private rr = new RoundRobin();
   private outs = {} as Record<DrumPiece, Tone.ToneAudioNode>;
   private openHat: SampleVoice | null = null;
-  private fb: {
+  /** The synth kit (the Synth kit, or no samples): built when first played (idle, its many nodes still cost CPU on phones). */
+  private fbNow: {
     kick: Tone.MembraneSynth; snare: Tone.NoiseSynth; hat: Tone.MetalSynth; crash: Tone.MetalSynth; tom: Tone.MembraneSynth;
-  };
+  } | null = null;
+  private readonly out: Tone.InputNode;
+  private ctx = Tone.getContext();
 
   constructor(out: Tone.InputNode) {
     // drum bus: glue compression, parallel "smash" compression for weight, soft saturation for the peaks
@@ -920,7 +929,7 @@ export class DrumKit {
     const smash = new Tone.Compressor({ threshold: -40, ratio: 12, attack: 0.002, release: 0.1 });
     const sum = new Tone.Gain(1);
     bus.chain(glue, sum);
-    bus.chain(smash, new Tone.Filter({ type: 'highpass', frequency: 60 }), new Tone.Gain(DRUM_SMASH), sum);
+    bus.chain(smash, new Tone.BiquadFilter({ type: 'highpass', frequency: 60 }), new Tone.Gain(DRUM_SMASH), sum);
     const sat = new Tone.WaveShaper((x) => Math.tanh(1.6 * x) / Math.tanh(1.6), 2048);
     sum.chain(new Tone.Gain(DRUM_DRIVE), sat, new Tone.Gain(DRUM_LEVEL), out);
 
@@ -930,17 +939,22 @@ export class DrumKit {
       // cymbals skip the bus compressors: the kick and snare ducked every on-beat hi-hat, turning the
       // drummer's accents around (off-beats came out louder) and making the groove pump
       const pan = new Tone.Panner(PIECE_PAN[p]).connect(CYMBALS.includes(p) ? cymbals : bus);
-      const eq = PIECE_EQ[p].map(([type, frequency, gain, Q]) => new Tone.Filter({ type, frequency, gain, Q }));
+      const eq = PIECE_EQ[p].map(([type, frequency, gain, Q]) => new Tone.BiquadFilter({ type, frequency, gain, Q }));
       this.outs[p] = eq.length ? eq[0] : pan;
       if (eq.length) Tone.connectSeries(...eq, pan);
     }
-    this.fb = {
+    this.out = out;
+  }
+
+  private get fb() {
+    const out = this.out;
+    return (this.fbNow ??= inContext(this.ctx, () => ({
       kick: new Tone.MembraneSynth({ volume: -2 }).connect(out),
       snare: new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.15, sustain: 0 }, volume: -12 }).connect(out),
       hat: new Tone.MetalSynth({ envelope: { attack: 0.001, decay: 0.05, release: 0.01 }, harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5, volume: -28 }).connect(out),
       crash: new Tone.MetalSynth({ envelope: { attack: 0.001, decay: 1.2, release: 0.5 }, harmonicity: 5.1, modulationIndex: 40, resonance: 5000, octaves: 2, volume: -30 }).connect(out),
       tom: new Tone.MembraneSynth({ pitchDecay: 0.08, octaves: 3, volume: -8 }).connect(out),
-    };
+    })));
   }
 
   private loading?: Promise<void>;
