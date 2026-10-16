@@ -81,7 +81,7 @@ Still off: the Guide line's same note (its quick notes step away and back), the 
 | Learned + Patterns | 3.5% | 12.9% (Patterns' own real bars are kept as they are) |
 | Shaped / Melody first | about 1% | 18.0% / 17.4% |
 
-- Syllables a second about the same (1.35 → 1.35); quick runs (two 16ths in a row) no more than before.
+- No syllables added or left out (only moved); quick runs (two 16ths in a row) no more than before.
 
 ## Next
 - Paul listens: switch on vs off, per genre.
