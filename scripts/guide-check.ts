@@ -113,7 +113,8 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
 
 // the Vocal tune: the vocal's own tune, its switches only moving starts and ends
 const WRITERS = [{}, { vocalMelody: 'shaped' }, { vocalMelody: 'first' }, { vocalMelody: 'learned', vocalRhythm: 'words' }, { vocalMelody: 'learned', vocalReal: true, vocalPatterns: true }, { vocalRhythm: 'grid' }];
-const TUNE_RUNS: [string, GuideIdeas, GuideRange | null][] = [['Vocal tune', { tune: true }, null], ['Vocal tune, Breaths, Lead-ins, Carry over, Hard and soft', { tune: true, breath: true, leadIn: true, carry: true, dynamics: true }, null], ['Vocal tune, range 40-60', { tune: true }, [40, 60]], ['Vocal tune, all three, range 60-84', { tune: true, breath: true, leadIn: true, carry: true }, [60, 84]]];
+const TUNE_RUNS: [string, GuideIdeas, GuideRange | null][] = [['Vocal tune', { tune: true }, null], ['Vocal tune, Breaths, Lead-ins, Carry over, Hard and soft', { tune: true, breath: true, leadIn: true, carry: true, dynamics: true }, null], ['Vocal tune, range 40-60', { tune: true }, [40, 60]], ['Vocal tune, all three, range 60-84', { tune: true, breath: true, leadIn: true, carry: true }, [60, 84]],
+  ['Vocal tune, Bends some', { tune: true, bends: 'some' }, null], ['Vocal tune, Bends more, all three, Hard and soft', { tune: true, bends: 'more', breath: true, leadIn: true, carry: true, dynamics: true }, null]];
 let tuneSongs = 0;
 for (const [name, ideas, range] of TUNE_RUNS) {
   if (process.env.ONLY && !name.includes(process.env.ONLY)) continue;
@@ -131,7 +132,8 @@ for (const [name, ideas, range] of TUNE_RUNS) {
     const lead = list.map((i) => (i.vocal ?? []).filter((n) => !n.role));
     const plain = !ideas.breath && !ideas.leadIn && !ideas.carry;
     // (the same pitches and words in order, the Range moving them by whole octaves)
-    const flat = L.parts.flat().filter((n) => n.syl.text !== '~' || !n.bend), want = lead.flat();
+    // (a carry over's bent note, past its section's end, isn't the vocal's)
+    const flat = L.parts.flatMap((p, si) => p.filter((n) => n.step < list[si].song.total - 1e-9)), want = lead.flat();
     const shift = flat.length ? flat[0].midi - want[0].midi : 0;
     if (shift % 12) broken.push(`${id}: moved by ${shift}, not octaves`);
     if (flat.length !== want.length || flat.some((n, j) => n.midi - shift !== want[j].midi || n.syl.text !== want[j].syl.text)) broken.push(`${id}: not the vocal's notes and words`);
@@ -151,6 +153,23 @@ for (const [name, ideas, range] of TUNE_RUNS) {
       const ws = W[si].flatMap((l) => l.notes);
       if (ws.length !== L.parts[si].length || ws.some((x, j) => x.step !== L.parts[si][j].step || x.len !== L.parts[si][j].len || x.midi !== L.parts[si][j].midi)) broken.push(`${id} ${i.section?.label}: the words are off the tune`);
       if (ws.some((x) => !(x.vel >= 0 && x.vel <= 1))) broken.push(`${id} ${i.section?.label}: a level out of range`);
+      // (Bends: from the note just before, a step or two; slides into a new word at most one every two bars)
+      const bar = i.song.bars[0].len;
+      let lastSlide = -Infinity;
+      L.parts[si].forEach((n, k) => {
+        const q = L.parts[si][k - 1];
+        if (!n.bend) return;
+        if (!q || Math.abs(q.step + q.len - n.step) > 0.01 || Math.abs(n.midi - q.midi) > 2) broken.push(`${id} ${i.section?.label}: a bend not from the note just before, or over a whole step`);
+        if (n.newWord) { if (n.step - lastSlide < 2 * bar) broken.push(`${id} ${i.section?.label}: slides closer than two bars`); lastSlide = n.step; }
+        if (!ideas.bends && n.step < i.song.total) broken.push(`${id} ${i.section?.label}: a bend with Bends off`);
+      });
+      // (new words on the same tune: on its notes, a new note inside a word only ever a bend)
+      if (ideas.bends) {
+        const nw = guideWords(list, L)[si].flatMap((l) => l.notes);
+        const cover = (xs: { step: number; len: number; midi: number }[]) => xs.map((x) => `${x.step.toFixed(3)}/${x.len.toFixed(3)}/${x.midi}`).join(' ');
+        if (cover(nw) !== cover(L.parts[si])) broken.push(`${id} ${i.section?.label}: new words off the tune`);
+        nw.forEach((x, k) => { const q = nw[k - 1]; if (q && x.midi !== q.midi && !x.syl.wordStart && !(x.syl.text === '~' && x.bend)) broken.push(`${id} ${i.section?.label}: new words: a new note inside a word, not bent`); });
+      }
       tot += i.song.total;
     });
   }

@@ -37,7 +37,8 @@ export class GuideSynth {
    * (a quick dip and a lift, like a word starting) and pulls (falling away to silence, like a word ending;
    * the note comes back with a tap on the next beat).
    */
-  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = [], taps: number[] = [], rests: { at: number; len: number }[] = [], marks: { at: number; kind: 'push' | 'pull' }[] = [], feel?: SynthFeel) {
+  play(midi: number, time: number, dur: number, vel = 0.8, bends: { at: number; to: number; over: number }[] = [], taps: number[] = [], rests: { at: number; len: number }[] = [], marks: { at: number; kind: 'push' | 'pull' }[] = [], feel?: SynthFeel, outFade = 0) {
+    // (`outFade`: seconds at its end fading away to nothing: a note carried over into a silent section)
     const raw = this.ctx.rawContext as BaseAudioContext;
     const hz = (m: number) => 440 * 2 ** ((m - 69) / 12);
     const freq = hz(midi);
@@ -45,7 +46,7 @@ export class GuideSynth {
     const peak = 0.22 * vel, end = time + Math.max(0.08, dur - 0.03);
     // (human feel: rising in over the swell, fading out over the fade)
     const att = feel ? Math.max(0.01, Math.min(feel.swell, dur * 0.4)) : 0.035;
-    const fade = feel ? Math.min(feel.fade, Math.max(0, end - time - att - 0.02)) : 0;
+    const fade = Math.max(feel ? Math.min(feel.fade, Math.max(0, end - time - att - 0.02)) : 0, Math.min(outFade, Math.max(0, end - time - att - 0.02)));
     g.gain.setValueAtTime(0, time);
     g.gain.linearRampToValueAtTime(peak, time + att);
     g.gain.setTargetAtTime(peak * 0.8, time + att, 0.3);
