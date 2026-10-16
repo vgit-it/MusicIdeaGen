@@ -85,7 +85,8 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
   const D = 1.5 * DENSITY[genre] * BUSY[lick] * (0.85 + 0.3 * intensity);
   const runny = rng.chance(Math.min(0.9, RUNS[genre] * RUN_LEAN[lick] * (0.7 + 0.6 * intensity)));
   const vel0 = 0.8 + 0.08 * intensity;
-  const triplets = rng.chance(0.2 * TRIP_LEAN[lick]);
+  // (fewer than real solos, by ear: Paul)
+  const triplets = rng.chance(0.1 * TRIP_LEAN[lick]);
   const shapes = SHAPES.filter((s) => s.minor === boxMinor);
   const outside = (s: Shape) => { let d = s.deg, n = box.includes(mod(d, 12)) ? 0 : 1; for (const x of s.steps) { d += x; if (!box.includes(mod(d, 12))) n++; } return n / s.n; };
   const shapeW = (s: Shape) => Math.sqrt(s.songs) * (1 + 1.5 * outside(s)) * (1 + (gi >= 0 ? (3 * s.genres[gi]) / Math.max(1, s.genres.reduce((a, b) => a + b, 0)) : 0));
@@ -372,7 +373,7 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
         }
       }
     }
-    if (triplets && rng.chance(0.5)) {
+    if (triplets && rng.chance(0.35)) {
       const tl = tripletLick(cursor, end, aim);
       if (tl) { push(tl.ms, tl.steps, tl.lens, 0.04, tl.shifts); cursor = tl.end; units++; continue; }
     }
