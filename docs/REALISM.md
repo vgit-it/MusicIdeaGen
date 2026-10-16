@@ -65,6 +65,24 @@ Their gaps differ from the melody writers', some in the other direction (they al
 
 Still off: the Guide line's same note (its quick notes step away and back), the Anchor line with Song arc on is too wide (its climax note).
 
+## 16ths with the Classic rhythm (`realSixteenths` in `src/parts/vocal.ts`)
+- Paul: does Classic + Learned + Real songs + Patterns stop notes landing on 16ths? It did: the Classic rhythm's 8th rule (Paul's "at the 1/8th at most") moved nearly every 16th onto an 8th, about 1% of syllables left on one (none in fast songs); Learned only picks pitches, Real songs didn't touch the rhythm. Real singers: about 17% (the 16th before a beat or an 8th about 11-15%, the one after a beat 6-11%, by genre, `targets.json`).
+- Now, with Real songs on and the Classic rhythm, each section's tune gets its genre's real share: light syllables on the & are moved a 16th the way singers phrase it:
+  - a dotted pickup: an 8th pair into a beat sung dotted 8th + 16th (the light one just before the beat);
+  - a push: a stressed word on the & ahead of an empty beat sung a 16th later, just ahead of it;
+  - a snap: the beat's syllable a quick 16th, the light one after it longer.
+- Never two 16ths in a row (no quick runs: Paul's 8th rule kept for those), never a held high note or a real shape's note, never a line's first note.
+- Grid (metronome grid by design) and Words (its own 16ths) are unchanged; Real songs off: unchanged.
+
+| Classic rhythm, Real songs on (112 songs each) | Before | After |
+|---|---|---|
+| Classic melody | 1.0% | 18.1% |
+| Learned | 1.1% | 17.1% |
+| Learned + Patterns | 3.5% | 12.9% (Patterns' own real bars are kept as they are) |
+| Shaped / Melody first | about 1% | 18.0% / 17.4% |
+
+- Syllables a second about the same (1.35 → 1.35); quick runs (two 16ths in a row) no more than before.
+
 ## Next
 - Paul listens: switch on vs off, per genre.
 - Then option 2 (pattern library), scored with this lab.

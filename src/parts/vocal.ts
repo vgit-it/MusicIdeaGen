@@ -26,6 +26,7 @@ import { SCALES } from '../theory';
 import { copiesReal, copyAt } from '../realism/patterns';
 import { type RealArc, realArc } from '../realism/arc';
 import { realWords } from '../realism/words';
+import targets from '../realism/targets.json';
 
 /** Patterns: tunes written again at most this many times to get clear of a real song's 2-bar stretch. */
 const GUARD_TRIES = 6;
@@ -168,11 +169,69 @@ function onEighths(tune: Tune): Tune {
   return { ...tune, notes: out };
 }
 
+/** The share of a genre's real sung syllables on each off-8th 16th: the 16th before a beat or an 8th ('a'), the one after a beat ('e'). */
+type Sixteenths = { a: number; e: number };
+const realSixteenthsOf = (g: Genre): Sixteenths => { const h = (targets as unknown as Record<string, { hist: { onset16: Record<string, number> } }>)[g]?.hist.onset16 ?? { a: 0.128, e: 0.073 }; return { a: h.a ?? 0, e: h.e ?? 0 }; };
+
+/**
+ * Real songs with the Classic rhythm (Paul: "some constraints that stop it from placing vocal notes at
+ * 1/16ths?"): the 8th rule (onEighths) leaves about 1% of syllables on a 16th; real singers about 17%
+ * (src/realism/targets.json, by genre). Light syllables on an 8th's offbeat are moved a 16th, as real
+ * singers phrase it, until the tune has its genre's share (or nothing else can move):
+ * - a dotted pickup (the 'a'): an 8th pair into a beat sung dotted 8th + 16th, the light one a 16th later, just before the beat;
+ *   or a push (a stressed word on the & ahead of an empty beat) a 16th later, just ahead of the beat;
+ * - a snap (the 'e'): the light one after a beat a 16th sooner, the beat's syllable a quick 16th, the light one longer.
+ * Never two 16ths in a row, never a held high note or a real shape's note, and only inside a line.
+ */
+function realSixteenths(tune: Tune, rng: Rng, want: Sixteenths): Tune {
+  const ns = tune.notes;
+  const syl = ns.filter((n) => !n.tie && Number.isInteger(n.step));
+  if (!syl.length) return tune;
+  const at = (p: number) => syl.filter((n) => mod(n.step, 4) === p).length;
+  let needA = Math.round(want.a * syl.length) - at(3), needE = Math.round(want.e * syl.length) - at(1);
+  const moved = new Set<TuneNote>();
+  const free = (n: TuneNote | undefined) => n && !n.tie && !n.trip && !moved.has(n) && !n.quick;
+  // (a candidate: a light syllable on the & with its own syllables either side in the line, an 8th or more away)
+  const cands = ns.map((_, i) => i).filter((i) => {
+    const n = ns[i];
+    return i > 0 && !n.tie && !n.start && !n.peak && !n.belt && !n.pat && n.trip === undefined && mod(n.step, 4) === 2;
+  });
+  for (let k = cands.length - 1; k > 0; k--) { const j = rng.int(0, k); [cands[k], cands[j]] = [cands[j], cands[k]]; }
+  for (const i of cands) {
+    if (needA <= 0 && needE <= 0) break;
+    const n = ns[i], prev = ns[i - 1], next = ns[i + 1];
+    if (!free(n) || !free(prev) || prev.line !== n.line || n.step - prev.step < 2) continue;
+    const pp = ns[i - 2], nn = ns[i + 2];
+    const onBeat = next && !next.tie && next.line === n.line && next.step === n.step + 2;
+    // the dotted pickup: into the next syllable on the beat; or a push (a stressed word ahead of an empty beat) a 16th later, just ahead of it
+    const canA = needA > 0 && (onBeat ? !n.stress && free(next) && !(nn && nn.step - next.step < 2) : !next || next.line !== n.line || next.step >= n.step + 3);
+    // the snap: off the syllable on the beat just before
+    const canE = needE > 0 && !n.stress && prev.step === n.step - 2 && mod(prev.step, 4) === 0 && !(pp && !pp.tie && prev.step - pp.step < 2) && (!next || next.step - n.step >= 2);
+    const pick = canA && canE ? (rng.chance(needA / (needA + needE)) ? 'a' : 'e') : canA ? 'a' : canE ? 'e' : null;
+    if (!pick) continue;
+    const end = n.step + n.len;
+    if (pick === 'a') {
+      if (prev.step + prev.len >= n.step) prev.len = n.step + 1 - prev.step;
+      n.step += 1; n.len = Math.max(1, (onBeat ? Math.min(end, next!.step) : end) - n.step);
+      needA--;
+    } else {
+      n.step -= 1; n.len = end - n.step;
+      prev.len = 1;
+      needE--;
+    }
+    n.quick = true;
+    moved.add(n); moved.add(prev); if (next) moved.add(next);
+  }
+  return tune;
+}
+
 /** A tune as sung: settled (no quick turns), spoken (speech rhythm), with room to breathe. */
-function shape(tune: Tune, rng: Rng, syncop: number, grid = false, words = false): Tune {
+function shape(tune: Tune, rng: Rng, syncop: number, grid = false, words = false, real16?: Sixteenths): Tune {
   // (the grid's rhythm has its own pushes, on the grid: no speech-rhythm pushes on top; words first:
   // its quick light syllables kept on their 16ths, docs/VOCAL-WORDS.md)
-  const t = words ? settle(tune) : onEighths(grid ? settle(tune) : speak(settle(tune), rng, syncop));
+  let t = words ? settle(tune) : onEighths(grid ? settle(tune) : speak(settle(tune), rng, syncop));
+  // (Real songs, Classic rhythm: 16ths as often as real singers of the genre sing them)
+  if (real16) t = realSixteenths(t, rng, real16);
   breathe(t.notes);
   return t;
 }
@@ -386,7 +445,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
       // (written at its section's energy, by the energy style's dials)
       const st = es ? energize(melody, dialsFor(es, levelOf(src.section?.energy ?? 3, eLo, eHi)), as, bandBusy(src), es) : melody;
-      const write = (salt: string) => spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}${salt}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}${salt}`), st.singer.syncop, melody.grid, !!melody.words), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}${salt}`));
+      const write = (salt: string) => spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}${salt}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}${salt}`), st.singer.syncop, melody.grid, !!melody.words, melody.real && !melody.grid && !melody.words ? realSixteenthsOf(ctx.genre) : undefined), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}${salt}`));
       let tune = write('');
       // (patterns: the copy guard: a tune with a 2-bar stretch a real song sings is written again, a few times at most)
       for (let k = 1; melody.patterns && k <= GUARD_TRIES && copiesReal(tune.notes, src.song.bars[0]?.len ?? 16); k++) { tune = write(`-guard${k}`); guardRewrites++; }
