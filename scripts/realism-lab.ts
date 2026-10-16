@@ -3,7 +3,8 @@
 // writer and genre: a realism score (100: the same spreads as real songs) and the biggest gaps.
 // Run: npm run realism-lab   (N songs per genre, default 6; MODE: one writer, e.g. MODE=first;
 // REAL=1: with the "Real songs" switch; REAL=both: before and after side by side; PAT=1 / PAT=both: the same for
-// the "Patterns" switch (docs/PATTERNS.md), with copy-guard hits on the finished lines; DETAIL=1: every measure)
+// the "Patterns" switch (docs/PATTERNS.md), with copy-guard hits on the finished lines; DETAIL=1: every measure;
+// STARTS_DETAIL=1: the scale notes lines start on, per genre, against real songs)
 import fs from 'node:fs';
 import { generate } from '../src/generator';
 import type { Genre } from '../src/genres';
@@ -19,6 +20,7 @@ import { SKEL_COVERAGE, SKEL_SHAPES, TIMINGS, skelLean, skeleton, skeletonShapes
 import targets from '../src/realism/targets.json';
 import arcData from '../src/realism/arc.json';
 import wordsData from '../src/realism/words.json';
+import learnedData from '../src/realism/learned.json';
 import { HISTS, HIST_LABEL, type Profile, type RNote, type RSong, type SongMeasure, gaps, measureSong, profile } from '../src/realism/measure';
 
 const GENRES: Genre[] = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'];
@@ -63,6 +65,27 @@ function coverage(sections: any[], song: RSong, anchor = false, guide = false) {
   for (const k of rhythmKeys(qs)) { cov.rN++; if (R_SET.has(k)) { cov.r++; if (leanOf(anchor ? 'anchorRhythm' : 'rhythm', k) >= RARE) cov.rx++; } }
   for (const k of shapeKeys(qs, song.tonic, song.minor, rel, [4])) { cov.sN++; if (S_SET.has(k)) { cov.s++; if (leanOf(anchor ? 'anchorShape' : 'shape', k) >= RARE) cov.sx++; } }
   if (guide) skelCoverage(qs, song, rel);
+}
+/** Line starts (docs/VOCAL-LEARNED.md): the scale note each phrase starts on, per genre, as lakh-learned.ts counts real songs (a phrase: after a rest of a beat or more, or 4 beats from one note's start to the next). */
+const starts: Record<string, number[]> = {};
+function startsOf(g: string, song: RSong) {
+  const sc = song.minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+  const t = (starts[g] ??= [0, 0, 0, 0, 0, 0, 0]);
+  song.notes.forEach((n, i) => {
+    if (i && n.s - song.notes[i - 1].e < 1 && n.s - song.notes[i - 1].s < 4) return;
+    const pc = (((n.p - song.tonic) % 12) + 12) % 12; let d = 6; while (sc[d] > pc) d--; t[d]++;
+  });
+}
+/** How far the app's line starts are from real songs' (half the summed difference of the shares, averaged over genres; 0: the same), and the share starting on the key's root. */
+function startsGap() {
+  const RS = (learnedData as { startDeg?: Record<string, number[]> }).startDeg;
+  const sh = (a: number[]) => { const n = a.reduce((x, y) => x + y, 0) || 1; return a.map((x) => x / n); };
+  const gs = Object.keys(starts);
+  if (!RS || !gs.length) return '';
+  const gap = gs.reduce((a, g) => { const x = sh(starts[g]), y = sh(RS[g] ?? RS.all); return a + x.reduce((s, v, i) => s + Math.abs(v - y[i]), 0) / 2; }, 0) / gs.length;
+  const root = gs.reduce((a, g) => a + sh(starts[g])[0], 0) / gs.length, realRoot = gs.reduce((a, g) => a + sh(RS[g] ?? RS.all)[0], 0) / gs.length;
+  if (process.env.STARTS_DETAIL) for (const g of gs) console.log(`    ${g.padEnd(9)} app ${sh(starts[g]).map(pc).join(" ")}  real ${sh(RS[g] ?? RS.all).map(pc).join(" ")}`);
+  return `line starts: ${pc(gap)} off real songs' scale notes, on the key's root ${pc(root)} (real songs: ${pc(realRoot)})`;
 }
 /** Verse vs chorus (docs/ARC.md): per song, the chorus's notes against the verse's (height in semitones, notes a beat, note length), as arc.json measures real songs. */
 const arcs: { height: number[]; pace: number[]; len: number[] } = { height: [], pace: [], len: [] };
@@ -170,6 +193,7 @@ function measureTrack(g: Genre, i: number, extra: { guide?: GuideIdeas; vocalRea
   const empty = new Set<number>();
   const sg: RSong = { notes, tonic: first.key % 12, minor: MINORISH.includes(first.mode), bandAt: (t) => band[Math.floor(t * 4 + 1e-6)] ?? empty };
   coverage(tr.sections ?? tr, sg);
+  startsOf(g, sg);
   arcOf(byKind);
   wordsOf(tr.sections ?? tr);
   return measureSong(sg);
@@ -190,7 +214,7 @@ for (const [label, extra] of WRITERS) {
   if (process.env.MODE && process.env.MODE !== label) continue;
   const all: Record<string, Profile> = {};
   for (const real of runs) {
-    copies = 0; sectionsSung = 0; exactCopies = 0; cov.r = cov.rN = cov.s = cov.sN = cov.rx = cov.sx = 0; skel.t = skel.tN = skel.s = skel.sN = skel.tx = skel.sx = 0; arcs.height = []; arcs.pace = []; arcs.len = []; for (const k in wordsM) delete wordsM[k]; const rewrites0 = guardRewrites;
+    copies = 0; sectionsSung = 0; exactCopies = 0; cov.r = cov.rN = cov.s = cov.sN = cov.rx = cov.sx = 0; skel.t = skel.tN = skel.s = skel.sN = skel.tx = skel.sx = 0; arcs.height = []; arcs.pace = []; arcs.len = []; for (const k in starts) delete starts[k]; for (const k in wordsM) delete wordsM[k]; const rewrites0 = guardRewrites;
     const scores: string[] = [];
     const pooled: SongMeasure[] = [];
     let total = 0;
@@ -217,6 +241,7 @@ for (const [label, extra] of WRITERS) {
     const RA = (arcData.genres as Record<string, Record<string, number>>).all;
     console.log(`${''.padEnd(18)} chorus vs verse: height ${medOf(arcs.height).toFixed(1)} (${q(arcs.height, 0.25).toFixed(1)} to ${q(arcs.height, 0.75).toFixed(1)}), notes a beat x${medOf(arcs.pace).toFixed(2)}, note length x${medOf(arcs.len).toFixed(2)} (real songs: ${RA.height.toFixed(1)} (${RA.heightP25.toFixed(1)} to ${RA.heightP75.toFixed(1)}), x${RA.pace.toFixed(2)}, x${RA.len.toFixed(2)})`);
     if (skel.tN) console.log(`${''.padEnd(18)} slow line: 2-bar timings in the skeleton library ${pc(skel.t / skel.tN)}, 4-note shapes ${pc(skel.s / Math.max(1, skel.sN))} (real songs: ${pc(SKEL_COVERAGE.timing)}, ${pc(SKEL_COVERAGE.shape4)}); the ones the Guide line lacks: timings ${pc(skel.tx / skel.tN)}, shapes ${pc(skel.sx / Math.max(1, skel.sN))} (real songs about ${pc(REAL_LACK.t)}, ${pc(REAL_LACK.s)})`);
+    if (startsGap()) console.log(`${''.padEnd(18)} ${startsGap()}`);
     const RW = (wordsData.genres as Record<string, Record<string, number>>).all;
     if (wordsM.rate?.length) console.log(`${''.padEnd(18)} words: ${medOf(wordsM.rate).toFixed(1)} syllables a second, chorus x${medOf(wordsM.chorusRate ?? [0]).toFixed(2)}, over 2+ notes ${pc(medOf(wordsM.melisma))}, on a 16th ${pc(medOf(wordsM.on16))}, soft line endings ${pc(medOf(wordsM.fem))}, ${medOf(wordsM.lineSyl)} a line (real songs: ${RW.rate.toFixed(1)}, x${RW.chorusRate.toFixed(2)}, ${pc(RW.melisma)}, ${pc(RW.on16)}, ${pc(RW.fem)}, ${RW.lineSyl})`);
     if (real.vocalPatterns || process.env.GUARD) console.log(`${''.padEnd(18)} copy guard: ${guardRewrites - rewrites0} tunes written again; finished sections the guard flags: ${copies} of ${sectionsSung}, truly copying a real 2-bar stretch: ${exact ? exactCopies : '?'}`);
