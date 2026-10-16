@@ -578,6 +578,13 @@ Measured (84 songs, held notes clashing with a chord under them, guard off → o
 ## Anchor line (switch; 2026-10-14)
 A writer of its own behind the **Anchor line** switch: one main note per 4 bars, most words sung on it in a rhythm pattern by genre, broken by an accent near it. See `docs/GUIDE-ANCHOR.md`.
 
+## Patterns (switch, with the Anchor line; 2026-10-16)
+The Guide card's **Patterns** switch now changes the Guide line itself, not only the copy guard. See `docs/PATTERNS.md` ("The Guide line").
+- Real vocal lines reduced to their slow line (notes held a beat or longer, notes on beats 1 and 3), counted: where its notes change in 2 bars, and short shapes of 4-5 notes. Only what 25+ songs by 15+ artists share.
+- On: the main notes are timed by a real 2-bar timing (a note on the beat, an 8th early on the "&", held over the bar line, a rest), near the mood's pace, and move by real shapes, picked toward what the line lacks.
+- Unchanged: the quick notes (one scale step, a beat held first), pushes and pulls, 4 changes a second, a note held at most a bar, home at the end. Off: note for note as before (`npm run guide-check`).
+- Measured: realism 76 → 77; lacking timings 0 → 37%, lacking shapes 2 → 6%; it rests more (sung 71% of the time, was 91%).
+
 ## Next
 - Paul listens: does each mood sound like its name? Lean in vs Lean out.
 - Then: a mood per section, phrases that come back (motifs), and the vocals singing on it.

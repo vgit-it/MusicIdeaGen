@@ -45,12 +45,16 @@ export interface GenOptions {
   vocalSinger?: HighVoice;
   /** How the vocal's rhythm is written: classic (speech rhythm, the default) or on the metronome grid (docs/VOCAL-RHYTHM.md). */
   vocalRhythm?: 'grid' | 'words';
-  /** How the vocal's pitches are written: classic (the default), shaped (docs/VOCAL-MELODY.md) or melody first (docs/VOCAL-FIRST.md). */
-  vocalMelody?: 'shaped' | 'first';
+  /** How the vocal's pitches are written: classic (the default), shaped (docs/VOCAL-MELODY.md), melody first (docs/VOCAL-FIRST.md) or learned (docs/VOCAL-LEARNED.md). */
+  vocalMelody?: 'shaped' | 'first' | 'learned';
   /** Shaped: one signature move chosen (src/parts/moves.ts); left out: each song its own, by genre. */
   vocalMove?: string;
   /** How the singer carries the energy (src/parts/energy.ts): a style chosen, 'off' (as before), or left out: Auto. */
   vocalEnergy?: string;
+  /** Real songs (docs/REALISM.md): the melody writers lean toward real vocal lines of the genre. */
+  vocalReal?: boolean;
+  /** Patterns (docs/PATTERNS.md): the vocal's rhythms and short shapes drawn from a library of common real ones. */
+  vocalPatterns?: boolean;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */

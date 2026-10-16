@@ -7,7 +7,7 @@ import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
 import type { Mood } from '../tension';
 import type { HighVoice } from '../parts/singers';
-import { FLICK_LEVELS, type Flicks, type GuideIdeas, type AnchorRhythm, type GuideRange, RANGE_MIN_SPAN, type GuideScale, type GuideTonality, GUIDE_SCALES, NAMES, SCALE_LABEL, shared, type GuideLine, type GuideNote, type Lean, noteName, writeGuide } from './line';
+import { FLICK_LEVELS, type Flicks, type GuideIdeas, type AnchorRhythm, type GuideRange, RANGE_MIN_SPAN, type GuideScale, type GuideTonality, GUIDE_SCALES, NAMES, SCALE_LABEL, shared, type GuideLine, type GuideNote, type Lean, noteName } from './line';
 import { GuideSynth, type SynthFeel } from './synth';
 import { feelFor } from './feel';
 import { Rng } from '../rng';
@@ -15,7 +15,7 @@ import { type GuideSing, GuideVoice } from './voice';
 import { TIMBRE_CHOICES } from '../audio/singer';
 import { type GuideSungLine, guideWords } from './words';
 import { shapeDynamics } from './dynamics';
-import { writeAnchor } from './anchor';
+import { writeLine } from './real';
 
 export interface GuidePanel {
   /** New music (an idea, or a track's sections), and the song's mood (undefined: auto). */
@@ -107,6 +107,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
           <label title="Now and then a section's first note comes in early, at the end of the section before, held into it">Lead-ins ${seg('g-leadin', [['off', 'Off'], ['on', 'On']], 'off')}</label>
           <label title="Sung hard or soft (heard when Sing is on): louder with the tension and the section, high notes pushed, stressed words leaning in; quiet sections now and then sung soft; big lines belting their top note">Hard &amp; soft ${seg('g-dyn', [['off', 'Off'], ['on', 'On']], 'off')}</label>
           <label title="Like a person: glides between notes instead of jumps, scoops up into fresh notes, words swelling in and fading out, now and then a phrase's end falling off, vibrato on held notes, pushed top notes a hair sharp, a breath in before a phrase, its last word a touch late. By the singer (the synth: the song's genre) and the section's energy (quiet: slower and softer; loud: quick and punchy). Only how it's played and sung: the line stays the same">Human feel ${seg('g-feel', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Sung like real songs of this genre (about 2,500 real songs measured, numbers only): writes 8 lines and keeps the one nearest them (the same note again, strong beats on the chord, range, phrase lengths, repeats, early peaks). The Guide line: repeated sections keep their quick notes, shorter phrases. The Anchor line: the words walk around the main note instead of staying on it. The notes below show the numbers">Real songs ${seg('g-real', [['off', 'Off'], ['on', 'On']], 'off')}</label>
+          <label title="Patterns from real songs (each found in 25+ songs by 15+ artists, so none is one song's): the Guide line's main notes timed and shaped like real vocal lines' slow line (where its notes change in 2 bars, short shapes of 4-5 notes); the Anchor line's rhythm cells and shapes from a library of common real ones; and for both writers, no 2 bars that copy a real song (checked against real 2-bar stretches)">Patterns ${seg('g-pat', [['off', 'Off'], ['on', 'On']], 'off')}</label>
         </div>
       </div>
       <div class="guiderow">
@@ -145,7 +147,7 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   const rewrite = () => {
     if (!on || !list.length) { line = null; words = null; draw.innerHTML = ''; $('g-notes').innerHTML = ''; $('g-words').innerHTML = ''; return; }
     fillKeys();
-    line = ideas.anchor ? writeAnchor(list, mood, lean, salt, range, tonality, ideas) : writeGuide(list, mood, lean, salt, flicks, highNow(), ideas, range, tonality);
+    line = writeLine(list, mood, lean, salt, flicks, highNow(), ideas, range, tonality);
     words = guideWords(list, line, salt);
     if (ideas.dynamics) line.notes.push(...shapeDynamics(list, line, words, salt));
     $('g-words').innerHTML = words.map((lines, si) => (lines.length ? `<p><b>${list[si].section?.label ?? 'Words'}</b> ${lines.map((l) => l.text).join(' / ')}</p>` : '')).join('');
@@ -334,6 +336,8 @@ export function buildGuidePanel(root: HTMLElement, engine: Engine, ctl: GuideCon
   pickSeg('g-carry', (v) => { ideas.carry = v === 'on'; rewrite(); });
   pickSeg('g-dyn', (v) => { ideas.dynamics = v === 'on'; rewrite(); });
   pickSeg('g-feel', (v) => { ideas.feel = v === 'on'; rewrite(); });
+  pickSeg('g-real', (v) => { ideas.real = v === 'on'; rewrite(); });
+  pickSeg('g-pat', (v) => { ideas.patterns = v === 'on'; rewrite(); });
   $('g-rhythm').addEventListener('change', (e) => { const v = (e.target as HTMLSelectElement).value as AnchorRhythm; ideas.rhythm = v === 'auto' ? undefined : v; rewrite(); });
   pickSeg('g-flicks', (v) => { flicks = v as Flicks; rewrite(); });
   $('g-sing').addEventListener('change', (e) => {

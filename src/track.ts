@@ -1670,7 +1670,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
   const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
-  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', words: src.opts.vocalRhythm === 'words', shaped: !!src.opts.vocalMelody, first: src.opts.vocalMelody === 'first', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger, energy: src.opts.vocalEnergy as EnergyStyle | 'off' | undefined }, arc.climax);
+  singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', words: src.opts.vocalRhythm === 'words', shaped: !!src.opts.vocalMelody, first: src.opts.vocalMelody === 'first', learned: src.opts.vocalMelody === 'learned', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger, energy: src.opts.vocalEnergy as EnergyStyle | 'off' | undefined, real: src.opts.vocalReal, patterns: src.opts.vocalPatterns }, arc.climax);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
   const high = pickHigh(vocalSeed, src.song.partGenres.strum);
   for (const x of sections) { x.vocalVoice = voice; x.vocalHigh = high; }
