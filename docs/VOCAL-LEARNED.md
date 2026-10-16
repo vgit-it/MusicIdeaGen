@@ -38,6 +38,25 @@ Realism: 100 means the same spreads as real songs of the genre.
 - `src/realism/learned.json` (45 KB) holds only counts of steps in contexts that **25+ songs by 15+ artists** share. Rare counts are dropped. No melodies, no lyrics, nothing that can be played back as a song.
 - Rebuild: `npm run realism-learned` (needs `experiments/MidiCollection`, kept out of git).
 
+## Lines land somewhere strong
+Paul: make sure the starting note is a strong one.
+- **The landing:** a line's first note on a beat. A pickup before it (a quick "and I...") sings free.
+- **Always a chord note.** The writer picks it so, leaning to what real singers land on (root, 3rd, 5th).
+- **Kept to the end:** later steps (rhythm, tension, fitting, Real songs' notes off the chord) could move it off. A last pass moves it back to the nearest chord note, 2 semitones at most (4 if none nearer). Real songs' "off the chord on purpose" notes skip landings.
+- Signature moves' colour notes stay (a 9th held on purpose).
+- **Real starts:** `npm run realism-learned` now also counts how real lines land and which scale note they start on. Until it is run again (needs the MIDI collection), the landing leans like any real note on beat 1 or 3, and the start note has no lean by scale note.
+
+| Setting | First note on a beat a chord note: before | after |
+|---|---|---|
+| Learned | 77% | 98% |
+| + Real songs | 67% | 96% |
+| + Patterns | 78% | 97% |
+| + Real songs + Patterns | 64% | 95% |
+| Grid + Learned | 83% | 98% |
+| Words + Learned | 74% | 99% |
+
+(42 songs each, all genres. The rest: colour notes kept on purpose.)
+
 ## What to listen for
 - Choose **Melody: Learned** and compare with Shaped and Melody first on the same idea (the band stays the same).
 - It should sound **more like a real singer, less like a pattern**: more repeated notes, small steps, notes now and then just off the chord on a strong beat, lines that fall at the end.

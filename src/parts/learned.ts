@@ -7,7 +7,7 @@
 // put on the beat, a line ends on a chord note (closed on the root, or open), several tries scored, the best kept.
 
 import type { Genre } from '../genres';
-import { type Rel, endDegrees, posKey, prevKey, relLean, stepOdds, MAX_STEP } from '../realism/learned';
+import { type Rel, endDegrees, posKey, prevKey, relLean, startDegrees, stepOdds, MAX_STEP } from '../realism/learned';
 import type { Rng } from '../rng';
 
 /** A song's learned ways: its genre's odds of what lands on strong beats and at phrase ends. */
@@ -17,10 +17,13 @@ export interface LearnedStyle {
   end: Record<Rel, number>;
   /** Phrase endings' share on each scale degree (0: the key's root). */
   endDeg: number[];
+  /** A line's landing (its first note on a beat): what real singers land on; and real phrase starts' share on each scale degree (null until counted). */
+  land: Record<Rel, number>;
+  startDeg: number[] | null;
 }
 
 export function learnedStyle(genre: Genre): LearnedStyle {
-  return { genre, strong: relLean(genre, 'strong'), end: relLean(genre, 'end'), endDeg: endDegrees(genre) };
+  return { genre, strong: relLean(genre, 'strong'), end: relLean(genre, 'end'), endDeg: endDegrees(genre), land: relLean(genre, 'land'), startDeg: startDegrees(genre) };
 }
 
 /** What a line needs from its section (writeTune's helpers). */
@@ -55,6 +58,11 @@ export function learnedLine(rng: Rng, c: LearnedCtx, L: LearnedStyle, onsets: Le
   copied: (number | undefined)[], before: { midi: number; g: number; step: number | null } | null, closed: boolean, hang: boolean): number[] {
   const n = onsets.length;
   const out: number[] = [];
+  // the line's landing: its first note on a beat (a pickup before it sings free), else its first stressed note, else
+  // its first; always a chord note, so a line starts from somewhere strong
+  let land = onsets.findIndex((o) => o.g % 4 === 0);
+  if (land < 0) land = onsets.findIndex((o) => o.stress);
+  if (land < 0) land = 0;
   const dLo = degOf(c, c.lo) + (midiOf(c, degOf(c, c.lo)) < c.lo ? 1 : 0), dHi = degOf(c, c.hi);
   const keyPc = mod(c.key, 12);
   let prevM = before?.midi ?? null, prevG = before?.g ?? 0, prevStep: number | null = before?.step ?? null, same = 0;
@@ -84,7 +92,12 @@ export function learnedLine(rng: Rng, c: LearnedCtx, L: LearnedStyle, onsets: Le
       // (the section's contour: a soft pull back past a 4th from it)
       w *= Math.exp(-Math.max(0, Math.abs(m - t) - 4) / 2.5);
       const r = c.relAt(m, g);
-      if (strong) w *= L.strong[r];
+      if (oi === land) {
+        if (!c.isTone(m, g)) return [m, 0];
+        w *= L.land[r];
+      } else if (strong) w *= L.strong[r];
+      // (the line's first note: the scale degrees real phrases start on, once counted)
+      if (oi === 0 && L.startDeg) w *= 0.1 + 7 * L.startDeg[mod(degOf(c, m), c.scale.length)];
       if (lens[oi] >= 4 && c.rubs(m, g)) w *= 0.05;
       // (no long runs on one note: real singers repeat a lot, but not four times running)
       if (prevM === m && same >= 2) w *= 0.25;
@@ -102,7 +115,10 @@ export function learnedLine(rng: Rng, c: LearnedCtx, L: LearnedStyle, onsets: Le
     };
     let ws = cands.map(weigh).filter(([, w]) => w > 0);
     // (nothing the odds allow fits: the nearest chord note to the contour)
-    if (!ws.length) ws = cands.length ? cands.map(([m]) => [m, (c.isTone(m, g) ? 1 : 0.05) / (1 + Math.abs(m - t))] as [number, number]) : [[midiOf(c, degOf(c, t)), 1]];
+    if (!ws.length) ws = cands.length ? cands.map(([m]) => [m, (c.isTone(m, g) ? 1 : oi === land ? 0 : 0.05) / (1 + Math.abs(m - t))] as [number, number]).filter(([, w]) => w > 0) : [];
+    // (the landing with no chord note in reach: the chord note nearest the contour, anywhere in the range)
+    if (!ws.length && oi === land) for (let d = dLo; d <= dHi; d++) { const x = midiOf(c, d); if (c.isTone(x, g)) ws.push([x, 1 / (1 + Math.abs(x - t))]); }
+    if (!ws.length) ws = [[midiOf(c, degOf(c, t)), 1]];
     const m = rng.weighted(ws);
     prevStep = prevM === null || oi === 0 ? null : degOf(c, m) - degOf(c, prevM);
     same = prevM === m ? same + 1 : 0;

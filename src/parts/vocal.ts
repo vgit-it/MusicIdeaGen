@@ -22,7 +22,7 @@ import { chordTones } from './guitar2';
 import { HIGH_VOICES, type HighVoice, type Timbre } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
 import { REAL_LEAN } from './realism';
-import { SCALES } from '../theory';
+import { SCALES, chordPc } from '../theory';
 import { copiesReal, copyAt } from '../realism/patterns';
 import { type RealArc, realArc } from '../realism/arc';
 import { realWords } from '../realism/words';
@@ -508,6 +508,8 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     const spikes = smoothSpikes(idea);
     const trips = tripletize(idea.vocal);
     const quick = quicken(idea.vocal, 15 / idea.song.bpm, new Rng(`${ctx.seed}-quick-${si}`));
+    // (learned: every line lands somewhere strong, its first note on a beat a chord note, whatever moved it since)
+    const landed = melody.learned ? landStrong(idea, FLOOR + melody.up, PEAK + melody.up + 1 + melody.top) : 0;
     // (patterns: the copy guard once more, on the line as finally sung)
     const unCopied = melody.patterns ? breakCopies(idea) : 0;
     if (idea.vocal.length) {
@@ -526,6 +528,7 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
       if (quick) fitBits.push(`${quick === 1 ? 'a run' : `${quick} runs`} sung quicker than the beat`);
       if (unCopied) fitBits.push(`${unCopied === 1 ? 'a note' : `${unCopied} notes`} moved a step so no 2 bars copy a real song`);
+      if (landed) fitBits.push(`${landed === 1 ? 'a line' : `${landed} lines`} landed on the chord (the first note on a beat)`);
       if (spikes) fitBits.push(`${spikes === 1 ? 'a high note' : `${spikes} high notes`} brought nearer the line (no octave up and straight back)`);
       if (trips) fitBits.push(`${trips === 1 ? 'a triplet' : `${trips} triplets`}`);
       if (fitBits.length) idea.notes.push(`Vocal fits the band: ${fitBits.join(', ')}`);
@@ -663,6 +666,45 @@ function smoothSpikes(idea: Idea): number {
         set(X, m);
       }
     }
+  }
+  return changed;
+}
+
+/**
+ * A line lands somewhere strong (Learned, docs/VOCAL-LEARNED.md): its first note on a beat (a pickup before it
+ * sings free) a chord note, the root, 3rd or 5th if one is as near. The writer picks it so; the steps after it (the
+ * rhythm settling, the tension curve, fitting to the band) can move it off, so a landing off the chord moves to
+ * the nearest chord note, 2 semitones away at most (4 if none), with the notes held on at its pitch. A colour note
+ * stays. Returns the lines changed.
+ */
+function landStrong(idea: Idea, lo: number, hi: number): number {
+  const v = idea.vocal;
+  if (!v?.length) return 0;
+  const { key, total } = idea.song;
+  const chordAt = (g: number) => idea.chords.timeline[idea.chords.chordIdx[Math.min(total - 1, Math.max(0, Math.floor(g)))]].chord;
+  const lead = v.filter((n) => !n.role && n.syl.text !== '~').sort((a, b) => a.step - b.step);
+  const lines: VocalNote[][] = [];
+  for (const n of lead) { if (n.start || !lines.length) lines.push([]); lines[lines.length - 1].push(n); }
+  let changed = 0;
+  for (const line of lines) {
+    const i = line.findIndex((n) => n.step % 4 === 0);
+    if (i < 0) continue;
+    const n = line[i], tones = chordTones(key, chordAt(n.step));
+    if (n.colour || tones.includes(mod(n.midi, 12))) continue;
+    const root = chordPc(key, chordAt(n.step));
+    const main = (m: number) => [0, 3, 4, 7].includes(mod(m - root, 12));
+    let to: number | undefined;
+    for (const far of [2, 4]) {
+      const ms = Array.from({ length: 2 * far + 1 }, (_, k) => n.midi - far + k).filter((m) => m >= lo && m <= hi && tones.includes(mod(m, 12)));
+      // (nearest first; the root, 3rd or 5th before another chord note as near)
+      ms.sort((x, y) => Math.abs(x - n.midi) - Math.abs(y - n.midi) || Number(main(y)) - Number(main(x)));
+      if ((to = ms[0]) !== undefined) break;
+    }
+    if (to === undefined) continue;
+    // (with the notes held on at its pitch: a word's vowel carried on, the held note's other half)
+    const all = v.filter((x) => !x.role).sort((a, b) => a.step - b.step), old = n.midi;
+    for (let k = all.indexOf(n), end = n.step; k < all.length && all[k].midi === old && all[k].step <= end; k++) { end = all[k].step + all[k].len; all[k].midi = to; }
+    changed++;
   }
   return changed;
 }

@@ -1691,7 +1691,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
    * Real songs (docs/REALISM.md): now and then a strong note off the chord, as real singers sing them: the
    * note before kept over the new chord (held over), or the scale note next to it; never one that rubs
    * against the chord or grinds with the bass, never a line's last note, a high note or a colour already
-   * there. Marked `colour`, so following the tension and fitting to the band leave it be.
+   * there. Marked `colour`, so following the tension and fitting to the band leave it be. Learned: never a line's
+   * landing (its first note on a beat), which lands on the chord.
    */
   const realLean = (ns: TuneNote[]) => {
     const R = style.real!;
@@ -1700,9 +1701,11 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const grindsBass = (m: number, g: number) => { const b = band ? bassAt(band.bass, g) : 0; return !!b && [1, 6, 11].includes(mod(m - b, 12)); };
     const ok = (m: number, g: number) => pool.includes(m) && !rubs(m, g) && !grindsBass(m, g);
     const sung = ns.filter((n) => !n.tie);
+    const landing = new Set<TuneNote>();
+    if (style.learned) for (const n of sung) if (n.step % 4 === 0 && ![...landing].some((x) => x.line === n.line)) landing.add(n);
     sung.forEach((n, k) => {
       const p = sung[k - 1], nx = sung[k + 1];
-      if (!nx || nx.line !== n.line || !(n.stress || n.len >= 4) || n.colour || n.peak || n.belt || !isTone(n.midi, n.step) || !rng.chance(hold)) return;
+      if (!nx || nx.line !== n.line || landing.has(n) || !(n.stress || n.len >= 4) || n.colour || n.peak || n.belt || !isTone(n.midi, n.step) || !rng.chance(hold)) return;
       if (p && p.line === n.line && p.midi !== n.midi && Math.abs(p.midi - n.midi) <= 4 && ok(p.midi, n.step)) { n.midi = p.midi; n.colour = true; return; }
       const i = pool.indexOf(n.midi), dir = p && p.midi > n.midi ? 1 : -1;
       const to = [pool[i + dir], pool[i - dir]].find((m) => m !== undefined && Math.abs(m - n.midi) <= 2 && ok(m, n.step));

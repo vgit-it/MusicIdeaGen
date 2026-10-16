@@ -31,6 +31,9 @@ interface Data {
   any: Record<string, number[]>;
   /** Per genre (and 'all'): counts of a phrase's last note's scale degree (0-6). */
   endDeg: Record<string, number[]>;
+  /** Per genre (and 'all'): counts of each Rel on a phrase's first note on a beat (its landing, after any pickup), and of a phrase's first note's scale degree (0-6). Absent until npm run realism-learned is run again. */
+  land?: Record<string, number[]>;
+  startDeg?: Record<string, number[]>;
 }
 const D = data as unknown as Data;
 
@@ -55,10 +58,14 @@ const share = (xs: number[]) => { const s = xs.reduce((a, b) => a + b, 0) || 1; 
 const mix = (t: Record<string, number[]>, genre: string) => { const g = t[genre], a = share(t.all); if (!g) return a; const n = g.reduce((x, y) => x + y, 0), w = n / (n + 2000), gs = share(g); return a.map((x, i) => w * gs[i] + (1 - w) * x); };
 
 /** How much likelier real singers put each kind of note (Rel) on beat 1 or 3, or at a phrase's end, than anywhere: weights around 1. */
-export function relLean(genre: string, where: 'strong' | 'end'): Record<Rel, number> {
-  const t = mix(where === 'strong' ? D.strong : D.end, genre), any = mix(D.any, genre);
+export function relLean(genre: string, where: 'strong' | 'end' | 'land'): Record<Rel, number> {
+  // (a phrase's landing: as counted, else as any note on beat 1 or 3)
+  const t = mix(where === 'strong' ? D.strong : where === 'land' ? D.land ?? D.strong : D.end, genre), any = mix(D.any, genre);
   return Object.fromEntries(RELS.map((r, i) => [r, any[i] ? t[i] / any[i] : 1])) as Record<Rel, number>;
 }
 
 /** The share of phrase endings on each scale degree (0: the key's root ... 6), real songs of the genre. */
 export const endDegrees = (genre: string) => mix(D.endDeg, genre);
+
+/** The share of phrase starts on each scale degree (0: the key's root ... 6), real songs of the genre; null until counted. */
+export const startDegrees = (genre: string) => (D.startDeg ? mix(D.startDeg, genre) : null);

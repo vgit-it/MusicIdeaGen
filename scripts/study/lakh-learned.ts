@@ -2,7 +2,7 @@
 // collection's vocal lines (on the grid), the scale step from the note before, counted by a small context (the step
 // before it, where the note starts in the bar, what the note before was against the chord, where it sits in its
 // phrase) per genre and for all songs; contexts kept only when 25+ songs by 15+ artists have them. Also which kind of
-// note lands on beat 1 or 3 and at phrase ends, and phrase endings' scale degrees. Counts only: no melodies, no lyrics.
+// note lands on beat 1 or 3, at phrase ends and on a phrase's first note on a beat (its landing), and phrase starts' and endings' scale degrees. Counts only: no melodies, no lyrics.
 // Writes src/realism/learned.json. Run: npm run realism-learned [-- <MidiCollection>]
 import fs from 'node:fs';
 import { MAX_STEP, RELS, type Ph, type Rel, ctxKeys, posKey, prevKey } from '../../src/realism/learned';
@@ -18,6 +18,7 @@ interface Tally { songs: Set<number>; artists: Set<string>; n: number[] }
 const steps: Record<string, Map<string, Tally>> = Object.fromEntries(['all', ...GENRES].map((g) => [g, new Map()]));
 const blank = () => RELS.map(() => 0);
 const strong: Record<string, number[]> = {}, end: Record<string, number[]> = {}, any: Record<string, number[]> = {}, endDeg: Record<string, number[]> = {};
+const land: Record<string, number[]> = {}, startDeg: Record<string, number[]> = {};
 const songsIn: Record<string, number> = {};
 let songNo = 0, clean = 0, notes = 0;
 
@@ -37,9 +38,16 @@ forEachSong(root, (S) => {
   const starts = mel.map((n, i) => i === 0 || n.s - mel[i - 1].e >= 1 || n.s - mel[i - 1].s >= 4);
   const ph = (i: number): Ph => (starts[i] ? 's' : i === mel.length - 1 || starts[i + 1] ? 'e' : 'm');
   const D = mel.map((n) => deg(n.p)), R = mel.map((_, i) => rel(i));
+  // (a phrase's landing: its first note on a beat, after any pickup)
+  let landed = false;
   mel.forEach((_, i) => {
     const r = RELS.indexOf(R[i]), p = posKey(q[i]), f = ph(i);
+    if (starts[i]) landed = false;
+    const lands = !landed && q[i] % 4 === 0;
+    if (lands) landed = true;
     for (const g of gs) {
+      if (lands) (land[g] ??= blank())[r]++;
+      if (starts[i]) (startDeg[g] ??= [0, 0, 0, 0, 0, 0, 0])[mod(D[i], 7)]++;
       (any[g] ??= blank())[r]++;
       if (p === 'S') (strong[g] ??= blank())[r]++;
       if (f === 'e') { (end[g] ??= blank())[r]++; (endDeg[g] ??= [0, 0, 0, 0, 0, 0, 0])[mod(D[i], 7)]++; }
@@ -71,7 +79,7 @@ for (const g of ['all', ...GENRES]) {
 const own = (t: Record<string, number[]>) => Object.fromEntries(Object.entries(t).filter(([g]) => g === 'all' || (songsIn[g] ?? 0) >= MIN_SONGS));
 const json = JSON.stringify({
   source: `Lakh MIDI Dataset (Colin Raffel, CC-BY 4.0): ${clean} on-grid vocal lines, ${notes} note-to-note steps. Contexts kept only when ${MIN_SONGS}+ songs by ${MIN_ARTISTS}+ artists have them; counts only (docs/VOCAL-LEARNED.md).`,
-  genres: GENRES, songs: songsIn, steps: out, strong: own(strong), end: own(end), any: own(any), endDeg: own(endDeg),
+  genres: GENRES, songs: songsIn, steps: out, strong: own(strong), end: own(end), any: own(any), endDeg: own(endDeg), land: own(land), startDeg: own(startDeg),
 });
 fs.writeFileSync('src/realism/learned.json', json);
 console.log({ songs: songNo, clean, notes, songsIn, contexts: `${kept} kept of ${all}`, perGenre: Object.fromEntries(Object.entries(out).map(([g, t]) => [g, Object.keys(t).length])), KB: Math.round(json.length / 1024) });
