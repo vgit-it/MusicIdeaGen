@@ -45,6 +45,20 @@ const CELLS = [[0, -1, -2, -1], [0, -1, -2], [0, 1, 2, 1], [0, 1, 2], [0, -1, 1,
 
 type Variation = 'same' | 'ending' | 'answer' | 'octave';
 
+/**
+ * Notes outside the box, as real solos use them (24% of their notes; docs/STUDY-SOLO.md): over a minor key the 2nd,
+ * the b6 and the 6th most, over a major key the 4th, the 7th, the b7 and the b3 (the last two blue, quick only).
+ * [the note above the key's root, how often, quick only].
+ */
+const COLOUR: Record<'m' | 'M', [number, number, boolean][]> = {
+  m: [[2, 36], [8, 21], [9, 13], [1, 8], [6, 7]].map(([d, w]) => [d, w, d === 6 || d === 1]) as [number, number, boolean][],
+  M: [[5, 39], [11, 18], [10, 17], [3, 11]].map(([d, w]) => [d, w, d === 10 || d === 3]) as [number, number, boolean][],
+};
+/** Triplet figures (three notes a beat, through the box): falling and turning most, as in real solos. */
+const TRIP_CELLS: [number[], number][] = [[[0, -1, -2], 5], [[0, 1, 2], 1], [[0, 1, 0], 1], [[0, -1, 0], 1], [[0, 2, 1], 1], [[0, -2, -1], 1], [[0, 1, -1], 1], [[0, -1, 1], 1]];
+/** Solos with 8th-note triplets in them (real: 18%, hard rock and metal 20%), by player. */
+const TRIP_LEAN: Record<LickKind, number> = { sung: 0.9, blues: 1.3, run: 1.3, simple: 0.7, muted: 0.8 };
+
 export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null, intensity = 0.7): Guitar2Part {
   const { key, mode, bars, total } = song;
   const genre = song.partGenres.strum;
@@ -71,8 +85,11 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
   const D = 1.5 * DENSITY[genre] * BUSY[lick] * (0.85 + 0.3 * intensity);
   const runny = rng.chance(Math.min(0.9, RUNS[genre] * RUN_LEAN[lick] * (0.7 + 0.6 * intensity)));
   const vel0 = 0.8 + 0.08 * intensity;
+  // (fewer than real solos, by ear: Paul)
+  const triplets = rng.chance(0.1 * TRIP_LEAN[lick]);
   const shapes = SHAPES.filter((s) => s.minor === boxMinor);
-  const shapeW = (s: Shape) => Math.sqrt(s.songs) * (1 + (gi >= 0 ? (3 * s.genres[gi]) / Math.max(1, s.genres.reduce((a, b) => a + b, 0)) : 0));
+  const outside = (s: Shape) => { let d = s.deg, n = box.includes(mod(d, 12)) ? 0 : 1; for (const x of s.steps) { d += x; if (!box.includes(mod(d, 12))) n++; } return n / s.n; };
+  const shapeW = (s: Shape) => Math.sqrt(s.songs) * (1 + 1.5 * outside(s)) * (1 + (gi >= 0 ? (3 * s.genres[gi]) / Math.max(1, s.genres.reduce((a, b) => a + b, 0)) : 0));
   const rhythmsFor = (n: number) => RHYTHMS.filter((r) => r.ons.length === n);
   const rhythmW = (r: Rhythm) => {
     const dens = (r.ons.length * 16) / (r.ons[r.ons.length - 1] + r.tail);
@@ -90,11 +107,17 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     return true;
   });
   /** How good a placing is: near the note before, chord notes where they count. */
+  let toTop = false;
   const score = (ms: number[], steps: number[], lens: number[], target: number) => {
     let s = -Math.abs(ms[0] - target);
+    // (now and then back up to the solo's top: real solos come back to it about four times)
+    if (toTop && evs.length) { const top = Math.max(...evs.map((e) => e.midi)), hi = Math.max(...ms); if (hi >= top - 2 && hi <= top) s += 6; }
+    // (chord notes where they're heard: bar lines, chord changes, held notes, the last note, then any beat or 8th held)
     ms.forEach((m, i) => {
+      const tone = fit.isTone(m, steps[i]);
       const strong = barStarts.has(steps[i]) || changes.has(steps[i]) || lens[i] >= 4 || i === ms.length - 1;
-      if (strong) s += fit.isTone(m, steps[i]) ? 1.5 : -1.5;
+      if (strong) s += tone ? 3 : -3;
+      else if (steps[i] % 4 === 0 || lens[i] >= 2) s += tone ? 1.5 : -1;
     });
     return s + rng.next();
   };
@@ -118,8 +141,41 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     const lens = steps.map((g, i) => (i + 1 < steps.length ? steps[i + 1] - g : r.tail));
     return { at, steps, lens, end: steps[steps.length - 1] + r.tail };
   };
-  const push = (ms: number[], steps: number[], lens: number[], accent = 0.04) => {
-    ms.forEach((m, i) => evs.push({ step: steps[i], midi: m, len: lens[i], vel: vel0 + (i === 0 ? accent : 0) + (rng.next() - 0.5) * 0.06 }));
+  const push = (ms: number[], steps: number[], lens: number[], accent = 0.04, shifts?: number[]) => {
+    ms.forEach((m, i) => evs.push({ step: steps[i], midi: m, len: lens[i], vel: vel0 + (i === 0 ? accent : 0) + (rng.next() - 0.5) * 0.06, ...(shifts?.[i] ? { shift: shifts[i] } : {}) }));
+  };
+  /** The same notes moved `k` notes up or down the key's scale (a repeat moved to suit the chord under it). */
+  const moveScale = (ms: number[], k: number) => ms.map((m) => {
+    const sc = [...scale].sort((a, b) => a - b);
+    const rel = mod(m - key, 12), oct = m - rel;
+    let i = sc.findIndex((x) => x >= rel); if (i < 0) i = sc.length;
+    if (sc[i] !== rel) return m + (k > 0 ? 1 : -1) * 2;
+    const j = i + k, o = Math.floor(j / sc.length);
+    return oct + 12 * o + sc[mod(j, sc.length)];
+  });
+  /** Notes changed to fit where they now fall: as they are, else moved a note or two along the scale. */
+  const refit = (ms: number[], steps: number[], lens: number[]) => {
+    if (fits(ms, steps, lens)) return ms;
+    for (const k of [1, -1, 2, -2]) { const x = moveScale(ms, k); if (fits(x, steps, lens)) return x; }
+    return null;
+  };
+  /** Colour: now and then a box note turned into the scale note next to it, as real solos use them. */
+  const colour = (ms: number[], steps: number[], lens: number[]) => {
+    const out = [...ms];
+    for (let i = 0; i < out.length - 1; i++) {
+      // (on the off-beats and quick notes: the beats are the chord's)
+      if (!box.includes(mod(out[i] - key, 12)) || steps[i] % 4 === 0 || lens[i] > 2 || !rng.chance(0.3)) continue;
+      const opts: [number, number][] = [];
+      for (const [d, w, quick] of COLOUR[boxMinor ? 'm' : 'M']) {
+        if (quick && lens[i] > 2) continue;
+        for (const m of [out[i] - 2, out[i] - 1, out[i] + 1, out[i] + 2]) if (mod(m - key, 12) === d && (quick || inScale(m))) opts.push([m, w]);
+      }
+      if (!opts.length) continue;
+      const m = rng.weighted(opts), was = out[i];
+      out[i] = m;
+      if (!fits(out, steps, lens)) out[i] = was;
+    }
+    return out;
   };
 
   /** A lick: a shared shape in a shared rhythm, from `from`, ending by `limit`. */
@@ -138,6 +194,7 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
       const p = placeShape(sh, l.steps, l.lens, target, windowAt(l.at));
       if (p && (!best || p.s > best.s)) best = { ms: p.ms, ...l, r, sh, s: p.s };
     }
+    if (best) best.ms = colour(best.ms, best.steps, best.lens);
     return best;
   };
 
@@ -178,6 +235,56 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     return { ms, steps, lens, end: g + hold };
   };
 
+  /** Is `g` a beat of four 16ths (where 8th triplets go)? */
+  const beatOf4 = (g: number) => {
+    const b = bars.find((x) => g >= x.start && g < x.start + x.len);
+    if (!b) return false;
+    let p = b.start;
+    for (const n of b.groups) { if (p === g) return n === 4; p += n; }
+    return false;
+  };
+  /**
+   * A triplet lick (real solos: 8th triplets turning or falling, now and then quarter triplets): a beat or two of
+   * 8th triplets (or three quarter triplets over two beats) on a shared shape, landing on a held note on the beat after.
+   */
+  const tripletLick = (from: number, limit: number, target: number) => {
+    let at = from + mod(-from, 4);
+    if (!beatOf4(at)) return null;
+    const quarter = rng.chance(0.2), beats = quarter ? 2 : rng.chance(0.4) ? 1 : 2;
+    if (!quarter && beats === 2 && !beatOf4(at + 4)) return null;
+    const n = quarter ? 3 : 3 * beats;
+    const pos = Array.from({ length: n }, (_, i) => at + (quarter ? (8 * i) / 3 : (4 * i) / 3));
+    const landAt = at + 4 * beats, hold = Math.min(limit - landAt, rng.pick([2, 4, 4, 6]));
+    if (hold < 2) return null;
+    const steps = [...pos.map((x) => Math.floor(x + 1e-9)), landAt], shifts = [...pos.map((x) => Math.round(1e6 * (x - Math.floor(x + 1e-9))) / 1e6), 0];
+    const lens = steps.map((g, i) => (i + 1 < steps.length ? Math.max(1, steps[i + 1] - g) : hold));
+    const pool = shapes.filter((s) => s.n === n + 1);
+    for (let k = 0; k < 10 && pool.length; k++) {
+      const lean = (s: Shape) => (s.steps[0] > 0 && s.steps[1] > 0 ? 0.3 : s.steps[0] < 0 && s.steps[1] < 0 ? 1.4 : 1.2);
+      const p = placeShape(rng.weighted(pool.map((s) => [s, shapeW(s) * lean(s)] as [Shape, number])), steps, lens, target, windowAt(at));
+      if (p) return { ms: p.ms, steps, lens, shifts, end: landAt + hold };
+    }
+    // (else a triplet figure through the box, three notes a beat, each beat a note lower (or higher), onto a chord note)
+    const win = windowAt(at), bx: number[] = [];
+    for (let m = win[0] - 2; m <= win[1] + 2; m++) if (box.includes(mod(m - key, 12))) bx.push(m);
+    for (let k = 0; k < 8; k++) {
+      const cell = rng.weighted(TRIP_CELLS), down = cell[1] > 0 && cell[2] > 0 ? false : rng.chance(0.7);
+      let i0 = bx.reduce((bi, m, i) => (Math.abs(m - target) < Math.abs(bx[bi] - target) ? i : bi), 0);
+      i0 = down ? Math.max(i0, 3) : Math.min(i0, bx.length - 4);
+      const idx = Array.from({ length: n }, (_, i) => i0 + cell[i % 3] + (down ? -1 : 1) * Math.floor(i / 3));
+      if (idx.some((x) => x < 0 || x >= bx.length)) continue;
+      const ms = idx.map((x) => bx[x]);
+      let land = ms[ms.length - 1] + (down ? -1 : 1);
+      for (let d = 0; d < 6 && !fit.isTone(land, landAt); d++) land += down ? -1 : 1;
+      ms.push(land);
+      if (fit.isTone(land, landAt) && fits(ms, steps, lens)) return { ms, steps, lens, shifts, end: landAt + hold };
+    }
+    return null;
+  };
+  /** Licks placed at a bar line, to come back later in the solo (real solos: a bar's rhythm back 2+ bars on in half their bars). */
+  const sayings: { bar: number; rel: number; r: Rhythm; ms: number[] }[] = [];
+  const barIx = (g: number) => bars.findIndex((b) => g >= b.start && g < b.start + b.len);
+
   // the trademark held note: once, somewhere in the solo
   const markAt = rng.chance(0.65) ? Math.floor(total * (0.15 + 0.75 * rng.next())) : -1;
   let marked = false;
@@ -199,7 +306,7 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     return true;
   };
 
-  let cursor = 0, quoted = false, repeats = 0, units = 0;
+  let cursor = 0, quoted = false, repeats = 0, units = 0, returns = 0;
   // now and then the hook quoted first
   const quote = hook?.filter((h) => h.step < 16 && h.notes.length) ?? [];
   if (quote.length >= 3 && rng.chance(0.25)) {
@@ -220,12 +327,66 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
       cursor = evs[evs.length - 1].step + evs[evs.length - 1].len;
       continue;
     }
+    toTop = rng.chance(0.5);
+    // a bar (or two) played earlier, back at a bar line: two or more bars on most often, now and then the very next
+    // (real solos: a bar's rhythm back 2+ bars later in half their bars, the next bar in a quarter); fitted to the chords
+    const at = bars.find((b) => b.start >= cursor && b.start - cursor <= 6);
+    if (at) {
+      const bi = barIx(at.start);
+      const later = bars.slice(0, Math.max(0, bi - 1)).filter((b) => evs.filter((e) => e.step >= b.start && e.step < b.start + b.len).length >= 3);
+      const prevBar = bars[bi - 1];
+      const src = later.length && rng.chance(0.08) ? rng.pick(later) : prevBar && rng.chance(0.02) ? prevBar : null;
+      if (src && src.len === at.len) {
+        const two = rng.chance(0.25) && bars[bi + 1] && bars[barIx(src.start) + 1] && barIx(src.start) + 1 < bi && bars[bi + 1].len === bars[barIx(src.start) + 1].len;
+        const span = two ? 2 * at.len : at.len;
+        const copy = evs.filter((e) => e.step >= src.start && e.step < src.start + span && !e.peak);
+        const d = at.start - src.start;
+        const steps = copy.map((e) => e.step + d), lens = copy.map((e) => Math.min(e.len, at.start + span - (e.step + d)));
+        if (copy.length >= 3 && steps[steps.length - 1] < end && lens.every((x) => x >= 1)) {
+          let ms: number[] | null = copy.map((e) => e.midi);
+          // (now and then a new ending: the last note a near chord note)
+          if (rng.chance(0.6)) { const i = ms.length - 1, g = steps[i]; for (const dd of [2, -2, 1, -1, 3, -3]) if (fit.isTone(ms[i] + dd, g)) { ms[i] += dd; break; } }
+          ms = refit(ms, steps, lens);
+          if (ms) {
+            const last = evs[evs.length - 1];
+            if (last && steps[0] - last.step > last.len && steps[0] - last.step <= 12) last.len = steps[0] - last.step;
+            ms.forEach((m, i) => evs.push({ step: steps[i], midi: m, len: lens[i], vel: copy[i].vel, ...(copy[i].shift ? { shift: copy[i].shift } : {}) }));
+            returns++;
+            cursor = at.start + span;
+            continue;
+          }
+        }
+      }
+    }
+    // an earlier lick back, 2+ bars on, at the same place in its bar: as it was, a new ending, or moved along the scale
+    const near = bars.find((b) => b.start >= cursor && b.start - cursor <= 6);
+    const old = near ? sayings.filter((x) => barIx(near.start) - x.bar >= 2) : [];
+    if (near && old.length && rng.chance(0.05)) {
+      const o = rng.pick(old.slice(-3));
+      const laid = lay(o.r, near.start + o.rel);
+      if (laid.end <= end) {
+        let ms: number[] | null = rng.chance(0.55) ? [...o.ms] : rng.chance(0.6) ? [...o.ms.slice(0, -1), o.ms[o.ms.length - 2] ?? o.ms[0]] : moveScale(o.ms, rng.pick([1, -1]));
+        ms = refit(ms, laid.steps, laid.lens);
+        if (ms) {
+          const last = evs[evs.length - 1];
+          if (last && laid.steps[0] - last.step > last.len && laid.steps[0] - last.step <= 12) last.len = laid.steps[0] - last.step;
+          push(ms, laid.steps, laid.lens, 0.02);
+          returns++;
+          cursor = laid.end + rng.weighted<number>([[0, 70], [2, 22], [4, 8]]);
+          continue;
+        }
+      }
+    }
+    if (triplets && rng.chance(0.35)) {
+      const tl = tripletLick(cursor, end, aim);
+      if (tl) { push(tl.ms, tl.steps, tl.lens, 0.04, tl.shifts); cursor = tl.end; units++; continue; }
+    }
     if (runny && rng.chance(0.55)) {
       const run = turningRun(cursor, end, aim);
       if (run) { push(run.ms, run.steps, run.lens); cursor = run.end + (rng.chance(0.3) ? 2 : 0); units++; continue; }
     }
     // worked over: played again 1-3 times, changed, at the same place in the bar
-    let again = rng.weighted<number>([[0, 15], [1, 40], [2, 30], [3, 15]]);
+    let again = rng.weighted<number>([[0, 65], [1, 30], [2, 5]]);
     const half = rng.chance(0.35);
     // (a lick to be played again starts at a bar line, within a beat, and stays inside its bar)
     const bar = bars.find((b) => b.start >= cursor && b.start - cursor <= 6);
@@ -246,8 +407,10 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     push(l.ms, l.steps, l.lens);
     units++;
     cursor = l.end;
+    // (remembered to come back later: any lick starting in the first half of its bar)
+    { const b = bars[barIx(l.at)]; if (b && l.at - b.start < 8 && l.end - b.start <= b.len + 2) sayings.push({ bar: barIx(l.at), rel: l.at - b.start, r: l.r, ms: l.ms }); }
     for (let k = 0; k < again; k++) {
-      const v = rng.weighted<Variation>([['same', 40], ['ending', 35], ['answer', 17], ['octave', 8]]);
+      const v = rng.weighted<Variation>([['same', 15], ['ending', 45], ['answer', 30], ['octave', 10]]);
       // (a bar on from the last time, now and then half a bar for a short lick: the note before rings on to it)
       const P = l.end - l.at <= 8 && half ? 8 : 16;
       const from = l.at + P * (k + 1);
@@ -272,7 +435,8 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
         const a = newLick(from, end, prevNote(), l.r);
         ms = a ? a.ms : null;
       }
-      if (!ms || !fits(ms, laid.steps, laid.lens)) break;
+      ms = ms ? refit(ms, laid.steps, laid.lens) : null;
+      if (!ms) break;
       // (the note before rings on to it)
       const last = evs[evs.length - 1];
       if (last && laid.steps[0] - last.step > last.len) last.len = laid.steps[0] - last.step;
@@ -308,9 +472,20 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
     }
   }
 
+  // leaning on the chord: a note on a beat, or held an 8th or more, that isn't one of the chord's notes moves to the
+  // nearest one (a step at most, the way the line was going) now and then
+  evs.forEach((e, i) => {
+    if (e.peak || e.dyad !== undefined || e.shift || fit.isTone(e.midi, e.step) || (e.step % 4 !== 0 && e.len < 2) || !rng.chance(0.9)) return;
+    const dir = i > 0 && e.midi < evs[i - 1].midi ? -1 : 1;
+    for (const d of [dir, -dir, 2 * dir, -2 * dir]) {
+      const m = e.midi + d;
+      if (fit.isTone(m, e.step) && !fit.clash(m, e.step)) { e.midi = m; break; }
+    }
+  });
+
   const hits = playSolo(rng, evs, { lick, key, minor, isTone: fit.isTone, inScale, total, t });
   return {
     hits,
-    notes: [`Guitar 2: a solo (new): ${plan === 'level' ? 'level' : plan}${quoted ? ', starts on the hook' : ''}, ${units} licks from real solos${repeats ? `, ${repeats} played again` : ''}${runny ? ', quick turning runs' : ''}`],
+    notes: [`Guitar 2: a solo (new): ${plan === 'level' ? 'level' : plan}${quoted ? ', starts on the hook' : ''}, ${units} licks from real solos${repeats ? `, ${repeats} played again` : ''}${returns ? `, ${returns} back later` : ''}${triplets ? ', triplets' : ''}${runny ? ', quick turning runs' : ''}`],
   };
 }

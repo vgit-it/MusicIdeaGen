@@ -222,6 +222,8 @@ export interface GuitarHit {
   tremolo?: boolean;
   /** Raked into: the pick drags across this many muted strings just before the note. */
   rake?: number;
+  /** Sounds this much of a step after its step (a triplet: 1/3, 2/3); Guitar 2 only. */
+  shift?: number;
   /** A second lead guitar plays this with it (Twin, docs/LEAD-TWIN.md): a harmony, an octave or the same notes, panned the other way. */
   twin?: number[];
   /** Fade the note in (volume swell). */
