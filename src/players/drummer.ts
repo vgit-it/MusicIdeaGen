@@ -259,7 +259,8 @@ function playUnderSolo(idea: Idea, dr: Drummer, rng: Rng, endAt: number) {
   bars.forEach((bar, bi) => {
     const k = bi <= peakBar ? 0.92 + 0.16 * (bi / Math.max(1, peakBar)) : 0.98;
     for (let g = bar.start; g < bar.start + bar.len; g++) {
-      for (const l of ['kick', 'hat', 'hatOpen', 'ride', 'crash', 'tom'] as const) if (d[l][g]) d[l][g] = Math.min(1, d[l][g] * k);
+      // (not the toms: that lane says which tom, not how hard)
+      for (const l of ['kick', 'hat', 'hatOpen', 'ride', 'crash'] as const) if (d[l][g]) d[l][g] = Math.min(1, d[l][g] * k);
       if (d.snare[g] >= 0.3) d.snare[g] = Math.min(1, d.snare[g] * k);
     }
   });

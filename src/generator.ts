@@ -1,5 +1,6 @@
 // Pure, deterministic idea generator: same options + seeds = same idea.
 
+import { singLead } from './parts/leadvocal';
 import type { MoveId } from './parts/moves';
 import { autoVoice, singIdea } from './parts/vocal';
 import type { EnergyStyle } from './parts/energy';
@@ -90,6 +91,20 @@ function planSong(rng: Rng, opts: GenOptions): Song {
   };
 }
 
+/**
+ * The app's main method (main.ts applies it to every idea; the research scripts can still choose): the lead guitar
+ * and rhythm guitar play every way they've learned (they were switches, now always on): whole lines,
+ * figures, room for the singer, breaks and no-lead songs, a twin, real licks, the solo writer built from real solos
+ * (docs/LEAD-*.md, docs/SOLO-NEW.md), and the strum mix of real guitarists (docs/STUDY-RHYTHM.md). The guitar plan
+ * is on in every track (track.ts).
+ */
+export const MAIN_GUITARS: Partial<GenOptions> = {
+  leadLines: true, leadFigures: true, leadRoom: true, leadBreaks: true, leadTwin: true, leadLicks: true, leadSolo: true, strumMix: true,
+};
+/** The vocal's writers, fixed: Rhythm Words, Melody Learned, Real songs, Patterns; moves and energy by the song. */
+export const MAIN_VOCAL: Partial<GenOptions> = { vocalRhythm: 'words', vocalMelody: 'learned', vocalReal: true, vocalPatterns: true, vocalMove: undefined, vocalEnergy: undefined };
+export const MAIN_METHOD: Partial<GenOptions> = { ...MAIN_GUITARS, ...MAIN_VOCAL };
+
 export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
   const song = planSong(new Rng(seeds.song), opts);
   const idea = buildIdea(opts, seeds, song, withSheet(opts, seeds, song));
@@ -107,6 +122,8 @@ export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
   singIdea(idea, vs, autoMood(song, seeds.song), opts.vocalLift ?? 0, opts.vocalRhythm, opts.vocalMelody, opts.vocalMove as MoveId | undefined, opts.vocalSinger, opts.vocalEnergy as EnergyStyle | 'off' | undefined, opts.vocalReal, opts.vocalPatterns);
   idea.vocalVoice = autoVoice(vs, song.partGenres.strum);
   idea.vocalHigh = pickHigh(vs, song.partGenres.strum);
+  // the lead vocal as it's sung (an idea on its own: its own mood)
+  singLead([idea]);
   return idea;
 }
 
@@ -170,7 +187,7 @@ export function buildIdea(opts: GenOptions, seeds: Seeds, song: Song, b: BuildOp
     notes.push(`Mixed genres: chords ${song.genre}, drums ${pg.drums}, strum ${pg.strum}, bass ${pg.bass}`);
   }
 
-  const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, null);
+  const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, null, undefined, undefined, { lines: opts.leadLines, figures: opts.leadFigures, figureSeed: `${seeds.guitar2 ?? seeds.strum}-figure`, licks: opts.leadLicks ? new Set<string>() : undefined });
   notes.splice(1, 0, ...g2.notes);
 
   return { seeds, opts, song, chords, drums, strum, bass, bassLen, bassLine, guitar2: clearFills(song, drums, g2.hits), notes };
@@ -187,7 +204,7 @@ function generateRiffIdea(opts: GenOptions, seeds: Seeds, song: Song, chords: Ch
       (drums.halfTime ? ' · half-time feel' : '') + ' · kick and bass follow the riff',
     ...chords.notes,
   ];
-  const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, riff.hits);
+  const g2 = generateGuitar2(new Rng(seeds.guitar2 ?? `${seeds.strum}-2`), song, chords, riff.hits, undefined, undefined, { lines: opts.leadLines, figures: opts.leadFigures, figureSeed: `${seeds.guitar2 ?? seeds.strum}-figure`, licks: opts.leadLicks ? new Set<string>() : undefined });
   notes.splice(1, 0, ...g2.notes);
   const strum = new Array<Stroke>(song.total).fill('.');
   return { seeds, opts, song, chords, drums, strum, bass, bassLen: lens, guitar: riff.hits, guitar2: g2.hits, notes };

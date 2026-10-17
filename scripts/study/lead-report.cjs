@@ -47,6 +47,7 @@ const rows = [
   ['  octave-ish 8+', (r) => mean(r.map((x) => x.step?.[4])), pct],
   ['  moves going up', (r) => mean(r.map((x) => x.up)), pct],
   ['phrase: notes', (r) => med(r.map((x) => x.phraseNotes)), (x) => x],
+  ['notes in phrases of 6+', (r) => mean(r.map((x) => x.inLong)), pct],
   ['phrase: beats', (r) => med(r.map((x) => x.phraseBeats)), num],
   ['range (p5-p95, semitones)', (r) => med(r.map((x) => x.range)), (x) => x],
   ['middle note (MIDI)', (r) => med(r.map((x) => x.height)), (x) => x],
