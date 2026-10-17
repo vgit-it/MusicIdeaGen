@@ -31,6 +31,8 @@ export interface PlayOptions {
   fall?: number;
   /** Let a bend down again partway through the note, this many semitones (no bend: picked already bent). */
   unbend?: number;
+  /** Held this many semitones below, then bent up to the note partway through (a bend after a hold). */
+  lateBend?: number;
   /** Trill: hammer on and pull off this many semitones above, fast, through the note. */
   trill?: number;
   /** The next note comes legato out of this one (keep its pitch free for it). */
@@ -103,7 +105,7 @@ export class MultiSampler {
       pr.setValueAtTime(low, time);
       pr.setValueAtTime(low, time + 0.02);
       pr.linearRampToValueAtTime(rate, settle);
-    } else if (tuning?.curve.length && !offset && !opts.unbend && !opts.trill) this.untwang(pr, tuning.curve, time, rate, Math.min(vibrato ? vibStart : Infinity, until));
+    } else if (tuning?.curve.length && !offset && !opts.unbend && !opts.trill && !opts.lateBend) this.untwang(pr, tuning.curve, time, rate, Math.min(vibrato ? vibStart : Infinity, until));
     const end = Math.min(until, time + dur) - 0.003;
     if (opts.unbend) {
       // the bend let down again: held at pitch a while, then eased back down (a pre-bend held a little
@@ -116,6 +118,19 @@ export class MultiSampler {
         pr.linearRampToValueAtTime(down, at + 0.12);
         v.rate = down;
         this.tail(v, down, Math.max(at + 0.3, time + 0.28), time + dur, opts);
+      }
+      return v;
+    }
+    if (opts.lateBend) {
+      // held at the lower note a while (a beat or so), then pushed up to the note; vibrato once it's up
+      const low = rate * 2 ** (-opts.lateBend / 12);
+      const at = Math.max(time + 0.12, time + Math.min(dur * 0.45, 0.9));
+      const rise = 0.14 + opts.lateBend * 0.04;
+      pr.setValueAtTime(low, time);
+      if (at + rise + 0.05 < end) {
+        pr.setValueAtTime(low, at);
+        pr.linearRampToValueAtTime(rate, at + rise);
+        this.tail(v, rate, at + rise + 0.18, time + dur, opts);
       }
       return v;
     }

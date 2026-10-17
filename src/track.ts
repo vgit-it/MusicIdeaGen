@@ -17,7 +17,6 @@ import type {
 import { type DrumBar, addFill } from './parts/drums';
 import { type G2Options, type Guitar2Style, chordTones, generateGuitar2, generateHook, leadFret, pickStyle } from './parts/guitar2';
 import { TUNINGS } from './theory/fretboard';
-import { generateSolo } from './parts/solo';
 import { generateSolo2 } from './parts/solo2';
 import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
@@ -1182,6 +1181,8 @@ function prePlan(rng: Rng, plans: Plan[], chorus: Seg[]): Plan {
 
 /** Tracks run about 2–3 minutes: optional sections go when it would be longer. */
 const MAX_SECONDS = 210;
+/** Solo New, above 100 bpm: the chance of a longer solo, by genre. */
+const LONG_SOLO: Record<Genre, number> = { metal: 0.7, hardrock: 0.65, rock: 0.5, altmetal: 0.5, grunge: 0.45, funk: 0.35, pop: 0.3 };
 
 export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(src)): Track {
   const S = opts.seeds;
@@ -1416,7 +1417,13 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   }
   // over the verse's chords or the chorus's; 16 bars for heavier styles, now and then
   const soloOverChorus = sr.chance(0.4);
-  const soloBars = (genre === 'metal' || genre === 'hardrock') && sr.chance(0.5) ? 16 : 8;
+  let soloBars = (genre === 'metal' || genre === 'hardrock') && sr.chance(0.5) ? 16 : 8;
+  // Solo New: songs above 100 bpm get longer solos more often (room for the energy's waves): 16 bars, now and then
+  // 24 above 130 bpm
+  if (src.opts.leadSolo && src.song.bpm > 100) {
+    const lr = new Rng(`${S.structure}-long-solo`);
+    if (lr.chance(LONG_SOLO[genre])) soloBars = src.song.bpm > 130 && lr.chance(0.35) ? 24 : Math.max(soloBars, 16);
+  }
 
   const verse2E = riff ? verseE : Math.min(3, verseE + 1);
   // the outro: a jam (new music in a new key), or long (the chorus's last line repeats as a tag), or short
@@ -1480,7 +1487,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     if (kind === 'bridge' || kind === 'breakdown') return { kind, n, energy: bridgeE, segs: bridge, g2: bridgeE <= 2 ? 'swell' : 'pick' };
     if (kind === 'solo') {
       const over = take(soloOverChorus ? chorus : verse, 8);
-      return { kind, n, energy: 4, segs: soloBars === 16 ? [...over, ...over] : over, g2: 'solo' };
+      return { kind, n, energy: 4, segs: Array.from({ length: soloBars / 8 }, () => over).flat(), g2: 'solo' };
     }
     if (kind === 'outro' && jam) return { kind, n, energy: 5, segs: jam.segs, g2: outroSolo ? 'solo' : 'lead' };
     if (kind === 'outro') return { kind, n, energy: 5, segs: outroLong ? [...take(chorus, 4), tag, tag] : take(chorus, 4), g2: outroSolo ? 'solo' : riff ? 'lead' : 'hook' };
@@ -1495,7 +1502,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   if (!opts.order?.length) {
     if (seconds(slots) > MAX_SECONDS && opts.interlude === 'auto') slots = slots.filter((s) => s.kind !== 'interlude');
     // a 16-bar solo goes down to 8, and the outro solo back to the usual outro, before the pre-choruses go
-    if (seconds(slots) > MAX_SECONDS && soloBars === 16) slots = slots.map((x) => (x.kind === 'solo' ? { ...x, segs: x.segs.slice(0, x.segs.length / 2) } : x));
+    if (seconds(slots) > MAX_SECONDS && soloBars > 8) slots = slots.map((x) => (x.kind === 'solo' ? { ...x, segs: x.segs.slice(0, x.segs.length / (soloBars / 8)) } : x));
     if (seconds(slots) > MAX_SECONDS && outroSolo) slots = slots.map((x) => (x.kind === 'outro' && x.g2 === 'solo' ? { ...x, g2: jam ? 'lead' : riff ? 'lead' : 'hook' } : x));
     if (seconds(slots) > MAX_SECONDS && opts.pre === 'auto') slots = slots.filter((s) => s.kind !== 'prechorus');
     // a jam shortens to 4 + 4 bars before anything else goes
@@ -1606,8 +1613,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       // (how far it goes: where it sits on the song's curve; the climax goes highest)
       const tt = arc.sections[si].tension;
       const intensity = si === arc.climax ? 1 : Math.max(0, Math.min(1, (tt.reduce((a, b) => a + b, 0) / tt.length - MP.base) / Math.max(0.1, MP.peak - MP.base)));
-      const sol = (src.opts.leadSolo ? generateSolo2 : generateSolo)(new Rng(`${soloSeed}-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick,
-        s.kind === 'solo' && soloOverChorus && hook.length ? hook : null, intensity, g2o.licks);
+      const sol = generateSolo2(new Rng(`${soloSeed}-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick,
+        s.kind === 'solo' && soloOverChorus && hook.length ? hook : null, intensity);
       idea.guitar2 = sol.hits;
       idea.section!.solo = true;
       g2 = sol.notes[0];
@@ -1615,7 +1622,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       else notes.push('Guitar 2 solos over the outro');
     } else if (s.g2 === 'break') {
       // Breaks: a short melodic solo, quoting the hook, lower and sparer than a full one; the band as it is
-      const sol = (src.opts.leadSolo ? generateSolo2 : generateSolo)(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3, g2o.licks);
+      const sol = generateSolo2(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3);
       idea.guitar2 = sol.hits;
       g2 = 'Guitar 2: a lead break, a short melodic solo over the chorus chords';
     } else if (s.g2 === 'play') g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));
@@ -1790,7 +1797,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
   });
   // when the guitar plays (docs/STUDY-RHYTHM.md): a role for the song, and each section they sit out, come in or drop out
-  if (opts.guitarPlan === 'on') {
+  // (always: docs/STUDY-RHYTHM.md; older links may say off)
+  {
     const gp = planGuitar(bandSeed, src.song.partGenres.strum, riff, sections.map((x) => ({ kind: x.section!.kind, energy: x.section!.energy, bars: x.song.bars.length, hasG2: x.guitar2.length > 0 })));
     sections.forEach((x, i) => { const n = applyGuitarShape(x, gp.shapes[i], gp.cover); if (n) x.notes.push(n); });
     sections[0].notes.push(`Guitar plan: the rhythm guitarist ${GUITAR_ROLE_DESC[gp.role]}`);
