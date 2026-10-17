@@ -61,7 +61,7 @@ export interface Sung {
 }
 export interface Line { at: number; end: number; text: string; syls: { at: number; text: string; space: boolean }[] }
 
-export interface SectionSpan { from: number; to: number; kind: SectionKind; label: string; energy: number; solo: boolean; tension: number[]; bars: number[]; riff: boolean }
+export interface SectionSpan { from: number; to: number; kind: SectionKind; label: string; energy: number; solo: boolean; tension: number[]; bars: number[]; riff: boolean; ending: boolean }
 
 export interface Score {
   steps: number;
@@ -78,6 +78,8 @@ export interface Score {
   vocal: { mouths: Mouth[]; sung: Sung[]; lines: Line[] };
   tuning: number[];
   bassTuning: number[];
+  /** Moments the band shows off: jumps into big sections, the final hit (held as an ending pose), long held chords. */
+  moves: { jumps: number[]; final: number | null; held: { at: number; end: number }[] };
 }
 
 const ms = (v: number | undefined, six: number) => (v ?? 0) / 1000 / six;
@@ -273,7 +275,7 @@ export function buildScore(sections: Idea[], shapesFor: (idea: Idea) => GuitarVo
 
   const spans: SectionSpan[] = sections.map((idea, i) => ({
     from: offs[i], to: offs[i] + idea.song.total, kind: idea.section?.kind ?? 'verse', label: idea.section?.label ?? 'Idea',
-    energy: idea.section?.energy ?? 4, solo: !!idea.section?.solo, tension: idea.section?.tension ?? [], bars: idea.song.bars.map((b) => offs[i] + b.start), riff: !!idea.guitar,
+    energy: idea.section?.energy ?? 4, solo: !!idea.section?.solo, tension: idea.section?.tension ?? [], bars: idea.song.bars.map((b) => offs[i] + b.start), riff: !!idea.guitar, ending: !!idea.section?.ending,
   }));
   const beats: number[] = [], bars: number[] = [];
   sections.forEach((idea, i) => {
@@ -338,8 +340,35 @@ export function buildScore(sections: Idea[], shapesFor: (idea: Idea) => GuitarVo
   holds.sort((a, b) => a.at - b.at);
   rnotes.sort((a, b) => a.at - b.at);
 
+  // the band jumps into a big section (louder than the one before, or into a chorus) and on the final hit
+  const jumps: number[] = [];
+  spans.forEach((x, i) => {
+    const prev = spans[i - 1];
+    if (prev && x.energy >= 4 && (x.energy > prev.energy || (x.kind === 'chorus' && prev.kind !== 'chorus'))) jumps.push(x.from);
+  });
+  const last = spans[spans.length - 1];
+  const final = last.ending ? last.bars[last.bars.length - 1] : null;
+  if (final !== null) jumps.push(final);
+  // a chord left ringing a while in a loud part: time to strike a pose
+  const held: { at: number; end: number }[] = [];
+  strums.forEach((x, i) => {
+    const next = strums[i + 1];
+    const sec = spans.find((y) => x.at >= y.from && x.at < y.to);
+    const gap = ((next?.at ?? steps) - x.at) * six;
+    // (not when the gap is filled with picked notes: the hand is busy picking, not posing)
+    const picking = rnotes.some((n) => n.onHold && n.at > x.at + 0.05 && n.at < x.at + gap / six);
+    if (sec && sec.energy >= 3 && gap > 1.1 && x.kind !== 'p' && !picking) held.push({ at: x.at, end: x.at + gap / six });
+  });
+  // (riffs: a chord of the riff left ringing)
+  for (const n of rnotes) {
+    if (n.onHold || n.mute || n.grip === 'single') continue;
+    const sec = spans.find((y) => n.at >= y.from && n.at < y.to);
+    if (sec && sec.energy >= 4 && (n.end - n.at) * six > 1.5) held.push({ at: n.at, end: n.end });
+  }
+  held.sort((a, b) => a.at - b.at);
+
   return {
-    steps, six, sections: spans, beats, bars,
+    steps, six, sections: spans, beats, bars, moves: { jumps, final, held },
     drums: drumsOf(sections, offs, six),
     bass, lead, rhythm: { strums, holds, notes: rnotes, out },
     vocal: vocalOf(sections, offs, six),

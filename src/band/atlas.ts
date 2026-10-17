@@ -7,7 +7,7 @@ export interface NeckGeo { bridge: [number, number]; nut: [number, number]; stri
 export interface Atlas {
   img: HTMLImageElement;
   frames: Record<string, number[]>;
-  geo: { neck?: NeckGeo; skin?: string; skinDark?: string; poses?: Record<string, [number, number]>; kit?: Record<string, [number, number]>; lift?: number; mic?: [number, number] };
+  geo: { neck?: NeckGeo; acc?: string[]; skin?: string; skinDark?: string; poses?: Record<string, [number, number]>; kit?: Record<string, [number, number]>; lift?: number; mic?: [number, number] };
 }
 
 export async function loadAtlas(base: string, name: string): Promise<Atlas> {

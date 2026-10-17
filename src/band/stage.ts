@@ -4,20 +4,58 @@
 // to see the playing is right.
 
 import { type Atlas, draw, loadAtlas, loadImage } from './atlas';
-import { type Actor, type Cmd, type Moment, drummerActor, guitarActor, singerActor } from './actors';
+import { type Actor, type Cmd, type Moment, type Pre, drummerActor, guitarActor, singerActor } from './actors';
+import { PERSONAS, PLAYERS, type Persona, type Player, STYLES } from './persona';
 import { type Score, lastAt } from './score';
 
-export const W = 480, H = 270;
+/** The camera's picture: 320 x 180 pixels (the players fill about half its height), scaled up with sharp pixels. */
+export const W = 350, H = 180;
 
-export interface Cast { stage: HTMLImageElement; singer: Atlas; rhythm: Atlas; lead: Atlas; bassist: Atlas; drummer: Atlas }
+/** Where the stage's own lights are (stage.json): the cans on the pipe, the string-light bulbs, the neon signs. */
+export interface StageLights { cans: [number, number][]; bulbs: [number, number][]; neon: { x: number; y: number; w: number; h: number; color: string }[]; front?: { x: number; y: number } }
+
+/** The backdrop and its lights, the crowd, and every player's sheet in every character's clothes (`singer-cool`, `lead-emo`...). */
+export interface Cast { stage: HTMLImageElement; front: HTMLImageElement | null; lights: StageLights; crowd: Atlas; sheets: Record<string, Atlas> }
 
 export async function loadCast(base = 'band/'): Promise<Cast> {
-  const [stage, singer, rhythm, lead, bassist, drummer] = await Promise.all([loadImage(`${base}stage.png`), ...['singer', 'rhythm', 'lead', 'bassist', 'drummer'].map((n) => loadAtlas(base, n))]) as [HTMLImageElement, ...Atlas[]];
-  return { stage, singer, rhythm, lead, bassist, drummer };
+  const names = PLAYERS.flatMap((p) => PERSONAS.map((c) => `${p}-${c}`));
+  const [stage, lights, crowd, ...atlases] = await Promise.all([
+    loadImage(`${base}stage.png`), fetch(`${base}stage.json`).then((r) => r.json()), loadAtlas(base, 'crowd'), ...names.map((n) => loadAtlas(base, n)),
+  ]) as [HTMLImageElement, StageLights, Atlas, ...Atlas[]];
+  // (the stage's front layer: the monitors and the front edge, over the players' feet)
+  const front = lights.front ? await loadImage(`${base}stage-front.png`) : null;
+  return { stage, front, lights, crowd, sheets: Object.fromEntries(names.map((n, i) => [n, atlases[i]])) };
 }
 
 /** Where each player stands (their feet), back to front. */
-const SPOTS = { drummer: [240, 176], bassist: [166, 204], rhythm: [84, 250], lead: [392, 250], singer: [252, 262] } as const;
+// (the drummer dead centre on the riser; the rhythm guitarist and the lead at the front corners, the
+// singer front, right of centre, the bassist a step back beside the drums; a can above each)
+// (on Paul's stage: the drummer on the riser, the rest along the rug, in a row like the final reference:
+// rhythm and bass on the left, the singer right of centre, the lead on the right)
+const SPOTS = { drummer: [171, 131], bassist: [110, 158], rhythm: [50, 158], lead: [298, 158], singer: [234, 160] } as const;
+/** Where the back wall meets the floor (shadows are cast on the wall above it). */
+const WALL_FOOT = 137;
+
+/**
+ * The walk-on, in seconds from Play: when each player sets off, how long they walk, and from how far
+ * (px from their spot: off the side of the stage; the drummer from the end of the riser, behind the kit).
+ * The drummer first, the frontman last; then a wave, then the drummer counts in four.
+ */
+const WALK: Record<keyof typeof SPOTS, { at: number; dur: number; from: number }> = {
+  drummer: { at: 0, dur: 1.4, from: 72 },
+  bassist: { at: 0.5, dur: 1.9, from: -210 },
+  rhythm: { at: 1.0, dur: 1.7, from: -150 },
+  lead: { at: 1.3, dur: 1.7, from: 140 },
+  singer: { at: 2.0, dur: 2.0, from: 260 },
+};
+const WAVE: [number, number] = [4.0, 5.0];
+const COUNT_AT = 5.2;
+
+/** The walk-on's timing for a song: when the count-in starts, the length of its beats, and when the song starts (seconds from Play). */
+export function walkOn(score: Score) {
+  const beat = ((score.beats[1] ?? 4) - (score.beats[0] ?? 0)) * score.six;
+  return { countAt: COUNT_AT, beat, start: COUNT_AT + 4 * beat };
+}
 
 /** Light colours per kind of section (two each). */
 const LIGHTS: Record<string, [string, string]> = {
@@ -29,15 +67,21 @@ export class Stage {
   private actors: { name: keyof typeof SPOTS; act: Actor }[];
   private beats: { at: number }[];
   private barList: { at: number }[];
-  constructor(private cast: Cast, private score: Score, private genre: string) {
+  /** The players' shadow shape (for the back wall). */
+  private shade = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  /** The light layer, at the stage's own pixel size (the camera is close: half-size light pixels read as a screen door). */
+  private light = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  /** `who`: each player's character (their clothes and how they move). */
+  constructor(private cast: Cast, private score: Score, private genre: string, who: Record<Player, Persona>) {
+    const sheet = (p: Player) => cast.sheets[`${p}-${who[p]}`];
     this.beats = score.beats.map((at) => ({ at }));
     this.barList = score.bars.map((at) => ({ at }));
     this.actors = [
-      { name: 'drummer', act: drummerActor(cast.drummer, score) },
-      { name: 'bassist', act: guitarActor(cast.bassist, score, 'bass', 2) },
-      { name: 'rhythm', act: guitarActor(cast.rhythm, score, 'rhythm', 4) },
-      { name: 'lead', act: guitarActor(cast.lead, score, 'lead', 5) },
-      { name: 'singer', act: singerActor(cast.singer, score) },
+      { name: 'drummer', act: drummerActor(sheet('drummer'), score, STYLES[who.drummer]) },
+      { name: 'bassist', act: guitarActor(sheet('bassist'), score, 'bass', 2, STYLES[who.bassist]) },
+      { name: 'rhythm', act: guitarActor(sheet('rhythm'), score, 'rhythm', 4, STYLES[who.rhythm]) },
+      { name: 'lead', act: guitarActor(sheet('lead'), score, 'lead', 5, STYLES[who.lead]) },
+      { name: 'singer', act: singerActor(sheet('singer'), score, STYLES[who.singer]) },
     ];
   }
 
@@ -49,8 +93,31 @@ export class Stage {
     return { t, six: s.six, section, beat: clamp01((t - b0) / (b1 - b0)), beatNo: bi, heavy: ['metal', 'hardrock', 'altmetal', 'grunge'].includes(this.genre), wall };
   }
 
-  /** Draw the moment `t` (song steps; below 0: waiting to start). `wall`: seconds on a clock that always runs. */
-  render(ctx: CanvasRenderingContext2D, t: number, wall = performance.now() / 1000) {
+  /** What one player draws at song step `t` (for checks from the console). */
+  cmdsOf(name: keyof typeof SPOTS, t: number): Cmd[] {
+    return this.actors.find((x) => x.name === name)!.act(this.moment(t));
+  }
+
+  /** One player's walk-on at `sec` seconds from Play. */
+  private preFor(name: keyof typeof SPOTS, sec: number): Pre {
+    const w = WALK[name], on = walkOn(this.score);
+    const u = clamp01((sec - w.at) / w.dur);
+    const walking = sec >= w.at && u < 1;
+    const since = sec < on.countAt ? Infinity : sec < on.countAt + 4 * on.beat ? (sec - on.countAt) % on.beat : Infinity;
+    return {
+      // (not set off yet: off the stage, out of sight)
+      x: sec < w.at ? 1000 : Math.round(w.from * (1 - u)),
+      stride: walking ? Math.floor((Math.abs(w.from) * u) / 5) : null,
+      wave: name === 'singer' && sec >= WAVE[0] && sec < WAVE[1],
+      count: since,
+    };
+  }
+
+  /**
+   * Draw the moment `t` (song steps; below 0: waiting to start). `wall`: seconds on a clock that always
+   * runs. `pre`: seconds into the walk-on (before the song starts).
+   */
+  render(ctx: CanvasRenderingContext2D, t: number, wall = performance.now() / 1000, pre?: number) {
     const m = this.moment(Math.max(t, 0), t >= 0 ? t * this.score.six : wall);
     const playing = t >= 0;
     ctx.imageSmoothingEnabled = false;
@@ -58,69 +125,172 @@ export class Stage {
     ctx.drawImage(this.cast.stage, 0, 0);
     const e = playing ? m.section.energy : 1;
     // the house darker in quiet sections
-    ctx.fillStyle = `rgba(6, 4, 14, ${0.5 - e * 0.07})`;
+    ctx.fillStyle = `rgba(6, 4, 14, ${Math.max(0.05, 0.38 - e * 0.07)})`;
     ctx.fillRect(0, 0, W, H);
-    this.beams(ctx, m, playing);
-    for (const { name, act } of this.actors) {
-      const [x, y] = SPOTS[name];
+    const idle = { ...m, t: -100, beat: (wall / 0.9) % 1, beatNo: Math.floor(wall / 0.9), section: { ...m.section, energy: 3, solo: false } };
+    const drawn = this.actors.map(({ name, act }) => ({
+      at: SPOTS[name],
       // (waiting: the band nods along slowly, ready to go)
-      const cmds: Cmd[] = playing ? act(m) : act({ ...m, t: -100, beat: (wall / 0.9) % 1, beatNo: Math.floor(wall / 0.9), section: { ...m.section, energy: 3, solo: false } });
+      cmds: (playing ? act(m) : pre !== undefined ? act({ ...idle, pre: this.preFor(name, pre) }) : act(idle)) as Cmd[],
+    }));
+    this.shadows(ctx, drawn, e);
+    for (const { at: [x, y], cmds } of drawn) {
       for (const c of cmds) {
         if ('line' in c) for (let k = 0; k < (c.w ?? 1); k++) pixelLine(ctx, x + c.line[0] + k, y + c.line[1], x + c.line[2] + k, y + c.line[3], c.color, c.alpha);
         else draw(ctx, c.a, c.f, x + c.x, y + c.y, c.alpha);
       }
     }
-    // a flash on a crash, a pulse on the downbeat of loud sections
-    if (playing) {
-      const crashes = this.score.drums.pieces.crash;
-      const ci = lastAt(crashes, t);
-      const ago = ci >= 0 ? (t - crashes[ci].at) * m.six : Infinity;
-      if (ago < 0.3) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = `rgba(255, 240, 220, ${0.16 * (1 - ago / 0.3) * (e / 5)})`;
-        ctx.fillRect(0, 0, W, H);
-        ctx.globalCompositeOperation = 'source-over';
-      }
-    }
+    if (this.cast.front && this.cast.lights.front) ctx.drawImage(this.cast.front, this.cast.lights.front.x, this.cast.lights.front.y);
+    this.crowd(ctx, m, playing);
+    this.lights(ctx, m, playing, wall);
   }
 
-  private beams(ctx: CanvasRenderingContext2D, m: Moment, playing: boolean) {
-    const [c1, c2] = LIGHTS[m.section.solo ? 'solo' : m.section.kind] ?? LIGHTS.verse;
+  /**
+   * The players' shadows on the back wall, thrown by the lights above and in front: each player's
+   * sprites again as one dark shape, a little bigger and higher, only on the wall (above the floor),
+   * stronger when the lights are up.
+   */
+  private shadows(ctx: CanvasRenderingContext2D, drawn: { at: readonly [number, number]; cmds: Cmd[] }[], e: number) {
+    const S = this.shade;
+    const c = S.getContext('2d')!;
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, W, H);
+    c.imageSmoothingEnabled = false;
+    for (const { at: [x, y], cmds } of drawn) for (const k of cmds) if (!('line' in k)) draw(c, k.a, k.f, x + k.x, y + k.y);
+    c.globalCompositeOperation = 'source-in';
+    c.fillStyle = '#06030a';
+    c.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, W, WALL_FOOT);
+    ctx.clip();
+    ctx.globalAlpha = 0.28 + e * 0.05;
+    ctx.imageSmoothingEnabled = false;
+    // (scaled up from a point low in front of the stage, as if cast by the lights over the crowd)
+    const k = 1.18, ox = W / 2, oy = H + 20;
+    ctx.drawImage(S, ox - ox * k, oy - oy * k - 6, W * k, H * k);
+    ctx.restore();
+  }
+
+  /**
+   * The crowd across the front: two groups bobbing in turn when the band's loud, hands up for the big
+   * moments (a jump, a crash in a loud part, the end).
+   */
+  private crowd(ctx: CanvasRenderingContext2D, m: Moment, playing: boolean) {
+    const a = this.cast.crowd;
     const e = playing ? m.section.energy : 1;
-    const sway = e >= 4 ? Math.sin((m.beatNo + m.beat) * Math.PI * 0.5) * 18 : 0;
-    // loud sections: the lights punch on every bar's downbeat
+    const jumps = this.score.moves.jumps;
+    let ji = -1;
+    while (ji + 1 < jumps.length && jumps[ji + 1] <= m.t) ji++;
+    const sinceJump = playing && ji >= 0 ? (m.t - jumps[ji]) * m.six : Infinity;
+    const crashes = this.score.drums.pieces.crash, ci = lastAt(crashes, m.t);
+    const sinceCrash = playing && ci >= 0 ? (m.t - crashes[ci].at) * m.six : Infinity;
+    const final = this.score.moves.final;
+    const up = (sinceJump < 1.5 && e >= 4) || (sinceCrash < 0.5 && e >= 4) || (playing && final !== null && m.t >= final);
+    const bob = (side: number) => (e >= 3 && ((m.beat + side * 0.5) % 1) < 0.25 ? 1 : 0);
+    draw(ctx, a, `crowd/0/${up ? 'up' : 'idle'}`, W / 2, H + 8 + bob(0));
+    draw(ctx, a, `crowd/1/${up ? 'up' : 'idle'}`, W / 2, H + 8 + bob(1));
+  }
+
+  /**
+   * The light, in pixels too: stepped into levels with a 4x4 ordered dither,
+   * then laid over the stage (adding light) with hard edges. Cans on the pipe throw coloured cones at
+   * the players (swinging when it's loud, punching on the bar's downbeat), spots on the singer and on a
+   * solo, the string lights twinkle, the neon glows (and flickers now and then), crashes flash.
+   */
+  private lights(ctx: CanvasRenderingContext2D, m: Moment, playing: boolean, wall: number) {
+    const L = this.light;
+    const l = L.getContext('2d', { willReadFrequently: true })!;
+    l.setTransform(1, 0, 0, 1, 0, 0);
+    l.clearRect(0, 0, L.width, L.height);
+    l.setTransform(L.width / W, 0, 0, L.height / H, 0, 0);
+    l.globalCompositeOperation = 'lighter';
+    const [c1, c2] = LIGHTS[playing && m.section.solo ? 'solo' : m.section.kind] ?? LIGHTS.verse;
+    const e = playing ? m.section.energy : 1;
+    const sway = e >= 4 ? Math.sin((m.beatNo + m.beat) * Math.PI * 0.5) * 12 : 0;
     const bi = lastAt(this.barList, m.t);
     const sinceBar = playing && bi >= 0 ? (m.t - this.barList[bi].at) * m.six : Infinity;
-    const punch = e >= 4 && sinceBar < 0.18 ? 0.12 * (1 - sinceBar / 0.18) : 0;
-    ctx.globalCompositeOperation = 'lighter';
-    const lamps = [40, 106, 172, 238, 304, 370, 436];
-    lamps.forEach((lx, i) => {
-      const target = lx + (i % 2 ? sway : -sway);
-      const g = ctx.createLinearGradient(0, 16, 0, 260);
+    const punch = e >= 4 && sinceBar < 0.18 ? 0.15 * (1 - sinceBar / 0.18) : 0;
+
+    // the cans: each aimed at the player nearest under it (with many cans, two or three on each player),
+    // the lens glowing hot
+    const aims = [SPOTS.rhythm, SPOTS.bassist, SPOTS.drummer, SPOTS.singer, SPOTS.lead];
+    const { cans, bulbs, neon } = this.cast.lights;
+    const share = Math.min(1, 5 / cans.length) ** 0.5;
+    if (playing || e > 0) cans.forEach(([cx, cy], i) => {
+      const [ax, ay] = aims.reduce((b, p) => (Math.abs(p[0] - cx) < Math.abs(b[0] - cx) ? p : b));
+      const target = ax + (cx - ax) * 0.35 + (i % 2 ? sway : -sway) * 0.6;
       const col = i % 2 ? c1 : c2;
-      g.addColorStop(0, hexA(col, 0.18 + e * 0.04 + punch));
+      const strength = (playing ? 0.1 + e * 0.035 + punch : 0.06) * share;
+      glow(l, cx, cy + 1, 5, 4, col, playing ? 0.5 + e * 0.08 + punch * 2 : 0.25);
+      glow(l, cx, cy + 1, 2, 2, '#fff4e0', playing ? 0.6 : 0.3);
+      const g = l.createLinearGradient(0, cy, 0, ay);
+      // (bright at the lamp, gone by the time it reaches the band, as in Paul's reference)
+      g.addColorStop(0, hexA(col, strength * 1.4));
+      g.addColorStop(0.55, hexA(col, strength * 0.5));
       g.addColorStop(1, hexA(col, 0));
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.moveTo(lx - 3, 17); ctx.lineTo(lx + 3, 17); ctx.lineTo(target + 28, 262); ctx.lineTo(target - 28, 262);
-      ctx.fill();
+      l.fillStyle = g;
+      l.beginPath();
+      l.moveTo(cx - 3, cy); l.lineTo(cx + 3, cy); l.lineTo(target + 18, ay); l.lineTo(target - 18, ay);
+      l.fill();
+      // a pool of light on the boards
+      glow(l, target, ay - 1, 24, 6, col, strength * 1.2);
     });
     // spotlights: the singer while singing, the lead in a solo
-    const spot = (x: number, y: number, a: number) => {
-      const g = ctx.createRadialGradient(x, y, 2, x, y, 30);
-      g.addColorStop(0, `rgba(255, 245, 225, ${a})`);
-      g.addColorStop(1, 'rgba(255, 245, 225, 0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.ellipse(x, y, 30, 8, 0, 0, Math.PI * 2); ctx.fill();
-    };
     if (playing) {
-      const sung = this.score.vocal.lines;
-      const li = lastAt(sung, m.t);
-      if (li >= 0 && m.t < sung[li].end + 1 / m.six) spot(SPOTS.singer[0], SPOTS.singer[1], 0.28);
-      if (m.section.solo) spot(SPOTS.lead[0] - 26, SPOTS.lead[1], 0.38);
+      const sung = this.score.vocal.lines, li = lastAt(sung, m.t);
+      if (li >= 0 && m.t < sung[li].end + 1 / m.six) glow(l, SPOTS.singer[0], SPOTS.singer[1] - 40, 26, 48, '#fff2dc', 0.22);
+      if (m.section.solo) glow(l, SPOTS.lead[0] - 26, SPOTS.lead[1] - 40, 28, 50, '#fff2dc', 0.3);
+    }
+    // the string lights twinkle, each at its own pace
+    bulbs.forEach(([bx, by], i) => glow(l, bx, by, 7, 7, '#ffcc70', 0.32 + 0.14 * Math.sin(wall * (1.3 + (i % 5) * 0.4) + i)));
+    // the neon glows; once in a while a sign stutters
+    neon.forEach((n, i) => {
+      const flick = Math.floor(wall * 9 + i * 13) % 53 < 2;
+      if (!flick) glow(l, n.x + n.w / 2, n.y + n.h / 2, n.w / 2 + 10, n.h / 2 + 10, n.color, 0.36);
+    });
+    l.setTransform(1, 0, 0, 1, 0, 0);
+    l.globalCompositeOperation = 'source-over';
+    // step the light into six levels, dithered between them
+    const img = l.getImageData(0, 0, L.width, L.height), d = img.data;
+    for (let y = 0; y < L.height; y++) for (let x = 0; x < L.width; x++) {
+      const i = (y * L.width + x) * 4;
+      if (!d[i + 3]) continue;
+      const v = (d[i + 3] / 255) * LEVELS;
+      const lvl = Math.min(LEVELS, Math.floor(v) + (v - Math.floor(v) > (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16 ? 1 : 0));
+      d[i + 3] = (lvl / LEVELS) * 255;
+    }
+    l.putImageData(img, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(L, 0, 0, W, H);
+    // a crash in a loud part: the whole room flashes (flat: an even wash needs no dither)
+    if (playing) {
+      const crashes = this.score.drums.pieces.crash, ci = lastAt(crashes, m.t);
+      const ago = ci >= 0 ? (m.t - crashes[ci].at) * m.six : Infinity;
+      if (ago < 0.3) { ctx.fillStyle = `rgba(255, 240, 220, ${0.18 * (1 - ago / 0.3) * (e / 5)})`; ctx.fillRect(0, 0, W, H); }
     }
     ctx.globalCompositeOperation = 'source-over';
   }
+}
+
+/** How many steps of light (the dither fills in between). */
+const LEVELS = 6;
+/** 4x4 ordered dither thresholds (0-15). */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+/** A soft oval of light (on the light layer). */
+function glow(l: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, col: string, a: number) {
+  if (a <= 0) return;
+  l.save();
+  l.translate(x, y);
+  l.scale(1, ry / rx);
+  const g = l.createRadialGradient(0, 0, 0, 0, 0, rx);
+  g.addColorStop(0, hexA(col, a));
+  g.addColorStop(1, hexA(col, 0));
+  l.fillStyle = g;
+  l.fillRect(-rx, -rx, rx * 2, rx * 2);
+  l.restore();
 }
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));

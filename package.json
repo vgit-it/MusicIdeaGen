@@ -29,7 +29,8 @@
     "realism-arc": "rolldown scripts/study/lakh-sections.ts --platform node --format esm -o node_modules/.cache/lakh-sections.mjs && node node_modules/.cache/lakh-sections.mjs",
     "realism-words": "rolldown scripts/study/lakh-words.ts --platform node --format esm -o node_modules/.cache/lakh-words.mjs && node node_modules/.cache/lakh-words.mjs",
     "realism-learned": "rolldown scripts/study/lakh-learned.ts --platform node --format esm -o node_modules/.cache/lakh-learned.mjs && node node_modules/.cache/lakh-learned.mjs",
-    "band-sprites": "rolldown scripts/band-sprites.ts --platform node --format esm -o node_modules/.cache/band-sprites.mjs && node node_modules/.cache/band-sprites.mjs"
+    "band-sprites": "rolldown scripts/band-sprites.ts --platform node --format esm -o node_modules/.cache/band-sprites.mjs && node node_modules/.cache/band-sprites.mjs",
+    "band-stage": "rolldown scripts/band-stage.ts --platform node --format esm -o node_modules/.cache/band-stage.mjs && node node_modules/.cache/band-stage.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

@@ -3,7 +3,7 @@
 // replaces them later (same frame names, same space: the player's feet at the origin).
 // Run: npm run band-sprites
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { zlibSync } from 'fflate';
 
 type RGBA = [number, number, number, number];
@@ -112,8 +112,8 @@ function png(w: number, h: number, rgba: Uint8ClampedArray) {
 /** Collects one player's frames, then packs them into a sheet: frames { name: [x, y, w, h, originX, originY] }. */
 class Sheet {
   private frames: { name: string; img: Img; box: ReturnType<Img['trim']> }[] = [];
-  add(name: string, draw: (g: Img) => void, outline = true) {
-    const g = new Img();
+  add(name: string, draw: (g: Img) => void, outline = true, canvas?: Img) {
+    const g = canvas ?? new Img();
     draw(g);
     if (outline) g.outline();
     this.frames.push({ name, img: g, box: g.trim() });
@@ -153,6 +153,17 @@ class Sheet {
 interface Look {
   skin: string; hair: string; shirt: string; shirt2: string; pants: string; shoes: string;
   hairStyle: 'spiky' | 'beanie' | 'long' | 'bob' | 'band';
+  /** What they wear on top: a tee, an open jacket over the tee, a hoodie, a tank top. */
+  top?: 'tee' | 'jacket' | 'hoodie' | 'tank';
+  /** The jacket or hoodie's colour (the tee shows through an open jacket). */
+  coat?: string;
+  /** Stripes on long sleeves, wristbands (spiked or not), boots instead of sneakers. */
+  stripes?: string;
+  bands?: string;
+  spikes?: boolean;
+  boots?: boolean;
+  /** On the face and head, over the eyes: shades, a side fringe, a sweatband, eyeliner. */
+  acc?: ('shades' | 'fringe' | 'sweatband' | 'eyeliner')[];
 }
 const shade = (c: string, k: number): RGBA => { const [r, g, b] = hex(c); return [Math.min(255, r * k), Math.min(255, g * k), Math.min(255, b * k), 255]; };
 
@@ -164,41 +175,115 @@ const SH_A: Pt = [-8.5, SHOULDER + 2], SH_B: Pt = [8.5, SHOULDER + 2];
 const ARM = 12.5;
 
 function legs(s: Sheet, L: Look) {
-  for (const [name, spread] of [['stand', 0], ['wide', 3.5]] as const) s.add(`legs/${name}`, (g) => {
-    for (const side of [-1, 1]) {
-      // knees a little bent and out: a ready stance
-      const hip: Pt = [side * 3.5, HIP + 1], knee: Pt = [side * (5 + spread * 0.7), -15], foot: Pt = [side * (4 + spread), -3];
-      g.line(hip, knee, hex(L.pants), 6);
-      g.line(knee, foot, hex(L.pants), 5);
-      g.line([hip[0] + side * 1.5, hip[1]], [knee[0] + side * 1.5, knee[1]], shade(L.pants, 0.75), 1.4);
-      g.line([knee[0] + side * 1.2, knee[1]], [foot[0] + side * 1.4, foot[1] - 2], shade(L.pants, 0.75), 1.2);
-      g.rect(knee[0] - side * 1.5, knee[1] - 3, 1, 2, shade(L.pants, 1.2));
-      // big sneakers: a white sole and toe cap
-      const fx = foot[0] + side * 2;
-      g.ellipse(fx, -3, 5.5, 3, hex(L.shoes));
-      g.rect(fx - 5.5, -1.5, 11, 1.5, hex('#f2f0ea'));
-      g.rect(fx + (side > 0 ? 2 : -5), -3.5, 3, 2, hex('#f2f0ea'));
-    }
+  /** One leg from the hip through the knee to a sneaker on the foot (side: -1 screen left, 1 right). */
+  const leg = (g: Img, side: number, knee: Pt, foot: Pt) => {
+    const hip: Pt = [side * 3.5, HIP + 1];
+    g.line(hip, knee, hex(L.pants), 6);
+    g.line(knee, foot, hex(L.pants), 5);
+    g.line([hip[0] + side * 1.5, hip[1]], [knee[0] + side * 1.5, knee[1]], shade(L.pants, 0.75), 1.4);
+    g.line([knee[0] + side * 1.2, knee[1]], [foot[0] + side * 1.4, foot[1] - 2], shade(L.pants, 0.75), 1.2);
+    g.rect(knee[0] - side * 1.5, knee[1] - 3, 1, 2, shade(L.pants, 1.2));
+    // big sneakers: a white sole and toe cap
+    const fx = foot[0] + side * 2, fy = foot[1];
+    g.ellipse(fx, fy, 5.5, 3, hex(L.shoes));
+    if (L.boots) { g.rect(fx - 5.5, fy + 1.5, 11, 1.5, hex('#3a3436')); g.rect(fx - 2.5, fy - 4, 5, 3, hex(L.shoes)); g.set(fx - 1, fy - 2, hex('#8a8a90')); return; }
+    g.rect(fx - 5.5, fy + 1.5, 11, 1.5, hex('#f2f0ea'));
+    g.rect(fx + (side > 0 ? 2 : -5), fy - 0.5, 3, 2, hex('#f2f0ea'));
+  };
+  const frame = (name: string, l: [Pt, Pt], r: [Pt, Pt]) => s.add(`legs/${name}`, (g) => {
+    leg(g, -1, l[0], l[1]);
+    leg(g, 1, r[0], r[1]);
     g.rect(-7, HIP, 14, 4, hex(L.pants));
   });
+  // knees a little bent and out: a ready stance; wider when it's loud
+  frame('stand', [[-5, -15], [-4, -3]], [[5, -15], [4, -3]]);
+  frame('wide', [[-7.5, -15], [-7.5, -3]], [[7.5, -15], [7.5, -3]]);
+  // walking toward us across the stage: a foot lifted, then the other
+  frame('walk/0', [[-5, -15], [-5, -3]], [[5, -15], [5, -3]]);
+  frame('walk/1', [[-6, -18], [-5, -8]], [[4, -15], [3, -3]]);
+  frame('walk/2', [[-5, -15], [-4, -3]], [[5, -15], [4, -3]]);
+  frame('walk/3', [[-4, -15], [-3, -3]], [[6, -18], [5, -8]]);
+  // in the air, knees tucked up
+  frame('jump', [[-7, -22], [-5, -12]], [[7, -22], [5, -12]]);
+  // a lunge: the screen-left knee bent low and forward, the other leg long behind
+  frame('lunge', [[-10, -13], [-13, -3]], [[6, -14], [10, -3]]);
+}
+
+/** The top half's clothes, from the shoulders (`top`) to the waist (`bottom`): a tee, an open jacket, a hoodie, a tank top. */
+function shirtOn(g: Img, L: Look, top: number, bottom: number) {
+  const kind = L.top ?? 'tee';
+  const body = hex(kind === 'jacket' || kind === 'hoodie' ? L.coat ?? L.shirt : L.shirt);
+  const bodyD = kind === 'jacket' || kind === 'hoodie' ? shade(L.coat ?? L.shirt, 0.75) : shade(L.shirt, 0.78);
+  g.rect(-2.5, top - 4, 5, 5, hex(L.skin)); // neck
+  g.rect(-2.5, top - 2, 5, 2, shade(L.skin, 0.75)); // the head's shadow
+  if (kind === 'tank') {
+    // bare shoulders, straps
+    for (const x of [-8, 8]) g.disc(x, top + 3, 3.2, hex(L.skin));
+    g.poly([[-6.5, top + 2], [6.5, top + 2], [7, bottom], [-7, bottom]], body);
+    g.rect(-6.5, top - 0.5, 2, 3, body); g.rect(4.5, top - 0.5, 2, 3, body);
+    g.poly([[2.5, top + 2], [6.5, top + 2], [7, bottom], [3.5, bottom]], bodyD);
+    g.rect(-3, top + 7, 6, 6, hex(L.shirt2)); // a print
+    g.set(-1, top + 9, hex('#f2f0ea')); g.set(1, top + 9, hex('#f2f0ea'));
+  } else {
+    g.poly([[-9, top], [9, top], [7, bottom], [-7, bottom]], body);
+    for (const x of [-8, 8]) g.disc(x, top + 3, 3.2, body);
+    g.poly([[2.5, top], [9, top], [7, bottom], [3.5, bottom]], bodyD);
+    g.disc(8, top + 3, 3.2, bodyD);
+    g.rect(-7, top + 1, 5, 1, kind === 'jacket' ? shade(L.coat ?? L.shirt, 1.5) : shade(L.shirt, 1.22)); // light from above (a leather shine)
+    g.rect(-8, top + 2, 1, 6, kind === 'jacket' ? shade(L.coat ?? L.shirt, 1.35) : shade(L.shirt, 1.12));
+    if (kind === 'jacket') {
+      // open: the tee down the middle, lapels, a zip
+      g.poly([[-3, top], [3, top], [2.5, bottom], [-2.5, bottom]], hex(L.shirt));
+      g.poly([[-3, top], [-5.5, top + 6], [-3, top + 8]], shade(L.coat ?? L.shirt, 1.3));
+      g.poly([[3, top], [5.5, top + 6], [3, top + 8]], shade(L.coat ?? L.shirt, 0.6));
+      g.rect(-2, top + 7, 4, 4, hex(L.shirt2));
+      g.set(-3.5, top + 12, hex('#c8c8d0')); g.set(-3.5, top + 15, hex('#c8c8d0'));
+    } else if (kind === 'hoodie') {
+      // the hood round the neck, drawstrings, a pocket
+      g.poly([[-6, top - 1], [6, top - 1], [4, top + 3], [-4, top + 3]], shade(L.coat ?? L.shirt, 0.6));
+      g.rect(-1.5, top + 3, 1, 5, hex('#e8e4dc')); g.rect(1, top + 3, 1, 4, hex('#e8e4dc'));
+      g.rect(-5, bottom - 7, 10, 4, shade(L.coat ?? L.shirt, 0.8));
+      if (L.stripes) g.rect(-2.5, top + 10, 5, 2, hex(L.stripes));
+    } else {
+      g.rect(-3, top, 6, 2, shade(L.shirt, 0.6)); // the collar
+      g.rect(-3, top + 6, 6, 6, hex(L.shirt2)); // a print
+      g.rect(-1, top + 8, 2, 2, hex(L.shirt));
+    }
+  }
 }
 
 function torso(s: Sheet, L: Look) {
   s.add('body/idle', (g) => {
-    g.rect(-2.5, SHOULDER - 4, 5, 5, hex(L.skin)); // neck
-    g.rect(-2.5, SHOULDER - 2, 5, 2, shade(L.skin, 0.75)); // the head's shadow
-    g.poly([[-9, SHOULDER], [9, SHOULDER], [7, HIP], [-7, HIP]], hex(L.shirt));
-    for (const x of [-8, 8]) g.disc(x, SHOULDER + 3, 3.2, hex(L.shirt));
-    g.poly([[2.5, SHOULDER], [9, SHOULDER], [7, HIP], [3.5, HIP]], shade(L.shirt, 0.78));
-    g.disc(8, SHOULDER + 3, 3.2, shade(L.shirt, 0.78));
-    g.rect(-7, SHOULDER + 1, 5, 1, shade(L.shirt, 1.22)); // light from above
-    g.rect(-8, SHOULDER + 2, 1, 6, shade(L.shirt, 1.12));
-    g.rect(-3, SHOULDER, 6, 2, shade(L.shirt, 0.6)); // the collar
-    g.rect(-3, SHOULDER + 6, 6, 6, hex(L.shirt2)); // a print
-    g.rect(-1, SHOULDER + 8, 2, 2, hex(L.shirt));
+    shirtOn(g, L, SHOULDER, HIP);
     g.rect(-7, HIP - 1, 14, 2, shade(L.pants, 0.55)); // belt
-    g.rect(-1, HIP - 1, 2, 2, hex('#d8c070'));
+    g.rect(-1, HIP - 1, 2, 2, hex(L.spikes ? '#c8c8d0' : '#d8c070'));
+    if (L.spikes) for (let x = -6; x <= 6; x += 3) g.set(x, HIP - 1, hex('#c8c8d0')); // a studded belt
   });
+}
+
+/** Things worn on the face and head, drawn over the eyes (the view moves them with the head). */
+function extras(s: Sheet, L: Look, lift = 0) {
+  const ey = HEAD[1] + 1 + lift, ex = 5;
+  for (const a of L.acc ?? []) s.add(`acc/${a}`, (g) => {
+    if (a === 'shades') {
+      // wayfarers: two dark lenses with a shine, a bridge, arms to the ears
+      for (const x of [-ex - 2.5, ex - 2.5]) { g.rect(x - 0.5, ey - 3, 6, 5, INK); g.rect(x + 0.5, ey - 2, 4, 3, hex('#2a2a3a')); g.set(x + 1, ey - 2, hex('#8a9ab8')); }
+      g.rect(-2, ey - 2, 4, 1, INK);
+      g.rect(-HEAD_R + 1, ey - 2, 3, 1, INK); g.rect(HEAD_R - 4, ey - 2, 3, 1, INK);
+    } else if (a === 'fringe') {
+      // a long side fringe sweeping down over one eye
+      const hair = hex(L.hair), hairD = shade(L.hair, 0.7);
+      g.poly([[-HEAD_R + 1, ey - 9], [4, ey - 9], [-2, ey - 4], [-6, ey + 2], [-HEAD_R + 1, ey + 3]], hair);
+      g.poly([[-HEAD_R + 2, ey - 6], [-4, ey - 6], [-7, ey + 1], [-HEAD_R + 2, ey + 2]], hairD);
+      g.line([2, ey - 8], [-5, ey + 1], shade(L.hair, 1.4), 1);
+    } else if (a === 'sweatband') {
+      g.rect(-HEAD_R + 1, ey - 9, 2 * HEAD_R - 2, 3, hex('#d8d6d0'));
+      g.rect(-HEAD_R + 1, ey - 8, 2 * HEAD_R - 2, 1, shade('#d8d6d0', 0.8));
+    } else if (a === 'eyeliner') {
+      for (const x of [-ex - 2, ex - 2]) { g.rect(x - 0.5, ey + 3, 5, 1, INK); }
+      g.set(-ex - 3, ey - 3, INK); g.set(ex + 2.5, ey - 3, INK);
+    }
+  }, a === 'shades');
 }
 
 /** Hair in units of the old 10.5px head, scaled to this one. */
@@ -217,10 +302,10 @@ function hairOf(g: Img, L: Look, cy: number, f: number) {
       poly([[-6, -7 + fy], [0, -7 + fy], [-4, -1 + f]], hair); // a fringe lock
       break;
     case 'beanie':
-      g.ellipse(0, cy + (-6 + fy) * k, r + 1.5, 8 * k, hex('#3f7f6f'));
-      g.rect(-r - 1.5, cy + (-4 + fy) * k, 2 * r + 3, 4, hex('#2f5f53'));
-      for (let x = -r; x < r; x += 2) g.set(x, cy + (-3 + fy) * k, hex('#4f9282'));
-      g.rect(-r + 1, cy + (-6.5 + fy) * k, 5, 1, hex('#5fa898'));
+      g.ellipse(0, cy + (-6 + fy) * k, r + 1.5, 8 * k, hex('#3a3a3e'));
+      g.rect(-r - 1.5, cy + (-4 + fy) * k, 2 * r + 3, 4, hex('#2a2a2e'));
+      for (let x = -r; x < r; x += 2) g.set(x, cy + (-3 + fy) * k, hex('#46464c'));
+      g.rect(-r + 1, cy + (-6.5 + fy) * k, 5, 1, hex('#55555c'));
       g.rect(-r, cy + (-0.5 + fy) * k, 4, 6, hair); g.rect(r - 4, cy + (-0.5 + fy) * k, 4, 6, hair);
       break;
     case 'long':
@@ -238,8 +323,8 @@ function hairOf(g: Img, L: Look, cy: number, f: number) {
     case 'band':
       g.ellipse(0, cy + (-4 + fy) * k, r + 0.5, 7 * k, hairD);
       for (let j = -2; j <= 2; j++) poly([[j * 2.4 - 1.6, -9], [j * 2.4 + 1.6, -9], [j * 2.4, -17 + Math.abs(j) * 1.5]], hair);
-      g.rect(-r - 1, cy + (-4 + fy) * k, 2 * r + 2, 3, hex('#d8344a'));
-      g.rect(r - 1, cy + (-3 + fy) * k, 4, 5, hex('#d8344a'));
+      g.rect(-r - 1, cy + (-4 + fy) * k, 2 * r + 2, 3, hex('#7a1e22'));
+      g.rect(r - 1, cy + (-3 + fy) * k, 4, 5, hex('#7a1e22'));
       break;
   }
   if (L.hairStyle !== 'beanie' && L.hairStyle !== 'band') { g.rect(-7 * k, cy + (-10 + fy) * k, 6, 1, hairL); g.rect(-6 * k, cy + (-9 + fy) * k, 3, 1, hairL); }
@@ -316,6 +401,7 @@ function person(s: Sheet, L: Look) {
   torso(s, L);
   head(s, L);
   face(s, L);
+  extras(s, L);
 }
 
 /* ---------------------------------------------------------------- arms */
@@ -332,14 +418,27 @@ function elbow(sh: Pt, hand: Pt, a: number, b: number, side: number): Pt {
   return score(c1) > score(c2) ? c1 : c2;
 }
 
-/** A slim arm: a short sleeve, then skin. */
+/** An arm: a short sleeve (a tee), a long one to the wrist (a jacket, a hoodie, striped), or none (a tank top); wristbands. */
 function arm(g: Img, L: Look, sh: Pt, hand: Pt, side: number, a = ARM, b = ARM) {
   const el = elbow(sh, hand, a, b, side);
-  const mid: Pt = [sh[0] + (el[0] - sh[0]) * 0.45, sh[1] + (el[1] - sh[1]) * 0.45];
+  const along = (p: Pt, q: Pt, k: number): Pt => [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k];
+  const top = L.top ?? 'tee';
   g.line(sh, el, hex(L.skin), 4);
-  g.line(sh, mid, hex(L.shirt), 4.8);
   g.line(el, hand, hex(L.skin), 3.4);
   g.line([el[0] + 1, el[1]], [hand[0] + 1, hand[1]], shade(L.skin, 0.85), 1);
+  if (top === 'tee') g.line(sh, along(sh, el, 0.45), hex(L.shirt), 4.8);
+  if (top === 'jacket' || top === 'hoodie') {
+    const c = L.coat ?? L.shirt, wrist = along(el, hand, 0.78);
+    g.line(sh, el, hex(c), 4.8);
+    g.line(el, wrist, hex(c), 4.2);
+    g.line([el[0] + 1, el[1]], [wrist[0] + 1, wrist[1]], shade(c, 0.72), 1.2);
+    if (L.stripes) for (const k of [0.3, 0.7]) { const p = along(sh, el, k), q = along(el, wrist, k); g.disc(p[0], p[1], 2.2, hex(L.stripes)); g.disc(q[0], q[1], 2, hex(L.stripes)); }
+  }
+  if (L.bands) {
+    const w = along(el, hand, 0.8);
+    g.disc(w[0], w[1], 2.3, hex(L.bands));
+    if (L.spikes) { g.set(w[0] - 1, w[1] - 2.5, hex('#d8d8e0')); g.set(w[0] + 1.5, w[1] - 2, hex('#d8d8e0')); g.set(w[0] + 2.5, w[1], hex('#d8d8e0')); }
+  }
 }
 
 /* ---------------------------------------------------------------- guitars */
@@ -440,6 +539,12 @@ function pickHands(s: Sheet, L: Look, n: Neck, bass: boolean) {
   };
   const smear = (g: Img, d: number) => { const c = shade(L.skin, 0.75); c[3] = 140; for (let k = 2; k <= 7; k += 2) g.rect(P[0] - 4, P[1] - d * k - 1, 5, 1, c); };
   s.add('pick/rest', (g) => hand(g, [P[0] - 5, P[1] + 9], 0));
+  s.add('pick/high', (g) => {
+    const at: Pt = [PICK_SHOULDER[0] - 9, PICK_SHOULDER[1] - 20];
+    arm(g, L, PICK_SHOULDER, at, -1);
+    g.ellipse(at[0], at[1], 3.6, 3.2, skin);
+    if (!bass) g.rect(at[0] - 0.5, at[1] - 4.5, 1, 2, pick);
+  });
   s.add('pick/mute', (g) => hand(g, [n.bridge[0] - 1, P[1] + 1], 0));
   s.add('pick/mute2', (g) => hand(g, [n.bridge[0] - 1, P[1] + 2.5], 0));
   if (!bass) {
@@ -473,12 +578,12 @@ function guitarist(name: string, L: Look, col: string, kind: 'guitar' | 'bass') 
   instrument(s, n, kind, col);
   fretHands(s, L, n);
   pickHands(s, L, n, kind === 'bass');
-  s.save(name, { neck: n, poses: POSES, skin: L.skin, skinDark: '#' + shade(L.skin, 0.78).slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, '0')).join('') });
+  s.save(name, { neck: n, poses: POSES, acc: L.acc ?? [], skin: L.skin, skinDark: '#' + shade(L.skin, 0.78).slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, '0')).join('') });
 }
 
 /* ---------------------------------------------------------------- the singer */
 
-function singer(L: Look) {
+function singer(name: string, L: Look) {
   const s = new Sheet();
   person(s, L);
   const skin = hex(L.skin), metal = hex('#9aa0aa'), dark = hex('#2a2a30');
@@ -497,7 +602,7 @@ function singer(L: Look) {
   s.add('armB/up', (g) => { arm(g, L, SH_B, [12, SHOULDER - 24], 1); fist(g, [12, SHOULDER - 24]); });
   s.add('armB/out', (g) => { arm(g, L, SH_B, [30, SHOULDER - 2], 1); g.ellipse(31, SHOULDER - 2, 2.6, 2, skin); });
   s.add('armB/chest', (g) => { arm(g, L, SH_B, [2, SHOULDER + 7], 1); g.ellipse(2, SHOULDER + 7, 2.6, 2.2, skin); });
-  s.save('singer', { mic, poses: POSES });
+  s.save(name, { mic, poses: POSES, acc: L.acc ?? [] });
 }
 
 /* ---------------------------------------------------------------- the drummer */
@@ -507,17 +612,11 @@ const KIT: Record<string, Pt> = {
   hat: [30, -41], snare: [18, -32], tom1: [7, -36], tom2: [-7, -36], tom3: [-25, -30], crash: [22, -61], ride: [-29, -55],
 };
 
-function drummer(L: Look) {
+function drummer(name: string, L: Look) {
   const s = new Sheet();
   // seated: the head and shoulders lower than standing
   const lift = 5, seat = -32, sh = SHOULDER + lift;
-  s.add('body/idle', (g) => {
-    g.rect(-1.5, sh - 4, 3, 5, hex(L.skin));
-    g.poly([[-7, sh], [7, sh], [6, seat], [-6, seat]], hex(L.shirt));
-    for (const x of [-6.5, 6.5]) g.disc(x, sh + 2.5, 2.5, hex(L.shirt));
-    g.poly([[1.5, sh], [7, sh], [6, seat], [2.5, seat]], shade(L.shirt, 0.8));
-    g.rect(-2.5, sh + 6, 5, 5, hex(L.shirt2));
-  });
+  s.add('body/idle', (g) => shirtOn(g, L, sh, seat));
   for (const [name, down] of [['sit', 0], ['kick', 1]] as const) s.add(`legs/${name}`, (g) => {
     for (const side of [-1, 1]) {
       const hip: Pt = [side * 4, seat + 1], knee: Pt = [side * 17, -31 + (side < 0 ? down : 0)], foot: Pt = [side * 16, -4];
@@ -529,6 +628,7 @@ function drummer(L: Look) {
   });
   head(s, L, lift);
   face(s, L, lift);
+  extras(s, L, lift);
   const shellA = hex('#b8324a'), shellB = shade('#b8324a', 0.7), head_ = hex('#ece6d6'), headHit = hex('#ffffff'), brass = hex('#d9b24a'), brassD = hex('#a8822a'), metal = hex('#9aa0aa');
   const drum = (name: string, p: Pt, rx: number, depth: number) => {
     for (const state of ['rest', 'hit']) s.add(`kit/${name}/${state}`, (g) => {
@@ -551,7 +651,7 @@ function drummer(L: Look) {
       g.rect(p[0] - 1, p[1] - 1, 2, 1, brassD);
     });
   };
-  s.add('kit/kick/rest', (g) => { g.disc(0, -16, 15, shellA); g.disc(0, -16, 13, head_); g.disc(0, -16, 5, hex('#d8344a')); g.rect(-4, -17, 8, 2, head_); });
+  s.add('kit/kick/rest', (g) => { g.disc(0, -16, 15, shellA); g.disc(0, -16, 13, head_); g.disc(0, -16, 5, hex('#7a1e22')); g.rect(-4, -17, 8, 2, head_); });
   s.add('kit/kick/hit', (g) => { g.disc(0, -16.5, 15.5, shellA); g.disc(0, -16.5, 13.5, headHit); g.disc(0, -16.5, 6, hex('#ff4a60')); g.rect(-4, -17.5, 8, 2, headHit); });
   drum('tom3', KIT.tom3, 7, 11);
   drum('snare', KIT.snare, 6, 4);
@@ -580,47 +680,236 @@ function drummer(L: Look) {
       g.line(hand, t, stick, 1.2);
       g.disc(hand[0], hand[1], 2.8, hex(L.skin));
     });
+    const d = side === 'A' ? -1 : 1;
+    const pose = (name: string, hand: Pt, tip: Pt) => s.add(`arm${side}/${name}`, (g) => {
+      arm(g, L, sp, hand, d, 12, 12);
+      g.line(hand, tip, stick, 1.2);
+      g.disc(hand[0], hand[1], 2.8, hex(L.skin));
+    });
+    pose('sky', [sp[0] + d * 8, sp[1] - 19], [sp[0] + d * 14, sp[1] - 33]);
+    pose('click', [sp[0] + d * 3, sp[1] - 20], [sp[0] - d * 9, sp[1] - 29]);
   }
-  s.save('drummer', { kit: KIT, lift, poses: POSES });
+  s.save(name, { kit: KIT, lift, poses: POSES, acc: L.acc ?? [] });
 }
 
-/* ---------------------------------------------------------------- the stage */
+/* ---------------------------------------------------------------- the stage: a bar's band stage */
 
+/** A repeatable random number for (x, y): brick and board colours that stay put between builds. */
+const noise = (x: number, y: number) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+/** 4x4 ordered dither: fill a pixel with `a` or `b` so the share of `b` is `k` (a pixel-art gradient). */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const dither = (x: number, y: number, k: number) => k * 16 > BAYER[(y & 3) * 4 + (x & 3)] + 0.5;
+
+/** A 3x5 pixel font for signs and posters (only the letters the stage uses). */
+const FONT: Record<string, string> = {
+  A: '010101111101101', B: '110101110101110', C: '011100100100011', D: '110101101101110', E: '111100110100111',
+  G: '011100101101011', H: '101101111101101', I: '111010010010111', K: '101101110101101', L: '100100100100111',
+  M: '101111111101101', N: '110101101101101', O: '010101101101010', P: '110101110100100', R: '110101110101101',
+  S: '011100010001110', T: '111010010010010', U: '101101101101111', V: '101101101101010', Y: '101101010010010', W: '101101111111101',
+  '!': '010010010000010', ' ': '000000000000000',
+};
+function text(g: Img, str: string, x: number, y: number, c: RGBA, scale = 1, core?: RGBA) {
+  for (const ch of str) {
+    const f = FONT[ch] ?? FONT[' '];
+    for (let j = 0; j < 5; j++) for (let i = 0; i < 3; i++) if (f[j * 3 + i] === '1') {
+      g.rect(x + i * scale, y + j * scale, scale, scale, c);
+      // a neon tube's hot core: its middle pixel brighter
+      if (core && scale > 1) g.set(x + i * scale + Math.floor(scale / 2), y + j * scale + Math.floor(scale / 2), core);
+    }
+    x += 4 * scale;
+  }
+  return x;
+}
+const textWidth = (str: string, scale = 1) => str.length * 4 * scale - scale;
+
+/** Where the stage's lights are, for the view's glow (written to stage.json). */
+interface StageLights {
+  cans: [number, number][];
+  bulbs: [number, number][];
+  neon: { x: number; y: number; w: number; h: number; color: string }[];
+}
+
+/**
+ * The stage as the camera sees it (320 x 180): framed like a poster, a light pipe across the top,
+ * speaker stacks at both edges, the drummer dead centre on a riser, the floor's front edge, and the
+ * crowd across the bottom. A bar's stage: brick, string lights, a neon sign, the band's banner.
+ */
 function stage() {
-  const W = 480, H = 270;
+  const W = 320, H = 180;
   const g = new Img(W, H, 0, 0);
-  for (let y = 0; y < 176; y++) g.rect(0, y, W, 1, [18 + y * 0.12, 16 + y * 0.08, 34 + y * 0.18, 255]);
-  g.rect(150, 26, 180, 30, hex('#2a2142'));
-  g.rect(152, 28, 176, 26, hex('#3b2d5c'));
-  for (let x = 160; x < 320; x += 12) g.rect(x, 38, 8, 6, hex('#e8623a'));
-  g.rect(0, 6, W, 4, hex('#4a4a56'));
-  for (let x = 0; x < W; x += 8) g.line([x, 6], [x + 8, 10], hex('#6a6a78'));
-  for (let x = 40; x < W; x += 66) { g.rect(x - 4, 10, 8, 7, hex('#22222a')); g.rect(x - 3, 16, 6, 2, hex('#88889a')); }
-  const amp = (x: number, y: number, w: number) => {
-    g.rect(x, y, w, 46, hex('#151518'));
-    g.rect(x + 2, y + 2, w - 4, 6, hex('#2a2a2e'));
-    g.rect(x + 2, y + 10, w - 4, 34, hex('#232327'));
-    for (let k = 0; k < 4; k++) g.disc(x + w / 4 + (k % 2) * (w / 2), y + 18 + Math.floor(k / 2) * 17, w / 6, hex('#1b1b1e'));
-    g.rect(x + 4, y + 3, 10, 2, hex('#d8d0b0'));
+  const lights: StageLights = { cans: [], bulbs: [], neon: [] };
+  const TOP = 10, FLOOR = 116, LIP = 162;
+
+  // the light pipe across the top, a can above each player
+  for (let y = 0; y < TOP; y++) for (let x = 0; x < W; x++) g.set(x, y, dither(x, y, y / TOP) ? hex('#1e1618') : hex('#120d10'));
+  g.rect(0, 5, W, 3, hex('#3a3a42'));
+  g.rect(0, 5, W, 1, hex('#5a5a66'));
+  for (const x of [48, 104, 160, 214, 272]) {
+    g.rect(x - 4, 6, 8, 7, hex('#1a1a20'));
+    g.rect(x - 3, 12, 6, 2, hex('#9a9aa8'));
+    lights.cans.push([x, 13]);
+  }
+
+  // the back wall: old brick, darker toward the top and the edges
+  for (let y = TOP; y < FLOOR; y++) {
+    const row = Math.floor((y - TOP) / 5), off = row % 2 ? 6 : 0;
+    for (let x = 0; x < W; x++) {
+      const mortar = (y - TOP) % 5 === 4 || (x + off) % 12 === 11;
+      const n = noise(Math.floor((x + off) / 12), row);
+      const shadowK = Math.max(((FLOOR - y) / (FLOOR - TOP)) * 0.5, (Math.abs(x - W / 2) / (W / 2)) * 0.55);
+      const base = mortar ? '#2a2026' : n < 0.25 ? '#5a2a26' : n < 0.6 ? '#6a3228' : n < 0.9 ? '#74382c' : '#4e2622';
+      g.set(x, y, dither(x, y, shadowK) ? hex(mortar ? '#1a1418' : '#3a1c1c') : hex(base));
+    }
+  }
+  // string lights sagging across the wall
+  const wire = (x: number) => 18 + 7 * Math.sin((Math.PI * (x % 106)) / 106);
+  for (let x = 0; x < W; x++) g.set(x, wire(x), hex('#14100e'));
+  for (let x = 5; x < W; x += 13) {
+    const y = Math.round(wire(x)) + 1;
+    g.rect(x - 1, y, 2, 2, hex('#ffd890'));
+    g.set(x - 1, y, hex('#fff4d8'));
+    lights.bulbs.push([x, y + 1]);
+  }
+  // the band's banner, centred behind the drummer
+  const bx = 112, by = 24, bw = 96, bh = 40;
+  for (let y = by; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) g.set(x, y, dither(x, y, (Math.sin((x - bx) / 6) * 0.5 + 0.5) * 0.6) ? hex('#4a1a28') : hex('#6a2236'));
+  for (let x = bx; x < bx + bw; x += 2) g.rect(x, by + bh, 1, 3, hex('#d8b060'));
+  g.rect(bx - 2, by - 2, bw + 4, 2, hex('#2a2024'));
+  const name = 'THE IDEAS';
+  text(g, name, bx + (bw - textWidth(name, 2)) / 2, by + 9, hex('#f2e2c0'), 2);
+  for (let x = bx + 16; x < bx + bw - 16; x += 4) g.set(x, by + 25, hex('#e8a040'));
+  // one neon sign, on the left
+  const nx = 46, ny = 34;
+  g.rect(nx - 3, ny - 3, textWidth('LIVE', 2) + 6, 16, hex('#120e14'));
+  text(g, 'LIVE', nx, ny, hex('#ff4fa0'), 2, hex('#fff4f8'));
+  lights.neon.push({ x: nx - 3, y: ny - 3, w: textWidth('LIVE', 2) + 6, h: 16, color: '#ff4fa0' });
+  // a poster on the right
+  g.rect(255, 40, 18, 26, hex('#e8d8b0'));
+  g.poly([[269, 40], [273, 40], [273, 44]], hex('#3a2a26'));
+  text(g, 'ROCK', 256, 43, hex('#9a2a2a'), 1);
+  g.disc(264, 58, 4, hex('#9a2a2a'));
+  // wood panelling at the foot of the wall
+  for (let y = FLOOR - 16; y < FLOOR; y++) for (let x = 0; x < W; x++) g.set(x, y, x % 16 === 0 ? hex('#1e1410') : dither(x, y, (y - FLOOR + 16) / 20) ? hex('#2e2018') : hex('#3c2a1e'));
+  g.rect(0, FLOOR - 16, W, 1, hex('#5a4030'));
+
+  // the stage floor: planks, darker toward the back
+  for (let y = FLOOR; y < LIP; y++) {
+    const board = Math.floor((y - FLOOR) / 6);
+    for (let x = 0; x < W; x++) {
+      const len = 40 + Math.floor(noise(board, 3) * 30);
+      const seam = (y - FLOOR) % 6 === 5 || (x + board * 23) % len === 0;
+      const n = noise(Math.floor((x + board * 23) / len), board);
+      const base = seam ? '#1e140e' : n < 0.3 ? '#4a3020' : n < 0.7 ? '#563826' : '#5e3e2a';
+      g.set(x, y, dither(x, y, (1 - (y - FLOOR) / (LIP - FLOOR)) * 0.55) ? hex('#2a1c14') : hex(base));
+    }
+  }
+  // a bass cabinet behind the bassist, small combo amps behind the guitarists
+  const cab = (x: number, y: number, w: number, h: number) => {
+    g.rect(x, y, w, h, hex('#121214'));
+    g.rect(x + 2, y + 2, w - 4, 5, hex('#222226'));
+    g.rect(x + 3, y + 3, 6, 2, hex('#d8c890'));
+    for (let yy = y + 9; yy < y + h - 2; yy++) for (let xx = x + 2; xx < x + w - 2; xx++) g.set(xx, yy, (xx + yy) % 2 ? hex('#1c1c20') : hex('#26262a'));
   };
-  amp(18, 128, 44); amp(62, 128, 44); amp(374, 128, 44); amp(418, 128, 44);
-  amp(150, 140, 34);
-  g.rect(176, 160, 128, 18, hex('#2c2434'));
-  g.rect(176, 160, 128, 2, hex('#4a3d58'));
-  for (let y = 176; y < H; y++) g.rect(0, y, W, 1, [36 + (y - 176) * 0.25, 28 + (y - 176) * 0.18, 30 + (y - 176) * 0.12, 255]);
-  for (let y = 182; y < H; y += 9) g.rect(0, y, W, 1, hex('#1e1820'));
-  for (const x of [70, 220, 380]) { g.poly([[x, 268], [x + 34, 268], [x + 30, 256], [x + 4, 256]], hex('#141416')); g.rect(x + 8, 259, 18, 6, hex('#2a2a30')); }
-  writeFileSync(`${OUT}/stage.png`, png(W, H, g.data));
-  console.log('stage: 480x270');
+  cab(72, 96, 26, 34);
+  cab(62, 124, 22, 18); cab(286 - 50, 128, 22, 16);
+  // the drum riser, centred: carpet on top, a plank front
+  g.rect(110, 116, 100, 6, hex('#3a2228'));
+  for (let x = 110; x < 210; x++) for (let y = 122; y < 134; y++) g.set(x, y, (x - 110) % 17 === 0 ? hex('#1a120c') : dither(x, y, (y - 122) / 14) ? hex('#2a1c14') : hex('#4a3020'));
+  g.rect(110, 122, 100, 1, hex('#6a4a38'));
+  // a rug under the singer
+  for (let y = 148; y < LIP; y++) for (let x = 182; x < 250; x++) {
+    const edge = x < 185 || x >= 247 || y < 150 || y >= LIP - 2;
+    g.set(x, y, edge ? hex('#d8a848') : (Math.abs(x - 216) + Math.abs(y - 155) * 3) % 10 < 2 ? hex('#e0b860') : dither(x, y, 0.3) ? hex('#6a1a1e') : hex('#8a2228'));
+  }
+  // the speaker stacks: bookends at both edges
+  const stack = (x: number, w: number) => {
+    for (const [y, h] of [[58, 52], [110, 52]] as const) {
+      g.rect(x, y, w, h, hex('#0e0e10'));
+      g.rect(x + 2, y + 2, w - 4, h - 4, hex('#18181c'));
+      for (const cy of [y + h / 4 + 1, y + (3 * h) / 4 - 1]) { g.disc(x + w / 2, cy, w / 3, hex('#0a0a0c')); g.disc(x + w / 2, cy, w / 3 - 2, hex('#1e1e24')); g.disc(x + w / 2, cy, 3, hex('#2e2e36')); }
+    }
+  };
+  stack(0, 30); stack(W - 30, 30);
+  // the front edge of the stage, and the dark floor beyond it
+  g.rect(0, LIP, W, 3, hex('#7a5a3e'));
+  g.rect(0, LIP, W, 1, hex('#a07a52'));
+  for (let y = LIP + 3; y < H; y++) for (let x = 0; x < W; x++) g.set(x, y, dither(x, y, 0.5) ? hex('#0e0a0c') : hex('#18120e'));
+
+  // (the stage painted by Paul, made by npm run band-stage, wins over this placeholder)
+  if (!existsSync(`${OUT}/stage-front.png`)) {
+    writeFileSync(`${OUT}/stage.png`, png(W, H, g.data));
+    writeFileSync(`${OUT}/stage.json`, JSON.stringify(lights));
+    console.log(`stage: ${W}x${H}`);
+  }
+
+  // the crowd: a row of silhouettes across the whole front, in two groups that bob in turn; hands up
+  // (and a bottle or two) for the big moments
+  const s = new Sheet();
+  const people = Array.from({ length: 21 }, (_, k) => ({ x: -178 + k * 17.5 + (noise(k, 1) - 0.5) * 6, h: 10 + noise(k, 2) * 9, group: k % 2 }));
+  for (const group of [0, 1]) for (const up of [false, true]) s.add(`crowd/${group}/${up ? 'up' : 'idle'}`, (cg) => {
+    const ink = hex('#07050a'), rim = hex('#4a3a54');
+    people.filter((p) => p.group === group).forEach((p, k) => {
+      const y = -p.h;
+      cg.ellipse(p.x, y + 15, 11, 11, ink);
+      cg.disc(p.x, y, 7.5, ink);
+      // light from the stage catching the hair and shoulders
+      cg.rect(p.x - 4, y - 7, 8, 1, rim); cg.set(p.x - 6, y - 6, rim); cg.set(p.x + 5, y - 6, rim);
+      cg.rect(p.x - 10, y + 6, 4, 1, rim); cg.rect(p.x + 6, y + 6, 4, 1, rim);
+      if (up && k % 3 !== 2) {
+        // a raised arm: the devil horns
+        const d = k % 2 ? 1 : -1, hx = p.x + d * 12, hy = y - 18;
+        cg.line([p.x + d * 7, y + 7], [hx, hy + 4], ink, 4);
+        cg.disc(hx, hy + 3, 2.6, ink);
+        cg.line([hx - 1.5, hy + 1], [hx - 2.5, hy - 4], ink, 1.4); cg.line([hx + 1.5, hy + 1], [hx + 2.5, hy - 4], ink, 1.4);
+        cg.set(hx - 2.5, hy - 4, rim); cg.set(hx + 2.5, hy - 4, rim);
+      }
+      if (!up && k % 5 === 1) { cg.line([p.x - 7, y + 7], [p.x - 11, y - 4], ink, 4); cg.rect(p.x - 12, y - 12, 3, 8, hex('#2a4a2a')); }
+    });
+  }, false, new Img(370, 64, 185, 60));
+  s.save('crowd', {});
 }
 
 /* ---------------------------------------------------------------- the band */
 
+/* ---------------------------------------------------------------- characters */
+
+type Persona = 'cool' | 'energetic' | 'emo' | 'angry';
+
+/**
+ * How each character dresses (the player keeps their skin, hair style and instrument):
+ * cool: an open leather jacket over a dark tee, shades, boots; energetic: a bright tee, wristbands, a
+ * sweatband; emo: a dark hoodie with striped sleeves, black hair with a side fringe, eyeliner, skinny
+ * black jeans; angry: a black tank top with a red print, spiked wristbands, a studded belt, boots.
+ */
+function dress(L: Look, p: Persona): Look {
+  const headwear = L.hairStyle === 'beanie' || L.hairStyle === 'band';
+  switch (p) {
+    case 'cool': return { ...L, top: 'jacket', coat: '#3a2a24', shirt: '#1e1e24', shirt2: '#d8d8d0', pants: '#26304a', shoes: '#1a1416', boots: true, acc: ['shades'] };
+    case 'energetic': return { ...L, top: 'tee', bands: '#18181a', acc: headwear ? [] : ['sweatband'] };
+    case 'emo': return { ...L, top: 'hoodie', coat: '#1e1e26', shirt: '#1e1e26', stripes: '#6a2a32', hair: L.hairStyle === 'band' ? L.hair : '#16141c', pants: '#141418', shoes: '#141418', acc: L.hairStyle === 'beanie' || L.hairStyle === 'band' ? ['eyeliner'] : ['fringe', 'eyeliner'] };
+    case 'angry': return { ...L, top: 'tank', shirt: '#1a1a1e', shirt2: '#7a2222', pants: '#2a2a2c', shoes: '#141414', boots: true, bands: '#26262a', spikes: true, acc: [] };
+  }
+}
+
+const PERSONAS: Persona[] = ['cool', 'energetic', 'emo', 'angry'];
+const BAND = {
+  singer: { skin: '#e8c0a0', hair: '#2a1e18', shirt: '#222226', shirt2: '#cfcac0', pants: '#2c3446', shoes: '#18181a', hairStyle: 'spiky' } as Look,
+  rhythm: { skin: '#c08a62', hair: '#1c1816', shirt: '#4a4e56', shirt2: '#2a2a2e', pants: '#30384a', shoes: '#1c1c1e', hairStyle: 'beanie' } as Look,
+  lead: { skin: '#eccaa8', hair: '#a8884e', shirt: '#1c1c20', shirt2: '#8a8a88', pants: '#262c3c', shoes: '#141414', hairStyle: 'long' } as Look,
+  bassist: { skin: '#8a5e44', hair: '#2e221a', shirt: '#5a5a5c', shirt2: '#1e1e20', pants: '#1e1e22', shoes: '#18181a', hairStyle: 'bob' } as Look,
+  drummer: { skin: '#dcae88', hair: '#201c1a', shirt: '#cfccc4', shirt2: '#2a2a2c', pants: '#222226', shoes: '#111', hairStyle: 'band' } as Look,
+};
+// (energetic: a plain tee of their own, a dark red, white, charcoal, faded navy)
+const BRIGHT: Record<keyof typeof BAND, string> = { singer: '#6a2222', rhythm: '#d6d3cc', lead: '#3a3a40', bassist: '#2e3a4a', drummer: '#cfccc4' };
+
 mkdirSync(OUT, { recursive: true });
 stage();
-singer({ skin: '#f1c7a0', hair: '#2b1d1a', shirt: '#e8623a', shirt2: '#f6e7c8', pants: '#2d3047', shoes: '#c83a3a', hairStyle: 'spiky' });
-guitarist('rhythm', { skin: '#c88a5e', hair: '#1e1a18', shirt: '#3a6fb0', shirt2: '#f2f2f2', pants: '#3a3030', shoes: '#2a2a30', hairStyle: 'beanie' }, '#d9a441', 'guitar');
-guitarist('lead', { skin: '#f3d2b3', hair: '#e8d27a', shirt: '#26262c', shirt2: '#d83a3a', pants: '#2a3b5a', shoes: '#141414', hairStyle: 'long' }, '#c8283c', 'guitar');
-guitarist('bassist', { skin: '#8a5a3c', hair: '#ff6fae', shirt: '#6a4ab0', shirt2: '#f2d04a', pants: '#232323', shoes: '#3a8a6a', hairStyle: 'bob' }, '#3a8a6a', 'bass');
-drummer({ skin: '#e0b088', hair: '#2a2a2a', shirt: '#3a3a3a', shirt2: '#e8623a', pants: '#222', shoes: '#111', hairStyle: 'band' });
+for (const p of PERSONAS) {
+  const look = (k: keyof typeof BAND) => { const L = dress(BAND[k], p); return p === 'energetic' ? { ...L, shirt: BRIGHT[k] } : L; };
+  singer(`singer-${p}`, look('singer'));
+  guitarist(`rhythm-${p}`, look('rhythm'), '#9a6a36', 'guitar');
+  guitarist(`lead-${p}`, look('lead'), p === 'cool' ? '#1e1e22' : '#5e1a1a', 'guitar');
+  guitarist(`bassist-${p}`, look('bassist'), '#1e1e22', 'bass');
+  drummer(`drummer-${p}`, look('drummer'));
+}
 writeFileSync(`${OUT}/CREDITS.md`, '# Band sprites\n\nPlaceholder pixel art made in code by `scripts/band-sprites.ts` (`npm run band-sprites`). No outside assets.\n');

@@ -18,8 +18,10 @@
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
     button:disabled { opacity: .5; cursor: default; }
     label.chk { display: flex; gap: 6px; align-items: center; font-size: 14px; color: var(--muted); }
+    label.pick { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+    label.pick select { padding: 5px 8px; font-size: 13px; }
     .screen { position: relative; background: #000; border-radius: 10px; overflow: hidden; }
-    #stage { display: block; width: 100%; aspect-ratio: 16 / 9; image-rendering: pixelated; }
+    #stage { display: block; width: 100%; aspect-ratio: 350 / 180; image-rendering: pixelated; }
     .hud { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; padding: 8px 12px; color: #fff; font: 600 13px/1.2 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 0 #000; pointer-events: none; }
     .lyric { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; color: rgba(255,255,255,.55); font: 700 clamp(13px, 2.4vw, 20px)/1.2 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 2px 0 #000; pointer-events: none; padding: 0 12px; }
     .lyric b { color: #fff; }
@@ -42,13 +44,16 @@
       <button id="gen">New song</button>
       <button id="play" class="primary" disabled>Play</button>
       <select id="from" title="Start from"></select>
+      <label class="chk"><input type="checkbox" id="walkon" checked /> Walk-on</label>
       <label class="chk"><input type="checkbox" id="sing" checked /> Singer</label>
       <label class="chk"><input type="checkbox" id="checkview" checked /> Check view</label>
       <label class="slider">Delay <input type="range" id="delay" min="0" max="400" step="10" value="0" /> <span id="dv">0 ms</span></label>
     </div>
+    <div class="row" id="cast"></div>
+    <div class="status" id="castwhy"></div>
     <div class="status" id="status">Loading…</div>
     <div class="screen">
-      <canvas id="stage" width="480" height="270"></canvas>
+      <canvas id="stage" width="350" height="180"></canvas>
       <div class="hud"><span id="sect"></span><span id="info"></span></div>
       <div class="banner" id="banner"></div>
       <div class="lyric" id="lyric"></div>
