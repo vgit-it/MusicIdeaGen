@@ -90,7 +90,8 @@ export function renderIdea(
     return out;
   };
   // the singer: o = a note, - = held; under it the words, a syllable from each note (cut short before the next)
-  const vocal = idea.vocal ?? [];
+  // (the lead vocal as it's sung: its new words)
+  const vocal = idea.sung ? idea.sung.flatMap((l) => l.notes) : idea.vocal ?? [];
   const voc = new Array<string>(song.total).fill('.');
   const words = new Array<string>(song.total).fill(' ');
   vocal.forEach((n, i) => {
