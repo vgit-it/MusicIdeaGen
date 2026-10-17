@@ -88,7 +88,7 @@ What the vocabulary is: **short turns inside the pentatonic box, around the b3-4
 - Jazz solo research (Weimar Jazz Database, 140 solos, 4,939 units): a solo is a chain of units, 46% licks, 32% lines, the rest melodies, rhythmic figures, expressive moments, quotes and gaps; a quarter of units refer back to an earlier one; a unit lasts about 2 seconds. ([Frieler et al. 2016](https://publica.fraunhofer.de/handle/publica/243389)) A Brazilian study built 12-bar blues solos from licks and had them rated by 173 listeners ([UFPB](https://repositorio.ufpb.br/jspui/handle/tede/9279)).
 - Better data on technique exists: guitar tab collections (DadaGP: 26,181 Guitar Pro songs; MySongBook: 932 lead guitar tracks, used to model bends) carry bends, slides, hammer-ons and the string and fret. ([DadaGP](https://arxiv.org/abs/2107.14653), [bends](https://api.deepai.org/publication/modeling-bends-in-popular-music-guitar-tablatures)) Research datasets, on request.
 
-## A new solo writer (proposal)
+## A new solo writer (proposal; built: Solo New, `docs/SOLO-NEW.md`)
 A switch (Solo: Classic / New), Classic as now. Built from the numbers above:
 1. **A plan per solo, drawn like real ones:** level (38%), falling (20%), rising (17%), arch (15%), dip (9%), instead of always the arc. The top note can come early and come back.
 2. **A chain of licks, each worked over:** a lick (a shared shape above, in a real rhythm), played again 2-4 times with a change (another ending, moved to another note, cut short, an octave up), then the next. Half the bars' rhythms coming back. Units of about 2 seconds, as in the jazz research.

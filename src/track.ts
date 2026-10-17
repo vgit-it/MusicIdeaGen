@@ -18,6 +18,7 @@ import { type DrumBar, addFill } from './parts/drums';
 import { type G2Options, type Guitar2Style, chordTones, generateGuitar2, generateHook, leadFret, pickStyle } from './parts/guitar2';
 import { TUNINGS } from './theory/fretboard';
 import { generateSolo } from './parts/solo';
+import { generateSolo2 } from './parts/solo2';
 import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
@@ -1605,7 +1606,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       // (how far it goes: where it sits on the song's curve; the climax goes highest)
       const tt = arc.sections[si].tension;
       const intensity = si === arc.climax ? 1 : Math.max(0, Math.min(1, (tt.reduce((a, b) => a + b, 0) / tt.length - MP.base) / Math.max(0.1, MP.peak - MP.base)));
-      const sol = generateSolo(new Rng(`${soloSeed}-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick,
+      const sol = (src.opts.leadSolo ? generateSolo2 : generateSolo)(new Rng(`${soloSeed}-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick,
         s.kind === 'solo' && soloOverChorus && hook.length ? hook : null, intensity, g2o.licks);
       idea.guitar2 = sol.hits;
       idea.section!.solo = true;
@@ -1614,7 +1615,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       else notes.push('Guitar 2 solos over the outro');
     } else if (s.g2 === 'break') {
       // Breaks: a short melodic solo, quoting the hook, lower and sparer than a full one; the band as it is
-      const sol = generateSolo(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3, g2o.licks);
+      const sol = (src.opts.leadSolo ? generateSolo2 : generateSolo)(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3, g2o.licks);
       idea.guitar2 = sol.hits;
       g2 = 'Guitar 2: a lead break, a short melodic solo over the chorus chords';
     } else if (s.g2 === 'play') g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));

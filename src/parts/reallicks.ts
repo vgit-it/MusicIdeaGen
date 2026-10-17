@@ -15,9 +15,9 @@ import type { LickFit, Speed } from './licks';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
-interface Rhythm { key: string; off: number; ons: number[]; tail: number; songs: number; genres: number[]; speed: Speed }
+export interface Rhythm { key: string; off: number; ons: number[]; tail: number; songs: number; genres: number[]; speed: Speed }
 
-const RHYTHMS: Rhythm[] = (data.rhythms as [string, number, number[]][]).map(([key, songs, genres]) => {
+export const RHYTHMS: Rhythm[] = (data.rhythms as [string, number, number[]][]).map(([key, songs, genres]) => {
   const [off, o, tail] = key.split('|');
   const ons = o.split(',').map(Number);
   const gaps = ons.slice(1).map((x, i) => x - ons[i]);

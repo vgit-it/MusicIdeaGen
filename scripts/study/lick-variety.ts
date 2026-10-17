@@ -11,7 +11,7 @@ for (const g of GENRES) {
   const songs: string[][] = [];
   for (let i = 0; i < N; i++) {
     const s = `${g}-lead-${i}`;
-    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LICKS ? { leadLicks: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
+    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LICKS ? { leadLicks: true } : {}), ...(process.env.SOLO ? { leadSolo: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
     const tr = buildTrack(idea, { ...defaultTrackOptions(idea), solo: 'on' });
     // every 5 notes in a row in the solos (their gaps and steps), wherever they fall
     const fps: string[] = [];
@@ -46,7 +46,7 @@ if (process.env.TOP) {
   const g = process.env.TOP as Genre, where = new Map<string, number>();
   for (let i = 0; i < N; i++) {
     const s = `${g}-lead-${i}`;
-    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LICKS ? { leadLicks: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
+    const idea = generate({ genre: g, meter: '4/4', weirdness: 0.3, ...(process.env.LICKS ? { leadLicks: true } : {}), ...(process.env.SOLO ? { leadSolo: true } : {}) } as Parameters<typeof generate>[0], { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' });
     const tr = buildTrack(idea, { ...defaultTrackOptions(idea), solo: 'on' });
     const seen = new Set<string>();
     for (const x of tr.sections) {
