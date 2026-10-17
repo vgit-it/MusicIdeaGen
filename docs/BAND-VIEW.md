@@ -62,8 +62,9 @@ string up), and draws each finger from the knuckles to its tip in the skin colou
 shimmer from their fret to the bridge. Fingers and string shimmer are drawn by the view (thin lines);
 everything else is sprites.
 
-Proportions follow the Scott Pilgrim game's sprites: about 3.5 heads tall, long thin legs, a narrow
-torso, big eyes with whites and pupils, chunky shoes, thick dark outlines.
+Proportions follow the Scott Pilgrim game's sprites: about 3 heads tall, a big head and hair, a short torso,
+solid limbs, big hands and sneakers, knees a little bent, big eyes (whites, pupils, a shine), thick
+dark outlines, three tones of shading.
 
 **Making them in Aseprite** (later): one file per player, a layer per part, a tag per frame name;
 export the sheet with JSON; a small converter maps it to this format.
