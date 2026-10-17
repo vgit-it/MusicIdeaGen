@@ -56,6 +56,12 @@ interface Solo {
   topVisits?: number;
   /** notes on a note the band is sounding: all, on a beat, held half a beat or more */
   chord?: { all: number; beat: number; nBeat: number; held: number; nHeld: number; n: number };
+  /** Phrasing (docs/STUDY-SOLO.md, "Phrasing"): a phrase ends at a rest of half a beat or more, or a note held a
+   * beat and a half or more. Each phrase: beats, notes, the rest after it (beats), where it starts (0: on a bar
+   * line, 1: on another beat, 2: off the beat, 3: a pickup, in the last beat of a bar running over the bar line),
+   * its last note's length (beats), whether that note is on the band's notes, contour (0 falls, 1 rises, 2 arch,
+   * 3 dip, 4 level), its end above the phrase's lowest (0-1), the energy where it sits (notes a beat around it) */
+  phr?: { beats: number; notes: number; gap: number; start: number; endLen: number; endTone: number; contour: number; endH: number; startP: number; endP: number; rhy: string; s: number }[];
 }
 const solos: Solo[] = [];
 
@@ -195,6 +201,27 @@ function measure(side: 'real' | 'app', top: BN[], b0: number, b1: number, low: n
       if (n.e - n.s >= 0.5) { ch.nHeld++; ch.held += on; }
     });
     solos[solos.length - 1].chord = ch;
+    // phrases
+    const ph: number[][] = [];
+    ns.forEach((n, i) => {
+      const p = ns[i - 1];
+      if (p && n.s - p.e < 0.5 && p.e - p.s < 1.5) ph[ph.length - 1].push(i); else ph.push([i]);
+    });
+    solos[solos.length - 1].phr = ph.map((idx, k) => {
+      const a = ns[idx[0]], z = ns[idx[idx.length - 1]], ps = idx.map((i) => pitch[i]);
+      const next = ph[k + 1] ? ns[ph[k + 1][0]].s : (b1 + 1) * 4;
+      const inBar = mod(a.s, 4), onBeat = Math.abs(a.s - Math.round(a.s)) < 0.06;
+      const start = inBar < 0.06 || inBar > 3.94 ? 0 : inBar >= 3 && z.e > Math.ceil(a.s / 4) * 4 ? 3 : onBeat ? 1 : 2;
+      const lo = Math.min(...ps), hi = Math.max(...ps), top = ps.indexOf(hi), bot = ps.indexOf(lo);
+      const first = ps[0], last = ps[ps.length - 1];
+      const contour = hi - lo < 3 ? 4 : top > 0 && top < ps.length - 1 && hi - first >= 2 && hi - last >= 2 ? 2 : bot > 0 && bot < ps.length - 1 && first - lo >= 2 && last - lo >= 2 ? 3 : last < first ? 0 : 1;
+      const sl = slots[Math.round(z.s * 4)];
+      return {
+        beats: z.e - a.s, notes: idx.length, gap: Math.max(0, next - z.e), start, endLen: z.e - z.s, endTone: sl && sl.size ? (sl.has(mod(last, 12)) ? 1 : 0) : -1,
+        contour, endH: hi > lo ? (last - lo) / (hi - lo) : 0.5, startP: first, endP: last,
+        rhy: idx.slice(0, 4).map((i) => Math.round((ns[i].s - a.s) * 4)).join(','), s: a.s - t0,
+      };
+    });
   }
   if (side === 'app') return;
   // the licks: 4-7 notes in a row inside a phrase, as notes above the key's root (rhythm free), and with their rhythm (16ths)

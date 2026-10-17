@@ -90,7 +90,16 @@ function planSong(rng: Rng, opts: GenOptions): Song {
   };
 }
 
+/**
+ * The lead guitar and rhythm guitar play every way they've learned (they were switches, now always on): whole lines,
+ * figures, room for the singer, breaks and no-lead songs, a twin, real licks, the solo writer built from real solos
+ * (docs/LEAD-*.md, docs/SOLO-NEW.md), and the strum mix of real guitarists (docs/STUDY-RHYTHM.md). The guitar plan
+ * is on in every track (track.ts).
+ */
+const ALWAYS: Partial<GenOptions> = { leadLines: true, leadFigures: true, leadRoom: true, leadBreaks: true, leadTwin: true, leadLicks: true, leadSolo: true, strumMix: true };
+
 export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
+  opts = { ...opts, ...ALWAYS };
   const song = planSong(new Rng(seeds.song), opts);
   const idea = buildIdea(opts, seeds, song, withSheet(opts, seeds, song));
   // the rhythm guitarist plays it (strummed genres; picked with the strumming)
