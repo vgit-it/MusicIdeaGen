@@ -10,7 +10,7 @@
 //   npm run guide-check -- save  save a new reference (only when a change to the line is meant)
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { generate } from '../src/generator';
+import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { type Flicks, type GuideIdeas, type GuideRange, type GuideTonality, writeGuide } from '../src/guide/line';
 import { guideWords } from '../src/guide/words';
@@ -56,7 +56,7 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   const s = `gc-${genre}-${meter}-${mood}`;
   const flicks = FLICKS[k % 4], lean = k % 3 === 2 ? 'out' : 'in', high = HIGH[k % 4];
   k++;
-  const idea = generate({ genre, meter, weirdness: 0.3 } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
+  const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const tr = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never);
   const list = tr.sections;
   const tone = tn && { key: tn[0] === null ? null : (list[0].song.key + tn[0]) % 12, scale: tn[1], guard: tn[2] };
@@ -123,7 +123,7 @@ for (const [name, ideas, range] of TUNE_RUNS) {
   for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS) {
     const s = `gc-${genre}-${meter}-${mood}`;
     const w = WRITERS[k++ % WRITERS.length];
-    const idea = generate({ genre, meter, weirdness: 0.3, ...w } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
+    const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS, ...w } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
     const list = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never).sections;
     const L = writeTune(list, mood, 0, ideas, range);
     const W = tuneWords(L);
