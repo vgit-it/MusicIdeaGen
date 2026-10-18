@@ -102,7 +102,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -400,6 +400,29 @@ export function limitSame(notes: BandNote[], max = MAX_SAME): BandNote[] {
       if (i >= out.length - trailing()) out.splice(i, 1);
     }
     out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Rule 10: the third-bar shape. About 15 bars in 100 (inside a phrase, with no walk at their end) are three equal notes of a
+ * third of a bar each, on the bar's core note: three even notes across the bar, like a triplet of half notes.
+ * They sit between the usual steps, so steps and lengths are fractions (5⅓ sixteenths in 4/4).
+ * Done last, so nothing else has to know about them.
+ */
+export function thirdBars(notes: BandNote[], phrases: Gap[], bar: number, seed: string): BandNote[] {
+  const rng = new Rng(seed + '|thirds');
+  const total = Math.max(0, ...notes.map((n) => n.step + n.len));
+  let out = notes;
+  for (let b0 = 0; b0 + bar <= total; b0 += bar) {
+    if (!phrases.some((p) => p.step <= b0 && b0 + bar <= p.step + p.len)) continue;
+    const inside = out.filter((n) => n.step >= b0 && n.step < b0 + bar);
+    if (!inside.length || inside.some((n) => n.walk) || !rng.chance(0.15)) continue;
+    const core = inside.find((n) => !n.nb) ?? inside[0];
+    out = [
+      ...out.filter((n) => n.step < b0 || n.step >= b0 + bar),
+      ...[0, 1, 2].map((k) => ({ step: b0 + (k * bar) / 3, len: bar / 3, midi: core.midi, third: true })),
+    ].sort((a, b) => a.step - b.step);
   }
   return out;
 }
