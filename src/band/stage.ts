@@ -19,6 +19,8 @@ export interface Cast { stage: HTMLImageElement; front: HTMLImageElement | null;
 
 export async function loadCast(base = 'band/'): Promise<Cast> {
   const names = PLAYERS.flatMap((p) => PERSONAS.map((c) => `${p}-${c}`));
+  // (band.html?cut: the players cut out of Paul's character reference, scripts/band-cut.py)
+  if (new URLSearchParams(location.search).has('cut')) base = `${base}cut/`;
   const [stage, lights, crowd, ...atlases] = await Promise.all([
     loadImage(`${base}stage.png`), fetch(`${base}stage.json`).then((r) => r.json()), loadAtlas(base, 'crowd'), ...names.map((n) => loadAtlas(base, n)),
   ]) as [HTMLImageElement, StageLights, Atlas, ...Atlas[]];
@@ -67,6 +69,12 @@ export class Stage {
   private actors: { name: keyof typeof SPOTS; act: Actor }[];
   private beats: { at: number }[];
   private barList: { at: number }[];
+  /** The band and the crowd, each drawn on its own layer to be lit (a rim light). */
+  private bandLayer = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  private crowdLayer = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  /** The edges of the picture fading to dark, and four frames of grain (made once). */
+  private vignette = makeVignette();
+  private grain = [0, 1, 2, 3].map(makeGrain);
   /** The players' shadow shape (for the back wall). */
   private shade = Object.assign(document.createElement('canvas'), { width: W, height: H });
   /** The light layer, at the stage's own pixel size (the camera is close: half-size light pixels read as a screen door). */
@@ -134,15 +142,56 @@ export class Stage {
       cmds: (playing ? act(m) : pre !== undefined ? act({ ...idle, pre: this.preFor(name, pre) }) : act(idle)) as Cmd[],
     }));
     this.shadows(ctx, drawn, e);
+    // the band, on a layer of its own: dark against the lights, their edges glowing (a rim light)
+    const flash = this.crashFlash(m, playing);
+    const b = this.layer(this.bandLayer);
     for (const { at: [x, y], cmds } of drawn) {
       for (const c of cmds) {
-        if ('line' in c) for (let k = 0; k < (c.w ?? 1); k++) pixelLine(ctx, x + c.line[0] + k, y + c.line[1], x + c.line[2] + k, y + c.line[3], c.color, c.alpha);
-        else draw(ctx, c.a, c.f, x + c.x, y + c.y, c.alpha);
+        if ('line' in c) for (let k = 0; k < (c.w ?? 1); k++) pixelLine(b, x + c.line[0] + k, y + c.line[1], x + c.line[2] + k, y + c.line[3], c.color, c.alpha);
+        else draw(b, c.a, c.f, x + c.x, y + c.y, c.alpha);
       }
     }
+    rimLight(b, Math.max(0.1, 0.3 - e * 0.04), playing ? 0.55 + e * 0.08 + flash * 0.4 : 0.4);
+    ctx.drawImage(this.bandLayer, 0, 0);
     if (this.cast.front && this.cast.lights.front) ctx.drawImage(this.cast.front, this.cast.lights.front.x, this.cast.lights.front.y);
-    this.crowd(ctx, m, playing);
+    // the crowd: nearly black, rim-lit by the stage
+    const cr = this.layer(this.crowdLayer);
+    this.crowd(cr, m, playing);
+    rimLight(cr, 0.7, playing ? 0.5 + e * 0.07 + flash * 0.3 : 0.3);
+    ctx.drawImage(this.crowdLayer, 0, 0);
     this.lights(ctx, m, playing, wall);
+    this.grade(ctx, wall);
+  }
+
+  /** A layer cleared for drawing. */
+  private layer(cv: HTMLCanvasElement) {
+    const c = cv.getContext('2d', { willReadFrequently: true })!;
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 1;
+    c.clearRect(0, 0, W, H);
+    c.imageSmoothingEnabled = false;
+    return c;
+  }
+
+  /** How bright the room is from a crash just now (0-1). */
+  private crashFlash(m: Moment, playing: boolean) {
+    if (!playing || m.section.energy < 4) return 0;
+    const crashes = this.score.drums.pieces.crash, ci = lastAt(crashes, m.t);
+    const ago = ci >= 0 ? (m.t - crashes[ci].at) * m.six : Infinity;
+    return ago < 0.3 ? 1 - ago / 0.3 : 0;
+  }
+
+  /**
+   * The grade over the whole picture, after the final reference: everything warmed toward red, the
+   * edges falling into the dark (stepped, dithered), and a little pixel grain that moves.
+   */
+  private grade(ctx: CanvasRenderingContext2D, wall: number) {
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = '#ffdccf';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(this.vignette, 0, 0);
+    ctx.drawImage(this.grain[Math.floor(wall * 12) % this.grain.length], 0, 0);
   }
 
   /**
@@ -272,6 +321,75 @@ export class Stage {
     }
     ctx.globalCompositeOperation = 'source-over';
   }
+}
+
+/** Rim light colours: from above (warm orange), from the left (orange), from the right (red). */
+const RIM_TOP = [255, 128, 80], RIM_LEFT = [255, 150, 70], RIM_RIGHT = [255, 60, 80];
+
+/**
+ * Light a layer the way the final reference lights the band: each figure darkened toward a deep red
+ * (`dark`, 0-1), and its edges that face the lights glowing (`rim`, 0-1): the top edge and the first
+ * pixel in from it, the sides, a touch from below. The dark outline pixels of the sprites are what take
+ * the glow, so it reads as light catching the edge.
+ */
+function rimLight(c: CanvasRenderingContext2D, dark: number, rim: number) {
+  const img = c.getImageData(0, 0, W, H), d = img.data;
+  const A = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) A[i] = d[i * 4 + 3] > 0 ? 1 : 0;
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : A[y * W + x]);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (!A[i]) continue;
+    const o = i * 4;
+    // the body in shadow: toward a deep red-black
+    d[o] = d[o] * (1 - dark) + 34 * dark;
+    d[o + 1] = d[o + 1] * (1 - dark) + 8 * dark;
+    d[o + 2] = d[o + 2] * (1 - dark) + 16 * dark;
+    let k = 0, col = RIM_TOP;
+    if (!at(x, y - 1)) k = 1;
+    else if (!at(x - 1, y)) { k = 0.85; col = RIM_LEFT; }
+    else if (!at(x + 1, y)) { k = 0.85; col = RIM_RIGHT; }
+    else if (!at(x, y - 2)) k = 0.38;
+    else if (!at(x - 2, y)) { k = 0.3; col = RIM_LEFT; }
+    else if (!at(x + 2, y)) { k = 0.3; col = RIM_RIGHT; }
+    else if (!at(x, y + 1)) { k = 0.25; col = RIM_RIGHT; }
+    if (!k) continue;
+    const a = Math.min(1, k * rim);
+    d[o] = d[o] * (1 - a) + col[0] * a;
+    d[o + 1] = d[o + 1] * (1 - a) + col[1] * a;
+    d[o + 2] = d[o + 2] * (1 - a) + col[2] * a;
+  }
+  c.putImageData(img, 0, 0);
+}
+
+/** The vignette: the picture's edges and corners stepping down into the dark, dithered. */
+function makeVignette() {
+  const cv = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const c = cv.getContext('2d')!, img = c.createImageData(W, H), d = img.data;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const nx = (x - W / 2) / (W / 2), ny = (y - H * 0.45) / (H / 2);
+    const v = Math.max(0, Math.min(1, (Math.sqrt(nx * nx * 0.9 + ny * ny * 1.1) - 0.6) / 0.6)) * 0.75;
+    const steps = 5, s = v * steps;
+    const lvl = Math.floor(s) + (s - Math.floor(s) > (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16 ? 1 : 0);
+    d[(y * W + x) * 4 + 3] = (Math.min(steps, lvl) / steps) * 255 * 0.75;
+  }
+  c.putImageData(img, 0, 0);
+  return cv;
+}
+
+/** A frame of grain: a scatter of single pixels a touch lighter or darker. */
+function makeGrain(seed: number) {
+  const cv = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const c = cv.getContext('2d')!, img = c.createImageData(W, H), d = img.data;
+  let r = 1234567 + seed * 7919;
+  const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let i = 0; i < W * H; i++) {
+    const v = rnd();
+    if (v < 0.035) { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 0; d[i * 4 + 3] = 46; }
+    else if (v < 0.055) { d[i * 4] = 255; d[i * 4 + 1] = 200; d[i * 4 + 2] = 180; d[i * 4 + 3] = 20; }
+  }
+  c.putImageData(img, 0, 0);
+  return cv;
 }
 
 /** How many steps of light (the dither fills in between). */

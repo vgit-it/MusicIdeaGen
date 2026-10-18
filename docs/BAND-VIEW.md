@@ -69,7 +69,17 @@ pixel the average of the painting's pixels under it) and put on one 48-colour pa
 dither between colours). It also writes where the 16 lamps and the neon are (`stage.json`). Run it again
 after changing a painting. The band stands as in the final reference: the drummer on the riser, the rest
 along the rug, the monitors in front of their feet, the crowd (with devil horns) in front of that.
-Next: the final reference's lighting (a rim light on the players, darker bodies, a red grade).
+Lit as the final reference: the players and the crowd each on their own layer, darkened toward a deep
+red and rim-lit (the edges facing the lights glowing orange from above and the left, red from the
+right; stronger when it's loud and on a crash), then the whole picture warmed toward red, a stepped
+dithered vignette and a moving pixel grain.
+
+**Test: the players from Paul's character drawing** (`band.html?cut`, `python scripts/band-cut.py`):
+the heads, bodies and legs cut straight out of `Characters_Reference.png` (scaled up 1.35 so the
+shoulders meet the generated arms, hard edges, a small palette); the arms, hands, guitars and the
+singer's mouths kept from the generated sheets, their skin recoloured to match. The drawing's own
+faces (shades, eyes) replace the generated eyes and brows. Walking, jumping and lunging legs are still
+the generated ones.
 
 ## Characters (`src/band/persona.ts`)
 
