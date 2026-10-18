@@ -18,6 +18,7 @@ import { type DrumBar, addFill } from './parts/drums';
 import { type G2Options, type Guitar2Style, chordTones, generateGuitar2, generateHook, leadFret, pickStyle } from './parts/guitar2';
 import { TUNINGS } from './theory/fretboard';
 import { generateSolo2 } from './parts/solo2';
+import { singLead } from './parts/leadvocal';
 import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
@@ -1797,8 +1798,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     idea.notes.splice(2, 0, `Sound: ${SOUND_NAME[chords]}${idea.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[guitar2]}` : ''}`);
   });
   // when the guitar plays (docs/STUDY-RHYTHM.md): a role for the song, and each section they sit out, come in or drop out
-  // (always: docs/STUDY-RHYTHM.md; older links may say off)
-  {
+  // (on unless a track says off: docs/STUDY-RHYTHM.md)
+  if (opts.guitarPlan !== 'off') {
     const gp = planGuitar(bandSeed, src.song.partGenres.strum, riff, sections.map((x) => ({ kind: x.section!.kind, energy: x.section!.energy, bars: x.song.bars.length, hasG2: x.guitar2.length > 0 })));
     sections.forEach((x, i) => { const n = applyGuitarShape(x, gp.shapes[i], gp.cover); if (n) x.notes.push(n); });
     sections[0].notes.push(`Guitar plan: the rhythm guitarist ${GUITAR_ROLE_DESC[gp.role]}`);
@@ -1830,6 +1831,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
 
   const bars = sections.reduce((a, s) => a + s.song.bars.length, 0);
   const steps = sections.reduce((a, s) => a + s.song.total, 0);
+  // the lead vocal as it's sung, worked out over the whole song
+  singLead(sections, mood);
   return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps, edit, riffVerse, newChorus, mood, climax: arc.climax };
 }
 

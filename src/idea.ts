@@ -1,3 +1,4 @@
+import type { GuideSungLine } from './guide/words';
 import type { EnergyStyle } from './parts/energy';
 import type { VocalNote, VoiceType } from './parts/vocal';
 // Shared types for a generated idea.
@@ -260,6 +261,10 @@ export interface Idea {
   guitar2: GuitarHit[];
   /** The singer: a melody with a syllable on each note (tracks and ideas; missing in older ones). */
   vocal?: VocalNote[];
+  /** The lead vocal as it's sung (src/parts/leadvocal.ts): the vocal's tune with new words, more bends, carried over now and then; its lines. */
+  sung?: GuideSungLine[];
+  /** The song's highest sung note (the woman's voice sings an octave up when the whole song's line allows). */
+  sungTop?: number;
   /** Which voice sings it on Auto (the melody is written for the low one; the high one sings it an octave up). */
   vocalVoice?: VoiceType;
   /** Who sings it when it's sung high (one of the three high singers; missing in older ones: the rock tenor). */
