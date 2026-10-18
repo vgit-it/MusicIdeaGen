@@ -4,6 +4,8 @@
 import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
 import * as Tone from 'tone';
+import { autoMood } from '../tension';
+import { writeWords, type Words } from './words';
 import { Singer } from '../audio/singer';
 import type { VocalNote } from '../parts/vocal';
 import { VerseSynth } from './synth';
@@ -27,6 +29,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   let synth: VerseSynth | null = null;
   // (sung: the song's own Auto voice on the line, as "la"; off: the synth)
   let sing = true;
+  let wordsOn = true;
   let singer: Singer | null = null;
   let out: Tone.Gain | null = null;
   const six = () => 15 / Tone.getTransport().bpm.value;
@@ -43,6 +46,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <button id="v-gen" class="primary small" title="A new song (as Generate above), played from the start">Generate &amp; play</button>
         <button id="v-play" class="secondary small">Play</button>
         <label title="Auto voice: the song's own singer sings the line on 'la'. Synth: a plain tone. Mute the main vocal above to hear the line alone">Sound <select id="v-sing" class="gsing"><option value="sing">Auto voice</option><option value="synth">Synth</option></select></label>
+        <label title="Words: the line sung as pseudo-English words set to its rhythm and breaks. La: every note on 'la'">Sing <select id="v-words" class="gsing"><option value="words">Words</option><option value="la">La</option></select></label>
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
         <button id="v-remove" class="small">Remove</button>
       </div>
@@ -52,6 +56,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <label class="grange">Extended bottom <input type="range" id="v-xlo" min="36" max="84" value="${range.xlo}"> <b id="v-xlo-o"></b></label>
         <label class="grange">Extended top <input type="range" id="v-xhi" min="52" max="100" value="${range.xhi}"> <b id="v-xhi-o"></b></label>
       </div>
+      <p class="hint" id="v-lyrics" style="white-space:pre-line"></p>
       <p class="hint" id="v-info" style="white-space:pre-line"></p>
     </div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
@@ -83,11 +88,22 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   };
   /** The idea with the verse line as its vocal (what the singer sings): 'la' on each note, a breath every 4 bars. */
   let sung = new WeakMap<Idea, Idea>();
+  let wordsCache = new WeakMap<Idea, Words>();
   const la: VocalNote['syl'] = { onset: ['L'], vowel: 'AA', coda: [], stress: false, text: 'la', wordStart: true };
+  /** The words for an idea's verse: set to the line's rhythm and breaks, in the song's mood and genre. */
+  const wordsFor = (idea: Idea): Words => {
+    let w = wordsCache.get(idea);
+    if (!w) {
+      w = writeWords(notesFor(idea), planFor(idea).phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre }, range.hi - 4, `${idea.seeds.song}|${idea.seeds.chords}`);
+      wordsCache.set(idea, w);
+    }
+    return w;
+  };
   const singable = (idea: Idea): Idea => {
     let d = sung.get(idea);
     if (!d) {
-      const vocal: VocalNote[] = notesFor(idea).map((n) => ({ step: n.step, len: n.len, midi: n.midi, vel: 0.8, syl: la, start: n.step % 64 === 0 }));
+      const w = wordsOn ? wordsFor(idea) : null;
+      const vocal: VocalNote[] = notesFor(idea).map((n, i) => ({ step: n.step, len: n.len, midi: n.midi, vel: w && !w.syls[i].stress ? 0.68 : 0.82, syl: w ? w.syls[i] : la, start: w ? w.starts[i] : n.step % 64 === 0 }));
       d = { ...idea, vocal, backing: undefined, vocalDouble: false, sung: undefined, section: undefined };
       sung.set(idea, d);
     }
@@ -107,7 +123,8 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   };
   const info = () => {
     const first = list.find(sings);
-    if (!first) { $('v-info').textContent = 'No verse in this song.'; return; }
+    if (!first) { $('v-info').textContent = 'No verse in this song.'; $('v-lyrics').textContent = ''; return; }
+    $('v-lyrics').textContent = wordsOn ? wordsFor(first).lines.map((l, i) => `${i + 1}  ${l}`).join('\n') : '';
     const bar = barOf(first), { phrases, breaks, runs, holds, bars } = planFor(first);
     const notes = notesFor(first);
     $('v-info').textContent = [
@@ -162,11 +179,12 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     range.xlo = Math.min(range.xlo, range.lo);
     range.xhi = Math.max(range.xhi, range.hi);
     showRange();
-    cache = new WeakMap(); sung = new WeakMap();
+    cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap();
     info(); prepare();
   };
   for (const k of ['lo', 'hi', 'xlo', 'xhi'] as const) $('v-' + k).addEventListener('input', (e) => setRange(k, +(e.target as HTMLInputElement).value));
   showRange();
+  $('v-words').addEventListener('change', (e) => { wordsOn = (e.target as HTMLSelectElement).value === 'words'; sung = new WeakMap(); singer?.releaseAll(); info(); prepare(); });
   $('v-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); if (out) out.gain.value = (level / 100) ** 2; });
   $('v-sing').addEventListener('change', (e) => { sing = (e.target as HTMLSelectElement).value === 'sing'; synth?.releaseAll(); singer?.releaseAll(); prepare(); });
 
