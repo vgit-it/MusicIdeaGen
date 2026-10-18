@@ -31,7 +31,9 @@
     "lick-mine": "rolldown scripts/study/lick-mine.ts --platform node --format esm -o node_modules/.cache/lick-mine.mjs && node --max-old-space-size=8000 node_modules/.cache/lick-mine.mjs",
     "realism-learned": "rolldown scripts/study/lakh-learned.ts --platform node --format esm -o node_modules/.cache/lakh-learned.mjs && node node_modules/.cache/lakh-learned.mjs",
     "band-sprites": "rolldown scripts/band-sprites.ts --platform node --format esm -o node_modules/.cache/band-sprites.mjs && node node_modules/.cache/band-sprites.mjs",
-    "band-stage": "rolldown scripts/band-stage.ts --platform node --format esm -o node_modules/.cache/band-stage.mjs && node node_modules/.cache/band-stage.mjs"
+    "band-stage": "rolldown scripts/band-stage.ts --platform node --format esm -o node_modules/.cache/band-stage.mjs && node node_modules/.cache/band-stage.mjs",
+    "band-export": "rolldown scripts/band-art.ts --platform node --format esm -o node_modules/.cache/band-art.mjs && node node_modules/.cache/band-art.mjs export",
+    "band-pack": "rolldown scripts/band-art.ts --platform node --format esm -o node_modules/.cache/band-art.mjs && node node_modules/.cache/band-art.mjs pack"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

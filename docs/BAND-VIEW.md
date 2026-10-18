@@ -81,6 +81,18 @@ singer's mouths kept from the generated sheets, their skin recoloured to match. 
 faces (shades, eyes) replace the generated eyes and brows. Walking, jumping and lunging legs are still
 the generated ones.
 
+**Paul's art** (`art/`, `art/README.md`, `scripts/band-art.ts`): `npm run band-export` writes every
+frame of every player as its own PNG, all on one canvas (128 x 112, the feet at 60, 104), starting from
+the cut-out test, and never overwrites a drawing. `npm run band-pack` packs them back into sheets
+(`public/band/art/`, seen with `band.html?art`): a frame drawn for one character type
+(`art/lead-emo/...`) over the player's own (`art/lead/...`) over the placeholder; new frames the view
+uses (eyes, mouths on a drawn head) are added; misspelt names are reported. Legs are a cutout rig
+(`scripts/band-rig.ts`): hips, thighs, shins and shoes drawn once (`art/<player>/rig/legs/`, cut from the
+drawing on export), every pose made from them on pack: a lifted foot squashes the thigh (the knee coming
+toward us) and raises the shin and shoe; a foot moved out turns the leg at the hip, turned the
+RotSprite way (Scale2x three times, turned, sampled back) so the pixels stay clean. Next: arms and
+hands, then hair, hats and outfits as swappable pieces; the walk's motion from Paul's Figma.
+
 ## Characters (`src/band/persona.ts`)
 
 Each player is a character: **cool**, **energetic**, **emo** or **angry**. On Auto, each song picks

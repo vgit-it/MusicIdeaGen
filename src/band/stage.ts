@@ -19,8 +19,11 @@ export interface Cast { stage: HTMLImageElement; front: HTMLImageElement | null;
 
 export async function loadCast(base = 'band/'): Promise<Cast> {
   const names = PLAYERS.flatMap((p) => PERSONAS.map((c) => `${p}-${c}`));
-  // (band.html?cut: the players cut out of Paul's character reference, scripts/band-cut.py)
-  if (new URLSearchParams(location.search).has('cut')) base = `${base}cut/`;
+  // (band.html?art: Paul's drawings, npm run band-pack; ?cut: the players cut out of his character
+  // reference, scripts/band-cut.py)
+  const q = new URLSearchParams(location.search);
+  if (q.has('art')) base = `${base}art/`;
+  else if (q.has('cut')) base = `${base}cut/`;
   const [stage, lights, crowd, ...atlases] = await Promise.all([
     loadImage(`${base}stage.png`), fetch(`${base}stage.json`).then((r) => r.json()), loadAtlas(base, 'crowd'), ...names.map((n) => loadAtlas(base, n)),
   ]) as [HTMLImageElement, StageLights, Atlas, ...Atlas[]];
