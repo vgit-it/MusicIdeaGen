@@ -7,7 +7,7 @@ import * as Tone from 'tone';
 import { Singer } from '../audio/singer';
 import type { VocalNote } from '../parts/vocal';
 import { VerseSynth } from './synth';
-import { approachNotes, randomGaps, randomHolds, randomRuns, randomTones, verseOverBand, voiceLead, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Gap, type ChordNote } from './verse';
+import { approachNotes, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, smallBreaks, voiceLead, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Gap, type ChordNote } from './verse';
 
 export interface VersePanel {
   /** Show the song's verse notes again after new music. */
@@ -30,11 +30,11 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   let out: Tone.Gain | null = null;
   const six = () => 15 / Tone.getTransport().bpm.value;
   const cache = new WeakMap<Idea, BandNote[]>();
-  const gapCache = new WeakMap<Idea, { gaps: Gap[]; runs: Gap[]; holds: Gap[]; tones: ChordNote[]; bars: BarTone[] }>();
+  const gapCache = new WeakMap<Idea, { phrases: Gap[]; breaks: Gap[]; runs: Gap[]; holds: Gap[]; tones: ChordNote[]; bars: BarTone[] }>();
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: random gaps (half or quarter bar), at least 2 every 4 bars. Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
@@ -44,7 +44,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
         <button id="v-remove" class="small">Remove</button>
       </div>
-      <p class="hint" id="v-info"></p>
+      <p class="hint" id="v-info" style="white-space:pre-line"></p>
     </div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
 
@@ -54,10 +54,10 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     let p = gapCache.get(idea);
     if (!p) {
       const total = idea.chords.chordIdx.length, bar = barOf(idea), seed = `${idea.seeds.song}|${idea.seeds.chords}`;
-      const gaps = randomGaps(total, bar, seed);
-      const runs = randomRuns(total, bar, idea.section?.energy ?? 3, gaps, seed);
+      const { phrases, breaks } = planPhrases(total, bar, seed);
+      const runs = randomRuns(total, bar, idea.section?.energy ?? 3, breaks, seed);
       const { tones, bars } = randomTones(total, bar, seed);
-      p = { gaps, runs, holds: randomHolds(total, bar, gaps, runs, tones, chordsOf(idea), seed), tones, bars };
+      p = { phrases, breaks, runs, holds: randomHolds(total, bar, breaks, runs, tones, chordsOf(idea), seed), tones, bars };
       gapCache.set(idea, p);
     }
     return p;
@@ -66,9 +66,9 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   const notesFor = (idea: Idea): BandNote[] => {
     let n = cache.get(idea);
     if (!n) {
-      const chordAt = chordsOf(idea), { key, mode } = idea.song, { gaps, runs, holds, tones } = planFor(idea);
-      const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), gaps), runs, key, chordAt, tones);
-      n = approachNotes(voiceLead(withHolds(plain, holds)), key, mode, barOf(idea), `${idea.seeds.song}|${idea.seeds.chords}`);
+      const chordAt = chordsOf(idea), { key, mode } = idea.song, { phrases, breaks, runs, holds, tones } = planFor(idea), seed = `${idea.seeds.song}|${idea.seeds.chords}`;
+      const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
+      n = limitSame(smallBreaks(approachNotes(voiceLead(withHolds(plain, holds)), key, mode, barOf(idea), seed), phrases, seed));
       cache.set(idea, n);
     }
     return n;
@@ -89,14 +89,20 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   const sings = (idea: Idea) => !idea.section || idea.section.kind === 'verse';
 
   const barOf = (idea: Idea) => Math.max(4, Math.round(idea.chords.chordIdx.length / 8));
-  const at = (g: Gap, bar: number) => `${+(g.step / bar + 1).toFixed(2)} (${bar / g.len > 6 ? '⅛' : bar / g.len > 3 ? '¼' : '½'} bar)`;
+  const pos = (step: number, bar: number) => +(step / bar + 1).toFixed(2);
+  const at = (g: Gap, bar: number) => `${pos(g.step, bar)} (${bar / g.len > 6 ? '⅛' : bar / g.len > 3 ? '¼' : '½'} bar)`;
   const info = () => {
     const first = list.find(sings);
     if (!first) { $('v-info').textContent = 'No verse in this song.'; return; }
-    const bar = barOf(first), { gaps, runs, holds, bars } = planFor(first);
-    $('v-info').textContent = `Bars: ${bars.join(' · ')} · ${notesFor(first).length} notes a verse · energy ${first.section?.energy ?? 3}`
-      + ` · gaps: ${gaps.map((g) => at(g, bar)).join(', ')} · 16ths: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`
-      + ` · long notes: ${holds.length ? holds.map((g) => `${+(g.step / bar + 1).toFixed(2)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`;
+    const bar = barOf(first), { phrases, breaks, runs, holds, bars } = planFor(first);
+    const notes = notesFor(first);
+    $('v-info').textContent = [
+      `Phrases (bar from–to): ${phrases.map((p) => `${pos(p.step, bar)}–${pos(p.step + p.len, bar)}`).join(' · ')}`,
+      `Breaks after: ${breaks.map((g) => `${+(g.len / (bar / 4)).toFixed(2)} beat${g.len === bar / 4 ? '' : 's'}`).join(' · ')}`,
+      `Chord note per bar: ${bars.join(' · ')}`,
+      `${notes.length} notes · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
+      `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
+    ].join('\n');
   };
 
   // (chained: the Guide line card listens to the same steps)
