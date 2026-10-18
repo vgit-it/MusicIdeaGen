@@ -4,11 +4,13 @@
 import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
 import * as Tone from 'tone';
+import { autoMood } from '../tension';
+import { writeWords, type Words } from './words';
 import { Singer } from '../audio/singer';
 import type { VocalNote } from '../parts/vocal';
 import { VerseSynth } from './synth';
 import { NOTE_NAMES } from '../theory';
-import { DEFAULT_RANGE, addNeighbours, foldIntoRange, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, phraseEndings, smallBreaks, thirdBars, voiceLead, walkToNext, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Range, type Gap, type ChordNote } from './verse';
+import { DEFAULT_RANGE, quarterOf, addNeighbours, foldIntoRange, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, phraseEndings, smallBreaks, thirdBars, voiceLead, walkToNext, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Range, type Gap, type ChordNote } from './verse';
 
 export interface VersePanel {
   /** Show the song's verse notes again after new music. */
@@ -27,6 +29,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   let synth: VerseSynth | null = null;
   // (sung: the song's own Auto voice on the line, as "la"; off: the synth)
   let sing = true;
+  let wordsOn = true;
   let singer: Singer | null = null;
   let out: Tone.Gain | null = null;
   const six = () => 15 / Tone.getTransport().bpm.value;
@@ -36,13 +39,14 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
         <button id="v-gen" class="primary small" title="A new song (as Generate above), played from the start">Generate &amp; play</button>
         <button id="v-play" class="secondary small">Play</button>
         <label title="Auto voice: the song's own singer sings the line on 'la'. Synth: a plain tone. Mute the main vocal above to hear the line alone">Sound <select id="v-sing" class="gsing"><option value="sing">Auto voice</option><option value="synth">Synth</option></select></label>
+        <label title="Words: the line sung as pseudo-English words set to its rhythm and breaks. La: every note on 'la'">Sing <select id="v-words" class="gsing"><option value="words">Words</option><option value="la">La</option></select></label>
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
         <button id="v-remove" class="small">Remove</button>
       </div>
@@ -52,6 +56,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <label class="grange">Extended bottom <input type="range" id="v-xlo" min="36" max="84" value="${range.xlo}"> <b id="v-xlo-o"></b></label>
         <label class="grange">Extended top <input type="range" id="v-xhi" min="52" max="100" value="${range.xhi}"> <b id="v-xhi-o"></b></label>
       </div>
+      <p class="hint" id="v-lyrics" style="white-space:pre-line"></p>
       <p class="hint" id="v-info" style="white-space:pre-line"></p>
     </div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
@@ -76,18 +81,29 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     if (!n) {
       const chordAt = chordsOf(idea), { key, mode } = idea.song, { phrases, breaks, runs, holds, tones } = planFor(idea), seed = `${idea.seeds.song}|${idea.seeds.chords}`;
       const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
-      n = thirdBars(phraseEndings(limitSame(smallBreaks(foldIntoRange(walkToNext(addNeighbours(voiceLead(withHolds(plain, holds), range), key, mode, barOf(idea), seed), phrases, key, mode, barOf(idea), seed), range), phrases, seed)), phrases, barOf(idea), seed), phrases, barOf(idea), seed);
+      n = thirdBars(phraseEndings(limitSame(smallBreaks(foldIntoRange(walkToNext(addNeighbours(voiceLead(withHolds(plain, holds), range), key, mode, barOf(idea), seed), phrases, key, mode, barOf(idea), seed), range), phrases, barOf(idea), seed)), phrases, barOf(idea), seed), phrases, barOf(idea), seed);
       cache.set(idea, n);
     }
     return n;
   };
   /** The idea with the verse line as its vocal (what the singer sings): 'la' on each note, a breath every 4 bars. */
   let sung = new WeakMap<Idea, Idea>();
+  let wordsCache = new WeakMap<Idea, Words>();
   const la: VocalNote['syl'] = { onset: ['L'], vowel: 'AA', coda: [], stress: false, text: 'la', wordStart: true };
+  /** The words for an idea's verse: set to the line's rhythm and breaks, in the song's mood and genre. */
+  const wordsFor = (idea: Idea): Words => {
+    let w = wordsCache.get(idea);
+    if (!w) {
+      w = writeWords(notesFor(idea), planFor(idea).phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre }, range.hi - 4, `${idea.seeds.song}|${idea.seeds.chords}`);
+      wordsCache.set(idea, w);
+    }
+    return w;
+  };
   const singable = (idea: Idea): Idea => {
     let d = sung.get(idea);
     if (!d) {
-      const vocal: VocalNote[] = notesFor(idea).map((n) => ({ step: n.step, len: n.len, midi: n.midi, vel: 0.8, syl: la, start: n.step % 64 === 0 }));
+      const w = wordsOn ? wordsFor(idea) : null;
+      const vocal: VocalNote[] = notesFor(idea).map((n, i) => ({ step: n.step, len: n.len, midi: n.midi, vel: w && !w.syls[i].stress ? 0.68 : 0.82, syl: w ? w.syls[i] : la, start: w ? w.starts[i] : n.step % 64 === 0 }));
       d = { ...idea, vocal, backing: undefined, vocalDouble: false, sung: undefined, section: undefined };
       sung.set(idea, d);
     }
@@ -107,7 +123,8 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   };
   const info = () => {
     const first = list.find(sings);
-    if (!first) { $('v-info').textContent = 'No verse in this song.'; return; }
+    if (!first) { $('v-info').textContent = 'No verse in this song.'; $('v-lyrics').textContent = ''; return; }
+    $('v-lyrics').textContent = wordsOn ? wordsFor(first).lines.map((l, i) => `${i + 1}  ${l}`).join('\n') : '';
     const bar = barOf(first), { phrases, breaks, runs, holds, bars } = planFor(first);
     const notes = notesFor(first);
     $('v-info').textContent = [
@@ -116,6 +133,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
       `Chord note per bar: ${bars.join(' · ')}`,
       `Range ${notes.length ? `${noteName(Math.min(...notes.map((n) => n.midi)))}–${noteName(Math.max(...notes.map((n) => n.midi)))}` : "none"}, ${notes.filter((n) => n.midi < range.lo || n.midi > range.hi).length} notes in the extended zone`,
       `${notes.length} notes (${notes.filter((n) => n.nb).length} neighbour, ${walks(notes, bar)}, ${notes.filter((n) => n.third).length / 3} third-bar shapes) · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
+      `Notes starting in each quarter of the bar: ${[0, 1, 2, 3].map((q) => notes.filter((n) => quarterOf(n.step, bar) === q).length).join(' · ')}`,
       `Held phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
     ].join('\n');
@@ -161,11 +179,12 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     range.xlo = Math.min(range.xlo, range.lo);
     range.xhi = Math.max(range.xhi, range.hi);
     showRange();
-    cache = new WeakMap(); sung = new WeakMap();
+    cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap();
     info(); prepare();
   };
   for (const k of ['lo', 'hi', 'xlo', 'xhi'] as const) $('v-' + k).addEventListener('input', (e) => setRange(k, +(e.target as HTMLInputElement).value));
   showRange();
+  $('v-words').addEventListener('change', (e) => { wordsOn = (e.target as HTMLSelectElement).value === 'words'; sung = new WeakMap(); singer?.releaseAll(); info(); prepare(); });
   $('v-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); if (out) out.gain.value = (level / 100) ** 2; });
   $('v-sing').addEventListener('change', (e) => { sing = (e.target as HTMLSelectElement).value === 'sing'; synth?.releaseAll(); singer?.releaseAll(); prepare(); });
 
