@@ -102,3 +102,28 @@ export function verseOverBand(key: number, chordAt: Chord[], centre = 67): BandN
   }
   return notes;
 }
+
+/** A rest left in the line: `step` and `len` in 16ths. */
+export interface Gap { step: number; len: number }
+
+/**
+ * Rule 2: one or more gaps, each a half bar or a quarter bar, dropped in at random (never touching, never the whole verse).
+ * `bar`: 16ths in a bar. Gaps sit on their own grid (a half bar on a half-bar line, a quarter on a beat).
+ */
+export function randomGaps(totalSteps: number, bar: number, seed: string): Gap[] {
+  const rng = new Rng(seed + '|gaps');
+  const gaps: Gap[] = [];
+  const want = rng.int(1, 3);
+  for (let tries = 0; gaps.length < want && tries < 40; tries++) {
+    const len = rng.chance(0.5) ? bar / 2 : bar / 4;
+    const step = rng.int(0, Math.floor(totalSteps / len) - 1) * len;
+    if (gaps.some((g) => step <= g.step + g.len && g.step <= step + len)) continue;
+    gaps.push({ step, len });
+  }
+  return gaps.sort((a, b) => a.step - b.step);
+}
+
+/** The line without the notes that start inside a gap. */
+export function withGaps(notes: BandNote[], gaps: Gap[]): BandNote[] {
+  return notes.filter((n) => !gaps.some((g) => n.step >= g.step && n.step < g.step + g.len));
+}
