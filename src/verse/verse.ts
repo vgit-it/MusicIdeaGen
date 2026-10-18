@@ -123,6 +123,14 @@ export interface Gap { step: number; len: number }
 const overlaps = (a: Gap, b: Gap) => a.step < b.step + b.len && b.step < a.step + a.len;
 
 /**
+ * Which quarter of the bar a step is in (0-3). The tendency running through the rules below: more notes in the 1st and 3rd
+ * quarters (0, 2: "strong"), longer notes or silence in the 2nd and 4th (1, 3: "weak"). Always a lean, never a rule: each
+ * rule that makes a random choice weights it, so a verse can still break it.
+ */
+export const quarterOf = (step: number, bar: number) => Math.floor((((step % bar) + bar) % bar) / (bar / 4) + 1e-9);
+const isStrong = (step: number, bar: number) => quarterOf(step, bar) % 2 === 0;
+
+/**
  * Rule 2/7: the phrase system. The verse is cut into phrases of 1 to 4 bars; after each there is a break of at least a
  * quarter bar (a bar's quarter most often; a half, three quarters, or a whole bar less and less often).
  * A phrase starts on a beat, right after the break before it. What is left at the end if under a bar is silence.
@@ -141,7 +149,9 @@ export function planPhrases(totalSteps: number, bar: number, seed: string): { ph
     pos += len;
     if (pos >= totalSteps) break;
     const b = rng.next();
-    const gap = Math.round(beat * (b < 0.5 ? 1 : b < 0.8 ? 2 : b < 0.92 ? 3 : 4));
+    let gap = Math.round(beat * (b < 0.5 ? 1 : b < 0.8 ? 2 : b < 0.92 ? 3 : 4));
+    // (the lean: the next phrase mostly comes in on the 1st or 3rd quarter; so the break mostly covers the 2nd or 4th)
+    if (!isStrong(pos + gap, bar) && rng.chance(0.6)) gap = gap + beat <= bar ? gap + beat : gap - beat;
     const rest = totalSteps - pos;
     // (under a bar left for another phrase: the rest of the verse is the break)
     if (rest - gap < bar) { breaks.push({ step: pos, len: rest }); break; }
@@ -175,6 +185,8 @@ export function randomRuns(totalSteps: number, bar: number, energy: number, gaps
         const step = from + rng.int(0, Math.floor((to - from) / len) - 1) * len;
         const run = { step, len };
         if (step + len > to || gaps.some((g) => overlaps(g, run)) || runs.some((o) => overlaps(o, run))) continue;
+        // (the lean: runs mostly start on the 1st or 3rd quarter)
+        if (!isStrong(step, bar) && !rng.chance(0.3)) continue;
         runs.push(run);
         break;
       }
@@ -236,7 +248,9 @@ export function randomHolds(totalSteps: number, bar: number, gaps: Gap[], runs: 
     for (let tries = 0; tries < 6; tries++) {
       const r = rng.next();
       const len = Math.round(beat * (r < 0.4 ? 1 : r < 0.6 ? 1.5 : r < 0.9 ? 2 : 4));
-      const step = from + Math.round(rng.int(0, 3) * beat);
+      // (the lean: long notes mostly start on the 2nd or 4th quarter)
+      const q = rng.next() * 6, k0 = q < 1 ? 0 : q < 3.1 ? 1 : q < 4.1 ? 2 : 3;
+      const step = from + Math.round(k0 * beat);
       const span = { step, len };
       if (step + len > Math.min(totalSteps, from + bar)) continue;
       if (gaps.some((g) => overlaps(g, span)) || runs.some((o) => overlaps(o, span))) continue;
@@ -355,10 +369,11 @@ export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode:
 }
 
 /**
- * Rule 7: small breaks inside a phrase, an 8th or a 16th long: now and then a note drops out (8th: 8%, 16th: 10%).
+ * Rule 7: small breaks inside a phrase, an 8th or a 16th long: now and then a note drops out (8th: 4% on the 1st and 3rd
+ * quarter, 16% on the 2nd and 4th; 16th: 5% and 20%).
  * The first and last note of each phrase always stay.
  */
-export function smallBreaks(notes: BandNote[], phrases: Gap[], seed: string): BandNote[] {
+export function smallBreaks(notes: BandNote[], phrases: Gap[], bar: number, seed: string): BandNote[] {
   const rng = new Rng(seed + '|small');
   const out: BandNote[] = [];
   for (const ph of phrases) {
@@ -366,7 +381,9 @@ export function smallBreaks(notes: BandNote[], phrases: Gap[], seed: string): Ba
     inside.forEach((n, i) => {
       // (the note a walk arrives on stays too)
       const edge = i === 0 || i === inside.length - 1 || inside[i - 1].walk;
-      if (!edge && !n.walk && n.len <= 2 && rng.chance(n.len === 1 ? 0.1 : 0.08)) return;
+      // (the lean: a note drops out about four times as often in the 2nd or 4th quarter)
+      const drop = (n.len === 1 ? 0.1 : 0.08) * (isStrong(n.step, bar) ? 0.5 : 2);
+      if (!edge && !n.walk && n.len <= 2 && rng.chance(drop)) return;
       out.push(n);
     });
   }
