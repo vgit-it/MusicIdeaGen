@@ -8,7 +8,7 @@ import { Singer } from '../audio/singer';
 import type { VocalNote } from '../parts/vocal';
 import { VerseSynth } from './synth';
 import { NOTE_NAMES } from '../theory';
-import { verseOverBand, type BandNote } from './verse';
+import { randomGaps, verseOverBand, withGaps, type BandNote, type Gap } from './verse';
 
 export interface VersePanel {
   /** Show the song's verse notes again after new music. */
@@ -31,10 +31,11 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   let out: Tone.Gain | null = null;
   const six = () => 15 / Tone.getTransport().bpm.value;
   const cache = new WeakMap<Idea, BandNote[]>();
+  const gapCache = new WeakMap<Idea, Gap[]>();
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: a few random gaps, half a bar or a quarter bar.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
@@ -48,12 +49,22 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     </div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
 
-  /** The verse over an idea: a note per 8th on the 5th of the chord sounding. */
+  /** The gaps in an idea's verse (the same every time for the same song). */
+  const gapsFor = (idea: Idea): Gap[] => {
+    let g = gapCache.get(idea);
+    if (!g) {
+      const total = idea.chords.chordIdx.length;
+      g = randomGaps(total, Math.max(4, Math.round(total / 8)), `${idea.seeds.song}|${idea.seeds.chords}`);
+      gapCache.set(idea, g);
+    }
+    return g;
+  };
+  /** The verse over an idea: a note per 8th on the 5th of the chord sounding, minus the gaps. */
   const notesFor = (idea: Idea): BandNote[] => {
     let n = cache.get(idea);
     if (!n) {
       const { timeline, chordIdx } = idea.chords;
-      n = verseOverBand(idea.song.key, chordIdx.map((i) => timeline[i].chord));
+      n = withGaps(verseOverBand(idea.song.key, chordIdx.map((i) => timeline[i].chord)), gapsFor(idea));
       cache.set(idea, n);
     }
     return n;
@@ -73,10 +84,11 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   const prepare = () => { if (on && sing && singer) singer.prepare(list.filter(sings).map(singable), six); };
   const sings = (idea: Idea) => !idea.section || idea.section.kind === 'verse';
 
+  const bar = (idea: Idea) => Math.max(4, Math.round(idea.chords.chordIdx.length / 8));
   const info = () => {
     const first = list.find(sings);
     $('v-info').textContent = first
-      ? `Sits on ${[...new Set(notesFor(first).map((n) => NOTE_NAMES[n.midi % 12]))].join(', ')} · ${notesFor(first).length} notes a verse`
+      ? `Sits on ${[...new Set(notesFor(first).map((n) => NOTE_NAMES[n.midi % 12]))].join(', ')} · ${notesFor(first).length} notes a verse · gaps: ${gapsFor(first).map((g) => `${+(g.step / bar(first) + 1).toFixed(2)} (${g.len * 2 === bar(first) ? '½' : '¼'} bar)`).join(', ')}`
       : 'No verse in this song.';
   };
 
