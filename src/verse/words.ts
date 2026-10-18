@@ -35,6 +35,8 @@ export function writeWords(notes: BandNote[], phrases: Gap[], bar: number, style
   const starts: boolean[] = new Array(notes.length).fill(false);
   const lines: string[] = [];
   let rhyme: Rhyme | null = null;
+  // (a word group with the same rhythm as an earlier one often gets the same words: an answering phrase sings its first half's lines)
+  const memo = new Map<string, Syllable[]>();
   phrases.forEach((ph, p) => {
     const idx: number[] = [];
     notes.forEach((n, i) => { if (n.step >= ph.step - 1e-9 && n.step < ph.step + ph.len - 1e-9) idx.push(i); });
@@ -51,7 +53,11 @@ export function writeWords(notes: BandNote[], phrases: Gap[], bar: number, style
     groups.forEach((g, gi) => {
       const last = gi === groups.length - 1;
       // (every other phrase ends on the rhyme of the one before)
-      const line = lyricLine(rng, g.map((i) => slotOf(notes[i], bar, high, acc)), style, { rhyme: last && p % 2 === 1 ? rhyme : null });
+      const forced = last && p % 2 === 1 && rhyme;
+      const sig = g.map((i) => `${+(notes[i].step - notes[g[0]].step).toFixed(2)}:${+notes[i].len.toFixed(2)}`).join(',');
+      const again = !forced && memo.has(sig) && rng.chance(0.6);
+      const line = again ? memo.get(sig)! : lyricLine(rng, g.map((i) => slotOf(notes[i], bar, high, acc)), style, { rhyme: forced ? rhyme : null });
+      if (!memo.has(sig)) memo.set(sig, line);
       g.forEach((i, k) => { syls[i] = line[k]; });
       texts.push(spell(line));
       if (last && p % 2 === 0) rhyme = rhymeOf(line);

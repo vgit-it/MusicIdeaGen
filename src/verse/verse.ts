@@ -148,6 +148,11 @@ export function bandAccents(total: number, band: { kick?: number[]; snare?: numb
 const accAt = (acc: number[] | undefined, step: number) => acc?.[Math.max(0, Math.floor(step + 1e-6))] ?? 0.5;
 /** The nudge: 0.75 on a step the band leaves alone, up to 1.25 on its biggest hits. */
 const nudge = (acc: number[] | undefined, step: number) => 0.75 + 0.5 * accAt(acc, step);
+/**
+ * A random number (0-1) for one place in the line, drawn from the seed and the step alone (not from a running stream), so a
+ * leaf that repeats another one's seed makes the same choice at the same step even where the notes before it differ.
+ */
+const roll = (seed: string, tag: string, step: number) => new Rng(`${seed}|${tag}|${Math.round(step * 100)}`).next();
 
 /**
  * Rule 2/7: the phrase system. The verse is cut into phrases of 1 to 4 bars; after each there is a break of at least a
@@ -341,14 +346,13 @@ export function foldIntoRange(notes: BandNote[], r: Range = DEFAULT_RANGE): Band
  * Only 8ths and 16ths; the first note of a bar stays on the core.
  */
 export function addNeighbours(notes: BandNote[], key: number, mode: Mode, bar: number, seed: string): BandNote[] {
-  const rng = new Rng(seed + '|neighbours');
   const scale = new Set(SCALES[mode].map((i) => (key + i) % 12));
   const out: BandNote[] = [];
   for (const n of notes) {
     const prev = out[out.length - 1];
     const sameBar = prev && Math.floor(prev.step / bar) === Math.floor(n.step / bar);
-    if (sameBar && !prev.nb && n.len <= 2 && rng.chance(0.3)) {
-      const dir = rng.chance(0.5) ? 1 : -1;
+    if (sameBar && !prev.nb && n.len <= 2 && roll(seed, 'nb', n.step) < 0.3) {
+      const dir = roll(seed, 'nbd', n.step) < 0.5 ? 1 : -1;
       const k = [1, 2].find((x) => scale.has((((n.midi + dir * x) % 12) + 12) % 12));
       if (k) { out.push({ ...n, midi: n.midi + dir * k, nb: true }); continue; }
     }
@@ -365,7 +369,6 @@ export function addNeighbours(notes: BandNote[], key: number, mode: Mode, bar: n
  * If the cores are further apart than the walk covers, the line leaps first, then walks in.
  */
 export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode: Mode, bar: number, seed: string): BandNote[] {
-  const rng = new Rng(seed + '|walk');
   const scale = new Set(SCALES[mode].map((i) => (key + i) % 12));
   const ladder: number[] = [];
   for (let m = 24; m <= 108; m++) if (scale.has(m % 12)) ladder.push(m);
@@ -379,8 +382,8 @@ export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode:
     if (!next || !core || next.midi === core.midi) continue;
     const dir = next.midi > core.midi ? 1 : -1;
     const iNext = nearest(next.midi), d = Math.abs(iNext - nearest(core.midi));
-    const m = Math.min(rng.int(1, 2), d - 1);
-    if (!rng.chance(0.8) || m < 1) continue;
+    const m = Math.min(1 + Math.floor(roll(seed, 'walkm', B) * 2), d - 1);
+    if (roll(seed, 'walk', B) >= 0.8 || m < 1) continue;
     const from = B - 2 * m;
     const phrase = phrases.find((p) => p.step < B && B < p.step + p.len)!;
     if (from < phrase.step) continue;
@@ -401,7 +404,6 @@ export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode:
  * The first and last note of each phrase always stay.
  */
 export function smallBreaks(notes: BandNote[], phrases: Gap[], bar: number, seed: string, acc?: number[]): BandNote[] {
-  const rng = new Rng(seed + '|small');
   const out: BandNote[] = [];
   for (const ph of phrases) {
     const inside = notes.filter((n) => n.step >= ph.step && n.step < ph.step + ph.len);
@@ -411,7 +413,7 @@ export function smallBreaks(notes: BandNote[], phrases: Gap[], bar: number, seed
       // (the lean: a note drops out about four times as often in the 2nd or 4th quarter)
       // (and a note on a band hit stays more often: half as likely to drop on the biggest hits, one and a half times on quiet steps)
       const drop = (n.len === 1 ? 0.1 : 0.08) * (isStrong(n.step, bar) ? 0.5 : 2) * (1.5 - accAt(acc, n.step));
-      if (!edge && !n.walk && n.len <= 2 && rng.chance(drop)) return;
+      if (!edge && !n.walk && n.len <= 2 && roll(seed, 'small', n.step) < drop) return;
       out.push(n);
     });
   }
@@ -461,9 +463,9 @@ export function phraseEndings(notes: BandNote[], phrases: Gap[], bar: number, se
   let out = notes;
   for (const ph of phrases) {
     const end = ph.step + ph.len;
-    const r = rng.next();
+    const r = roll(seed, 'endlen', ph.step);
     const len = Math.round(beat * (r < 0.3 ? 1 : r < 0.5 ? 1.5 : r < 0.75 ? 2 : r < 0.9 ? 3 : 4));
-    if (!rng.chance(chance) || len > ph.len - beat) continue;
+    if (roll(seed, 'end', ph.step) >= chance || len > ph.len - beat) continue;
     const from = end - len;
     const inside = out.filter((n) => n.step >= ph.step && n.step < end);
     const core = [...inside].reverse().find((n) => n.step < from && !n.nb && !n.walk) ?? inside.find((n) => n.step < from) ?? inside[0];
@@ -483,13 +485,12 @@ export function phraseEndings(notes: BandNote[], phrases: Gap[], bar: number, se
  * Done last, so nothing else has to know about them.
  */
 export function thirdBars(notes: BandNote[], phrases: Gap[], bar: number, seed: string): BandNote[] {
-  const rng = new Rng(seed + '|thirds');
   const total = Math.max(0, ...notes.map((n) => n.step + n.len));
   let out = notes;
   for (let b0 = 0; b0 + bar <= total; b0 += bar) {
     if (!phrases.some((p) => p.step <= b0 && b0 + bar <= p.step + p.len)) continue;
     const inside = out.filter((n) => n.step >= b0 && n.step < b0 + bar);
-    if (!inside.length || inside.some((n) => n.walk || n.end) || !rng.chance(0.15)) continue;
+    if (!inside.length || inside.some((n) => n.walk || n.end) || roll(seed, 'third', b0) >= 0.15) continue;
     const core = inside.find((n) => !n.nb) ?? inside[0];
     out = [
       ...out.filter((n) => n.step < b0 || n.step >= b0 + bar),
@@ -522,7 +523,6 @@ export function addBends(
   seed: string,
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
-  const rng = new Rng(seed + '|bends');
   const out = notes.map((n) => ({ ...n }));
   const lift = (ctx.amount === 'lots' ? 1.6 : 1) * (0.7 + 0.15 * (ctx.energy - 1));
   const gap = (ctx.amount === 'lots' ? 1 : 2) * bar;
@@ -537,9 +537,10 @@ export function addBends(
   out.forEach((n, i) => {
     const prev = out[i - 1];
     const joined = !!prev && Math.abs(n.step - (prev.step + prev.len)) < 1e-6;
-    const sign = () => (rng.chance(0.85) ? 1 : -1);
-    if (n.end && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fall: rng.weighted([[2, 2], [3, 2], [5, 1]]), kind: 'fall' });
-    if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.65, 0.2 + 0.15 * (firsts.get(i)! - 1)), slide: sign() * rng.weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
+    const at = (tag: string) => new Rng(`${seed}|bsz|${tag}|${Math.round(n.step * 100)}`);
+    const sign = (tag: string) => (at(tag).chance(0.85) ? 1 : -1);
+    if (n.end && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fall: at('fall').weighted([[2, 2], [3, 2], [5, 1]]), kind: 'fall' });
+    if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.65, 0.2 + 0.15 * (firsts.get(i)! - 1)), slide: sign('ps') * at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
     if (n.land && prev?.walk && n.len >= 2) cand.push({ i, pri: 3, p: 0.4, slide: Math.max(-3, Math.min(3, n.midi - prev.midi)), kind: 'walk arrival' });
     const step = Math.floor(n.step + 1e-6);
     const c = ctx.chordAt[step];
@@ -548,9 +549,9 @@ export function addBends(
       const d = n.midi - prev.midi;
       if (Math.abs(d) >= 3 && Math.abs(d) <= 5) cand.push({ i, pri: 5, p: 0.3, slide: d, kind: 'glide' });
     }
-    if (changes.has(step) && n.len >= 4) cand.push({ i, pri: 6, p: 0.35, slide: sign() * rng.weighted([[1, 3], [2, 2]]), kind: 'chord change' });
+    if (changes.has(step) && n.len >= 4) cand.push({ i, pri: 6, p: 0.35, slide: sign('cc') * at('cc').weighted([[1, 3], [2, 2]]), kind: 'chord change' });
   });
-  const won = cand.filter((c) => rng.next() < c.p * lift).sort((a, b) => a.pri - b.pri || out[a.i].step - out[b.i].step);
+  const won = cand.filter((c) => roll(seed, `bend-${c.kind}`, out[c.i].step) < c.p * lift).sort((a, b) => a.pri - b.pri || out[a.i].step - out[b.i].step);
   const kept: typeof won = [];
   for (const c of won) {
     if (kept.some((k) => k.i === c.i || Math.abs(out[k.i].step - out[c.i].step) < gap)) continue;
