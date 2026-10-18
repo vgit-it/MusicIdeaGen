@@ -102,7 +102,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -405,6 +405,33 @@ export function limitSame(notes: BandNote[], max = MAX_SAME): BandNote[] {
 }
 
 /**
+ * Rule 11: held phrase endings. Not every phrase: the verse draws its own chance (35-85%) and each phrase rolls it. A phrase
+ * that ends this way finishes on one long note, on the core note of its last bar, held for a beat, a beat and a half, two or
+ * three beats, or the whole bar (its length drawn each time; at least a beat of the phrase is left before it).
+ */
+export function phraseEndings(notes: BandNote[], phrases: Gap[], bar: number, seed: string): BandNote[] {
+  const rng = new Rng(seed + '|endings');
+  const chance = 0.35 + rng.next() * 0.5;
+  const beat = bar / 4;
+  let out = notes;
+  for (const ph of phrases) {
+    const end = ph.step + ph.len;
+    const r = rng.next();
+    const len = Math.round(beat * (r < 0.3 ? 1 : r < 0.5 ? 1.5 : r < 0.75 ? 2 : r < 0.9 ? 3 : 4));
+    if (!rng.chance(chance) || len > ph.len - beat) continue;
+    const from = end - len;
+    const inside = out.filter((n) => n.step >= ph.step && n.step < end);
+    const core = [...inside].reverse().find((n) => n.step < from && !n.nb && !n.walk) ?? inside.find((n) => n.step < from) ?? inside[0];
+    if (!core) continue;
+    out = [
+      ...out.filter((n) => n.step < from || n.step >= end).map((n) => (n.step < from && n.step + n.len > from ? { ...n, len: from - n.step } : n)),
+      { step: from, len, midi: core.midi, end: true },
+    ].sort((a, b) => a.step - b.step);
+  }
+  return out;
+}
+
+/**
  * Rule 10: the third-bar shape. About 15 bars in 100 (inside a phrase, with no walk at their end) are three equal notes of a
  * third of a bar each, on the bar's core note: three even notes across the bar, like a triplet of half notes.
  * They sit between the usual steps, so steps and lengths are fractions (5⅓ sixteenths in 4/4).
@@ -417,7 +444,7 @@ export function thirdBars(notes: BandNote[], phrases: Gap[], bar: number, seed: 
   for (let b0 = 0; b0 + bar <= total; b0 += bar) {
     if (!phrases.some((p) => p.step <= b0 && b0 + bar <= p.step + p.len)) continue;
     const inside = out.filter((n) => n.step >= b0 && n.step < b0 + bar);
-    if (!inside.length || inside.some((n) => n.walk) || !rng.chance(0.15)) continue;
+    if (!inside.length || inside.some((n) => n.walk || n.end) || !rng.chance(0.15)) continue;
     const core = inside.find((n) => !n.nb) ?? inside[0];
     out = [
       ...out.filter((n) => n.step < b0 || n.step >= b0 + bar),
