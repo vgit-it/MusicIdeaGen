@@ -21,6 +21,7 @@ import {
 import { type PartKey, buildLockPanel } from './ui/locks';
 import { buildPartsPanel } from './ui/parts';
 import { buildChordEditor } from './ui/chordedit';
+import { buildVersePanel } from './verse/panel';
 import { hasPins } from './parts/sheet';
 import { highlightBar, markSection, renderIdea, renderTrack } from './ui/render';
 
@@ -60,6 +61,22 @@ const realHint = $('realhint');
 let preparing = false;
 engine.onBar = highlightBar;
 
+// the new verse melody writer (src/verse/): its own card
+const verse = buildVersePanel($('verse'), engine, {
+  async generateAndPlay() {
+    await Tone.start();
+    newIdea();
+    await playIfStopped();
+  },
+  async playFromStart() {
+    if (engine.playing) { playBtn.click(); return; }
+    if (track) { $('playall').click(); return; }
+    if (idea) engine.setList([idea], true, 0);
+    await Tone.start();
+    await playIfStopped();
+  },
+});
+
 /** The section strip, labelled with the instrument each section's rhythm part plays on. */
 const drawTrack = (t: Track) => renderTrack(t, (s) => SOUND_SHORT[engine.chordIdFor(s)]);
 
@@ -83,11 +100,13 @@ function render() {
     renderSectionTools();
   }
   showReal();
+  verse.update(track ? track.sections : [cur]);
 }
 
 function setPlaying(on: boolean) {
   playBtn.textContent = on ? 'Stop' : 'Play';
   playBtn.classList.toggle('on', on);
+  verse.setPlaying(on);
 }
 
 /* ---- chords you set: tap a bar to open the editor; the band is rewritten around them */

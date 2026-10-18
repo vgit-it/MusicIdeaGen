@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Verse lab</title>
+  <style>
+    :root { --bg: #f6f5f2; --card: #fff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e0da; --accent: #e8623a; --chip: #f0eee9; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #141416; --card: #1e1e21; --ink: #f2f2f3; --muted: #9a9aa0; --line: #2e2e33; --accent: #f07a52; --chip: #29292d; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+    main { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .lead { color: var(--muted); margin: 0 0 18px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+    select, button, input { font: inherit; color: var(--ink); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+    input { width: 90px; }
+    button { cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    #roll { width: 100%; height: 220px; display: block; border-radius: 8px; background: var(--chip); }
+    .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Verse lab</h1>
+    <p class="lead">A new vocal melody writer, built one rule at a time. Rule 1: an 8th note on the 5th of every chord.</p>
+
+    <section class="card">
+      <h2>Song</h2>
+      <div class="row">
+        <label class="f">Key <select id="key"></select></label>
+        <label class="f">Mode <select id="mode"></select></label>
+        <label class="f">Chords <select id="prog"></select></label>
+        <label class="f">Bars per chord <select id="each"><option value="1">1</option><option value="2" selected>2</option></select></label>
+        <label class="f">Tempo <input id="bpm" type="number" min="60" max="200" value="100" /></label>
+        <label class="f">Seed <input id="seed" value="a" /></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Verse</h2>
+      <div class="row">
+        <button id="play" class="primary">Play</button>
+        <button id="stop">Stop</button>
+        <label class="f" style="grid-auto-flow:column;align-items:center;gap:6px"><input id="chordsOn" type="checkbox" style="width:auto" checked /> Chords</label>
+      </div>
+      <canvas id="roll"></canvas>
+      <p class="hint" id="info"></p>
+    </section>
+  </main>
+  <script type="module" src="/src/lab/verseLab.ts"></script>
+</body>
+</html>
