@@ -1,0 +1,97 @@
+// The verse melody, built (experiment): the whole rule pipeline over a verse, one leaf of the form at a time (form.ts).
+// Pure: the same input gives the same notes.
+
+import type { Chord, Mode } from '../theory';
+import { planForm, leafSeeds, type Leaf, type Rule, type Variation } from './form';
+import {
+  addBends, addNeighbours, foldIntoRange, limitSame, phraseEndings, planPhrases, randomHolds, randomRuns, randomTones, smallBreaks,
+  thirdBars, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withRuns,
+  type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
+} from './verse';
+
+export interface BuildInput {
+  key: number;
+  mode: Mode;
+  genre: string;
+  /** The section's energy, 1-5. */
+  energy: number;
+  /** The chord sounding on each 16th step, and how hard the band hits there (bandAccents). */
+  chordAt: Chord[];
+  acc: number[];
+  /** Steps where a chord starts. */
+  changes: number[];
+  /** Steps in a bar, and bars in the verse. */
+  bar: number;
+  bars: number;
+  range: Range;
+  bends: BendAmount;
+  /** Group the bars into meta-phrases (4+4, 8+8...) with the second answering the first. */
+  meta: boolean;
+  variation: Variation;
+  seed: string;
+}
+
+export interface Built {
+  notes: BandNote[];
+  phrases: Gap[];
+  breaks: Gap[];
+  runs: Gap[];
+  holds: Gap[];
+  tones: ChordNote[];
+  bars: BarTone[];
+  leaves: Leaf[];
+}
+
+export function buildVerse(inp: BuildInput): Built {
+  const { bar, key, mode } = inp;
+  const total = inp.chordAt.length;
+  const leaves = planForm(inp.bars, inp.meta, inp.variation, inp.seed);
+  const seeds = leafSeeds(leaves, inp.seed);
+  const out: Built = { notes: [], phrases: [], breaks: [], runs: [], holds: [], tones: [], bars: [], leaves };
+  // (what a rule looks at in the band: an answering leaf's rhythm rules look at the band under the leaf they answer, so the
+  // rhythm repeats even where the band under it doesn't; the rules about notes look at the band under the leaf itself)
+  const rootFrom = (leaf: Leaf, rule: Rule): number => {
+    let l = leaf;
+    while (l.source !== null && !l.varied.includes(rule)) l = leaves.find((x) => x.id === l.source)!;
+    return l.from * bar;
+  };
+  const win = <T,>(arr: T[], from: number, len: number, pad: T): T[] => {
+    const w = arr.slice(from, from + len);
+    while (w.length < len) w.push(w.length ? w[w.length - 1] : pad);
+    return w;
+  };
+  for (const leaf of leaves) {
+    const from = leaf.from * bar;
+    const end = leaf.from + leaf.bars >= inp.bars ? total : from + leaf.bars * bar;
+    const len = end - from;
+    const sd = seeds.get(leaf.id)!;
+    const chordAt = inp.chordAt.slice(from, end);
+    const accOf = (rule: Rule) => win(inp.acc, rootFrom(leaf, rule), len, 0.5);
+    // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)
+    const tail = end < total ? Math.round(bar / 4) : 0;
+    const planned = planPhrases(len - tail, bar, sd.phrases, accOf('phrases'));
+    const phrases = planned.phrases, breaks = planned.breaks;
+    if (tail) {
+      const last = breaks[breaks.length - 1];
+      if (last && last.step + last.len >= len - tail) last.len = len - last.step;
+      else breaks.push({ step: phrases[phrases.length - 1].step + phrases[phrases.length - 1].len, len: tail });
+    }
+    const runs = randomRuns(len, bar, inp.energy, breaks, sd.runs, accOf('runs'));
+    const { tones, bars } = randomTones(len, bar, sd.tones, accOf('tones'));
+    const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'));
+    const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
+    const walked = walkToNext(addNeighbours(voiceLead(withHolds(plain, holds), inp.range), key, mode, bar, sd.neighbours), phrases, key, mode, bar, sd.walk);
+    const shaped = thirdBars(phraseEndings(limitSame(smallBreaks(foldIntoRange(walked, inp.range), phrases, bar, sd.small, accOf('small'))), phrases, bar, sd.endings), phrases, bar, sd.thirds);
+    const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
+    const notes = addBends(shaped, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes }, sd.bends);
+    const shift = (g: Gap): Gap => ({ step: g.step + from, len: g.len });
+    out.notes.push(...notes.map((n) => ({ ...n, step: n.step + from })));
+    out.phrases.push(...phrases.map(shift));
+    out.breaks.push(...breaks.map(shift));
+    out.runs.push(...runs.map(shift));
+    out.holds.push(...holds.map(shift));
+    out.tones.push(...tones);
+    out.bars.push(...bars);
+  }
+  return out;
+}
