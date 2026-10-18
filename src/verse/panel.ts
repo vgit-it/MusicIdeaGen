@@ -7,7 +7,8 @@ import * as Tone from 'tone';
 import { Singer } from '../audio/singer';
 import type { VocalNote } from '../parts/vocal';
 import { VerseSynth } from './synth';
-import { addNeighbours, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, smallBreaks, voiceLead, walkToNext, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Gap, type ChordNote } from './verse';
+import { NOTE_NAMES } from '../theory';
+import { DEFAULT_RANGE, addNeighbours, foldIntoRange, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, smallBreaks, voiceLead, walkToNext, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Range, type Gap, type ChordNote } from './verse';
 
 export interface VersePanel {
   /** Show the song's verse notes again after new music. */
@@ -29,7 +30,8 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   let singer: Singer | null = null;
   let out: Tone.Gain | null = null;
   const six = () => 15 / Tone.getTransport().bpm.value;
-  const cache = new WeakMap<Idea, BandNote[]>();
+  let cache = new WeakMap<Idea, BandNote[]>();
+  let range: Range = { ...DEFAULT_RANGE };
   const gapCache = new WeakMap<Idea, { phrases: Gap[]; breaks: Gap[]; runs: Gap[]; holds: Gap[]; tones: ChordNote[]; bars: BarTone[] }>();
 
   root.innerHTML = `
@@ -43,6 +45,12 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <label title="Auto voice: the song's own singer sings the line on 'la'. Synth: a plain tone. Mute the main vocal above to hear the line alone">Sound <select id="v-sing" class="gsing"><option value="sing">Auto voice</option><option value="synth">Synth</option></select></label>
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
         <button id="v-remove" class="small">Remove</button>
+      </div>
+      <div class="guiderow" title="The line stays between Bottom and Top, and strays into the extended zone only when that saves a big leap. It never goes past the extended limits.">
+        <label class="grange">Bottom <input type="range" id="v-lo" min="40" max="84" value="${range.lo}"> <b id="v-lo-o"></b></label>
+        <label class="grange">Top <input type="range" id="v-hi" min="52" max="96" value="${range.hi}"> <b id="v-hi-o"></b></label>
+        <label class="grange">Extended bottom <input type="range" id="v-xlo" min="36" max="84" value="${range.xlo}"> <b id="v-xlo-o"></b></label>
+        <label class="grange">Extended top <input type="range" id="v-xhi" min="52" max="100" value="${range.xhi}"> <b id="v-xhi-o"></b></label>
       </div>
       <p class="hint" id="v-info" style="white-space:pre-line"></p>
     </div>`;
@@ -68,13 +76,13 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     if (!n) {
       const chordAt = chordsOf(idea), { key, mode } = idea.song, { phrases, breaks, runs, holds, tones } = planFor(idea), seed = `${idea.seeds.song}|${idea.seeds.chords}`;
       const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
-      n = limitSame(smallBreaks(walkToNext(addNeighbours(voiceLead(withHolds(plain, holds)), key, mode, barOf(idea), seed), phrases, key, mode, barOf(idea), seed), phrases, seed));
+      n = limitSame(smallBreaks(foldIntoRange(walkToNext(addNeighbours(voiceLead(withHolds(plain, holds), range), key, mode, barOf(idea), seed), phrases, key, mode, barOf(idea), seed), range), phrases, seed));
       cache.set(idea, n);
     }
     return n;
   };
   /** The idea with the verse line as its vocal (what the singer sings): 'la' on each note, a breath every 4 bars. */
-  const sung = new WeakMap<Idea, Idea>();
+  let sung = new WeakMap<Idea, Idea>();
   const la: VocalNote['syl'] = { onset: ['L'], vowel: 'AA', coda: [], stress: false, text: 'la', wordStart: true };
   const singable = (idea: Idea): Idea => {
     let d = sung.get(idea);
@@ -106,6 +114,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
       `Phrases (bar from–to): ${phrases.map((p) => `${pos(p.step, bar)}–${pos(p.step + p.len, bar)}`).join(' · ')}`,
       `Breaks after: ${breaks.map((g) => `${+(g.len / (bar / 4)).toFixed(2)} beat${g.len === bar / 4 ? '' : 's'}`).join(' · ')}`,
       `Chord note per bar: ${bars.join(' · ')}`,
+      `Range ${notes.length ? `${noteName(Math.min(...notes.map((n) => n.midi)))}–${noteName(Math.max(...notes.map((n) => n.midi)))}` : "none"}, ${notes.filter((n) => n.midi < range.lo || n.midi > range.hi).length} notes in the extended zone`,
       `${notes.length} notes (${notes.filter((n) => n.nb).length} neighbour, ${walks(notes, bar)}) · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
     ].join('\n');
@@ -135,6 +144,26 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   $('v-remove').addEventListener('click', () => setOn(false));
   $('v-gen').addEventListener('click', () => { void ctl.generateAndPlay(); });
   $('v-play').addEventListener('click', () => { void ctl.playFromStart(); });
+  const noteName = (m: number) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+  const showRange = () => {
+    for (const k of ['lo', 'hi', 'xlo', 'xhi'] as const) {
+      ($('v-' + k) as HTMLInputElement).value = String(range[k]);
+      $(`v-${k}-o`).textContent = noteName(range[k]);
+    }
+  };
+  /** Keep the four limits in order (the main range at least an octave, the extended limits outside it). */
+  const setRange = (k: keyof Range, v: number) => {
+    range[k] = v;
+    if (k === 'lo' && range.hi < v + 12) range.hi = v + 12;
+    if (k === 'hi' && range.lo > v - 12) range.lo = v - 12;
+    range.xlo = Math.min(range.xlo, range.lo);
+    range.xhi = Math.max(range.xhi, range.hi);
+    showRange();
+    cache = new WeakMap(); sung = new WeakMap();
+    info(); prepare();
+  };
+  for (const k of ['lo', 'hi', 'xlo', 'xhi'] as const) $('v-' + k).addEventListener('input', (e) => setRange(k, +(e.target as HTMLInputElement).value));
+  showRange();
   $('v-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); if (out) out.gain.value = (level / 100) ** 2; });
   $('v-sing').addEventListener('change', (e) => { sing = (e.target as HTMLSelectElement).value === 'sing'; synth?.releaseAll(); singer?.releaseAll(); prepare(); });
 
