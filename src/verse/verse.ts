@@ -261,19 +261,36 @@ export function withHolds(notes: BandNote[], holds: Gap[]): BandNote[] {
   return out;
 }
 
+/** The pitch range (MIDI): the line lives between `lo` and `hi`, and may stray out to `xlo` / `xhi` but no further. */
+export interface Range { lo: number; hi: number; xlo: number; xhi: number }
+export const DEFAULT_RANGE: Range = { lo: 58, hi: 76, xlo: 53, xhi: 81 };
+
 /**
- * Rule 6: smooth steps. Each note takes the octave nearest the one before, so the line moves by the smallest jump
- * (kept within an octave and a half around `centre`).
+ * Rule 6: smooth steps. Each note takes the octave nearest the one before, so the line moves by the smallest jump.
+ * Notes in the extended zone (past the top or bottom, up to the extended limits) cost 4 semitones extra, so the line
+ * only strays there when it saves a real leap.
  */
-export function voiceLead(notes: BandNote[], centre = 67): BandNote[] {
-  let prev = centre;
+export function voiceLead(notes: BandNote[], r: Range = DEFAULT_RANGE): BandNote[] {
+  let prev = Math.round((r.lo + r.hi) / 2);
   return notes.map((n) => {
     const pc = ((n.midi % 12) + 12) % 12;
-    let m = Math.round((prev - pc) / 12) * 12 + pc;
-    if (m > centre + 9) m -= 12;
-    if (m < centre - 9) m += 12;
-    prev = m;
-    return { ...n, midi: m };
+    let best = Math.round((prev - pc) / 12) * 12 + pc, score = Infinity;
+    for (let m = pc + 12 * Math.ceil((r.xlo - pc) / 12); m <= r.xhi; m += 12) {
+      const sc = Math.abs(m - prev) + (m < r.lo || m > r.hi ? 4 : 0);
+      if (sc < score) { best = m; score = sc; }
+    }
+    prev = best;
+    return { ...n, midi: best };
+  });
+}
+
+/** Any note the later rules pushed past the extended limits goes back in by an octave. */
+export function foldIntoRange(notes: BandNote[], r: Range = DEFAULT_RANGE): BandNote[] {
+  return notes.map((n) => {
+    let m = n.midi;
+    while (m > r.xhi) m -= 12;
+    while (m < r.xlo) m += 12;
+    return m === n.midi ? n : { ...n, midi: m };
   });
 }
 
