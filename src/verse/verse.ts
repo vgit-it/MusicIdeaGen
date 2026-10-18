@@ -103,22 +103,35 @@ export function verseOverBand(key: number, chordAt: Chord[], centre = 67): BandN
   return notes;
 }
 
-/** A rest left in the line: `step` and `len` in 16ths. */
+/** A stretch of the verse: `step` and `len` in 16ths. */
 export interface Gap { step: number; len: number }
 
+const overlaps = (a: Gap, b: Gap) => a.step < b.step + b.len && b.step < a.step + a.len;
+
 /**
- * Rule 2: one or more gaps, each a half bar or a quarter bar, dropped in at random (never touching, never the whole verse).
- * `bar`: 16ths in a bar. Gaps sit on their own grid (a half bar on a half-bar line, a quarter on a beat).
+ * Rule 2: gaps, each a half bar or a quarter bar, at random. At least `MIN_GAPS` in every 4 bars (and up to `MAX_GAPS`),
+ * never touching. A half bar sits on a half-bar line, a quarter on a beat.
+ * `bar`: 16ths in a bar.
  */
+export const MIN_GAPS = 2;
+export const MAX_GAPS = 4;
 export function randomGaps(totalSteps: number, bar: number, seed: string): Gap[] {
   const rng = new Rng(seed + '|gaps');
   const gaps: Gap[] = [];
-  const want = rng.int(1, 3);
-  for (let tries = 0; gaps.length < want && tries < 40; tries++) {
-    const len = rng.chance(0.5) ? bar / 2 : bar / 4;
-    const step = rng.int(0, Math.floor(totalSteps / len) - 1) * len;
-    if (gaps.some((g) => step <= g.step + g.len && g.step <= step + len)) continue;
-    gaps.push({ step, len });
+  const block = bar * 4;
+  for (let from = 0; from < totalSteps; from += block) {
+    const to = Math.min(totalSteps, from + block);
+    const want = rng.int(MIN_GAPS, MAX_GAPS);
+    let got = 0;
+    for (let tries = 0; got < want && tries < 60; tries++) {
+      const len = Math.round(rng.chance(0.5) ? bar / 2 : bar / 4);
+      const step = from + rng.int(0, Math.floor((to - from) / len) - 1) * len;
+      if (step + len > to) continue;
+      // (touching counts: two gaps side by side would read as one long one)
+      if (gaps.some((g) => step <= g.step + g.len && g.step <= step + len)) continue;
+      gaps.push({ step, len });
+      got++;
+    }
   }
   return gaps.sort((a, b) => a.step - b.step);
 }
@@ -126,4 +139,44 @@ export function randomGaps(totalSteps: number, bar: number, seed: string): Gap[]
 /** The line without the notes that start inside a gap. */
 export function withGaps(notes: BandNote[], gaps: Gap[]): BandNote[] {
   return notes.filter((n) => !gaps.some((g) => n.step >= g.step && n.step < g.step + g.len));
+}
+
+/**
+ * Rule 3: stretches of 16th notes, an eighth of a bar, a quarter or a half, at random, in the open spaces between the gaps.
+ * The higher the verse's energy (1-5), the fewer.
+ */
+export function randomRuns(totalSteps: number, bar: number, energy: number, gaps: Gap[], seed: string): Gap[] {
+  const rng = new Rng(seed + '|runs');
+  const runs: Gap[] = [];
+  const p = Math.max(0.05, (6 - energy) / 6); // energy 1: 83%, 3: 50%, 5: 17% (of 4 tries every 4 bars)
+  const block = bar * 4;
+  for (let from = 0; from < totalSteps; from += block) {
+    const to = Math.min(totalSteps, from + block);
+    for (let k = 0; k < 4; k++) {
+      if (!rng.chance(p)) continue;
+      const r = rng.next();
+      const len = Math.max(2, Math.round(r < 0.5 ? bar / 8 : r < 0.85 ? bar / 4 : bar / 2));
+      for (let tries = 0; tries < 20; tries++) {
+        const step = from + rng.int(0, Math.floor((to - from) / len) - 1) * len;
+        const run = { step, len };
+        if (step + len > to || gaps.some((g) => overlaps(g, run)) || runs.some((o) => overlaps(o, run))) continue;
+        runs.push(run);
+        break;
+      }
+    }
+  }
+  return runs.sort((a, b) => a.step - b.step);
+}
+
+/** The 8th notes inside each run swapped for 16ths on the 5th of the chord at each step. */
+export function withRuns(notes: BandNote[], runs: Gap[], key: number, chordAt: Chord[], centre = 67): BandNote[] {
+  const inRun = (s: number) => runs.some((r) => s >= r.step && s < r.step + r.len);
+  const out = notes.filter((n) => !inRun(n.step));
+  for (const r of runs) {
+    for (let s = r.step; s < r.step + r.len && s < chordAt.length; s++) {
+      const c = chordAt[s];
+      out.push({ step: s, len: 1, midi: nearest((key + c.root + fifth(c)) % 12, centre) });
+    }
+  }
+  return out.sort((a, b) => a.step - b.step);
 }

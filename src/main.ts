@@ -70,7 +70,16 @@ const verse = buildVersePanel($('verse'), engine, {
   },
   async playFromStart() {
     if (engine.playing) { playBtn.click(); return; }
-    if (track) { $('playall').click(); return; }
+    if (track) {
+      // (from the first verse, not the intro)
+      const v = Math.max(0, track.sections.findIndex((x) => x.section?.kind === 'verse'));
+      looping = null;
+      shown = v;
+      engine.setList(track.sections, false, v);
+      render();
+      await playIfStopped();
+      return;
+    }
     if (idea) engine.setList([idea], true, 0);
     await Tone.start();
     await playIfStopped();
