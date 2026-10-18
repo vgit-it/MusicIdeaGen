@@ -123,31 +123,32 @@ export interface Gap { step: number; len: number }
 const overlaps = (a: Gap, b: Gap) => a.step < b.step + b.len && b.step < a.step + a.len;
 
 /**
- * Rule 2: gaps, each a half bar or a quarter bar, at random. At least `MIN_GAPS` in every 4 bars (and up to `MAX_GAPS`),
- * never touching. A half bar sits on a half-bar line, a quarter on a beat.
- * `bar`: 16ths in a bar.
+ * Rule 2/7: the phrase system. The verse is cut into phrases of 1 to 4 bars; after each there is a break of at least a
+ * quarter bar (a bar's quarter most often; a half, three quarters, or a whole bar less and less often).
+ * A phrase starts on a beat, right after the break before it. What is left at the end if under a bar is silence.
+ * `bar`: 16ths in a bar. Returns the phrases and the breaks between them.
  */
-export const MIN_GAPS = 2;
-export const MAX_GAPS = 4;
-export function randomGaps(totalSteps: number, bar: number, seed: string): Gap[] {
-  const rng = new Rng(seed + '|gaps');
-  const gaps: Gap[] = [];
-  const block = bar * 4;
-  for (let from = 0; from < totalSteps; from += block) {
-    const to = Math.min(totalSteps, from + block);
-    const want = rng.int(MIN_GAPS, MAX_GAPS);
-    let got = 0;
-    for (let tries = 0; got < want && tries < 60; tries++) {
-      const len = Math.round(rng.chance(0.5) ? bar / 2 : bar / 4);
-      const step = from + rng.int(0, Math.floor((to - from) / len) - 1) * len;
-      if (step + len > to) continue;
-      // (touching counts: two gaps side by side would read as one long one)
-      if (gaps.some((g) => step <= g.step + g.len && g.step <= step + len)) continue;
-      gaps.push({ step, len });
-      got++;
-    }
+export function planPhrases(totalSteps: number, bar: number, seed: string): { phrases: Gap[]; breaks: Gap[] } {
+  const rng = new Rng(seed + '|phrases');
+  const beat = bar / 4;
+  const phrases: Gap[] = [];
+  const breaks: Gap[] = [];
+  let pos = 0;
+  while (pos < totalSteps) {
+    const r = rng.next();
+    const len = Math.min(Math.round(bar * (r < 0.15 ? 1 : r < 0.5 ? 2 : r < 0.75 ? 3 : 4)), totalSteps - pos);
+    phrases.push({ step: pos, len });
+    pos += len;
+    if (pos >= totalSteps) break;
+    const b = rng.next();
+    const gap = Math.round(beat * (b < 0.5 ? 1 : b < 0.8 ? 2 : b < 0.92 ? 3 : 4));
+    const rest = totalSteps - pos;
+    // (under a bar left for another phrase: the rest of the verse is the break)
+    if (rest - gap < bar) { breaks.push({ step: pos, len: rest }); break; }
+    breaks.push({ step: pos, len: gap });
+    pos += gap;
   }
-  return gaps.sort((a, b) => a.step - b.step);
+  return { phrases, breaks };
 }
 
 /** The line without the notes that start inside a gap. */
@@ -156,7 +157,7 @@ export function withGaps(notes: BandNote[], gaps: Gap[]): BandNote[] {
 }
 
 /**
- * Rule 3: stretches of 16th notes, an eighth of a bar, a quarter or a half, at random, in the open spaces between the gaps.
+ * Rule 3: stretches of 16th notes, an eighth of a bar, a quarter or a half, at random, in the open spaces between the breaks.
  * The higher the verse's energy (1-5), the fewer.
  */
 export function randomRuns(totalSteps: number, bar: number, energy: number, gaps: Gap[], seed: string): Gap[] {
@@ -292,6 +293,46 @@ export function approachNotes(notes: BandNote[], key: number, mode: Mode, bar: n
     const dir = jump > 0 ? 1 : -1;
     const step = [1, 2].find((k) => scale.has((((next.midi + dir * k) % 12) + 12) % 12));
     if (step) last.midi = next.midi + dir * step;
+  }
+  return out;
+}
+
+/**
+ * Rule 7: small breaks inside a phrase, an 8th or a 16th long: now and then a note drops out (8th: 8%, 16th: 10%).
+ * The first and last note of each phrase always stay.
+ */
+export function smallBreaks(notes: BandNote[], phrases: Gap[], seed: string): BandNote[] {
+  const rng = new Rng(seed + '|small');
+  const out: BandNote[] = [];
+  for (const ph of phrases) {
+    const inside = notes.filter((n) => n.step >= ph.step && n.step < ph.step + ph.len);
+    inside.forEach((n, i) => {
+      const edge = i === 0 || i === inside.length - 1;
+      if (!edge && n.len <= 2 && rng.chance(n.len === 1 ? 0.1 : 0.08)) return;
+      out.push(n);
+    });
+  }
+  return out;
+}
+
+export const MAX_SAME = 4;
+
+/** What kind of element a note is: a 16th, an 8th, or a long note. */
+const kind = (n: BandNote) => (n.len <= 1 ? 'sixteenth' : n.len === 2 ? 'eighth' : 'long');
+
+/**
+ * Rule 7: never more than `MAX_SAME` of the same kind of note back to back with nothing between them.
+ * The one that would be the fifth drops out, leaving a break of its own length (an 8th or a 16th).
+ */
+export function limitSame(notes: BandNote[], max = MAX_SAME): BandNote[] {
+  const out: BandNote[] = [];
+  let run = 0, last: BandNote | null = null;
+  for (const n of notes) {
+    const joined = last && n.step === last.step + last.len && kind(n) === kind(last);
+    run = joined ? run + 1 : 1;
+    if (run > max) { run = 0; last = null; continue; }
+    out.push(n);
+    last = n;
   }
   return out;
 }
