@@ -29,7 +29,7 @@ function slotOf(n: BandNote, bar: number, high: number, acc?: number[]) {
 /**
  * `notes` sorted by step; `phrases` as planned; `high`: the pitch from which a note counts as high (open vowels).
  */
-export function writeWords(notes: BandNote[], phrases: Gap[], bar: number, style: LyricStyle, high: number, seed: string, acc?: number[]): Words {
+export function writeWords(notes: BandNote[], phrases: Gap[], bar: number, style: LyricStyle, high: number, seed: string, acc?: number[], repeat = 0.6): Words {
   const rng = new Rng(seed + '|words');
   const syls: Syllable[] = new Array(notes.length);
   const starts: boolean[] = new Array(notes.length).fill(false);
@@ -55,7 +55,7 @@ export function writeWords(notes: BandNote[], phrases: Gap[], bar: number, style
       // (every other phrase ends on the rhyme of the one before)
       const forced = last && p % 2 === 1 && rhyme;
       const sig = g.map((i) => `${+(notes[i].step - notes[g[0]].step).toFixed(2)}:${+notes[i].len.toFixed(2)}`).join(',');
-      const again = !forced && memo.has(sig) && rng.chance(0.6);
+      const again = !forced && memo.has(sig) && rng.chance(repeat);
       const line = again ? memo.get(sig)! : lyricLine(rng, g.map((i) => slotOf(notes[i], bar, high, acc)), style, { rhyme: forced ? rhyme : null });
       if (!memo.has(sig)) memo.set(sig, line);
       g.forEach((i, k) => { syls[i] = line[k]; });

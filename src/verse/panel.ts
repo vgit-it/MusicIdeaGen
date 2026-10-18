@@ -10,9 +10,11 @@ import { Singer } from '../audio/singer';
 import type { VocalNote } from '../parts/vocal';
 import { VerseSynth } from './synth';
 import { NOTE_NAMES } from '../theory';
-import { DEFAULT_RANGE, bandAccents, quarterOf, type BandNote, type BendAmount, type Gap, type Range } from './verse';
-import { buildVerse, type Built } from './build';
+import { DEFAULT_RANGE, quarterOf, type BandNote, type BendAmount, type Gap, type Range } from './verse';
+import type { Built } from './build';
+import { accentsOf, barOf, buildSection, hookSig, isChorus, personalityOf, type SectionOptions } from './section';
 import type { Variation } from './form';
+import { describe, dialsFor } from './personality';
 
 export interface VersePanel {
   /** Show the song's verse notes again after new music. */
@@ -43,7 +45,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 14: the form, meta-phrases (4+4, 8+8...) with the second answering the first and varying. Rule 13: bends (scoops and falls) at good spots, Auto voice only. Rule 15: bends inside held notes, to the next chord note or the next bar's core note, likelier on longer notes and after repeated notes. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 14: the form, meta-phrases (4+4, 8+8...) with the second answering the first and varying. Rule 13: bends (scoops and falls) at good spots, Auto voice only. Rule 15: bends inside held notes, to the next chord note or the next bar's core note, likelier on longer notes and after repeated notes. Rule 16: the chorus, with its own hook (a chant, a long-note anthem, a leap and fall, or pushed rhythm), its height, and its own ways of ending phrases; every song draws a personality, so two songs rarely share much. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
@@ -68,27 +70,28 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     </div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
 
-  const chordsOf = (idea: Idea) => idea.chords.chordIdx.map((i) => idea.chords.timeline[i].chord);
-  /** How hard the band hits on each step (drums, chord changes, strum, bass): one more factor in the verse's rhythm. */
+  /** How hard the band hits on each 16th step: one more factor in the line's rhythm. */
   const accents = new WeakMap<Idea, number[]>();
   const accOf = (idea: Idea): number[] => {
     let a = accents.get(idea);
-    if (!a) {
-      const { kick, snare } = idea.drums;
-      a = bandAccents(idea.chords.chordIdx.length, { kick, snare, strum: idea.strum, bass: idea.bass, changes: idea.chords.timeline.map((e) => e.step) });
-      accents.set(idea, a);
-    }
+    if (!a) { a = accentsOf(idea); accents.set(idea, a); }
     return a;
   };
-  /** The verse over an idea, built leaf by leaf (build.ts): the form, then the rules in each leaf. Same song, same verse. */
+  const opts = (): SectionOptions => ({ range, bends, meta, variation });
+  const persFor = personalityOf;
+  const hookSigOf = (idea: Idea) => hookSig(idea, opts());
+  let hooks = new Map<string, Built>();
+  let hookWords = new Map<string, Words>();
+  /** The verse or chorus over an idea, built leaf by leaf (build.ts): the form, then the rules in each leaf. Same song, same line. */
   const builtFor = (idea: Idea): Built => {
     let b = cache.get(idea);
     if (!b) {
-      b = buildVerse({
-        key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: idea.section?.energy ?? 3,
-        chordAt: chordsOf(idea), acc: accOf(idea), changes: idea.chords.timeline.map((e) => e.step),
-        bar: barOf(idea), bars: idea.song.bars.length, range, bends, meta, variation, seed: `${idea.seeds.song}|${idea.seeds.chords}`,
-      });
+      const sig = isChorus(idea) ? hookSigOf(idea) : '';
+      b = sig ? hooks.get(sig) : undefined;
+      if (!b) {
+        b = buildSection(idea, opts(), accOf(idea));
+        if (sig) hooks.set(sig, b);
+      }
       cache.set(idea, b);
     }
     return b;
@@ -98,11 +101,16 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   let sung = new WeakMap<Idea, Idea>();
   let wordsCache = new WeakMap<Idea, Words>();
   const la: VocalNote['syl'] = { onset: ['L'], vowel: 'AA', coda: [], stress: false, text: 'la', wordStart: true };
-  /** The words for an idea's verse: set to the line's rhythm and breaks, in the song's mood and genre. */
+  /** The words for an idea's verse or chorus: set to the line's rhythm and breaks, in the song's mood and genre. A chorus repeats its lines more. */
   const wordsFor = (idea: Idea): Words => {
     let w = wordsCache.get(idea);
     if (!w) {
-      w = writeWords(notesFor(idea), builtFor(idea).phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre }, range.hi - 4, `${idea.seeds.song}|${idea.seeds.chords}`, accOf(idea));
+      const chorus = isChorus(idea), sig = chorus ? hookSigOf(idea) : '';
+      w = chorus ? hookWords.get(sig) : undefined;
+      if (!w) {
+        w = writeWords(notesFor(idea), builtFor(idea).phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre }, range.hi + dialsFor(chorus ? 'chorus' : 'verse', persFor(idea)).lift - 4, chorus ? sig : `${idea.seeds.song}|${idea.seeds.chords}`, accOf(idea), chorus ? 0.9 : 0.6);
+        if (chorus) hookWords.set(sig, w);
+      }
       wordsCache.set(idea, w);
     }
     return w;
@@ -128,9 +136,8 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     return d;
   };
   const prepare = () => { if (on && sing && singer) singer.prepare(list.filter(sings).map(singable), six); };
-  const sings = (idea: Idea) => !idea.section || idea.section.kind === 'verse';
+  const sings = (idea: Idea) => !idea.section || idea.section.kind === 'verse' || idea.section.kind === 'chorus';
 
-  const barOf = (idea: Idea) => Math.max(4, Math.round(idea.chords.chordIdx.length / idea.song.bars.length));
   const pos = (step: number, bar: number) => +(step / bar + 1).toFixed(2);
   const at = (g: Gap, bar: number) => `${pos(g.step, bar)} (${bar / g.len > 6 ? '⅛' : bar / g.len > 3 ? '¼' : '½'} bar)`;
   /** "walks: 2→3 (2 steps), ...": the bars whose end walks into the next bar's core. */
@@ -139,13 +146,11 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     for (const n of notes) if (n.walk) by.set(Math.floor(n.step / bar), (by.get(Math.floor(n.step / bar)) ?? 0) + 1);
     return by.size ? `walks into bar ${[...by].map(([b, c]) => `${b + 2} (${c} step${c > 1 ? 's' : ''})`).join(', ')}` : 'no walks';
   };
-  const info = () => {
-    const first = list.find(sings);
-    if (!first) { $('v-info').textContent = 'No verse in this song.'; $('v-lyrics').textContent = ''; return; }
-    $('v-lyrics').textContent = wordsOn ? wordsFor(first).lines.map((l, i) => `${i + 1}  ${l}`).join('\n') : '';
+  /** What the card shows about one section: its form, phrases, notes and the rules' choices. */
+  const report = (first: Idea): string[] => {
     const bar = barOf(first), built = builtFor(first), { phrases, breaks, runs, holds, bars, leaves } = built;
     const notes = built.notes;
-    $('v-info').textContent = [
+    return [
       `Form: ${leaves.map((l) => `${l.name} (bars ${l.from + 1}–${l.from + l.bars}${l.source === null ? '' : `, varies ${leaves.find((x) => x.id === l.source)!.name}: ${l.varied.join(', ') || 'nothing'}`})`).join(' · ')}`,
       `Phrases (bar from–to): ${phrases.map((p) => `${pos(p.step, bar)}–${pos(p.step + p.len, bar)}`).join(' · ')}`,
       `Breaks after: ${breaks.map((g) => `${+(g.len / (bar / 4)).toFixed(2)} beat${g.len === bar / 4 ? '' : 's'}`).join(' · ')}`,
@@ -156,9 +161,19 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
       `Bends (${notes.filter((n) => n.bend).length}): ${notes.filter((n) => n.bend).map((n) => `${pos(n.step, bar)} ${n.bend} ${n.fall ? `falls ${n.fall}` : n.slide! > 0 ? `from ${n.slide} below` : `from ${-n.slide!} above`}`).join(', ') || 'none'}`,
       `Bends inside notes (${notes.filter((n) => n.inner).length}): ${notes.filter((n) => n.inner).map((n) => `${pos(n.step, bar)} ${n.inner} (${n.bendTo! > n.midi ? '+' : ''}${n.bendTo! - n.midi}, held ${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
       `Notes starting in each quarter of the bar: ${[0, 1, 2, 3].map((q) => notes.filter((n) => quarterOf(n.step, bar) === q).length).join(' · ')}`,
-      `Held phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
+      `Phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} ${n.style ?? 'held'} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
-    ].join('\n');
+    ];
+  };
+
+  const info = () => {
+    const verse = list.find((i) => sings(i) && !isChorus(i)), chorus = list.find(isChorus), any = verse ?? chorus;
+    if (!any) { $('v-info').textContent = 'No verse in this song.'; $('v-lyrics').textContent = ''; return; }
+    $('v-lyrics').textContent = wordsOn ? [verse && ['VERSE', verse], chorus && ['CHORUS', chorus]].filter((x): x is [string, Idea] => !!x).map(([t, i]) => `${t}\n${wordsFor(i).lines.map((l, k) => `${k + 1}  ${l}`).join('\n')}`).join('\n\n') : '';
+    const lines = [`This song: ${describe(persFor(any))}`];
+    if (verse) lines.push('', 'VERSE', ...report(verse));
+    if (chorus) lines.push('', 'CHORUS', `Chorus range lifted ${dialsFor('chorus', persFor(chorus)).lift} semitones`, ...report(chorus));
+    $('v-info').textContent = lines.join('\n');
   };
 
   // (chained: the Guide line card listens to the same steps)
@@ -201,14 +216,14 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     range.xlo = Math.min(range.xlo, range.lo);
     range.xhi = Math.max(range.xhi, range.hi);
     showRange();
-    cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap();
+    cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); hooks = new Map(); hookWords = new Map();
     info(); prepare();
   };
   for (const k of ['lo', 'hi', 'xlo', 'xhi'] as const) $('v-' + k).addEventListener('input', (e) => setRange(k, +(e.target as HTMLInputElement).value));
   showRange();
   $('v-words').addEventListener('change', (e) => { wordsOn = (e.target as HTMLSelectElement).value === 'words'; sung = new WeakMap(); singer?.releaseAll(); info(); prepare(); });
-  $('v-bends').addEventListener('change', (e) => { bends = (e.target as HTMLSelectElement).value as BendAmount; cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); singer?.releaseAll(); info(); prepare(); });
-  const rebuild = () => { cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); singer?.releaseAll(); info(); prepare(); };
+  $('v-bends').addEventListener('change', (e) => { bends = (e.target as HTMLSelectElement).value as BendAmount; cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); hooks = new Map(); hookWords = new Map(); singer?.releaseAll(); info(); prepare(); });
+  const rebuild = () => { cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); hooks = new Map(); hookWords = new Map(); singer?.releaseAll(); info(); prepare(); };
   $('v-meta').addEventListener('change', (e) => { meta = (e.target as HTMLSelectElement).value === 'on'; rebuild(); });
   $('v-var').addEventListener('change', (e) => { variation = (e.target as HTMLSelectElement).value as Variation; rebuild(); });
   $('v-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); if (out) out.gain.value = (level / 100) ** 2; });
