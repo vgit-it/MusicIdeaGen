@@ -102,7 +102,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -300,21 +300,39 @@ export function addNeighbours(notes: BandNote[], key: number, mode: Mode, bar: n
 }
 
 /**
- * Rule 6, part 2: where a bar ends more than a step from where the next bar starts, the bar's last 8th now and then
- * becomes the scale note next to the next bar's first note, so the line walks in by step.
+ * Rule 9: walking into the next bar. Inside a phrase, where the next bar's core note is a different note, the last
+ * 1 or 2 8ths of the bar (8 times in 10) step along the scale toward it, from the side the line is coming from, so the
+ * next core lands on the downbeat: C C C D E | F. The walk makes room: a long note is trimmed to end before it and
+ * anything else in those two slots (16ths, a break, a neighbour note) is replaced.
+ * If the cores are further apart than the walk covers, the line leaps first, then walks in.
  */
-export function approachNotes(notes: BandNote[], key: number, mode: Mode, bar: number, seed: string): BandNote[] {
-  const rng = new Rng(seed + '|approach');
+export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode: Mode, bar: number, seed: string): BandNote[] {
+  const rng = new Rng(seed + '|walk');
   const scale = new Set(SCALES[mode].map((i) => (key + i) % 12));
-  const out = notes.map((n) => ({ ...n }));
-  for (let i = 0; i + 1 < out.length; i++) {
-    const last = out[i], next = out[i + 1];
-    if (next.step % bar !== 0 || next.step !== last.step + last.len || last.len !== 2) continue;
-    const jump = last.midi - next.midi;
-    if (Math.abs(jump) <= 2 || !rng.chance(0.6)) continue;
-    const dir = jump > 0 ? 1 : -1;
-    const step = [1, 2].find((k) => scale.has((((next.midi + dir * k) % 12) + 12) % 12));
-    if (step) last.midi = next.midi + dir * step;
+  const ladder: number[] = [];
+  for (let m = 24; m <= 108; m++) if (scale.has(m % 12)) ladder.push(m);
+  const nearest = (m: number) => ladder.reduce((best, x, i) => (Math.abs(x - m) < Math.abs(ladder[best] - m) ? i : best), 0);
+  let out = notes.map((n) => ({ ...n }));
+  const total = Math.max(0, ...out.map((n) => n.step + n.len));
+  for (let B = bar; B < total; B += bar) {
+    if (!phrases.some((p) => p.step < B && B < p.step + p.len)) continue;
+    const next = out.find((n) => n.step === B);
+    const core = [...out].reverse().find((n) => n.step < B && n.step >= B - bar && !n.nb && !n.walk);
+    if (!next || !core || next.midi === core.midi) continue;
+    const dir = next.midi > core.midi ? 1 : -1;
+    const iNext = nearest(next.midi), d = Math.abs(iNext - nearest(core.midi));
+    const m = Math.min(rng.int(1, 2), d - 1);
+    if (!rng.chance(0.8) || m < 1) continue;
+    const from = B - 2 * m;
+    const phrase = phrases.find((p) => p.step < B && B < p.step + p.len)!;
+    if (from < phrase.step) continue;
+    // (make room: trim a long note that runs into the walk, drop what starts inside it)
+    out = out
+      .filter((n) => !(n.step >= from && n.step < B))
+      .map((n) => (n.step < from && n.step + n.len > from ? { ...n, len: from - n.step } : n));
+    for (let j = m; j >= 1; j--) out.push({ step: B - 2 * j, len: 2, midi: ladder[iNext - dir * j], walk: true });
+    next.land = true;
+    out.sort((a, b) => a.step - b.step);
   }
   return out;
 }
@@ -329,8 +347,9 @@ export function smallBreaks(notes: BandNote[], phrases: Gap[], seed: string): Ba
   for (const ph of phrases) {
     const inside = notes.filter((n) => n.step >= ph.step && n.step < ph.step + ph.len);
     inside.forEach((n, i) => {
-      const edge = i === 0 || i === inside.length - 1;
-      if (!edge && n.len <= 2 && rng.chance(n.len === 1 ? 0.1 : 0.08)) return;
+      // (the note a walk arrives on stays too)
+      const edge = i === 0 || i === inside.length - 1 || inside[i - 1].walk;
+      if (!edge && !n.walk && n.len <= 2 && rng.chance(n.len === 1 ? 0.1 : 0.08)) return;
       out.push(n);
     });
   }
@@ -345,16 +364,25 @@ const kind = (n: BandNote) => (n.len <= 1 ? 'sixteenth' : n.len === 2 ? 'eighth'
 /**
  * Rule 7: never more than `MAX_SAME` of the same kind of note back to back with nothing between them.
  * The one that would be the fifth drops out, leaving a break of its own length (an 8th or a 16th).
+ * Stepping notes and the note they arrive on (rule 9) are never the one dropped: the nearest other note before them in the run goes instead.
  */
 export function limitSame(notes: BandNote[], max = MAX_SAME): BandNote[] {
   const out: BandNote[] = [];
-  let run = 0, last: BandNote | null = null;
+  const joined = (a: BandNote, b: BandNote) => b.step === a.step + a.len && kind(a) === kind(b);
+  const trailing = () => {
+    let c = out.length ? 1 : 0;
+    for (let i = out.length - 1; i > 0 && joined(out[i - 1], out[i]); i--) c++;
+    return c;
+  };
   for (const n of notes) {
-    const joined = last && n.step === last.step + last.len && kind(n) === kind(last);
-    run = joined ? run + 1 : 1;
-    if (run > max) { run = 0; last = null; continue; }
+    const last = out[out.length - 1];
+    if (last && joined(last, n) && trailing() >= max) {
+      if (!n.walk && !n.land) continue;
+      let i = out.length - 1;
+      while (i >= 0 && (out[i].walk || out[i].land)) i--;
+      if (i >= out.length - trailing()) out.splice(i, 1);
+    }
     out.push(n);
-    last = n;
   }
   return out;
 }
