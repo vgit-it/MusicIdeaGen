@@ -86,3 +86,19 @@ export function writeVerse(input: VerseInput): Verse {
   }
   return { input, notes };
 }
+
+/** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
+export interface BandNote { step: number; len: number; midi: number }
+
+/**
+ * Rule 1 over a generated song: an 8th note on the 5th of whatever chord the band is playing.
+ * `chordAt[s]`: the chord sounding on 16th step s (the idea's chord timeline, spread per step).
+ */
+export function verseOverBand(key: number, chordAt: Chord[], centre = 67): BandNote[] {
+  const notes: BandNote[] = [];
+  for (let s = 0; s < chordAt.length; s += 2) {
+    const c = chordAt[s];
+    notes.push({ step: s, len: 2, midi: nearest((key + c.root + fifth(c)) % 12, centre) });
+  }
+  return notes;
+}
