@@ -74,11 +74,11 @@ function third(c: Chord): number {
 }
 
 /** Which chord note a step sits on. */
-export type ChordNote = 'third' | 'fifth';
+export type ChordNote = 'root' | 'third' | 'fifth';
 
 /** The pitch class (0-11) of that chord note. */
 function pitchClass(key: number, c: Chord, tone: ChordNote): number {
-  return (key + c.root + (tone === 'third' ? third(c) : fifth(c))) % 12;
+  return (key + c.root + (tone === 'root' ? 0 : tone === 'third' ? third(c) : fifth(c))) % 12;
 }
 
 /** The pitch class nearest to `centre`. */
@@ -195,12 +195,15 @@ export function withRuns(notes: BandNote[], runs: Gap[], key: number, chordAt: C
   return out.sort((a, b) => a.step - b.step);
 }
 
-/** What a bar does: sits on the 3rd, sits on the 5th, or moves from one to the other part way through. */
-export type BarTone = '3' | '5' | '3→5' | '5→3';
+/** What a bar does: sits on the root (1), 3rd or 5th, or moves from one to another part way through ("3→5"). */
+export type BarTone = string;
+
+const NAMES: Record<ChordNote, string> = { root: '1', third: '3', fifth: '5' };
+const NOTES: ChordNote[] = ['root', 'third', 'fifth'];
 
 /**
- * Rule 4: each bar picks the 3rd or the 5th to sit on, and now and then moves from the 3rd to the 5th (or back)
- * part way through, at the half bar or the third beat.
+ * Rule 4: each bar picks the root, 3rd or 5th to sit on, and now and then (3 bars in 10) moves from one chord note to
+ * another part way through, at the half bar or the third beat.
  * Returns the chord note for every 16th step, and each bar's choice.
  */
 export function randomTones(totalSteps: number, bar: number, seed: string): { tones: ChordNote[]; bars: BarTone[] } {
@@ -208,13 +211,87 @@ export function randomTones(totalSteps: number, bar: number, seed: string): { to
   const tones: ChordNote[] = [];
   const bars: BarTone[] = [];
   for (let from = 0; from < totalSteps; from += bar) {
-    const r = rng.next();
-    const mode: BarTone = r < 0.3 ? '3' : r < 0.6 ? '5' : r < 0.8 ? '3→5' : '5→3';
-    bars.push(mode);
+    const first = rng.pick(NOTES);
+    const moves = rng.chance(0.3);
+    const then = moves ? rng.pick(NOTES.filter((n) => n !== first)) : first;
+    bars.push(moves ? `${NAMES[first]}→${NAMES[then]}` : NAMES[first]);
     const at = from + Math.round(rng.chance(0.65) ? bar / 2 : (bar * 3) / 4);
-    for (let s = from; s < Math.min(totalSteps, from + bar); s++) {
-      tones.push(mode === '3' ? 'third' : mode === '5' ? 'fifth' : (s < at) === (mode === '3→5') ? 'third' : 'fifth');
-    }
+    for (let s = from; s < Math.min(totalSteps, from + bar); s++) tones.push(s < at ? first : then);
   }
   return { tones, bars };
+}
+
+/**
+ * Rule 5: longer notes. About 4 bars in 10 hold one note for a beat, a beat and a half, two beats or a whole bar,
+ * starting on a beat, only where the line is plain 8ths on one chord note over one chord.
+ */
+export function randomHolds(totalSteps: number, bar: number, gaps: Gap[], runs: Gap[], tones: ChordNote[], chordAt: Chord[], seed: string): Gap[] {
+  const rng = new Rng(seed + '|holds');
+  const holds: Gap[] = [];
+  const beat = bar / 4;
+  for (let from = 0; from < totalSteps; from += bar) {
+    if (!rng.chance(0.4)) continue;
+    // (a few tries for a clear spot: gaps and runs take up much of a bar)
+    for (let tries = 0; tries < 6; tries++) {
+      const r = rng.next();
+      const len = Math.round(beat * (r < 0.4 ? 1 : r < 0.6 ? 1.5 : r < 0.9 ? 2 : 4));
+      const step = from + Math.round(rng.int(0, 3) * beat);
+      const span = { step, len };
+      if (step + len > Math.min(totalSteps, from + bar)) continue;
+      if (gaps.some((g) => overlaps(g, span)) || runs.some((o) => overlaps(o, span))) continue;
+      let same = true;
+      for (let k = step; k < step + len; k++) {
+        if (tones[k] !== tones[step] || chordAt[k].root !== chordAt[step].root || chordAt[k].q !== chordAt[step].q) same = false;
+      }
+      if (same) { holds.push(span); break; }
+    }
+  }
+  return holds;
+}
+
+/** Each hold's 8th notes joined into one long note. */
+export function withHolds(notes: BandNote[], holds: Gap[]): BandNote[] {
+  const out: BandNote[] = [];
+  for (const n of notes) {
+    const h = holds.find((x) => n.step >= x.step && n.step < x.step + x.len);
+    if (!h) out.push(n);
+    else if (n.step === h.step) out.push({ ...n, len: h.len });
+  }
+  return out;
+}
+
+/**
+ * Rule 6: smooth steps. Each note takes the octave nearest the one before, so the line moves by the smallest jump
+ * (kept within an octave and a half around `centre`).
+ */
+export function voiceLead(notes: BandNote[], centre = 67): BandNote[] {
+  let prev = centre;
+  return notes.map((n) => {
+    const pc = ((n.midi % 12) + 12) % 12;
+    let m = Math.round((prev - pc) / 12) * 12 + pc;
+    if (m > centre + 9) m -= 12;
+    if (m < centre - 9) m += 12;
+    prev = m;
+    return { ...n, midi: m };
+  });
+}
+
+/**
+ * Rule 6, part 2: where a bar ends more than a step from where the next bar starts, the bar's last 8th now and then
+ * becomes the scale note next to the next bar's first note, so the line walks in by step.
+ */
+export function approachNotes(notes: BandNote[], key: number, mode: Mode, bar: number, seed: string): BandNote[] {
+  const rng = new Rng(seed + '|approach');
+  const scale = new Set(SCALES[mode].map((i) => (key + i) % 12));
+  const out = notes.map((n) => ({ ...n }));
+  for (let i = 0; i + 1 < out.length; i++) {
+    const last = out[i], next = out[i + 1];
+    if (next.step % bar !== 0 || next.step !== last.step + last.len || last.len !== 2) continue;
+    const jump = last.midi - next.midi;
+    if (Math.abs(jump) <= 2 || !rng.chance(0.6)) continue;
+    const dir = jump > 0 ? 1 : -1;
+    const step = [1, 2].find((k) => scale.has((((next.midi + dir * k) % 12) + 12) % 12));
+    if (step) last.midi = next.midi + dir * step;
+  }
+  return out;
 }
