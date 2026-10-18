@@ -18,16 +18,18 @@ export interface Words {
 }
 
 /** A note's weight in the line: does it want a stressed syllable, a held vowel, is it high? */
-function slotOf(n: BandNote, bar: number, high: number) {
+function slotOf(n: BandNote, bar: number, high: number, acc?: number[]) {
   const onBeat = quarterOf(n.step, bar) % 2 === 0 && Math.abs(((n.step % (bar / 4)) + bar / 4) % (bar / 4)) < 1e-6;
-  const stress = n.len >= 4 || !!n.end || !!n.third || (onBeat && n.len >= 2);
+  // (one more factor: a note that lands on a big band hit, a kick, a snare or a chord change, wants a stress too)
+  const hit = (acc?.[Math.floor(n.step + 1e-6)] ?? 0) >= 0.6;
+  const stress = n.len >= 4 || !!n.end || !!n.third || ((onBeat || hit) && n.len >= 2);
   return { stress, long: n.len >= 4 || !!n.end, high: n.midi >= high };
 }
 
 /**
  * `notes` sorted by step; `phrases` as planned; `high`: the pitch from which a note counts as high (open vowels).
  */
-export function writeWords(notes: BandNote[], phrases: Gap[], bar: number, style: LyricStyle, high: number, seed: string): Words {
+export function writeWords(notes: BandNote[], phrases: Gap[], bar: number, style: LyricStyle, high: number, seed: string, acc?: number[]): Words {
   const rng = new Rng(seed + '|words');
   const syls: Syllable[] = new Array(notes.length);
   const starts: boolean[] = new Array(notes.length).fill(false);
@@ -49,7 +51,7 @@ export function writeWords(notes: BandNote[], phrases: Gap[], bar: number, style
     groups.forEach((g, gi) => {
       const last = gi === groups.length - 1;
       // (every other phrase ends on the rhyme of the one before)
-      const line = lyricLine(rng, g.map((i) => slotOf(notes[i], bar, high)), style, { rhyme: last && p % 2 === 1 ? rhyme : null });
+      const line = lyricLine(rng, g.map((i) => slotOf(notes[i], bar, high, acc)), style, { rhyme: last && p % 2 === 1 ? rhyme : null });
       g.forEach((i, k) => { syls[i] = line[k]; });
       texts.push(spell(line));
       if (last && p % 2 === 0) rhyme = rhymeOf(line);

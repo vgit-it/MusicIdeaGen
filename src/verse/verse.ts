@@ -131,12 +131,31 @@ export const quarterOf = (step: number, bar: number) => Math.floor((((step % bar
 const isStrong = (step: number, bar: number) => quarterOf(step, bar) % 2 === 0;
 
 /**
+ * How much the band hits on each 16th step (0-1): a kick, a snare, a chord change, a strum, a bass note. One more factor the
+ * rules below weigh (a nudge of a quarter either way, never more): notes lean toward the band's hits, and long notes and
+ * new phrases toward its chord changes. Left out, every step counts the same.
+ */
+export function bandAccents(total: number, band: { kick?: number[]; snare?: number[]; strum?: string[]; bass?: number[]; changes?: number[] }): number[] {
+  const acc = new Array<number>(total).fill(0);
+  const STRUM: Record<string, number> = { D: 0.25, p: 0.2, U: 0.12, x: 0.1 };
+  for (let s = 0; s < total; s++) {
+    acc[s] = Math.min(1, ((band.kick?.[s] ?? 0) > 0 ? 0.5 : 0) + ((band.snare?.[s] ?? 0) > 0 ? 0.45 : 0) + (STRUM[band.strum?.[s] ?? '.'] ?? 0) + ((band.bass?.[s] ?? 0) > 0 ? 0.15 : 0));
+  }
+  for (const c of band.changes ?? []) if (c >= 0 && c < total) acc[c] = Math.min(1, acc[c] + 0.5);
+  return acc;
+}
+/** A step's accent (0.5 when the band's rhythm isn't known); a fractional step takes the one before it. */
+const accAt = (acc: number[] | undefined, step: number) => acc?.[Math.max(0, Math.floor(step + 1e-6))] ?? 0.5;
+/** The nudge: 0.75 on a step the band leaves alone, up to 1.25 on its biggest hits. */
+const nudge = (acc: number[] | undefined, step: number) => 0.75 + 0.5 * accAt(acc, step);
+
+/**
  * Rule 2/7: the phrase system. The verse is cut into phrases of 1 to 4 bars; after each there is a break of at least a
  * quarter bar (a bar's quarter most often; a half, three quarters, or a whole bar less and less often).
  * A phrase starts on a beat, right after the break before it. What is left at the end if under a bar is silence.
  * `bar`: 16ths in a bar. Returns the phrases and the breaks between them.
  */
-export function planPhrases(totalSteps: number, bar: number, seed: string): { phrases: Gap[]; breaks: Gap[] } {
+export function planPhrases(totalSteps: number, bar: number, seed: string, acc?: number[]): { phrases: Gap[]; breaks: Gap[] } {
   const rng = new Rng(seed + '|phrases');
   const beat = bar / 4;
   const phrases: Gap[] = [];
@@ -151,7 +170,9 @@ export function planPhrases(totalSteps: number, bar: number, seed: string): { ph
     const b = rng.next();
     let gap = Math.round(beat * (b < 0.5 ? 1 : b < 0.8 ? 2 : b < 0.92 ? 3 : 4));
     // (the lean: the next phrase mostly comes in on the 1st or 3rd quarter; so the break mostly covers the 2nd or 4th)
-    if (!isStrong(pos + gap, bar) && rng.chance(0.6)) gap = gap + beat <= bar ? gap + beat : gap - beat;
+    // (and the band's: a chord change or a big hit counts as a good place to come in too)
+    const good = isStrong(pos + gap, bar) || accAt(acc, pos + gap) >= 0.6;
+    if (!good && rng.chance(0.6)) gap = gap + beat <= bar ? gap + beat : gap - beat;
     const rest = totalSteps - pos;
     // (under a bar left for another phrase: the rest of the verse is the break)
     if (rest - gap < bar) { breaks.push({ step: pos, len: rest }); break; }
@@ -170,7 +191,7 @@ export function withGaps(notes: BandNote[], gaps: Gap[]): BandNote[] {
  * Rule 3: stretches of 16th notes, an eighth of a bar, a quarter or a half, at random, in the open spaces between the breaks.
  * The higher the verse's energy (1-5), the fewer.
  */
-export function randomRuns(totalSteps: number, bar: number, energy: number, gaps: Gap[], seed: string): Gap[] {
+export function randomRuns(totalSteps: number, bar: number, energy: number, gaps: Gap[], seed: string, acc?: number[]): Gap[] {
   const rng = new Rng(seed + '|runs');
   const runs: Gap[] = [];
   const p = Math.max(0.05, (6 - energy) / 6); // energy 1: 83%, 3: 50%, 5: 17% (of 4 tries every 4 bars)
@@ -186,7 +207,8 @@ export function randomRuns(totalSteps: number, bar: number, energy: number, gaps
         const run = { step, len };
         if (step + len > to || gaps.some((g) => overlaps(g, run)) || runs.some((o) => overlaps(o, run))) continue;
         // (the lean: runs mostly start on the 1st or 3rd quarter)
-        if (!isStrong(step, bar) && !rng.chance(0.3)) continue;
+        // (and on the band's hits)
+        if (!rng.chance((isStrong(step, bar) ? 1 : 0.3) * Math.min(1, nudge(acc, step)))) continue;
         runs.push(run);
         break;
       }
@@ -219,7 +241,7 @@ const NOTES: ChordNote[] = ['root', 'third', 'fifth'];
  * another part way through, at the half bar or the third beat.
  * Returns the chord note for every 16th step, and each bar's choice.
  */
-export function randomTones(totalSteps: number, bar: number, seed: string): { tones: ChordNote[]; bars: BarTone[] } {
+export function randomTones(totalSteps: number, bar: number, seed: string, acc?: number[]): { tones: ChordNote[]; bars: BarTone[] } {
   const rng = new Rng(seed + '|tones');
   const tones: ChordNote[] = [];
   const bars: BarTone[] = [];
@@ -228,7 +250,9 @@ export function randomTones(totalSteps: number, bar: number, seed: string): { to
     const moves = rng.chance(0.3);
     const then = moves ? rng.pick(NOTES.filter((n) => n !== first)) : first;
     bars.push(moves ? `${NAMES[first]}→${NAMES[then]}` : NAMES[first]);
-    const at = from + Math.round(rng.chance(0.65) ? bar / 2 : (bar * 3) / 4);
+    // (the move comes at the half bar or the third beat: a bit more often where the band hits harder)
+    const half = 0.65 * nudge(acc, from + bar / 2), late = 0.35 * nudge(acc, from + (bar * 3) / 4);
+    const at = from + Math.round(rng.chance(half / (half + late)) ? bar / 2 : (bar * 3) / 4);
     for (let s = from; s < Math.min(totalSteps, from + bar); s++) tones.push(s < at ? first : then);
   }
   return { tones, bars };
@@ -238,7 +262,7 @@ export function randomTones(totalSteps: number, bar: number, seed: string): { to
  * Rule 5: longer notes. About 4 bars in 10 hold one note for a beat, a beat and a half, two beats or a whole bar,
  * starting on a beat, only where the line is plain 8ths on one chord note over one chord.
  */
-export function randomHolds(totalSteps: number, bar: number, gaps: Gap[], runs: Gap[], tones: ChordNote[], chordAt: Chord[], seed: string): Gap[] {
+export function randomHolds(totalSteps: number, bar: number, gaps: Gap[], runs: Gap[], tones: ChordNote[], chordAt: Chord[], seed: string, acc?: number[]): Gap[] {
   const rng = new Rng(seed + '|holds');
   const holds: Gap[] = [];
   const beat = bar / 4;
@@ -249,7 +273,10 @@ export function randomHolds(totalSteps: number, bar: number, gaps: Gap[], runs: 
       const r = rng.next();
       const len = Math.round(beat * (r < 0.4 ? 1 : r < 0.6 ? 1.5 : r < 0.9 ? 2 : 4));
       // (the lean: long notes mostly start on the 2nd or 4th quarter)
-      const q = rng.next() * 6, k0 = q < 1 ? 0 : q < 3.1 ? 1 : q < 4.1 ? 2 : 3;
+      // (and toward the band's chord changes and hits)
+      const w = [1, 2.1, 1, 1.9].map((x, k) => x * nudge(acc, from + k * beat));
+      let q = rng.next() * (w[0] + w[1] + w[2] + w[3]), k0 = 0;
+      while (k0 < 3 && q >= w[k0]) q -= w[k0++];
       const step = from + Math.round(k0 * beat);
       const span = { step, len };
       if (step + len > Math.min(totalSteps, from + bar)) continue;
@@ -373,7 +400,7 @@ export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode:
  * quarter, 16% on the 2nd and 4th; 16th: 5% and 20%).
  * The first and last note of each phrase always stay.
  */
-export function smallBreaks(notes: BandNote[], phrases: Gap[], bar: number, seed: string): BandNote[] {
+export function smallBreaks(notes: BandNote[], phrases: Gap[], bar: number, seed: string, acc?: number[]): BandNote[] {
   const rng = new Rng(seed + '|small');
   const out: BandNote[] = [];
   for (const ph of phrases) {
@@ -382,7 +409,8 @@ export function smallBreaks(notes: BandNote[], phrases: Gap[], bar: number, seed
       // (the note a walk arrives on stays too)
       const edge = i === 0 || i === inside.length - 1 || inside[i - 1].walk;
       // (the lean: a note drops out about four times as often in the 2nd or 4th quarter)
-      const drop = (n.len === 1 ? 0.1 : 0.08) * (isStrong(n.step, bar) ? 0.5 : 2);
+      // (and a note on a band hit stays more often: half as likely to drop on the biggest hits, one and a half times on quiet steps)
+      const drop = (n.len === 1 ? 0.1 : 0.08) * (isStrong(n.step, bar) ? 0.5 : 2) * (1.5 - accAt(acc, n.step));
       if (!edge && !n.walk && n.len <= 2 && rng.chance(drop)) return;
       out.push(n);
     });
