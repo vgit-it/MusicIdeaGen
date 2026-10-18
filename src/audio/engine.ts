@@ -1,6 +1,7 @@
 // Plays a list of ideas back to back: one idea on a loop, a whole track once, or one section on a loop.
 
 import { Singer, type TimbreChoice, type VocalChoice } from './singer';
+import { LeadVoice } from './leadVoice';
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
@@ -193,9 +194,10 @@ export class Engine {
 
   /* ---- the demo singer */
 
-  private singer: Singer | null = null;
-  // (off until you turn it on: Paul)
-  private vocalChoice: VocalChoice = 'off';
+  /** The lead singer: the lead vocal as it's sung (leadVoice.ts; the backing singer below keeps the demo singer). */
+  private singer: LeadVoice | null = null;
+  // (on by default now: the main vocal, Paul)
+  private vocalChoice: VocalChoice = 'auto';
   get vocal(): VocalChoice {
     return this.vocalChoice;
   }
@@ -238,7 +240,7 @@ export class Engine {
     const six = () => 15 / this.transport.bpm.value;
     if (this.vocalChoice === 'off') { this.singer?.releaseAll(); if (this.singer) this.singer.choice = 'off'; }
     else {
-      this.singer ??= inContext(this.ctx, () => new Singer(this.mixer.input('vocal')));
+      this.singer ??= inContext(this.ctx, () => new LeadVoice(this.mixer.input('vocal')));
       this.singer.choice = this.vocalChoice;
       this.singer.timbre = this.timbreChoice;
       this.singer.polish = this.realVoice;
@@ -888,7 +890,7 @@ export class Engine {
       slide: h.slide,
       swell: h.swell,
       touch: h.touch,
-      bend: h.bend, unbend: h.unbend, trill: h.trill, tremolo: h.tremolo, rake: h.rake,
+      bend: h.bend, unbend: h.unbend, lateBend: h.lateBend, trill: h.trill, tremolo: h.tremolo, rake: h.rake,
     });
   }
 

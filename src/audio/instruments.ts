@@ -53,6 +53,7 @@ export interface StrumArgs {
    * let down again, a trill, tremolo picking, a rake across muted strings into it. */
   bend?: number;
   unbend?: number;
+  lateBend?: number;
   trill?: number;
   tremolo?: boolean;
   rake?: number;
@@ -487,7 +488,7 @@ export class Guitar implements ChordInstrument {
   }
 
   private strumTake(take: Take, a: StrumArgs, driven: boolean) {
-    const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell, touch: hands, unbend, trill, tremolo, rake } = a;
+    const { stroke, notes, strings, time, dur, vel, sixteenth, letRing, slide, swell, touch: hands, unbend, lateBend, trill, tremolo, rake } = a;
     const fadeIn = swell ? Math.min(0.6, dur * 0.4) : 0;
     const str = strings ?? notes.map((_, i) => 6 - notes.length + i);
     // time between strings: faster at quicker tempos, ~25-45 ms across six strings; a hand never
@@ -532,7 +533,7 @@ export class Guitar implements ChordInstrument {
     // a double-stop bend: the lower string pushed up under the held top one (a unison or oblique bend)
     const dyad = notes.length === 2 && !octave;
     const bendAll = hands?.bend ?? (dyad ? 0 : a.bend);
-    const hand = { tied: hands?.tied, fall: hands?.fall, bend: bendAll, unbend, trill };
+    const hand = { tied: hands?.tied, fall: hands?.fall, bend: lateBend ? undefined : bendAll, unbend, lateBend, trill };
     // a rake: the pick drags across a few muted strings on its way to the note
     if (rake && stroke === 'D') {
       for (let k = rake; k >= 1; k--) take.muted.play(notes[0] - 5 * k, time - k * 0.022 + jitter(1), 0.03, Math.min(1, vel * (0.35 + 0.08 * (rake - k))), { detune });

@@ -417,3 +417,12 @@ throughout the song and not jump around wildly".
   beat (the drawl's lag).
 - · Fillers in the gaps of the lead line itself;
   screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).
+
+
+## The main vocal (2026-10-17)
+Paul made the Guide card's **Vocal tune** the vocal, and fixed the vocal row's writers:
+- **Written by:** Rhythm Words, Melody Learned, Real songs on, Patterns on (moves and energy by the song). The writer menus are gone; the singer (Auto / low / high / off) and voice (Auto, or any voice) menus stay. `MAIN_VOCAL` in `src/generator.ts`, applied by the app (`main.ts`); the research scripts can still choose.
+- **Sung as:** the Vocal tune (`docs/GUIDE-TUNE.md`) with New words, More bends, Carry over and Human feel, voice Auto, heard with the band. `src/parts/leadvocal.ts` (`singLead`) works it out once for the whole song (a track's sections together) and keeps it on each section (`idea.sung`); `src/audio/leadVoice.ts` sings it (was the Guide card's singer: rendered in the background, polished, on the vocal channel), live, in Prepare real sound and in MP3, WAV and stems. The backing vocals keep the demo singer.
+- **MIDI export and the drawn words:** the sung line (its new words as lyrics).
+- **On by default:** the singer (it was off until turned on), and the piano and strings layers (Auto).
+- **The Guide card is gone** (its writers and checks stay in `src/guide/`, `npm run guide-check`).

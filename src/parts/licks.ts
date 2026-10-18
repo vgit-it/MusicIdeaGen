@@ -190,6 +190,7 @@ export interface PlacedNote {
   vel: number;
   bend: number;
   unbend?: number;
+  lateBend?: number;
   art?: 'pick' | 'legato' | 'slide';
   dyad?: number;
   trill?: number;
@@ -294,7 +295,7 @@ export function placeLibLick(
 export function placedHit(e: PlacedNote, t: Tuning, pos: number, clean?: boolean): GuitarHit {
   const f = leadFret(e.midi, t, pos);
   const extra = {
-    bend: e.bend, unbend: e.unbend, art: e.art, trill: e.trill, tremolo: e.tremolo, rake: e.rake, vib: e.vib,
+    bend: e.bend, unbend: e.unbend, lateBend: e.lateBend, art: e.art, trill: e.trill, tremolo: e.tremolo, rake: e.rake, vib: e.vib,
     mute: e.dead ? ('dead' as const) : undefined, clean,
   };
   if (e.dyad === undefined) return { step: e.step, ...f, len: e.len, vel: e.vel, ...extra };

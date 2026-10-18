@@ -3,7 +3,7 @@
 
 import type { Engine } from '../audio/engine';
 import type { Idea } from '../idea';
-import { GuideSynth } from '../guide/synth';
+import { VerseSynth } from './synth';
 import { NOTE_NAMES } from '../theory';
 import { verseOverBand, type BandNote } from './verse';
 
@@ -21,7 +21,7 @@ export interface VerseControls {
 
 export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseControls): VersePanel {
   let on = false, level = 70, list: Idea[] = [];
-  let synth: GuideSynth | null = null;
+  let synth: VerseSynth | null = null;
   const cache = new WeakMap<Idea, BandNote[]>();
 
   root.innerHTML = `
@@ -70,7 +70,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     on = v;
     $('v-body').hidden = !v;
     $('v-add').hidden = v;
-    if (v) { synth ??= new GuideSynth(engine.mixer.sectionLevel); synth.setLevel(level); } else synth?.releaseAll();
+    if (v) { synth ??= new VerseSynth(engine.mixer.sectionLevel); synth.setLevel(level); } else synth?.releaseAll();
     info();
   };
   $('v-add').addEventListener('click', () => setOn(true));
