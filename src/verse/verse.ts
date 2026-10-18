@@ -102,7 +102,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end by this many semitones. */ fall?: number; /** Why it bends (for the card). */ bend?: string }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -495,6 +495,69 @@ export function thirdBars(notes: BandNote[], phrases: Gap[], bar: number, seed: 
       ...out.filter((n) => n.step < b0 || n.step >= b0 + bar),
       ...[0, 1, 2].map((k) => ({ step: b0 + (k * bar) / 3, len: bar / 3, midi: core.midi, third: true })),
     ].sort((a, b) => a.step - b.step);
+  }
+  return out;
+}
+
+export type BendAmount = 'off' | 'some' | 'lots';
+
+/** How much each genre leans on the blue 3rd (the major 3rd scooped up from the minor). */
+const BLUE: Record<string, number> = { rock: 1, hardrock: 1, grunge: 1, funk: 1, altmetal: 0.8, metal: 0.5, pop: 0.35 };
+
+/**
+ * Rule 13: bends. The voice scoops into a note from below or above (`slide`) and falls off a note's end (`fall`). Where the
+ * rules above leave a good spot, a bend gets a chance:
+ *   - a held phrase ending falls off its end (2, 3 or 5 semitones);
+ *   - the first note of a phrase is scooped into, more the longer the break before it;
+ *   - the note a walk arrives on glides up (or down) from the walk's last note;
+ *   - a note that moves 3-5 semitones from the one before glides from it;
+ *   - a long major 3rd is scooped up from the minor 3rd, by genre (the blue 3rd);
+ *   - a long note landing on a chord change is scooped into.
+ * Each spot rolls its own chance, raised by the verse's energy and the Bends amount; the ones that win are thinned so no two
+ * bends are closer than 2 bars (Some) or 1 bar (Lots), keeping the ones listed first.
+ */
+export function addBends(
+  notes: BandNote[], phrases: Gap[], bar: number,
+  ctx: { amount: BendAmount; energy: number; genre: string; chordAt: Chord[]; tones: ChordNote[]; changes: number[] },
+  seed: string,
+): BandNote[] {
+  if (ctx.amount === 'off') return notes;
+  const rng = new Rng(seed + '|bends');
+  const out = notes.map((n) => ({ ...n }));
+  const lift = (ctx.amount === 'lots' ? 1.6 : 1) * (0.7 + 0.15 * (ctx.energy - 1));
+  const gap = (ctx.amount === 'lots' ? 1 : 2) * bar;
+  const beat = bar / 4;
+  const cand: { i: number; pri: number; p: number; slide?: number; fall?: number; kind: string }[] = [];
+  const firsts = new Map<number, number>(); // note index -> break before its phrase, in beats
+  phrases.forEach((ph, k) => {
+    const i = out.findIndex((n) => n.step >= ph.step - 1e-6 && n.step < ph.step + ph.len);
+    if (i >= 0) firsts.set(i, k === 0 ? 1 : (ph.step - (phrases[k - 1].step + phrases[k - 1].len)) / beat);
+  });
+  const changes = new Set(ctx.changes);
+  out.forEach((n, i) => {
+    const prev = out[i - 1];
+    const joined = !!prev && Math.abs(n.step - (prev.step + prev.len)) < 1e-6;
+    const sign = () => (rng.chance(0.85) ? 1 : -1);
+    if (n.end && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fall: rng.weighted([[2, 2], [3, 2], [5, 1]]), kind: 'fall' });
+    if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.65, 0.2 + 0.15 * (firsts.get(i)! - 1)), slide: sign() * rng.weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
+    if (n.land && prev?.walk && n.len >= 2) cand.push({ i, pri: 3, p: 0.4, slide: Math.max(-3, Math.min(3, n.midi - prev.midi)), kind: 'walk arrival' });
+    const step = Math.floor(n.step + 1e-6);
+    const c = ctx.chordAt[step];
+    if (c && ctx.tones[step] === 'third' && third(c) === 4 && n.len >= 4 && !n.nb) cand.push({ i, pri: 4, p: 0.5 * (BLUE[ctx.genre] ?? 0.7), slide: 1, kind: 'blue 3rd' });
+    if (joined && n.len >= 2 && !n.walk && !n.land && !n.nb && !n.third && !prev.walk) {
+      const d = n.midi - prev.midi;
+      if (Math.abs(d) >= 3 && Math.abs(d) <= 5) cand.push({ i, pri: 5, p: 0.3, slide: d, kind: 'glide' });
+    }
+    if (changes.has(step) && n.len >= 4) cand.push({ i, pri: 6, p: 0.35, slide: sign() * rng.weighted([[1, 3], [2, 2]]), kind: 'chord change' });
+  });
+  const won = cand.filter((c) => rng.next() < c.p * lift).sort((a, b) => a.pri - b.pri || out[a.i].step - out[b.i].step);
+  const kept: typeof won = [];
+  for (const c of won) {
+    if (kept.some((k) => k.i === c.i || Math.abs(out[k.i].step - out[c.i].step) < gap)) continue;
+    kept.push(c);
+    if (c.slide !== undefined) out[c.i].slide = c.slide;
+    if (c.fall !== undefined) out[c.i].fall = c.fall;
+    out[c.i].bend = c.kind;
   }
   return out;
 }

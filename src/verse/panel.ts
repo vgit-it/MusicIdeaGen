@@ -10,7 +10,7 @@ import { Singer } from '../audio/singer';
 import type { VocalNote } from '../parts/vocal';
 import { VerseSynth } from './synth';
 import { NOTE_NAMES } from '../theory';
-import { DEFAULT_RANGE, bandAccents, quarterOf, addNeighbours, foldIntoRange, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, phraseEndings, smallBreaks, thirdBars, voiceLead, walkToNext, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Range, type Gap, type ChordNote } from './verse';
+import { DEFAULT_RANGE, addBends, bandAccents, quarterOf, addNeighbours, foldIntoRange, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, phraseEndings, smallBreaks, thirdBars, voiceLead, walkToNext, withGaps, withHolds, withRuns, type BandNote, type BarTone, type BendAmount, type Range, type Gap, type ChordNote } from './verse';
 
 export interface VersePanel {
   /** Show the song's verse notes again after new music. */
@@ -30,6 +30,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   // (sung: the song's own Auto voice on the line, as "la"; off: the synth)
   let sing = true;
   let wordsOn = true;
+  let bends: BendAmount = 'some';
   let singer: Singer | null = null;
   let out: Tone.Gain | null = null;
   const six = () => 15 / Tone.getTransport().bpm.value;
@@ -39,7 +40,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 13: bends (scoops and falls) at good spots, Auto voice only. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
@@ -47,6 +48,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <button id="v-play" class="secondary small">Play</button>
         <label title="Auto voice: the song's own singer sings the line on 'la'. Synth: a plain tone. Mute the main vocal above to hear the line alone">Sound <select id="v-sing" class="gsing"><option value="sing">Auto voice</option><option value="synth">Synth</option></select></label>
         <label title="Words: the line sung as pseudo-English words set to its rhythm and breaks. La: every note on 'la'">Sing <select id="v-words" class="gsing"><option value="words">Words</option><option value="la">La</option></select></label>
+        <label title="Bends: the voice scoops into some notes (from below or above) and falls off some held endings. Only the Auto voice bends, not the synth">Bends <select id="v-bends" class="gsing"><option value="off">Off</option><option value="some" selected>Some</option><option value="lots">Lots</option></select></label>
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
         <button id="v-remove" class="small">Remove</button>
       </div>
@@ -92,7 +94,8 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     if (!n) {
       const chordAt = chordsOf(idea), { key, mode } = idea.song, { phrases, breaks, runs, holds, tones } = planFor(idea), seed = `${idea.seeds.song}|${idea.seeds.chords}`;
       const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
-      n = thirdBars(phraseEndings(limitSame(smallBreaks(foldIntoRange(walkToNext(addNeighbours(voiceLead(withHolds(plain, holds), range), key, mode, barOf(idea), seed), phrases, key, mode, barOf(idea), seed), range), phrases, barOf(idea), seed, accOf(idea))), phrases, barOf(idea), seed), phrases, barOf(idea), seed);
+      const shaped = thirdBars(phraseEndings(limitSame(smallBreaks(foldIntoRange(walkToNext(addNeighbours(voiceLead(withHolds(plain, holds), range), key, mode, barOf(idea), seed), phrases, key, mode, barOf(idea), seed), range), phrases, barOf(idea), seed, accOf(idea))), phrases, barOf(idea), seed), phrases, barOf(idea), seed);
+      n = addBends(shaped, phrases, barOf(idea), { amount: bends, energy: idea.section?.energy ?? 3, genre: idea.song.genre, chordAt, tones, changes: idea.chords.timeline.map((e) => e.step) }, seed);
       cache.set(idea, n);
     }
     return n;
@@ -114,7 +117,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     let d = sung.get(idea);
     if (!d) {
       const w = wordsOn ? wordsFor(idea) : null;
-      const vocal: VocalNote[] = notesFor(idea).map((n, i) => ({ step: n.step, len: n.len, midi: n.midi, vel: w && !w.syls[i].stress ? 0.68 : 0.82, syl: w ? w.syls[i] : la, start: w ? w.starts[i] : n.step % 64 === 0 }));
+      const vocal: VocalNote[] = notesFor(idea).map((n, i) => ({ step: n.step, len: n.len, midi: n.midi, vel: w && !w.syls[i].stress ? 0.68 : 0.82, syl: w ? w.syls[i] : la, start: w ? w.starts[i] : n.step % 64 === 0, ...(n.slide ? { slide: n.slide } : {}), ...(n.fall ? { fall: n.fall } : {}) }));
       d = { ...idea, vocal, backing: undefined, vocalDouble: false, sung: undefined, section: undefined };
       sung.set(idea, d);
     }
@@ -145,6 +148,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
       `Range ${notes.length ? `${noteName(Math.min(...notes.map((n) => n.midi)))}–${noteName(Math.max(...notes.map((n) => n.midi)))}` : "none"}, ${notes.filter((n) => n.midi < range.lo || n.midi > range.hi).length} notes in the extended zone`,
       `${notes.length} notes (${notes.filter((n) => n.nb).length} neighbour, ${walks(notes, bar)}, ${notes.filter((n) => n.third).length / 3} third-bar shapes) · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
       `On the band's hits: ${Math.round((100 * notes.filter((n) => accOf(first)[Math.floor(n.step + 1e-6)] >= 0.5).length) / Math.max(1, notes.length))}% of notes start on a drum or chord hit (${Math.round((100 * accOf(first).filter((a) => a >= 0.5).length) / accOf(first).length)}% of steps are one)`,
+      `Bends (${notes.filter((n) => n.bend).length}): ${notes.filter((n) => n.bend).map((n) => `${pos(n.step, bar)} ${n.bend} ${n.fall ? `falls ${n.fall}` : n.slide! > 0 ? `from ${n.slide} below` : `from ${-n.slide!} above`}`).join(', ') || 'none'}`,
       `Notes starting in each quarter of the bar: ${[0, 1, 2, 3].map((q) => notes.filter((n) => quarterOf(n.step, bar) === q).length).join(' · ')}`,
       `Held phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
@@ -197,6 +201,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   for (const k of ['lo', 'hi', 'xlo', 'xhi'] as const) $('v-' + k).addEventListener('input', (e) => setRange(k, +(e.target as HTMLInputElement).value));
   showRange();
   $('v-words').addEventListener('change', (e) => { wordsOn = (e.target as HTMLSelectElement).value === 'words'; sung = new WeakMap(); singer?.releaseAll(); info(); prepare(); });
+  $('v-bends').addEventListener('change', (e) => { bends = (e.target as HTMLSelectElement).value as BendAmount; cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); singer?.releaseAll(); info(); prepare(); });
   $('v-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); if (out) out.gain.value = (level / 100) ** 2; });
   $('v-sing').addEventListener('change', (e) => { sing = (e.target as HTMLSelectElement).value === 'sing'; synth?.releaseAll(); singer?.releaseAll(); prepare(); });
 
