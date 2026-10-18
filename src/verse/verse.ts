@@ -67,6 +67,20 @@ function fifth(c: Chord): number {
   return iv.find((i) => i === 6 || i === 7 || i === 8) ?? 7;
 }
 
+/** Semitones of the chord's 3rd above its root (3 or 4; the 2nd or 4th of a sus chord; the 5th of a bare power chord). */
+function third(c: Chord): number {
+  const iv = QUALITIES[c.q] as readonly number[];
+  return iv.find((i) => i === 3 || i === 4) ?? iv.find((i) => i === 2 || i === 5) ?? 7;
+}
+
+/** Which chord note a step sits on. */
+export type ChordNote = 'third' | 'fifth';
+
+/** The pitch class (0-11) of that chord note. */
+function pitchClass(key: number, c: Chord, tone: ChordNote): number {
+  return (key + c.root + (tone === 'third' ? third(c) : fifth(c))) % 12;
+}
+
 /** The pitch class nearest to `centre`. */
 function nearest(pc: number, centre: number): number {
   let m = Math.round((centre - pc) / 12) * 12 + pc;
@@ -91,14 +105,14 @@ export function writeVerse(input: VerseInput): Verse {
 export interface BandNote { step: number; len: number; midi: number }
 
 /**
- * Rule 1 over a generated song: an 8th note on the 5th of whatever chord the band is playing.
+ * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
  * `chordAt[s]`: the chord sounding on 16th step s (the idea's chord timeline, spread per step).
  */
-export function verseOverBand(key: number, chordAt: Chord[], centre = 67): BandNote[] {
+export function verseOverBand(key: number, chordAt: Chord[], tones: ChordNote[] = [], centre = 67): BandNote[] {
   const notes: BandNote[] = [];
   for (let s = 0; s < chordAt.length; s += 2) {
     const c = chordAt[s];
-    notes.push({ step: s, len: 2, midi: nearest((key + c.root + fifth(c)) % 12, centre) });
+    notes.push({ step: s, len: 2, midi: nearest(pitchClass(key, c, tones[s] ?? 'fifth'), centre) });
   }
   return notes;
 }
@@ -169,14 +183,38 @@ export function randomRuns(totalSteps: number, bar: number, energy: number, gaps
 }
 
 /** The 8th notes inside each run swapped for 16ths on the 5th of the chord at each step. */
-export function withRuns(notes: BandNote[], runs: Gap[], key: number, chordAt: Chord[], centre = 67): BandNote[] {
+export function withRuns(notes: BandNote[], runs: Gap[], key: number, chordAt: Chord[], tones: ChordNote[] = [], centre = 67): BandNote[] {
   const inRun = (s: number) => runs.some((r) => s >= r.step && s < r.step + r.len);
   const out = notes.filter((n) => !inRun(n.step));
   for (const r of runs) {
     for (let s = r.step; s < r.step + r.len && s < chordAt.length; s++) {
       const c = chordAt[s];
-      out.push({ step: s, len: 1, midi: nearest((key + c.root + fifth(c)) % 12, centre) });
+      out.push({ step: s, len: 1, midi: nearest(pitchClass(key, c, tones[s] ?? 'fifth'), centre) });
     }
   }
   return out.sort((a, b) => a.step - b.step);
+}
+
+/** What a bar does: sits on the 3rd, sits on the 5th, or moves from one to the other part way through. */
+export type BarTone = '3' | '5' | '3→5' | '5→3';
+
+/**
+ * Rule 4: each bar picks the 3rd or the 5th to sit on, and now and then moves from the 3rd to the 5th (or back)
+ * part way through, at the half bar or the third beat.
+ * Returns the chord note for every 16th step, and each bar's choice.
+ */
+export function randomTones(totalSteps: number, bar: number, seed: string): { tones: ChordNote[]; bars: BarTone[] } {
+  const rng = new Rng(seed + '|tones');
+  const tones: ChordNote[] = [];
+  const bars: BarTone[] = [];
+  for (let from = 0; from < totalSteps; from += bar) {
+    const r = rng.next();
+    const mode: BarTone = r < 0.3 ? '3' : r < 0.6 ? '5' : r < 0.8 ? '3→5' : '5→3';
+    bars.push(mode);
+    const at = from + Math.round(rng.chance(0.65) ? bar / 2 : (bar * 3) / 4);
+    for (let s = from; s < Math.min(totalSteps, from + bar); s++) {
+      tones.push(mode === '3' ? 'third' : mode === '5' ? 'fifth' : (s < at) === (mode === '3→5') ? 'third' : 'fifth');
+    }
+  }
+  return { tones, bars };
 }
