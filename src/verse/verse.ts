@@ -102,7 +102,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -275,6 +275,28 @@ export function voiceLead(notes: BandNote[], centre = 67): BandNote[] {
     prev = m;
     return { ...n, midi: m };
   });
+}
+
+/**
+ * Rule 8: neighbour notes. Each bar has its core note (the chord note it sits on); a note that follows a core note in the
+ * same bar now and then (3 in 10) goes one scale step up or down from it, and the next note is back on the core.
+ * Only 8ths and 16ths; the first note of a bar stays on the core.
+ */
+export function addNeighbours(notes: BandNote[], key: number, mode: Mode, bar: number, seed: string): BandNote[] {
+  const rng = new Rng(seed + '|neighbours');
+  const scale = new Set(SCALES[mode].map((i) => (key + i) % 12));
+  const out: BandNote[] = [];
+  for (const n of notes) {
+    const prev = out[out.length - 1];
+    const sameBar = prev && Math.floor(prev.step / bar) === Math.floor(n.step / bar);
+    if (sameBar && !prev.nb && n.len <= 2 && rng.chance(0.3)) {
+      const dir = rng.chance(0.5) ? 1 : -1;
+      const k = [1, 2].find((x) => scale.has((((n.midi + dir * x) % 12) + 12) % 12));
+      if (k) { out.push({ ...n, midi: n.midi + dir * k, nb: true }); continue; }
+    }
+    out.push(n);
+  }
+  return out;
 }
 
 /**

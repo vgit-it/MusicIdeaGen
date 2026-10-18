@@ -7,7 +7,7 @@ import * as Tone from 'tone';
 import { Singer } from '../audio/singer';
 import type { VocalNote } from '../parts/vocal';
 import { VerseSynth } from './synth';
-import { approachNotes, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, smallBreaks, voiceLead, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Gap, type ChordNote } from './verse';
+import { addNeighbours, approachNotes, limitSame, planPhrases, randomHolds, randomRuns, randomTones, verseOverBand, smallBreaks, voiceLead, withGaps, withHolds, withRuns, type BandNote, type BarTone, type Gap, type ChordNote } from './verse';
 
 export interface VersePanel {
   /** Show the song's verse notes again after new music. */
@@ -34,7 +34,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
@@ -68,7 +68,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     if (!n) {
       const chordAt = chordsOf(idea), { key, mode } = idea.song, { phrases, breaks, runs, holds, tones } = planFor(idea), seed = `${idea.seeds.song}|${idea.seeds.chords}`;
       const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
-      n = limitSame(smallBreaks(approachNotes(voiceLead(withHolds(plain, holds)), key, mode, barOf(idea), seed), phrases, seed));
+      n = limitSame(smallBreaks(approachNotes(addNeighbours(voiceLead(withHolds(plain, holds)), key, mode, barOf(idea), seed), key, mode, barOf(idea), seed), phrases, seed));
       cache.set(idea, n);
     }
     return n;
@@ -100,7 +100,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
       `Phrases (bar from–to): ${phrases.map((p) => `${pos(p.step, bar)}–${pos(p.step + p.len, bar)}`).join(' · ')}`,
       `Breaks after: ${breaks.map((g) => `${+(g.len / (bar / 4)).toFixed(2)} beat${g.len === bar / 4 ? '' : 's'}`).join(' · ')}`,
       `Chord note per bar: ${bars.join(' · ')}`,
-      `${notes.length} notes · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
+      `${notes.length} notes (${notes.filter((n) => n.nb).length} neighbour) · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
     ].join('\n');
   };
