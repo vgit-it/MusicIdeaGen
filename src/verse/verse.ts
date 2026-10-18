@@ -102,7 +102,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end by this many semitones. */ fall?: number; /** Why it bends (for the card). */ bend?: string }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end by this many semitones. */ fall?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -559,6 +559,71 @@ export function addBends(
     if (c.slide !== undefined) out[c.i].slide = c.slide;
     if (c.fall !== undefined) out[c.i].fall = c.fall;
     out[c.i].bend = c.kind;
+  }
+  return out;
+}
+
+/**
+ * Rule 15: bends inside a note. A held note holds its pitch, then glides to another and sits there. Where it can:
+ *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;
+ *   - for a note that ends on the bar line: to the next bar's core note, landing as the bar turns;
+ * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
+ * breaks the repeating). Raised by the verse's energy and the Bends amount. Notes scooped into, walks, neighbours and
+ * third-bar notes are left alone (a long held ending that falls off may bend first), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
+ */
+export function addNoteBends(
+  notes: BandNote[], bar: number,
+  ctx: { amount: BendAmount; energy: number; key: number; chordAt: Chord[]; range: Range },
+  seed: string,
+): BandNote[] {
+  if (ctx.amount === 'off') return notes;
+  const out = notes.map((n) => ({ ...n }));
+  const lift = (ctx.amount === 'lots' ? 2.1 : 1.2) * (0.75 + 0.12 * (ctx.energy - 1));
+  const gap = (ctx.amount === 'lots' ? 0.75 : 1) * bar;
+  const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string }[] = [];
+  out.forEach((n, i) => {
+    if (n.len < 2 || n.slide || (n.fall && n.len < 6) || n.walk || n.nb || n.third) return;
+    const r = (tag: string) => roll(seed, `ib-${tag}`, n.step);
+    // (how many of the same pitch came just before)
+    let same = 0;
+    for (let k = i - 1; k >= 1 && out[k].midi === out[k - 1].midi && n.step - out[k].step <= bar; k--) same++;
+    const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.03 * n.len) + (same >= 2 ? 0.3 : 0);
+    const glide = Math.min(4, Math.max(1, Math.floor(n.len / 3)));
+    const end = n.step + n.len;
+    const nx = out[i + 1];
+    const barLine = Math.abs(end / bar - Math.round(end / bar)) < 1e-6;
+    const ok = (m: number) => m >= ctx.range.xlo && m <= ctx.range.xhi;
+    // to the next bar's core note
+    if (barLine && nx && nx.step - end <= bar / 4 && !nx.nb && !nx.third) {
+      const d = nx.midi - n.midi;
+      if (Math.abs(d) >= 1 && Math.abs(d) <= 6 && ok(nx.midi)) {
+        const lead = n.len >= 8 ? Math.round(n.len * 0.15) : 0;
+        cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at: Math.max(1, n.len - glide - lead), glide, kind: 'next bar' });
+      }
+    }
+    // to the next chord note
+    const at = Math.max(1, Math.min(n.len - glide, Math.round(n.len * (0.45 + 0.25 * r('at')))));
+    const c = ctx.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(n.step + at + 1e-6))];
+    if (c) {
+      const pcs = [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
+      const tones = [];
+      for (let d = -5; d <= 5; d++) if (d && pcs.includes((((n.midi + d) % 12) + 12) % 12) && ok(n.midi + d)) tones.push(d);
+      const ups = tones.filter((d) => d > 0), downs = tones.filter((d) => d < 0);
+      const up = r('dir') < 0.75 ? ups.length > 0 : downs.length === 0;
+      const d = up ? Math.min(...ups) : Math.max(...downs);
+      if (Number.isFinite(d)) cand.push({ i, p, to: n.midi + d, at, glide, kind: up ? 'chord note up' : 'chord note down' });
+    }
+  });
+  const won = cand.filter((c) => roll(seed, `ib-${c.kind}`, out[c.i].step) < c.p * lift).sort((a, b) => b.p - a.p || out[a.i].step - out[b.i].step);
+  const spots = out.filter((n) => n.bend).map((n) => n.step);
+  for (const c of won) {
+    const n = out[c.i];
+    if (n.bendTo !== undefined || spots.some((s) => s !== n.step && Math.abs(s - n.step) < gap / 2) || out.some((o) => o.bendTo !== undefined && Math.abs(o.step - n.step) < gap)) continue;
+    spots.push(n.step);
+    n.bendTo = c.to;
+    n.bendAt = c.at;
+    n.bendLen = c.glide;
+    n.inner = c.kind;
   }
   return out;
 }

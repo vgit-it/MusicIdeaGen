@@ -4,7 +4,7 @@
 import type { Chord, Mode } from '../theory';
 import { planForm, leafSeeds, type Leaf, type Rule, type Variation } from './form';
 import {
-  addBends, addNeighbours, foldIntoRange, limitSame, phraseEndings, planPhrases, randomHolds, randomRuns, randomTones, smallBreaks,
+  addBends, addNoteBends, addNeighbours, foldIntoRange, limitSame, phraseEndings, planPhrases, randomHolds, randomRuns, randomTones, smallBreaks,
   thirdBars, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withRuns,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
@@ -83,7 +83,8 @@ export function buildVerse(inp: BuildInput): Built {
     const walked = walkToNext(addNeighbours(voiceLead(withHolds(plain, holds), inp.range), key, mode, bar, sd.neighbours), phrases, key, mode, bar, sd.walk);
     const shaped = thirdBars(phraseEndings(limitSame(smallBreaks(foldIntoRange(walked, inp.range), phrases, bar, sd.small, accOf('small'))), phrases, bar, sd.endings), phrases, bar, sd.thirds);
     const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
-    const notes = addBends(shaped, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes }, sd.bends);
+    const bent = addBends(shaped, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes }, sd.bends);
+    const notes = addNoteBends(bent, bar, { amount: inp.bends, energy: inp.energy, key, chordAt, range: inp.range }, `${sd.bends}|in`);
     const shift = (g: Gap): Gap => ({ step: g.step + from, len: g.len });
     out.notes.push(...notes.map((n) => ({ ...n, step: n.step + from })));
     out.phrases.push(...phrases.map(shift));
