@@ -53,6 +53,8 @@ export interface VocalNote {
   /** Scooped up into from so many semitones below; falling off its end by so many; a wail (sung full out). */
   slide?: number;
   fall?: number;
+  /** Glides to this note from the one before over so many steps (a bend inside a held note: the note is split in two). */
+  bend?: number;
   /** A colour note against the chord on purpose (a signature move: a 9th, a sigh, a sour ending): fitting to the band leaves it be. */
   colour?: boolean;
   /** A note of a real shape (Patterns, docs/PATTERNS.md): fitting to the band moves it only off a real clash. */
