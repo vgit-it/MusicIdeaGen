@@ -338,7 +338,8 @@ export function withStretch(notes: BandNote[], tones: ChordNote[], chordAt: Chor
 
 /** The pitch range (MIDI): the line lives between `lo` and `hi`, and may stray out to `xlo` / `xhi` but no further. */
 export interface Range { lo: number; hi: number; xlo: number; xhi: number }
-export const DEFAULT_RANGE: Range = { lo: 58, hi: 76, xlo: 53, xhi: 81 };
+/** D3 to D4, dipping out of it (down to D3, up to A5) only rarely, when a note there saves a big leap. */
+export const DEFAULT_RANGE: Range = { lo: 50, hi: 62, xlo: 50, xhi: 81 };
 
 /**
  * Rule 6: smooth steps. Each note takes the octave nearest the one before, so the line moves by the smallest jump.
@@ -493,7 +494,7 @@ export function limitSame(notes: BandNote[], max = MAX_SAME): BandNote[] {
  */
 export function phraseEndings(
   notes: BandNote[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE,
-  ctx?: { key: number; mode: Mode; chordAt: Chord[] },
+  ctx?: { key: number; mode: Mode; chordAt: Chord[]; range?: Range },
 ): BandNote[] {
   const rng = new Rng(seed + '|endings');
   const chance = d.end[0] + rng.next() * (d.end[1] - d.end[0]);
@@ -533,7 +534,10 @@ export function phraseEndings(
       const scale = new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12));
       const want = (pc: number) => (style === 'open' ? pcs.slice(1).includes(pc) && pc !== (((core.midi % 12) + 12) % 12) : scale.has(pc) && !pcs.includes(pc));
       const up = roll(seed, 'enddir', ph.step) < 0.6;
-      const found = [1, 2, 3, 4, 5, -1, -2, -3, -4, -5].map((k) => (up ? k : -k)).find((k) => want((((core.midi + k) % 12) + 12) % 12));
+      // (in the main range if it can be, else the extended zone, never past the extended limits)
+      const ks = [1, 2, 3, 4, 5, -1, -2, -3, -4, -5].map((k) => (up ? k : -k)).filter((k) => want((((core.midi + k) % 12) + 12) % 12));
+      const r = ctx.range;
+      const found = r ? ks.find((k) => core.midi + k >= r.lo && core.midi + k <= r.hi) ?? ks.find((k) => core.midi + k >= r.xlo && core.midi + k <= r.xhi) : ks[0];
       if (found === undefined) { if (style === 'hang') continue; } else midi = core.midi + found;
     }
     put(from, len + (style === 'sync' ? 2 : 0), midi, style);
@@ -768,7 +772,8 @@ export function addNoteBends(
     if (c) {
       const pcs = [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
       const tones = [];
-      for (let d = -5; d <= 5; d++) if (d && pcs.includes((((n.midi + d) % 12) + 12) % 12) && ok(n.midi + d)) tones.push(d);
+      // (a bend to a chord note stays in the main range; the extended zone is for a note that saves a leap)
+      for (let d = -5; d <= 5; d++) if (d && pcs.includes((((n.midi + d) % 12) + 12) % 12) && n.midi + d >= ctx.range.lo && n.midi + d <= ctx.range.hi) tones.push(d);
       const ups = tones.filter((d) => d > 0), downs = tones.filter((d) => d < 0);
       const up = r('dir') < 0.75 ? ups.length > 0 : downs.length === 0;
       const d = up ? Math.min(...ups) : Math.max(...downs);
