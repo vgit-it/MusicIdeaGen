@@ -27,6 +27,7 @@ genreSel.value = 'rock';
 
 const engine = new Engine();
 engine.setVocal('auto');
+engine.setBackingVocal('off'); // (backing vocals muted by default; a linked song sets its own)
 // (band.html?mute: silent, for automated checks)
 if (new URLSearchParams(location.search).has('mute')) Tone.getDestination().mute = true;
 // (for checks from the console)
@@ -120,7 +121,8 @@ function newSong() {
     const h = leadHigh(idea, engine.vocal, engine.vocalTimbre);
     if (h) idea = generate({ ...opts, vocalLift: HIGH_VOICES[h].lift || undefined, vocalSinger: h }, seeds);
   }
-  track = buildTrack(idea, shared?.t ?? defaultTrackOptions(idea));
+  // (a song made here: short intro; a linked song keeps its own)
+  track = buildTrack(idea, shared?.t ?? { ...defaultTrackOptions(idea), intro: 'alone' });
   offs = [];
   let n = 0;
   for (const s of track.sections) { offs.push(n); n += s.song.total; }

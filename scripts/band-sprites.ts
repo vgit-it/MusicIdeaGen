@@ -112,13 +112,29 @@ function png(w: number, h: number, rgba: Uint8ClampedArray) {
 /** Collects one player's frames, then packs them into a sheet: frames { name: [x, y, w, h, originX, originY] }. */
 class Sheet {
   private frames: { name: string; img: Img; box: ReturnType<Img['trim']> }[] = [];
+  /** Each arm frame's arms (for the rig, src/band/rig.ts): shoulder, hand, the elbow's side, lengths. */
+  private arms: Record<string, ArmPose[]> = {};
   add(name: string, draw: (g: Img) => void, outline = true, canvas?: Img) {
     const g = canvas ?? new Img();
+    ARMS = [];
     draw(g);
+    const arms = ARMS;
+    ARMS = null;
     if (outline) g.outline();
     this.frames.push({ name, img: g, box: g.trim() });
+    if (arms.length) {
+      // the rig's half of an arm frame: what's drawn besides the arms (the hand, a pick, sticks), on its own
+      this.arms[name] = arms;
+      const h = new Img();
+      DRAW_ARMS = false;
+      draw(h);
+      DRAW_ARMS = true;
+      if (outline) h.outline();
+      this.frames.push({ name: `hand/${name}`, img: h, box: h.trim() });
+    }
   }
   save(name: string, geo: object) {
+    if (Object.keys(this.arms).length) geo = { ...geo, arms: this.arms };
     const W = 512;
     let x = 0, y = 0, rowH = 0;
     const placed = this.frames.map((f) => {
@@ -418,8 +434,17 @@ function elbow(sh: Pt, hand: Pt, a: number, b: number, side: number): Pt {
   return score(c1) > score(c2) ? c1 : c2;
 }
 
+/** An arm as the rig sees it: from the shoulder to the hand, the elbow toward `side`, the two lengths. */
+type ArmPose = { sh: Pt; hand: Pt; side: number; a: number; b: number };
+/** The arms drawn in the frame being made (recorded for the rig), and whether to draw them (off: the hand alone). */
+let ARMS: ArmPose[] | null = null;
+let DRAW_ARMS = true;
+const r2 = (p: Pt): Pt => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
+
 /** An arm: a short sleeve (a tee), a long one to the wrist (a jacket, a hoodie, striped), or none (a tank top); wristbands. */
 function arm(g: Img, L: Look, sh: Pt, hand: Pt, side: number, a = ARM, b = ARM) {
+  ARMS?.push({ sh: r2(sh), hand: r2(hand), side, a, b });
+  if (!DRAW_ARMS) return;
   const el = elbow(sh, hand, a, b, side);
   const along = (p: Pt, q: Pt, k: number): Pt => [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k];
   const top = L.top ?? 'tee';

@@ -1,10 +1,12 @@
 // The stage (docs/BAND-VIEW.md): a small pixel canvas (480 x 270) scaled up with sharp pixels. The
 // backdrop, the five players back to front, and the lights: colours by section, brighter when louder,
-// a flash on crashes, a spotlight on solos. Plus a check view: each player's fretboard and the drums,
+// a flash on crashes. Plus a check view: each player's fretboard and the drums,
 // to see the playing is right.
 
 import { type Atlas, draw, loadAtlas, loadImage } from './atlas';
-import { type Actor, type Cmd, type Moment, type Pre, drummerActor, guitarActor, singerActor } from './actors';
+import { type Actor, type Cmd, type Moment, type Pre, type Roam, drummerActor, guitarActor, singerActor } from './actors';
+import { DRESSED, type Wardrobe, dress, loadWardrobe, pickOutfits } from './dress';
+import { moveSet } from './moves';
 import { PERSONAS, PLAYERS, type Persona, type Player, STYLES } from './persona';
 import { type Score, lastAt } from './score';
 
@@ -15,7 +17,7 @@ export const W = 350, H = 180;
 export interface StageLights { cans: [number, number][]; bulbs: [number, number][]; neon: { x: number; y: number; w: number; h: number; color: string }[]; front?: { x: number; y: number } }
 
 /** The backdrop and its lights, the crowd, and every player's sheet in every character's clothes (`singer-cool`, `lead-emo`...). */
-export interface Cast { stage: HTMLImageElement; front: HTMLImageElement | null; lights: StageLights; crowd: Atlas; sheets: Record<string, Atlas> }
+export interface Cast { stage: HTMLImageElement; front: HTMLImageElement | null; lights: StageLights; crowd: Atlas; sheets: Record<string, Atlas>; wardrobe: Wardrobe | null }
 
 export async function loadCast(base = 'band/'): Promise<Cast> {
   const names = PLAYERS.flatMap((p) => PERSONAS.map((c) => `${p}-${c}`));
@@ -29,29 +31,36 @@ export async function loadCast(base = 'band/'): Promise<Cast> {
   ]) as [HTMLImageElement, StageLights, Atlas, ...Atlas[]];
   // (the stage's front layer: the monitors and the front edge, over the players' feet)
   const front = lights.front ? await loadImage(`${base}stage-front.png`) : null;
-  return { stage, front, lights, crowd, sheets: Object.fromEntries(names.map((n, i) => [n, atlases[i]])) };
+  // (the wardrobe: Paul's art only, npm run band-pack)
+  const wardrobe = q.has('art') ? await loadWardrobe(base) : null;
+  return { stage, front, lights, crowd, sheets: Object.fromEntries(names.map((n, i) => [n, atlases[i]])), wardrobe };
 }
 
 /** Where each player stands (their feet), back to front. */
-// (the drummer dead centre on the riser; the rhythm guitarist and the lead at the front corners, the
-// singer front, right of centre, the bassist a step back beside the drums; a can above each)
-// (on Paul's stage: the drummer on the riser, the rest along the rug, in a row like the final reference:
-// rhythm and bass on the left, the singer right of centre, the lead on the right)
-const SPOTS = { drummer: [171, 131], bassist: [110, 158], rhythm: [50, 158], lead: [298, 158], singer: [234, 160] } as const;
+// (on Paul's stage, left to right: the bassist, the lead, the drummer dead centre on the riser, the
+// singer, the rhythm guitarist; a can above each)
+const SPOTS = { drummer: [171, 131], bassist: [46, 158], lead: [108, 158], singer: [238, 160], rhythm: [296, 158] } as const;
+/** Left to right, for keeping the roaming players out of each other's way. */
+const ORDER = ['bassist', 'lead', 'drummer', 'singer', 'rhythm'] as const;
+/** How far each player roams from their spot (px, left and right), and the room each pair needs between their bodies' middles. */
+const LANE: Record<Exclude<keyof typeof SPOTS, 'drummer'>, [number, number]> = { bassist: [-22, 12], lead: [-14, 24], singer: [-30, 12], rhythm: [-28, 10] };
+const GAP = [34, 38, 38, 34];
+/** The crowd: how much bigger than drawn (near the camera), and how low (their feet's line, under the picture). */
+const CROWD = { scale: 2, y: H + 36 };
 /** Where the back wall meets the floor (shadows are cast on the wall above it). */
 const WALL_FOOT = 137;
 
 /**
  * The walk-on, in seconds from Play: when each player sets off, how long they walk, and from how far
  * (px from their spot: off the side of the stage; the drummer from the end of the riser, behind the kit).
- * The drummer first, the frontman last; then a wave, then the drummer counts in four.
+ * The drummer first, then each side from the middle out (so nobody walks through anyone); then a wave, then the drummer counts in four.
  */
 const WALK: Record<keyof typeof SPOTS, { at: number; dur: number; from: number }> = {
   drummer: { at: 0, dur: 1.4, from: 72 },
-  bassist: { at: 0.5, dur: 1.9, from: -210 },
-  rhythm: { at: 1.0, dur: 1.7, from: -150 },
-  lead: { at: 1.3, dur: 1.7, from: 140 },
-  singer: { at: 2.0, dur: 2.0, from: 260 },
+  lead: { at: 0.4, dur: 1.7, from: -170 },
+  bassist: { at: 0.9, dur: 1.9, from: -150 },
+  singer: { at: 1.2, dur: 1.9, from: 260 },
+  rhythm: { at: 2.0, dur: 1.6, from: 140 },
 };
 const WAVE: [number, number] = [4.0, 5.0];
 const COUNT_AT = 5.2;
@@ -68,6 +77,15 @@ const LIGHTS: Record<string, [string, string]> = {
   interlude: ['#3ad0c0', '#7a4cff'], bridge: ['#3ad0c0', '#3a6cff'], breakdown: ['#2a3aff', '#5a2aff'], solo: ['#ff3ad0', '#ffffff'], outro: ['#ff9a3a', '#7a4cff'],
 };
 
+/** One stroll along a path: from `x0` at `t0` to `x1` at `t1` (seconds into the song), `d0` px already walked by then. */
+interface Stroll { t0: number; t1: number; x0: number; x1: number; d0: number }
+
+/** A small seeded random generator (the same band walks the same way for the same song). */
+function rng(seed: number) {
+  let r = seed >>> 0 || 1;
+  return () => ((r = (Math.imul(r, 1664525) + 1013904223) >>> 0) / 4294967296);
+}
+
 export class Stage {
   private actors: { name: keyof typeof SPOTS; act: Actor }[];
   private beats: { at: number }[];
@@ -82,9 +100,21 @@ export class Stage {
   private shade = Object.assign(document.createElement('canvas'), { width: W, height: H });
   /** The light layer, at the stage's own pixel size (the camera is close: half-size light pixels read as a screen door). */
   private light = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  /** Each walking player's strolls around their spot, planned for the whole song (see `plan`). */
+  private paths = new Map<keyof typeof SPOTS, Stroll[]>();
+  /** What each player wears this song (from the wardrobe, src/band/dress.ts), for checks from the console. */
+  outfits: Partial<Record<Player, import('./dress').Outfit>>;
   /** `who`: each player's character (their clothes and how they move). */
   constructor(private cast: Cast, private score: Score, private genre: string, who: Record<Player, Persona>) {
-    const sheet = (p: Player) => cast.sheets[`${p}-${who[p]}`];
+    // (with the wardrobe: each song's outfits, picked by the song; band.html?art&own: their own clothes)
+    const own = typeof location !== 'undefined' && new URLSearchParams(location.search).has('own');
+    const songKey = `${genre}|${score.steps}|${score.vocal.lines.length}|${score.lead.length}|${score.drums.limbs.A.length}`;
+    const outfits = cast.wardrobe ? pickOutfits(cast.wardrobe, songKey, own) : {};
+    this.outfits = outfits;
+    const sheet = (p: Player) => {
+      const base = cast.sheets[`${p}-${who[p]}`], o = outfits[p];
+      return cast.wardrobe && o && DRESSED.includes(p) ? dress(cast.wardrobe, base, `${p}-${who[p]}`, o, moveSet(), p) : base;
+    };
     this.beats = score.beats.map((at) => ({ at }));
     this.barList = score.bars.map((at) => ({ at }));
     this.actors = [
@@ -94,14 +124,57 @@ export class Stage {
       { name: 'lead', act: guitarActor(sheet('lead'), score, 'lead', 5, STYLES[who.lead]) },
       { name: 'singer', act: singerActor(sheet('singer'), score, STYLES[who.singer]) },
     ];
+    for (const name of ORDER) if (name !== 'drummer') this.paths.set(name, this.plan(name, STYLES[who[name]].roam, score.moves.final));
   }
 
-  moment(t: number, wall = t * this.score.six): Moment {
+  /**
+   * One player's strolls around their spot for the whole song: stand a while, walk to another place in
+   * their lane, stand again. Quiet sections mostly standing, loud ones on the move; a calmer character
+   * (`reach`) goes less far. Seeded by the song and the player, so it's the same every time and anywhere you jump to.
+   */
+  private plan(name: Exclude<keyof typeof SPOTS, 'drummer'>, reach: number, final: number | null): Stroll[] {
+    const s = this.score, [lo, hi] = LANE[name].map((v) => v * reach);
+    const rnd = rng(s.steps * 7 + s.vocal.lines.length * 131 + ORDER.indexOf(name) * 977 + s.lead.length);
+    const end = (final ?? s.sections[s.sections.length - 1].to) * s.six + 30;
+    const out: Stroll[] = [];
+    let t = 0, x = 0, d = 0;
+    while (t < end) {
+      const sec = s.sections.find((z) => t >= z.from * s.six && t < z.to * s.six);
+      const e = sec?.energy ?? 3;
+      t += (e >= 4 ? 3 : e >= 3 ? 5 : 9) + rnd() * (e >= 4 ? 5 : e >= 3 ? 8 : 12);
+      // (somewhere at least 6px off)
+      // (usually across to the other half of the lane)
+      let to = x - lo > hi - x ? lo + rnd() * (hi - lo) * 0.5 : lo + (hi - lo) * (0.5 + rnd() * 0.5);
+      if (Math.abs(to - x) < 6) to = x + (x - lo > hi - x ? -1 : 1) * 6;
+      to = clamp01((to - lo) / Math.max(1, hi - lo)) * (hi - lo) + lo;
+      const dur = Math.max(0.6, Math.abs(to - x) / (12 + rnd() * 6));
+      out.push({ t0: t, t1: t + dur, x0: x, x1: to, d0: d });
+      d += Math.abs(to - x);
+      x = to;
+      t += dur;
+    }
+    return out;
+  }
+
+  /** Where a walking player is around their spot at `sec` seconds into the song (px), which way they're walking and how far they've gone (null: standing). */
+  private roamOf(name: Exclude<keyof typeof SPOTS, 'drummer'>, sec: number): Roam {
+    const path = this.paths.get(name)!;
+    // (the stroll under way, or the last one that finished)
+    let i = -1;
+    while (i + 1 < path.length && path[i + 1].t0 <= sec) i++;
+    if (i < 0) return { x: 0, dir: 1, stride: null };
+    const p = path[i];
+    if (sec >= p.t1) return { x: p.x1, dir: p.x1 >= p.x0 ? 1 : -1, stride: null };
+    const u = (sec - p.t0) / (p.t1 - p.t0), k = u * u * (3 - 2 * u);
+    return { x: p.x0 + (p.x1 - p.x0) * k, dir: p.x1 >= p.x0 ? 1 : -1, stride: Math.floor((p.d0 + Math.abs(p.x1 - p.x0) * k) / 4) };
+  }
+
+  moment(t: number, wall = t * this.score.six, roam?: Roam): Moment {
     const s = this.score;
     const section = s.sections.find((x) => t >= x.from && t < x.to) ?? (t < 0 ? s.sections[0] : s.sections[s.sections.length - 1]);
     const bi = Math.max(0, lastAt(this.beats, t));
     const b0 = s.beats[bi] ?? 0, b1 = s.beats[bi + 1] ?? b0 + 4;
-    return { t, six: s.six, section, beat: clamp01((t - b0) / (b1 - b0)), beatNo: bi, heavy: ['metal', 'hardrock', 'altmetal', 'grunge'].includes(this.genre), wall };
+    return { t, six: s.six, section, beat: clamp01((t - b0) / (b1 - b0)), beatNo: bi, heavy: ['metal', 'hardrock', 'altmetal', 'grunge'].includes(this.genre), wall, roam };
   }
 
   /** What one player draws at song step `t` (for checks from the console). */
@@ -119,6 +192,7 @@ export class Stage {
       // (not set off yet: off the stage, out of sight)
       x: sec < w.at ? 1000 : Math.round(w.from * (1 - u)),
       stride: walking ? Math.floor((Math.abs(w.from) * u) / 5) : null,
+      dir: w.from < 0 ? 1 : -1,
       wave: name === 'singer' && sec >= WAVE[0] && sec < WAVE[1],
       count: since,
     };
@@ -139,11 +213,18 @@ export class Stage {
     ctx.fillStyle = `rgba(6, 4, 14, ${Math.max(0.05, 0.38 - e * 0.07)})`;
     ctx.fillRect(0, 0, W, H);
     const idle = { ...m, t: -100, beat: (wall / 0.9) % 1, beatNo: Math.floor(wall / 0.9), section: { ...m.section, energy: 3, solo: false } };
-    const drawn = this.actors.map(({ name, act }) => ({
-      at: SPOTS[name],
-      // (waiting: the band nods along slowly, ready to go)
-      cmds: (playing ? act(m) : pre !== undefined ? act({ ...idle, pre: this.preFor(name, pre) }) : act(idle)) as Cmd[],
-    }));
+    const drawn = this.actors.map(({ name, act }) => {
+      // (the walking players stroll around their spot while the song plays)
+      const roam = playing && name !== 'drummer' ? this.roamFor(name, t) : undefined;
+      return {
+        name,
+        at: [SPOTS[name][0] + (roam ? Math.round(roam.x) : 0), SPOTS[name][1]] as [number, number],
+        // (waiting: the band nods along slowly, ready to go)
+        cmds: (playing ? act(roam ? { ...m, roam } : m) : pre !== undefined ? act({ ...idle, pre: this.preFor(name, pre) }) : act(idle)) as Cmd[],
+      };
+    });
+    // (the walk-on has its own order, and players not yet on stage are parked far off: only keep the playing band apart)
+    if (playing) this.apart(drawn);
     this.shadows(ctx, drawn, e);
     // the band, on a layer of its own: dark against the lights, their edges glowing (a rim light)
     const flash = this.crashFlash(m, playing);
@@ -164,6 +245,42 @@ export class Stage {
     ctx.drawImage(this.crowdLayer, 0, 0);
     this.lights(ctx, m, playing, wall);
     this.grade(ctx, wall);
+  }
+
+  /** A walking player's stroll at song step `t`: held still in the lead's solo (he lunges there) and after the final hit. */
+  private roamFor(name: Exclude<keyof typeof SPOTS, 'drummer'>, t: number): Roam {
+    const six = this.score.six, final = this.score.moves.final;
+    const r = this.roamOf(name, (final === null ? t : Math.min(t, final)) * six);
+    if (final !== null && t >= final) return { ...r, stride: null };
+    const sec = this.score.sections.find((z) => t >= z.from && t < z.to);
+    if (name === 'lead' && sec?.solo) {
+      const a = ease01(Math.min((t - sec.from) * six, (sec.to - t) * six) / 0.7);
+      return { x: r.x * (1 - a), dir: r.dir, stride: a > 0 ? null : r.stride };
+    }
+    return r;
+  }
+
+  /**
+   * Keeps the players out of each other's space: where two have come closer than their bodies allow
+   * (the roaming, the stepping in toward the drummer, the sway all add up), they're eased apart,
+   * the drummer (on his kit) never moving.
+   */
+  private apart(drawn: { name: keyof typeof SPOTS; at: [number, number]; cmds: Cmd[] }[]) {
+    const row = ORDER.map((n) => drawn.find((d) => d.name === n)!);
+    // (where each body is: its spot and the body sprite's own offset)
+    const own = row.map((d) => { const b = d.cmds.find((c) => 'f' in c && c.f === 'body/idle'); return b && 'x' in b ? b.x : 0; });
+    const pos = row.map((d, i) => d.at[0] + own[i]);
+    for (let pass = 0; pass < 4; pass++) {
+      for (let i = 0; i < GAP.length; i++) {
+        const lack = GAP[i] - (pos[i + 1] - pos[i]);
+        if (lack <= 0) continue;
+        const fixL = row[i].name === 'drummer', fixR = row[i + 1].name === 'drummer';
+        if (fixL) pos[i + 1] += lack;
+        else if (fixR) pos[i] -= lack;
+        else { pos[i] -= lack / 2; pos[i + 1] += lack / 2; }
+      }
+    }
+    row.forEach((d, i) => { d.at = [d.at[0] + Math.round(pos[i] - (d.at[0] + own[i])), d.at[1]]; });
   }
 
   /** A layer cleared for drawing. */
@@ -240,15 +357,19 @@ export class Stage {
     const final = this.score.moves.final;
     const up = (sinceJump < 1.5 && e >= 4) || (sinceCrash < 0.5 && e >= 4) || (playing && final !== null && m.t >= final);
     const bob = (side: number) => (e >= 3 && ((m.beat + side * 0.5) % 1) < 0.25 ? 1 : 0);
-    draw(ctx, a, `crowd/0/${up ? 'up' : 'idle'}`, W / 2, H + 8 + bob(0));
-    draw(ctx, a, `crowd/1/${up ? 'up' : 'idle'}`, W / 2, H + 8 + bob(1));
+    // (close to the camera: drawn at CROWD.scale, their heads just under the band's feet)
+    ctx.save();
+    ctx.translate(W / 2, CROWD.y);
+    ctx.scale(CROWD.scale, CROWD.scale);
+    draw(ctx, a, `crowd/0/${up ? 'up' : 'idle'}`, 0, bob(0));
+    draw(ctx, a, `crowd/1/${up ? 'up' : 'idle'}`, 0, bob(1));
+    ctx.restore();
   }
 
   /**
    * The light, in pixels too: stepped into levels with a 4x4 ordered dither,
    * then laid over the stage (adding light) with hard edges. Cans on the pipe throw coloured cones at
-   * the players (swinging when it's loud, punching on the bar's downbeat), spots on the singer and on a
-   * solo, the string lights twinkle, the neon glows (and flickers now and then), crashes flash.
+   * the players (swinging when it's loud, punching on the bar's downbeat), the string lights twinkle, the neon glows (and flickers now and then), crashes flash.
    */
   private lights(ctx: CanvasRenderingContext2D, m: Moment, playing: boolean, wall: number) {
     const L = this.light;
@@ -288,12 +409,6 @@ export class Stage {
       // a pool of light on the boards
       glow(l, target, ay - 1, 24, 6, col, strength * 1.2);
     });
-    // spotlights: the singer while singing, the lead in a solo
-    if (playing) {
-      const sung = this.score.vocal.lines, li = lastAt(sung, m.t);
-      if (li >= 0 && m.t < sung[li].end + 1 / m.six) glow(l, SPOTS.singer[0], SPOTS.singer[1] - 40, 26, 48, '#fff2dc', 0.22);
-      if (m.section.solo) glow(l, SPOTS.lead[0] - 26, SPOTS.lead[1] - 40, 28, 50, '#fff2dc', 0.3);
-    }
     // the string lights twinkle, each at its own pace
     bulbs.forEach(([bx, by], i) => glow(l, bx, by, 7, 7, '#ffcc70', 0.32 + 0.14 * Math.sin(wall * (1.3 + (i % 5) * 0.4) + i)));
     // the neon glows; once in a while a sign stutters
@@ -415,6 +530,7 @@ function glow(l: CanvasRenderingContext2D, x: number, y: number, rx: number, ry:
 }
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+const ease01 = (u: number) => { const k = clamp01(u); return k * k * (3 - 2 * k); };
 
 /** A 1px line on the pixel grid (no smoothing), for effects like a ringing string. */
 function pixelLine(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, color: string, alpha: number) {

@@ -4,6 +4,7 @@
 // fret before the note, the strumming hand swinging through the strings, the singer's mouth per sound.
 
 import { type Atlas, onNeck } from './atlas';
+import { WALKS, freshStance } from './moves';
 import { STYLES, type Style } from './persona';
 import { type DrumHit, type FretNote, type Hold, type Piece, type Score, type SectionSpan, type Strum, lastAt } from './score';
 
@@ -24,13 +25,19 @@ export interface Moment {
   wall: number;
   /** Before the song: this player walking on, waving, the count-in. */
   pre?: Pre;
+  /** While playing: this player strolling around their spot (the stage moves them; the legs follow). */
+  roam?: Roam;
 }
 
 /**
  * Before the song (the walk-on): how far this player still is from their spot (x), their stride while
- * walking (null: standing), a wave to the crowd, and seconds since the drummer's last count-in click.
+ * walking (null: standing), which way they walk (1: to screen right, -1: left), a wave to the crowd,
+ * and seconds since the drummer's last count-in click.
  */
-export interface Pre { x: number; stride: number | null; wave: boolean; count: number }
+export interface Pre { x: number; stride: number | null; dir?: number; wave: boolean; count: number }
+
+/** A stroll while playing: how far from the spot (px, for the stage), which way they walk (1: screen right), and their stride (null: standing). */
+export interface Roam { x: number; dir: number; stride: number | null }
 
 export type Actor = (m: Moment) => Cmd[];
 
@@ -46,7 +53,7 @@ const blinking = (sec: number, seed: number) => (sec + seed * 1.37) % (2.9 + see
  * The character changes it: a cool player only nods on the bar, bounces little; an energetic one bounces
  * big; angry and emo players head-bang whenever it's loud; an emo player slumps, head down, when it's quiet.
  */
-function groove(m: Moment, lag: number, st: Style) {
+export function groove(m: Pick<Moment, 'beat' | 'beatNo' | 'heavy'> & { section: { energy: number } }, lag: number, st: Style) {
   const e = m.section.energy;
   const p = (m.beat + 1 - (e >= 4 ? 0 : lag)) % 1;
   const bang = (m.heavy && e >= 5) || (st.nod === 'bang' && e >= 4);
@@ -66,7 +73,7 @@ function jumpsFor(score: Score, st: Style) {
 }
 
 /** Jumps into big sections (a crouch just before, knees tucked in the air) and the ending pose after the final hit. */
-function showOf(jumps: { at: number }[], final: number | null, t: number, six: number) {
+export function showOf(jumps: { at: number }[], final: number | null, t: number, six: number) {
   const i = lastAt(jumps, t);
   const prev = jumps[i], next = jumps[i + 1];
   const ending = final !== null && t >= final + 0.4 / six;
@@ -81,6 +88,20 @@ function showOf(jumps: { at: number }[], final: number | null, t: number, six: n
   return { dy: 0, legs: null as string | null, air: false, ending };
 }
 
+/** How far behind the beat each role nods (the bass a little late, the lead nearly on it). */
+export const LAG: Record<string, number> = { bass: 0.1, bassist: 0.1, lead: 0.03, rhythm: 0, singer: 0.08 };
+
+/**
+ * The stance a standing player takes (`stand`, `wide`, `lunge`, or the show's: a jump's), by the
+ * section's loudness and the character: wide when it's loud (an angry player as soon as the band's in),
+ * the lead lunging in a solo, the singer wide in loud parts.
+ */
+export function stanceFor(role: string, energy: number, st: Style, show: { legs: string | null; ending: boolean }, solo = false) {
+  if (role === 'singer') return show.legs ?? (show.ending || energy >= 4 ? 'wide' : 'stand');
+  const wideFrom = st.nod === 'bang' && !st.slump ? 3 : 4;
+  return show.legs ?? (show.ending ? 'legs/wide' : role === 'lead' && solo ? 'lunge' : energy >= wideFrom ? 'wide' : 'stand');
+}
+
 /** Loud sections: step in toward the drummer (and back out as the section ends). */
 function stepIn(m: Moment, dist: number) {
   if (m.section.energy < 4 || m.section.solo) return 0;
@@ -88,10 +109,28 @@ function stepIn(m: Moment, dist: number) {
   return Math.round(dist * ease(clamp(Math.min(inS, outS) / 0.6, 0, 1)));
 }
 
-/** Legs while walking on: the stride's frame, and a bob on the steps. */
-const walking = (pre: Pre) => (pre.stride === null ? null : { legs: `legs/walk/${pre.stride % 4}`, bob: pre.stride % 2 ? -1 : 0 });
+/**
+ * Legs while walking on: the stride's frame (walking across, to the left or right: a sheet without
+ * those, the walk toward us), and a bob on the steps (fresh moves: the hips dip as both feet land,
+ * src/band/moves.ts).
+ */
+const walking = (pre: Pick<Pre, 'stride' | 'dir'>, a: Atlas) => {
+  if (pre.stride === null) return null;
+  const side = `legs/${WALKS[(pre.dir ?? 1) < 0 ? 'L' : 'R']}/${pre.stride % 4}`;
+  const legs = a.frames[side] ? side : `legs/walk/${pre.stride % 4}`;
+  return { legs, bob: a.geo.moves === 'fresh' ? freshStance(a.geo.stance, legs, 0).body : pre.stride % 2 ? -1 : 0 };
+};
 
 /** The head and face, and what's worn on it (shades, a fringe, a sweatband, eyeliner) on top. */
+/**
+ * An arm frame as two layers: the arm, and its hand (drawn later: over the guitar, the head). A sheet
+ * without the hand apart has it in the arm frame: drawn as one, in the hand's place.
+ */
+function armAndHand(a: Atlas, f: string, x: number, y: number): { arm: Cmd[]; hand: Cmd[] } {
+  const own = !!a.frames[`hand/${f}`];
+  return own ? { arm: [{ a, f, x, y }], hand: [{ a, f: `hand/${f}`, x, y }] } : { arm: [], hand: [{ a, f, x, y }] };
+}
+
 function face(a: Atlas, pose: string, eyes: string, brows: string, mouth: string, x: number, y: number): Cmd[] {
   const [fx, fy] = a.geo.poses?.[pose] ?? [0, 0];
   return [
@@ -128,7 +167,7 @@ export function drummerActor(a: Atlas, score: Score, st: Style = STYLES.energeti
     const { t, six } = m, sec = m.wall;
     if (m.pre) {
       // walking on behind the kit with the sticks up, then clicking them together for the count-in
-      const pre = m.pre, w = walking(pre), y = w?.bob ?? 0;
+      const pre = m.pre, w = walking(pre, a), y = w?.bob ?? 0;
       const sticks = pre.count < 0.09 ? 'click' : 'sky';
       const kit = ['kick/rest', 'tom3/rest', 'tom1/rest', 'tom2/rest', 'snare/rest', 'hat/closed', 'crash/rest', 'ride/rest'].map((f) => ({ a, f: `kit/${f}`, x: 0, y: 0 }));
       return [
@@ -282,14 +321,14 @@ function fingersOnHold(h: Hold, strings: number): Fingers {
  * The fretting hand drawn: the palm sprite under the neck at the index finger's fret, a finger from the
  * knuckles up over the fretboard to each fingertip sprite, a barre laid across the strings.
  */
-function drawFingers(a: Atlas, f: Fingers, x: number, dy: number): Cmd[] {
+function drawFingers(a: Atlas, f: Fingers, x: number, dy: number): { arm: Cmd[]; hand: Cmd[] } {
   const n = a.geo.neck!;
   const skin = a.geo.skin ?? '#e0b088';
-  const out: Cmd[] = [];
   const pf = Math.round(clamp(f.palm, 0, n.frets));
   const want = onNeck(n, Math.max(f.palm, 0.8) + 0.7, n.strings - 1), got = onNeck(n, Math.max(pf, 0.8) + 0.7, n.strings - 1);
-  out.push({ a, f: `fret/${f.off ? 'off' : 'palm'}/${pf}`, x: x + want[0] - got[0] + f.dx, y: dy + want[1] - got[1] });
-  if (f.off) return out;
+  // (the arm under the guitar, the hand over it)
+  const { arm, hand: out } = armAndHand(a, `fret/${f.off ? 'off' : 'palm'}/${pf}`, x + want[0] - got[0] + f.dx, dy + want[1] - got[1]);
+  if (f.off) return { arm, hand: out };
   const spot = (fret: number, string: number) => onNeck(n, Math.max(fret - 0.35, 0.5), string);
   if (f.barre) {
     const t0 = spot(f.barre.fret, f.barre.from - 0.4), t1 = spot(f.barre.fret, f.barre.to + 0.6);
@@ -302,7 +341,7 @@ function drawFingers(a: Atlas, f: Fingers, x: number, dy: number): Cmd[] {
     if (!tip.light) out.push({ line: [x + knuckle[0] + f.dx, dy + knuckle[1], x + tx + f.dx, dy + ty + 1], color: skin, alpha: 1, w: 2 });
     out.push({ a, f: tip.light ? 'tip/light' : 'tip/press', x: x + tx + f.dx, y: dy + ty });
   }
-  return out;
+  return { arm, hand: out };
 }
 
 export function guitarActor(a: Atlas, score: Score, role: Role, seed: number, st: Style = STYLES.energetic): Actor {
@@ -317,18 +356,22 @@ export function guitarActor(a: Atlas, score: Score, role: Role, seed: number, st
     const { t, six } = m, sec = m.wall, e = m.section.energy;
     if (m.pre) {
       // walking on, hands off the strings; at the count-in, the pick hand up, ready
-      const pre = m.pre, w = walking(pre), y = w?.bob ?? 0;
+      const pre = m.pre, w = walking(pre, a), y = w?.bob ?? 0;
+      const fret = drawFingers(a, { palm: 3, off: true, tips: [], dx: 0, bending: false }, pre.x, y);
+      const pick = armAndHand(a, pre.count < 9 && role !== 'bass' ? 'pick/up' : 'pick/rest', pre.x, y);
       return [
         { a, f: 'hair/back', x: pre.x, y },
         { a, f: w?.legs ?? 'legs/stand', x: pre.x, y: 0 },
         { a, f: 'body/idle', x: pre.x, y },
-        ...face(a, pre.count < 0.15 || st.slump ? 'down' : 'front', blinking(sec, seed) ? 'closed' : st.eyes(3), st.brows(3), st.mouth(3), pre.x, y),
+        ...fret.arm,
         { a, f: 'inst/body', x: pre.x, y },
-        ...drawFingers(a, { palm: 3, off: true, tips: [], dx: 0, bending: false }, pre.x, y),
-        { a, f: pre.count < 9 && role !== 'bass' ? 'pick/up' : 'pick/rest', x: pre.x, y },
+        ...pick.arm,
+        ...face(a, pre.count < 0.15 || st.slump ? 'down' : 'front', blinking(sec, seed) ? 'closed' : st.eyes(3), st.brows(3), st.mouth(3), pre.x, y),
+        ...fret.hand,
+        ...pick.hand,
       ];
     }
-    const g = groove(m, role === 'bass' ? 0.1 : role === 'lead' ? 0.03 : 0, st);
+    const g = groove(m, LAG[role], st);
     const show = showOf(jumps, final, t, six);
     const sitting = role === 'rhythm' && out.some(([f, u]) => t >= f && t < u);
     const riff = role === 'rhythm' && !!m.section.riff;
@@ -410,26 +453,33 @@ export function guitarActor(a: Atlas, score: Score, role: Role, seed: number, st
     // a solo: the lead steps up to the front and lunges; loud sections: the rhythm section steps in
     // toward the drummer, and everyone sways with the beat
     let x = 0;
+    // (toward the drummer: the bassist and the lead are on his left, the rhythm guitarist on his right)
     if (role === 'lead' && m.section.solo) {
       const inS = (t - m.section.from) * six, outS = (m.section.to - t) * six;
-      x = Math.round(-26 * ease(clamp(Math.min(inS, outS) / 0.7, 0, 1)));
+      x = Math.round(8 * ease(clamp(Math.min(inS, outS) / 0.7, 0, 1)));
     }
     if (role === 'bass' && st.stepIn) x += stepIn(m, 7);
-    if (role === 'rhythm' && st.stepIn) x += stepIn(m, 9);
+    if (role === 'rhythm' && st.stepIn) x -= stepIn(m, 9);
     if (e >= 4 && !m.section.solo) x += (m.beatNo % 2) * st.sway;
-    // (an angry player plants their feet wide as soon as the band's in)
-    const wideFrom = st.nod === 'bang' && !st.slump ? 3 : 4;
-    const legs = show.legs ?? (show.ending ? 'legs/wide' : role === 'lead' && m.section.solo ? 'lunge' : e >= wideFrom ? 'wide' : 'stand');
-    const dy = g.dy + show.dy;
+    const legs = stanceFor(role, e, st, show, m.section.solo);
+    // (strolling: the walking legs, the hips dipping with the steps; not in a jump or the ending pose)
+    const stroll = m.roam && m.roam.stride !== null && !show.legs && !show.ending ? walking(m.roam, a) : null;
+    // (fresh moves: each depth of the bounce its own frame, the body as low or high as its hips)
+    const fresh = !stroll && a.geo.moves === 'fresh' ? freshStance(a.geo.stance, legs, g.dy, show) : null;
+    const dy = stroll ? stroll.bob : fresh ? fresh.body : g.dy + show.dy;
+    // back to front: the fretting arm, the guitar, the picking arm, the head, then the hands
+    const fret = drawFingers(a, fing, x, dy), pick = armAndHand(a, ph, x, dy + pdy);
     return [
       { a, f: 'hair/back', x, y: dy },
-      { a, f: legs.startsWith('legs/') ? legs : `legs/${legs}`, x, y: show.dy },
+      stroll ? { a, f: stroll.legs, x, y: 0 } : fresh ? { a, f: fresh.legs, x, y: fresh.legsY } : { a, f: legs.startsWith('legs/') ? legs : `legs/${legs}`, x, y: show.dy },
       { a, f: 'body/idle', x, y: dy },
-      ...face(a, pose, eyes, brows, mouth, x, dy),
+      ...fret.arm,
       { a, f: 'inst/body', x, y: dy },
       ...shaking(a, t, six, role, riff, sitting, notes, strums, holds, x, dy, fing),
-      ...drawFingers(a, fing, x, dy),
-      { a, f: ph, x, y: dy + pdy },
+      ...pick.arm,
+      ...face(a, pose, eyes, brows, mouth, x, dy),
+      ...fret.hand,
+      ...pick.hand,
     ];
   };
 }
@@ -480,19 +530,22 @@ export function singerActor(a: Atlas, score: Score, st: Style = STYLES.energetic
     const { t, six } = m, sec = m.wall, e = m.section.energy;
     if (m.pre) {
       // walking on last, then a wave to the crowd ("hey!") before stepping up to the mic
-      const pre = m.pre, w = walking(pre), y = w?.bob ?? 0;
+      const pre = m.pre, w = walking(pre, a), y = w?.bob ?? 0;
       const wave = pre.wave ? (Math.floor(sec / 0.22) % 2 ? 'up' : 'out') : 'down';
+      const A = armAndHand(a, pre.stride === null && !pre.wave ? 'armA/mic' : 'armA/down', pre.x, y), B = armAndHand(a, `armB/${wave}`, pre.x, y);
       return [
         { a, f: w?.legs ?? 'legs/stand', x: pre.x, y: 0 },
         { a, f: 'body/idle', x: pre.x, y },
+        ...A.arm,
+        ...B.arm,
         ...face(a, pre.wave ? 'up' : pre.count < 0.15 || st.slump ? 'down' : 'front', pre.wave ? 'squeeze' : blinking(sec, 1) ? 'closed' : st.eyes(3), pre.wave ? 'raised' : st.brows(3), pre.wave ? (st.nod === 'bar' ? 'smile' : 'A') : st.mouth(3), pre.x, y),
         { a, f: 'stand', x: 0, y: 0 },
         { a, f: 'mic', x: 0, y: 0 },
-        { a, f: pre.stride === null && !pre.wave ? 'armA/mic' : 'armA/down', x: pre.x, y },
-        { a, f: `armB/${wave}`, x: pre.x, y },
+        ...A.hand,
+        ...B.hand,
       ];
     }
-    const g = groove(m, 0.08, st);
+    const g = groove(m, LAG.singer, st);
     const show = showOf(jumps, final, t, six);
     const si = lastAt(sung, t);
     const s = sung[si];
@@ -534,16 +587,23 @@ export function singerActor(a: Atlas, score: Score, st: Style = STYLES.energetic
     // loud parts between lines: pumping a fist with the beat (not the cool one); in a jump and at the end, fist up
     else if (!inLine && e >= 4 && st.bounce >= 1) free = m.beat < 0.4 ? 'up' : 'out';
     if (show.air || show.ending) free = 'up';
-    const dy = (breath ? -1 : 0) + (inLine ? 0 : g.dy) + show.dy;
-    const legs = show.legs ?? (show.ending || e >= 4 ? 'wide' : 'stand');
+    const legs = stanceFor('singer', e, st, show);
+    // (strolling, mic stand in hand: the walking legs; not in a jump or the ending pose)
+    const stroll = m.roam && m.roam.stride !== null && !show.legs && !show.ending ? walking(m.roam, a) : null;
+    const fresh = !stroll && a.geo.moves === 'fresh' ? freshStance(a.geo.stance, legs, inLine ? 0 : g.dy, show) : null;
+    const dy = stroll ? stroll.bob : fresh ? fresh.body : (breath ? -1 : 0) + (inLine ? 0 : g.dy) + show.dy;
+    // the arms under the head, the hands over it
+    const A = armAndHand(a, atMic ? 'armA/mic' : 'armA/down', 0, dy), B = armAndHand(a, `armB/${free}`, 0, dy);
     return [
-      { a, f: `legs/${legs}`, x: 0, y: show.dy },
+      stroll ? { a, f: stroll.legs, x: 0, y: 0 } : fresh ? { a, f: fresh.legs, x: 0, y: fresh.legsY } : { a, f: `legs/${legs}`, x: 0, y: show.dy },
       { a, f: 'body/idle', x: 0, y: dy },
+      ...A.arm,
+      ...B.arm,
       ...face(a, pose, eyes, brows, mouth, 0, dy),
       { a, f: 'stand', x: 0, y: 0 },
       { a, f: 'mic', x: 0, y: 0 },
-      { a, f: atMic ? 'armA/mic' : 'armA/down', x: 0, y: dy },
-      { a, f: `armB/${free}`, x: 0, y: dy },
+      ...A.hand,
+      ...B.hand,
     ];
   };
 }

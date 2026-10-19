@@ -36,14 +36,17 @@ Not in the built site yet (dev only).
    - showing off: the band jumps into big sections (a crouch first, knees tucked in the air), the pick
      hand goes up on a big chord left ringing, the lead lunges in solos, the singer pumps a fist between
      lines; on the final chord everyone jumps and holds an ending pose (the drummer's sticks up)
+   - strolling: the bassist, lead, singer (mic stand in hand) and rhythm guitarist wander a lane around
+     their spot while playing (stand a while, walk across, stand; more in loud sections, less for calm
+     characters: `roam` in `persona.ts`), planned per song so it's the same anywhere you jump to; the
+     lead holds still in solos; `Stage.apart` eases anyone apart who'd get closer than their bodies allow
 4. **Walk-on** (Walk-on switch, playing from the top): the band walks on one by one (drummer first,
-   singer last), the singer waves, the drummer counts in four with stick clicks you hear, and the song
+   then each side from the middle out), the singer waves, the drummer counts in four with stick clicks you hear, and the song
    starts on the fifth beat (timed on the audio clock).
 3. **Stage** (`src/band/stage.ts`). A small canvas (320 x 180: a close camera, the players filling
    about half its height) scaled up with sharp pixels. Composed like a poster: a light pipe across the
    top with a can over each player, speaker stacks at both edges, the drummer dead centre on a riser,
-   the rhythm guitarist and lead at the front corners, the singer front right of centre, the bassist a
-   step back beside the drums, the crowd in silhouette across the front, the players' shadows cast on
+   left to right the bassist, the lead, the drummer, the singer and the rhythm guitarist, the crowd in silhouette across the front, the players' shadows cast on
    the back wall. A bar's
    band stage (brick wall, low wooden ceiling with a lighting pipe, string lights, "LIVE MUSIC" and
    "BEER" neon, the band's banner, gig posters, plank floor, a rug, a drum riser), shaded with ordered
@@ -51,7 +54,7 @@ Not in the built site yet (dev only).
    front corners bobs along and throws hands up for the big moments (`crowd.png`). The light is pixel
    art too: drawn at half size, stepped into six levels with a 4x4 ordered dither, added over the stage
    with hard edges: cans throwing coloured cones at the players by section (swinging and punching on
-   the downbeat when it's loud), spots on the singer and on solos, bulbs twinkling, neon glowing and
+   the downbeat when it's loud), bulbs twinkling, neon glowing and
    now and then stuttering; a crash in a loud part flashes the room. A check view shows each player's
    fretboard and the drum hits, to see the playing is right.
 
@@ -87,11 +90,47 @@ the cut-out test, and never overwrites a drawing. `npm run band-pack` packs them
 (`public/band/art/`, seen with `band.html?art`): a frame drawn for one character type
 (`art/lead-emo/...`) over the player's own (`art/lead/...`) over the placeholder; new frames the view
 uses (eyes, mouths on a drawn head) are added; misspelt names are reported. Legs are a cutout rig
-(`scripts/band-rig.ts`): hips, thighs, shins and shoes drawn once (`art/<player>/rig/legs/`, cut from the
-drawing on export), every pose made from them on pack: a lifted foot squashes the thigh (the knee coming
-toward us) and raises the shin and shoe; a foot moved out turns the leg at the hip, turned the
-RotSprite way (Scale2x three times, turned, sampled back) so the pixels stay clean. Next: arms and
-hands, then hair, hats and outfits as swappable pieces; the walk's motion from Paul's Figma.
+(`src/band/rig.ts`): hips, thighs, shins and shoes drawn once and neutral (`art/<player>/rig/legs/`:
+the thighs and shins straight, hanging from their joint as the arm pieces; cut from the drawing on export
+and straightened, the bent originals kept in `rig/legs-bent/`); every pose made from them on pack, the
+rock stance too: each foot placed (where it stands in the drawing, moved by the pose), the knee bending
+out to reach it (two-bone), a lifted foot squashing the thigh (the knee coming toward us); turned the
+RotSprite way (Scale2x three times, turned, sampled back), so the pixels stay clean. `_neutral.png`
+per player (made on pack): the legs straight, the arms hanging, to draw against.
+Arms are rigged too: `npm run band-sprites` records each arm frame's arms (shoulder, hand, the side the
+elbow bends to; `geo.arms`) and writes the frame's hand alone (`hand/<frame>`); on pack each arm frame
+is an upper arm and a forearm piece (`art/<player>/rig/arms/`, the sleeves on them) turned from the
+player's own shoulders (found on the drawn body) through the elbow to the hand, the hand over them.
+
+**The wardrobe** (`art/wardrobe/`, `src/band/dress.ts`): the standing players share one skeleton (the
+singer's: `skeleton.json`), so clothes are items anyone wears: tops (the torso and its two sleeve
+pieces, with its shoulders), bottoms (hips, thighs, shins), shoes, heads (a head's skin is the player's:
+the arms and hands recoloured to it; the singer's mouthless head is the singer's only). `npm run
+band-export` copied each player's own clothes in (fitted: bodies sat on the skeleton's belt, heads on its
+neck, pieces stretched to its lengths); `npm run band-pack` packs them into `wardrobe.png/json`. On the
+page (`?art`) each song's outfits are picked by the song (seeded: a player's own twice as likely, no two
+in the same top or head, half the tops and bottoms dyed: the main colour moved to a dye, shading kept,
+prints left), and each player's sheet is made in the browser with the rig (`src/band/rig.ts`, shared
+with the packer): their own frames (hands, guitar, faces), the outfit's body and head, the leg poses and
+every arm frame (about 60 ms a player). `?art&own`: their own clothes. The drummer keeps his own.
+The joints (a top's neck and shoulders, a head's chin, the skeleton's hips, knees and ankles) are found
+at each pack or set by hand in item.json / skeleton.json; a local tool (not in git) shows and sets them
+with every outfit combination drawn live.
+
+**Moves** (`src/band/moves.ts`): two sets for the dressed players. Classic: as first made (the feet
+moved per pose, the body bobbing on its own over the legs). Fresh (the default), made for the skeleton
+with knees: every frame its own pose (each foot, and the hips up or down: the body goes with them, so it
+never slides over the trousers): each stance (`stand`, `wide`, `lunge`) at rest and at each depth of a
+bounce on the beat (`wide/b1` to `b3`: a cool player's bounce reaches the first, an energetic one's the
+deepest), the walk's four steps, a jump's crouch, the jump and its landing (`jump/crouch`, `jump`,
+`jump/land`), the knees bending the way the stand's do, and the singer's free arm placed from his
+shoulders (fits any top). A bounce frame not drawn follows its stance (that much lower); a crouch or
+landing not drawn follows the wide stance. `?moves=classic` brings the classic set back. They're redrawn
+in `art/wardrobe/moves.json` (packed into `wardrobe.json`): each frame shared by every role or a role's
+own (the role's over the shared over the first made); the local rig lab's Moves edits them frame by
+frame (filmstrips with onion skin, dragged handles, undo) and plays them in time by the stage's own rules
+(`groove`, `showOf`, `stanceFor` in `src/band/actors.ts`: tempo, section loudness, character type), every
+role side by side and on the stage at the audience's size.
 
 ## Characters (`src/band/persona.ts`)
 

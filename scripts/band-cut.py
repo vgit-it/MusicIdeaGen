@@ -24,7 +24,7 @@ FIGS = [
     dict(player='bassist', base='cool', box=(44, 41, 88, 108), cx=62, chin=66, belt=85, body=(51, 73), head=(44, 87)),
     dict(player='drummer', base='cool', box=(88, 34, 132, 108), cx=110.5, chin=61, belt=78, body=(100, 121), head=(101, 122), seat=-32),
     dict(player='singer', base='energetic', box=(130, 43, 178, 110), cx=152.5, chin=69, belt=87, body=(143, 162), head=(139, 166),
-         mouth=(152, 65, 157, 68)),
+         mouth=(152, 65, 157, 68), erase=[(139, 77, 147, 87), (161, 63, 171, 80)]),
     dict(player='lead', base='cool', box=(178, 42, 223, 109), cx=199.5, chin=67, belt=85, body=(186, 213), head=(181, 221), hair_to=73),
 ]
 
@@ -52,12 +52,14 @@ def cut(ref, f):
     for y in range(fig.height):
         for x in range(fig.width):
             c, X, Y = src[x, y], x + x0, y + y0
-            if c[3] == 0:
-                continue
+            if c[3] == 0 or any(ex0 <= X < ex1 and ey0 <= Y < ey1 for ex0, ey0, ex1, ey1 in f.get('erase', [])):
+                continue  # (an erased box: a hand drawn over the body, the generated arms bring their own)
             if Y < f['chin'] and f['head'][0] <= X <= f['head'][1]:
                 parts['head'].putpixel((x, y), c)
             elif f.get('hair_to') and Y < f['hair_to'] and hairlike(c):
                 parts['head'].putpixel((x, y), c)
+            elif Y < f['chin']:
+                continue
             elif Y < f['belt']:
                 if f['body'][0] <= X <= f['body'][1] and not skinlike(c):
                     parts['body'].putpixel((x, y), c)

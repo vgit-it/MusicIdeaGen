@@ -204,7 +204,7 @@ export function gripOf(frets: (number | null)[], capo = 0): Omit<Hold, 'at'> {
 
 const VOWEL: Record<Vowel, string[]> = {
   IY: ['I'], IH: ['E'], EY: ['E', 'I'], EH: ['E'], AE: ['A'], AA: ['A'], AO: ['O'], OW: ['O', 'U'], UH: ['U'], UW: ['U'],
-  AH: ['A'], AX: ['E'], AY: ['A', 'I'], AW: ['A', 'U'], OY: ['O', 'I'],
+  AH: ['A'], AX: ['E'], AY: ['A', 'I'], AW: ['A', 'U'], OY: ['O', 'I'], ER: ['E', 'U'],
 };
 const CONS: Partial<Record<Cons, string>> = {
   P: 'M', B: 'M', M: 'M', F: 'F', V: 'F', W: 'U', R: 'U', S: 'S', Z: 'S', SH: 'S', CH: 'S', JH: 'S', T: 'S', D: 'S', N: 'E', TH: 'E', DH: 'E', L: 'E', K: 'E', G: 'E', NG: 'E', Y: 'I',

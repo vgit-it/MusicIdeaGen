@@ -2,12 +2,15 @@
 // [x, y, w, h, originX, originY] on the sheet. Every frame is drawn in the player's space (feet at the
 // origin), so parts stack by drawing them all at the player's spot.
 
+import type { StanceGeo } from './moves';
+
 export interface NeckGeo { bridge: [number, number]; nut: [number, number]; strings: number; spacing: number; frets: number; pick: [number, number] }
 
 export interface Atlas {
-  img: HTMLImageElement;
+  /** (a canvas when the player was dressed from the wardrobe, src/band/dress.ts) */
+  img: HTMLImageElement | HTMLCanvasElement;
   frames: Record<string, number[]>;
-  geo: { neck?: NeckGeo; acc?: string[]; skin?: string; skinDark?: string; poses?: Record<string, [number, number]>; kit?: Record<string, [number, number]>; lift?: number; mic?: [number, number] };
+  geo: { neck?: NeckGeo; acc?: string[]; skin?: string; skinDark?: string; poses?: Record<string, [number, number]>; kit?: Record<string, [number, number]>; lift?: number; mic?: [number, number]; moves?: string; stance?: StanceGeo };
 }
 
 export async function loadAtlas(base: string, name: string): Promise<Atlas> {

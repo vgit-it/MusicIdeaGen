@@ -33,6 +33,8 @@ export interface Style {
   /** Sways with the beat (pixels), steps in toward the drummer when it's loud. */
   sway: number;
   stepIn: boolean;
+  /** How far they stroll around their spot while playing (1 = the whole lane; the guitarists and the singer). */
+  roam: number;
   /** Faces: eyes, brows and mouth by section energy (1-5). */
   eyes: (e: number) => string;
   brows: (e: number) => string;
@@ -43,19 +45,19 @@ export interface Style {
 
 export const STYLES: Record<Persona, Style> = {
   cool: {
-    bounce: 0.5, nod: 'bar', slump: false, jumps: false, extraJumps: false, pose: 1, sway: 0, stepIn: true,
+    bounce: 0.5, nod: 'bar', slump: false, jumps: false, extraJumps: false, pose: 1, sway: 0, stepIn: true, roam: 0.7,
     eyes: () => 'half', brows: () => 'neutral', mouth: () => 'smile', shout: 'smile',
   },
   energetic: {
-    bounce: 1.6, nod: 'beat', slump: false, jumps: true, extraJumps: true, pose: 1, sway: 2, stepIn: true,
+    bounce: 1.6, nod: 'beat', slump: false, jumps: true, extraJumps: true, pose: 1, sway: 2, stepIn: true, roam: 1,
     eyes: (e) => (e >= 4 ? 'wide' : 'open'), brows: (e) => (e >= 4 ? 'raised' : 'neutral'), mouth: (e) => (e >= 4 ? 'E' : 'smile'), shout: 'A+',
   },
   emo: {
-    bounce: 0.6, nod: 'bang', slump: true, jumps: true, extraJumps: false, pose: 0.5, sway: 0, stepIn: false,
+    bounce: 0.6, nod: 'bang', slump: true, jumps: true, extraJumps: false, pose: 0.5, sway: 0, stepIn: false, roam: 0.5,
     eyes: (e) => (e <= 2 ? 'closed' : 'half'), brows: () => 'sad', mouth: () => 'rest', shout: 'O',
   },
   angry: {
-    bounce: 1.1, nod: 'bang', slump: false, jumps: true, extraJumps: false, pose: 1, sway: 1, stepIn: true,
+    bounce: 1.1, nod: 'bang', slump: false, jumps: true, extraJumps: false, pose: 1, sway: 1, stepIn: true, roam: 0.85,
     eyes: (e) => (e >= 4 ? 'squeeze' : 'half'), brows: () => 'furrow', mouth: (e) => (e >= 4 ? 'S' : 'rest'), shout: 'A+',
   },
 };
