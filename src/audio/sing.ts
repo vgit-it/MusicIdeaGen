@@ -60,6 +60,8 @@ export interface SungNote {
   slideLen?: number;
   /** Human feel (the guide line, src/guide/feel.ts; left out: as before): `glide` seconds from the note before; `swell` seconds rising into it; `fade` seconds fading out at its end; `sharp` cents over. */
   glide?: number; swell?: number; fade?: number; sharp?: number;
+  /** How many dB the `fade` takes the level down by (left out: 18). */
+  fadeBy?: number;
 }
 
 export interface VoiceShape {

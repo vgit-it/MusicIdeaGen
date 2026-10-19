@@ -518,7 +518,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       if (sc) midi -= sc.by * (1 - smooth01((into + 0.01) / sc.len));
       // (a sag: a held note let droop at its end, up to about half a semitone)
       if (note.sharp) midi += (note.sharp / 100) * smooth01(into / 0.15);
-      if (sag && held > 0.45 && !note.fall) midi -= sag * 0.55 * smooth01((into - held * 0.65) / (held * 0.35));
+      if (sag && held > 0.45 && !note.fall && !note.fadeBy) midi -= sag * 0.55 * smooth01((into - held * 0.65) / (held * 0.35));
       // (the slow wanders)
       const dtC = CT / fs;
       if (rnd() < dtC / 0.08) tremTo = hu * 2.5 * gauss();
@@ -574,7 +574,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       const swell = life ? (sw.kind === 1 ? sw.by * lerp(-1, 0.6, xs) : sw.kind === 2 ? sw.by * lerp(0.4, -1, xs) : sw.kind === 3 ? sw.by * (Math.sin(Math.PI * xs) - 0.6) : 0) : held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
       const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? 12 * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0)
         // (human feel: rising into the word, fading at its end)
-        - (note.swell ? 10 * (1 - smooth01((into + 0.01) / note.swell)) : 0) - (note.fade ? 18 * smooth01((t - (note.end - note.fade)) / note.fade) : 0);
+        - (note.swell ? 10 * (1 - smooth01((into + 0.01) / note.swell)) : 0) - (note.fade ? (note.fadeBy ?? 18) * smooth01((t - (note.end - note.fade)) / note.fade) : 0);
       // (a word starting on a vowel: a small dip so the words don't slur together)
       const dip = ni > 0 && note.syl.wordStart && !note.syl.onset.length && note.syl.text !== '~' ? 5 * Math.max(0, 1 - Math.abs(t - note.t) / 0.05) : 0;
 

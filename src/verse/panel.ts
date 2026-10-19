@@ -45,7 +45,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 14: the form, meta-phrases (4+4, 8+8...) with the second answering the first and varying. Rule 13: bends (scoops and falls) at good spots, Auto voice only. Rule 15: bends inside held notes, to the next chord note or the next bar's core note, likelier on longer notes and after repeated notes. Rule 16: the chorus, with its own hook (a chant, a long-note anthem, a leap and fall, or pushed rhythm), its height, and its own ways of ending phrases; every song draws a personality, so two songs rarely share much. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 14: the form, meta-phrases (4+4, 8+8...) with the second answering the first and varying. Rule 13: bends (scoops, and held endings fading out in volume) at good spots, Auto voice only. Rule 15: bends inside held notes, to the next chord note or the next bar's core note, likelier on longer notes and after repeated notes. Rule 16: the chorus, with its own hook (a chant, a long-note anthem, a leap and fall, or pushed rhythm), its height, and its own ways of ending phrases; every song draws a personality, so two songs rarely share much. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
@@ -53,7 +53,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <button id="v-play" class="secondary small">Play</button>
         <label title="Auto voice: the song's own singer sings the line on 'la'. Synth: a plain tone. Mute the main vocal above to hear the line alone">Sound <select id="v-sing" class="gsing"><option value="sing">Auto voice</option><option value="synth">Synth</option></select></label>
         <label title="Words: the line sung as pseudo-English words set to its rhythm and breaks. La: every note on 'la'">Sing <select id="v-words" class="gsing"><option value="words">Words</option><option value="la">La</option></select></label>
-        <label title="Bends: the voice scoops into some notes (from below or above) and falls off some held endings. Only the Auto voice bends, not the synth">Bends <select id="v-bends" class="gsing"><option value="off">Off</option><option value="some" selected>Some</option><option value="lots">Lots</option></select></label>
+        <label title="Bends: the voice scoops into some notes (from below or above) and fades out some held endings (in volume, not pitch). Only the Auto voice bends, not the synth">Bends <select id="v-bends" class="gsing"><option value="off">Off</option><option value="some" selected>Some</option><option value="lots">Lots</option></select></label>
         <label title="Meta-phrases: the bars are grouped (8 bars: 4+4; 16: 8+8, each 4+4) and the second half answers the first with variations. Off: one long verse with no grouping">Meta-phrases <select id="v-meta" class="gsing"><option value="on" selected>On</option><option value="off">Off</option></select></label>
         <label title="How much the answering half changes: Little keeps almost everything, Lots changes most things (the phrasing mostly stays)">Variation <select id="v-var" class="gsing"><option value="little">Little</option><option value="some" selected>Some</option><option value="lots">Lots</option></select></label>
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
@@ -115,21 +115,24 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     }
     return w;
   };
+  /** A held ending's fall: it dies away in volume over the last half of the note (or of its tail, if a bend split it). */
+  const fadeOf = (n: BandNote, len: number): Partial<VocalNote> => (n.fadeBy ? { fade: Math.min(len, Math.max(1, Math.round(n.len / 2))), fadeBy: n.fadeBy } : {});
   const singable = (idea: Idea): Idea => {
     let d = sung.get(idea);
     if (!d) {
       const w = wordsOn ? wordsFor(idea) : null;
       const vocal: VocalNote[] = notesFor(idea).flatMap((n, i) => {
         const syl = w ? w.syls[i] : la, vel = w && !w.syls[i].stress ? 0.68 : 0.82;
-        const head: VocalNote = { step: n.step, len: n.len, midi: n.midi, vel, syl, start: w ? w.starts[i] : n.step % 64 === 0, ...(n.slide ? { slide: n.slide } : {}), ...(n.fall ? { fall: n.fall } : {}) };
+        const head: VocalNote = { step: n.step, len: n.len, midi: n.midi, vel, syl, start: w ? w.starts[i] : n.step % 64 === 0, ...(n.slide ? { slide: n.slide } : {}), ...fadeOf(n, n.len) };
         if (n.bendTo === undefined) return [head];
         // (an 8th bends from its first moment: one note, scooped into from its own pitch, slowly)
         if (n.bendAt === 0) return [{ ...head, midi: n.bendTo, slide: n.bendTo - n.midi, slideLen: n.bendLen }];
         // (a bend inside the note: it holds, then the same word goes on to the new pitch, gliding to it)
         head.len = n.bendAt!;
-        delete head.fall;
+        delete head.fade;
+        delete head.fadeBy;
         head.syl = { ...syl, coda: [] };
-        const tail: VocalNote = { step: n.step + n.bendAt!, len: n.len - n.bendAt!, midi: n.bendTo, vel, syl: { onset: [], vowel: syl.vowel, coda: syl.coda, stress: false, text: '~', wordStart: false }, start: false, bend: n.bendLen, ...(n.fall ? { fall: n.fall } : {}) };
+        const tail: VocalNote = { step: n.step + n.bendAt!, len: n.len - n.bendAt!, midi: n.bendTo, vel, syl: { onset: [], vowel: syl.vowel, coda: syl.coda, stress: false, text: '~', wordStart: false }, start: false, bend: n.bendLen, ...fadeOf(n, n.len - n.bendAt!) };
         return [head, tail];
       });
       d = { ...idea, vocal, backing: undefined, vocalDouble: false, sung: undefined, section: undefined };
@@ -160,7 +163,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
       `Range ${notes.length ? `${noteName(Math.min(...notes.map((n) => n.midi)))}–${noteName(Math.max(...notes.map((n) => n.midi)))}` : "none"}, ${notes.filter((n) => n.midi < range.lo || n.midi > range.hi).length} notes in the extended zone`,
       `${notes.length} notes (${notes.filter((n) => n.nb).length} neighbour, ${walks(notes, bar)}, ${notes.filter((n) => n.third).length / 3} third-bar shapes) · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
       `On the band's hits: ${Math.round((100 * notes.filter((n) => accOf(first)[Math.floor(n.step + 1e-6)] >= 0.5).length) / Math.max(1, notes.length))}% of notes start on a drum or chord hit (${Math.round((100 * accOf(first).filter((a) => a >= 0.5).length) / accOf(first).length)}% of steps are one)`,
-      `Bends (${notes.filter((n) => n.bend).length}): ${notes.filter((n) => n.bend).map((n) => `${pos(n.step, bar)} ${n.bend} ${n.fall ? `falls ${n.fall}` : n.slide! > 0 ? `from ${n.slide} below` : `from ${-n.slide!} above`}`).join(', ') || 'none'}`,
+      `Bends (${notes.filter((n) => n.bend).length}): ${notes.filter((n) => n.bend).map((n) => `${pos(n.step, bar)} ${n.bend} ${n.fadeBy ? `fades out ${n.fadeBy} dB` : n.slide! > 0 ? `from ${n.slide} below` : `from ${-n.slide!} above`}`).join(', ') || 'none'}`,
       `Bends inside notes (${notes.filter((n) => n.inner).length}): ${notes.filter((n) => n.inner).map((n) => `${pos(n.step, bar)} ${n.inner} (${n.bendTo! > n.midi ? '+' : ''}${n.bendTo! - n.midi}, note ${+(n.len / (bar / 4)).toFixed(1)} beats, ${n.bendAt === 0 ? 'bends from its start' : `bends after ${+(n.bendAt! / (bar / 4)).toFixed(2)} beats`})`).join(', ') || 'none'}`,
       `Notes starting in each quarter of the bar: ${[0, 1, 2, 3].map((q) => notes.filter((n) => quarterOf(n.step, bar) === q).length).join(' · ')}`,
       `Phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} ${n.style ?? 'held'} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,

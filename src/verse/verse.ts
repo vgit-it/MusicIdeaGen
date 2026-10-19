@@ -103,7 +103,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end by this many semitones. */ fall?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** How the phrase ended on this note. */ style?: EndStyle }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** How the phrase ended on this note. */ style?: EndStyle }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -561,9 +561,9 @@ export type BendAmount = 'off' | 'some' | 'lots';
 const BLUE: Record<string, number> = { rock: 1, hardrock: 1, grunge: 1, funk: 1, altmetal: 0.8, metal: 0.5, pop: 0.35 };
 
 /**
- * Rule 13: bends. The voice scoops into a note from below or above (`slide`) and falls off a note's end (`fall`). Where the
- * rules above leave a good spot, a bend gets a chance:
- *   - a held phrase ending falls off its end (2, 3 or 5 semitones);
+ * Rule 13: bends. The voice scoops into a note from below or above (`slide`) and falls off a note's end in volume (`fadeBy`).
+ * Where the rules above leave a good spot, a bend gets a chance:
+ *   - a held phrase ending falls off its end in volume (10, 16 or 24 dB, over its last half; the pitch stays);
  *   - the first note of a phrase is scooped into, more the longer the break before it;
  *   - the note a walk arrives on glides up (or down) from the walk's last note;
  *   - a note that moves 3-5 semitones from the one before glides from it;
@@ -582,7 +582,7 @@ export function addBends(
   const lift = (ctx.amount === 'lots' ? 1.6 : 1) * (0.7 + 0.15 * (ctx.energy - 1)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 1 : 2) * bar;
   const beat = bar / 4;
-  const cand: { i: number; pri: number; p: number; slide?: number; fall?: number; kind: string }[] = [];
+  const cand: { i: number; pri: number; p: number; slide?: number; fade?: number; kind: string }[] = [];
   const firsts = new Map<number, number>(); // note index -> break before its phrase, in beats
   phrases.forEach((ph, k) => {
     const i = out.findIndex((n) => n.step >= ph.step - 1e-6 && n.step < ph.step + ph.len);
@@ -594,7 +594,7 @@ export function addBends(
     const joined = !!prev && Math.abs(n.step - (prev.step + prev.len)) < 1e-6;
     const at = (tag: string) => new Rng(`${seed}|bsz|${tag}|${Math.round(n.step * 100)}`);
     const sign = (tag: string) => (at(tag).chance(0.85) ? 1 : -1);
-    if (n.end && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fall: at('fall').weighted([[2, 2], [3, 2], [5, 1]]), kind: 'fall' });
+    if (n.end && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fade: at('fall').weighted([[10, 2], [16, 2], [24, 1]]), kind: 'fall' });
     if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.65, 0.2 + 0.15 * (firsts.get(i)! - 1)), slide: sign('ps') * at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
     if (n.land && prev?.walk && n.len >= 2) cand.push({ i, pri: 3, p: 0.4, slide: Math.max(-3, Math.min(3, n.midi - prev.midi)), kind: 'walk arrival' });
     const step = Math.floor(n.step + 1e-6);
@@ -612,7 +612,7 @@ export function addBends(
     if (kept.some((k) => k.i === c.i || Math.abs(out[k.i].step - out[c.i].step) < gap)) continue;
     kept.push(c);
     if (c.slide !== undefined) out[c.i].slide = c.slide;
-    if (c.fall !== undefined) out[c.i].fall = c.fall;
+    if (c.fade !== undefined) out[c.i].fadeBy = c.fade;
     out[c.i].bend = c.kind;
   }
   return out;
@@ -625,7 +625,7 @@ export function addBends(
  *   - for a note that ends on the bar line: to the next bar's core note, landing as the bar turns;
  * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
  * breaks the repeating). Raised by the verse's energy and the Bends amount. Notes scooped into, walks, neighbours and
- * third-bar notes are left alone (a long held ending that falls off may bend first), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
+ * third-bar notes are left alone (a long held ending that fades out may bend first), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
  */
 export function addNoteBends(
   notes: BandNote[], bar: number,
@@ -638,7 +638,7 @@ export function addNoteBends(
   const gap = (ctx.amount === 'lots' ? 0.75 : 1) * bar;
   const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string }[] = [];
   out.forEach((n, i) => {
-    if (n.len < 2 || n.slide || (n.fall && n.len < 6) || n.walk || n.nb || n.third) return;
+    if (n.len < 2 || n.slide || (n.fadeBy && n.len < 6) || n.walk || n.nb || n.third) return;
     const r = (tag: string) => roll(seed, `ib-${tag}`, n.step);
     // (how many of the same pitch came just before)
     let same = 0;
