@@ -6,7 +6,7 @@ import { planForm, leafSeeds, type Leaf, type Rule, type Variation } from './for
 import { VERSE, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, smallBreaks,
-  thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withRuns, withStretch,
+  thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
 
@@ -91,7 +91,9 @@ export function buildVerse(inp: BuildInput): Built {
     const { tones, bars } = randomTones(len, bar, sd.tones, accOf('tones'), d);
     const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
     const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
-    const walked = walkToNext(addNeighbours(voiceLead(withStretch(withHolds(plain, holds), tones, chordAt, bar, sd.holds, accOf('holds'), d), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
+    // (a phrase may open on one long note; the short notes after it stay short)
+    const held = withOpeners(withHolds(plain, holds), phrases, chordAt, bar, sd.phrases, accOf('phrases'), d);
+    const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, bar, sd.holds, accOf('holds'), d, held.opened), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
     const pushed = pushNotes(limitSame(smallBreaks(foldIntoRange(walked, range), phrases, bar, sd.small, accOf('small'), d)), phrases, bar, sd.small, accOf('small'), d);
     const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt, range }), phrases, bar, sd.thirds, d));
     // (the chorus: fitted to the song's share of silence)

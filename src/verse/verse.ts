@@ -103,7 +103,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** How the phrase ended on this note. */ style?: EndStyle }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** How the phrase ended on this note. */ style?: EndStyle }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -314,14 +314,14 @@ export function withHolds(notes: BandNote[], holds: Gap[]): BandNote[] {
  * chord note over the same chord: two 8ths become one note a beat long, and now and then a third joins (a beat and a half).
  * Fewer, longer notes, mostly starting on the beat or where the band hits.
  */
-export function withStretch(notes: BandNote[], tones: ChordNote[], chordAt: Chord[], bar: number, seed: string, acc?: number[], d: Dials = VERSE): BandNote[] {
+export function withStretch(notes: BandNote[], tones: ChordNote[], chordAt: Chord[], bar: number, seed: string, acc?: number[], d: Dials = VERSE, skip: Gap[] = []): BandNote[] {
   if (d.stretch <= 0) return notes;
   const same = (a: number, b: number) => tones[a] === tones[b] && chordAt[a].root === chordAt[b].root && chordAt[a].q === chordAt[b].q;
   const out: BandNote[] = [];
   for (let i = 0; i < notes.length; i++) {
     const n = notes[i];
     let len = n.len, k = i;
-    if (n.len === 2) {
+    if (n.len === 2 && !skip.some((g) => n.step >= g.step && n.step < g.step + g.len)) {
       const p = d.stretch * (isStrong(n.step, bar) ? 1 : 0.6) * nudge(acc, n.step);
       while (len < 6 && roll(seed, `stretch${len}`, n.step) < p * (len === 2 ? 1 : 0.5)) {
         const nx = notes[k + 1];
@@ -626,7 +626,7 @@ export function addBends(
     const at = (tag: string) => new Rng(`${seed}|bsz|${tag}|${Math.round(n.step * 100)}`);
     const sign = (tag: string) => (at(tag).chance(0.85) ? 1 : -1);
     if (n.end && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fade: at('fall').weighted([[10, 2], [16, 2], [24, 1]]), kind: 'fall' });
-    if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.65, 0.2 + 0.15 * (firsts.get(i)! - 1)), slide: sign('ps') * at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
+    if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.75, 0.2 + 0.15 * (firsts.get(i)! - 1) + (n.opener ? 0.15 : 0)), slide: sign('ps') * at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
     if (n.land && prev?.walk && n.len >= 2) cand.push({ i, pri: 3, p: 0.4, slide: Math.max(-3, Math.min(3, n.midi - prev.midi)), kind: 'walk arrival' });
     const step = Math.floor(n.step + 1e-6);
     const c = ctx.chordAt[step];
@@ -647,6 +647,34 @@ export function addBends(
     out[c.i].bend = c.kind;
   }
   return out;
+}
+
+/**
+ * Rule 19: openers (the chorus; the verse has none). A phrase now and then opens on one long note, a beat to three beats, that
+ * takes the 8ths under it; the shorter notes follow. It stops at a chord change or at a long note already there, and leaves at
+ * least a beat of phrase for the notes after. An opener is scooped into and bent more often than other notes (rules 13, 15).
+ * Returns the notes and the phrases that opened this way (so the stretch rule leaves their short notes short).
+ */
+export function withOpeners(notes: BandNote[], phrases: Gap[], chordAt: Chord[], bar: number, seed: string, acc?: number[], d: Dials = VERSE): { notes: BandNote[]; opened: Gap[] } {
+  if (d.opener <= 0) return { notes, opened: [] };
+  const beat = bar / 4;
+  const opened: Gap[] = [];
+  let out = notes;
+  for (const ph of phrases) {
+    const inside = out.filter((n) => n.step >= ph.step && n.step < ph.step + ph.len);
+    const first = inside[0];
+    if (!first || first.len > 2 || first.step !== ph.step || first.third || roll(seed, 'opener', ph.step) >= d.opener * nudge(acc, ph.step)) continue;
+    const want = Math.round(beat * [1, 1.5, 2, 3][cumulative(d.openLen, roll(seed, 'openlen', ph.step))]);
+    let end = Math.min(ph.step + want, ph.step + ph.len - beat);
+    for (const n of inside.slice(1)) if (n.step < end && (n.len > 2 || n.third)) { end = n.step; break; }
+    for (let s = ph.step + 1; s < end; s++) if (chordAt[s].root !== chordAt[ph.step].root || chordAt[s].q !== chordAt[ph.step].q) { end = s; break; }
+    // (on a beat, and at least a beat long)
+    end = ph.step + Math.floor((end - ph.step) / beat) * beat;
+    if (end - ph.step < beat) continue;
+    out = out.filter((n) => n === first || n.step < ph.step || n.step >= end).map((n) => (n === first ? { ...n, len: end - ph.step, opener: true } : n));
+    opened.push(ph);
+  }
+  return { notes: out, opened };
 }
 
 /**
@@ -679,7 +707,7 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total
     const kept = out.filter((n) => !drop.has(n));
     // (still too full: the long notes let go of their last 8th, the longest first)
     if (sil() < target - tol) {
-      const longs = kept.filter((n) => n.len >= 4 && !n.third).sort((x, y) => y.len - x.len || roll(seed, 'fit', x.step) - roll(seed, 'fit', y.step));
+      const longs = kept.filter((n) => n.len >= 4 && !n.third && !n.opener).sort((x, y) => y.len - x.len || roll(seed, 'fit', x.step) - roll(seed, 'fit', y.step));
       for (let pass = 0; pass < 3 && sil() < target - tol; pass++) {
         for (const n of longs) {
           if (sil() >= target - tol) break;
@@ -749,7 +777,7 @@ export function addNoteBends(
     // (how many of the same pitch came just before)
     let same = 0;
     for (let k = i - 1; k >= 1 && out[k].midi === out[k - 1].midi && n.step - out[k].step <= bar; k--) same++;
-    const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.02 * n.len) + (same >= 2 ? 0.3 : 0);
+    const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.02 * n.len) + (same >= 2 ? 0.3 : 0) + (n.opener && n.len >= 4 ? 0.12 : 0);
     // (a slow glide, nearly half the note and at most 6 steps; an 8th is bent from its very first moment, over the whole note)
     const whole = n.len < 3;
     const glide = whole ? n.len : Math.min(6, Math.max(1, Math.round(n.len * 0.45)));
