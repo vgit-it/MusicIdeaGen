@@ -90,7 +90,7 @@ for (let i = 0; i < N; i++) {
     add('chorus notes per bar', cd < 2.6 ? 'few' : cd < 3.8 ? 'some' : 'many');
     const sl = 1 - cn.reduce((a, n) => a + n.len, 0) / total;
     silErr.push(sl - p.chorusSilence);
-    add('chorus silence', sl < 0.33 ? '30-33%' : sl < 0.37 ? '33-37%' : sl < 0.42 ? '37-42%' : sl < 0.47 ? '42-47%' : '47%+');
+    add('chorus silence', sl < 0.29 ? '25-29%' : sl < 0.33 ? '29-33%' : sl < 0.37 ? '33-37%' : sl < 0.41 ? '37-41%' : '41%+');
     add('chorus notes a beat or longer', cn.filter((n) => n.len >= 4).length / cn.length < 0.25 ? 'under 25%' : cn.filter((n) => n.len >= 4).length / cn.length < 0.4 ? '25-40%' : cn.filter((n) => n.len >= 4).length / cn.length < 0.55 ? '40-55%' : '55%+');
     const al = mean(cn.map((n) => n.len));
     add('chorus note length', al < 2.6 ? 'short' : al < 3.4 ? 'medium' : 'long');

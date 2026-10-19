@@ -51,7 +51,10 @@ export function buildVerse(inp: BuildInput): Built {
   const { bar, key, mode } = inp;
   const d0 = inp.dials ?? VERSE;
   const d = inp.thirds === false ? { ...d0, third: 0 } : d0;
-  const range: Range = d.lift ? { lo: inp.range.lo + d.lift, hi: inp.range.hi + d.lift, xlo: inp.range.xlo + d.lift, xhi: inp.range.xhi + d.lift } : inp.range;
+  // (a lift moves the band the line lives in, not the extended limits: those are the voice's, and a lift stops at them)
+  const width = inp.range.hi - inp.range.lo;
+  const lo = Math.max(inp.range.xlo, Math.min(inp.range.xhi - width, inp.range.lo + d.lift));
+  const range: Range = d.lift ? { ...inp.range, lo, hi: lo + width } : inp.range;
   const total = inp.chordAt.length;
   const leaves = planForm(inp.bars, inp.meta, inp.variation, inp.seed);
   const seeds = leafSeeds(leaves, inp.seed);
@@ -90,7 +93,7 @@ export function buildVerse(inp: BuildInput): Built {
     const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
     const walked = walkToNext(addNeighbours(voiceLead(withStretch(withHolds(plain, holds), tones, chordAt, bar, sd.holds, accOf('holds'), d), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
     const pushed = pushNotes(limitSame(smallBreaks(foldIntoRange(walked, range), phrases, bar, sd.small, accOf('small'), d)), phrases, bar, sd.small, accOf('small'), d);
-    const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt }), phrases, bar, sd.thirds, d));
+    const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt, range }), phrases, bar, sd.thirds, d));
     // (the chorus: fitted to the song's share of silence)
     const fitted = d.silence === undefined ? shaped : fitSilence(shaped, phrases, bar, len, d.silence, sd.small, accOf('small'));
     const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);

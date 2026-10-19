@@ -37,7 +37,7 @@ export interface Personality {
   verseTone: ChordNote | 'any';
   /** Times the chances of bends, everywhere. */
   bends: number;
-  /** The share of every chorus of the song with no vocals: 30-50%, mostly nearer 30. */
+  /** The share of every chorus of the song with no vocals: 25-45%, mostly nearer 25. */
   chorusSilence: number;
 }
 
@@ -84,8 +84,8 @@ export function drawPersonality(seed: string, genre: string, mood: string): Pers
   const chorusVariation = r('chorusvar').weighted<Variation>([['little', 0.45], ['some', 0.4], ['lots', 0.15]]);
   const vlo = 0.15 + r('vendlo').next() * 0.35;
   const chorusRuns = r('chorusruns').weighted([[0.4, 1], [0.7, 2], [1.1, 2], [1.8, 2]]);
-  // (30-50% of the chorus without vocals: a square of a draw, so 30% is common and 50% rare)
-  const chorusSilence = 0.3 + 0.2 * r('csilence').next() ** 2;
+  // (25-45% of the chorus without vocals: a square of a draw, so 25% is common and 45% rare)
+  const chorusSilence = 0.25 + 0.2 * r('csilence').next() ** 2;
   return {
     hook, hookTone, chorusLift, chorusEnd, chorusEndMain, chorusEndChance: [lo, Math.min(1, lo + 0.25)], chorusVariation, chorusRuns, chorusSilence,
     verseRuns: r('vruns').weighted([[0.6, 1], [0.85, 2], [1, 3], [1.25, 2], [1.5, 1]]) * (genre === 'funk' ? 1.3 : 1),
