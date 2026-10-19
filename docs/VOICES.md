@@ -223,3 +223,16 @@ Clips: `npm run timbre-lab` (life-normal / -vedder / -staley, before and after).
 - The high voice (an octave up) is still the low voice's recipe shifted: make it its own person.
 - Render in a worker, if phones stutter (three registers cost about 2.5 times the clear voice).
 - More of Paul's lab mixes (other voices, vowels) to refine REGISTER_MIX and MID_FIT.
+
+## 11. Scale check: low notes, "ee" and falsetto (2026-10-19)
+Paul heard whistling up high, and low notes with no volume. Measured by the voice creator's **Scale check** tab (`src/lab/scaleCheck.ts`,
+`src/lab/measure.ts`; the same numbers on the command line: `npm run fof-scale`, `-- --brief`, `-- --wav`):
+- Low notes: 80-98% of the sound was the bare fundamental (a hum that a phone speaker drops), and as heard (A-weighted) 6-14 dB under the
+  middle of the range. Fix: `lowBuzz` (+ `lowTop`): the fundamental's hump shrunk, a little more of the tone's slope, the loss won back in
+  the voiced sound only (not the breath and rasp), jitter and the creak eased on those notes. Now about 25-60%.
+- "ee" (and "oo") at low and middle pitch: 90-98% bare tone (F1 sat right on the pitch). Fix: `closeFill`: F1 let up toward the 2nd
+  harmonic and widened, the hump smaller, the upper formants a little lower, the level won back. Now about 10-70%.
+- Falsetto (Pop's way up): 70-93% bare tone, dips of 5-14 dB at some notes, noisy. Fix: `falFill`: F1 up toward the 2nd harmonic, a
+  gentler tilt, a smaller hump, less breath. Now 0-11%, no dips, 18-40 dB clean. Lower values (0.6) brought the dips back.
+- All three are on for every voice (the `SUNG` base in `voices.ts`); Chester and the Woman have a stronger `closeFill` (1.8) and their own `lowTop`.
+- Not done: the very top of the high voices (above about E-flat 6, nothing in the app sings there), "ee" below about E3, and the high voice as its own person.

@@ -13,7 +13,9 @@ Works with the guide line and the Anchor line, with the synth and every sung voi
 | Scoop | a fresh word starts under the note, slides up | 30-80 ms, up to a semitone | gentle | deeper, quicker |
 | Swell | the level rises into a word | 20-120 ms | slow, soft | fast, punchy |
 | Fade | a word's end fades out | 40-170 ms (longer in slow songs) | long | short |
-| Fall | now and then a phrase's last note drops off | 1-2.5 semitones | more often | less |
+| Long word end | a word an 8th long or longer dies away over the last 40% of its note (up to 0.45 s) | 9 dB | | |
+| Quieter note | in a series of touching notes, now and then one at 80% amplitude (shorter notes more often: 16ths about 25%, 8ths 17%, a beat 8%, longer 5%); never two in a row; the fades apply on top | -1.9 dB | | |
+| Fall | now and then a phrase's last note dies away in volume (never in pitch: Paul) | 14-20 dB over its last half, up to 0.6 s | more often | less |
 | Vibrato | on held notes, in late (the synth; the voices have their own) | 18-40 cents | | |
 | Sharp | pushed top notes a hair sharp | 2-14 cents | barely | more |
 | Breath in | before a phrase after a rest of half a second | a quarter second | | |

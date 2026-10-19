@@ -19,6 +19,7 @@ import { type G2Options, type Guitar2Style, chordTones, generateGuitar2, generat
 import { TUNINGS } from './theory/fretboard';
 import { generateSolo2 } from './parts/solo2';
 import { singLead } from './parts/leadvocal';
+import { singSong } from './verse/sing';
 import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
@@ -1559,6 +1560,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const r = new Rng(`${S.structure}-${si}-${s.kind}`);
     const label = s.n ? `${KIND_LABEL[s.kind]} ${s.n}` : KIND_LABEL[s.kind];
     const idea = join(s.segs, { kind: s.kind, label, energy: s.energy, sound: sounds[si] });
+    // (an outro that is a jam or a guitar solo is the guitar's: nobody sings)
+    if (s.kind === 'outro' && (jam || s.g2 === 'solo')) idea.section!.lead = true;
     const notes: string[] = [];
 
     // energy
@@ -1625,6 +1628,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       // Breaks: a short melodic solo, quoting the hook, lower and sparer than a full one; the band as it is
       const sol = generateSolo2(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3);
       idea.guitar2 = sol.hits;
+      idea.section!.lead = true;
       g2 = 'Guitar 2: a lead break, a short melodic solo over the chorus chords';
     } else if (s.g2 === 'play') g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));
     else if (s.g2 === 'swell') g2 = writeGuitar2(idea, g2o, r, new Array<Guitar2Style>(runs).fill('swell'));
@@ -1815,6 +1819,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
   const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
   singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', words: src.opts.vocalRhythm === 'words', shaped: !!src.opts.vocalMelody, first: src.opts.vocalMelody === 'first', learned: src.opts.vocalMelody === 'learned', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger, energy: src.opts.vocalEnergy as EnergyStyle | 'off' | undefined, real: src.opts.vocalReal, patterns: src.opts.vocalPatterns }, arc.climax);
+  // the verse melody writer's lead vocal (the default): its notes, words and lines replace the classic tune
+  const verseVocal = src.opts.vocalWriter !== 'classic';
+  if (verseVocal) singSong(sections, vocalSeed, src.opts.vocalLift ?? 0);
   // Room (switch): the lead out from under the singer's lines, by genre
   if (src.opts.leadRoom) makeRoom(sections, src.song.partGenres.strum, `${S.band ?? `${src.seeds.song}-band`}-room`);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
@@ -1832,7 +1839,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const bars = sections.reduce((a, s) => a + s.song.bars.length, 0);
   const steps = sections.reduce((a, s) => a + s.song.total, 0);
   // the lead vocal as it's sung, worked out over the whole song
-  singLead(sections, mood);
+  if (!verseVocal) singLead(sections, mood);
   return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps, edit, riffVerse, newChorus, mood, climax: arc.climax };
 }
 

@@ -53,6 +53,13 @@ export interface VocalNote {
   /** Scooped up into from so many semitones below; falling off its end by so many; a wail (sung full out). */
   slide?: number;
   fall?: number;
+  /** Glides to this note from the one before over so many steps (a bend inside a held note: the note is split in two). */
+  bend?: number;
+  /** The scoop into this note lasts so many steps (left out: the voice's own, about 40% of the note). */
+  slideLen?: number;
+  /** The note dies away in volume over its last `fade` steps, by `fadeBy` dB (the pitch stays; the verse melody's fall). */
+  fade?: number;
+  fadeBy?: number;
   /** A colour note against the chord on purpose (a signature move: a 9th, a sigh, a sour ending): fitting to the band leaves it be. */
   colour?: boolean;
   /** A note of a real shape (Patterns, docs/PATTERNS.md): fitting to the band moves it only off a real clash. */
@@ -755,10 +762,13 @@ function breakCopies(idea: Idea): number {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, rhythm?: 'grid' | 'words', melody?: 'shaped' | 'first' | 'learned', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off', real?: boolean, patterns?: boolean) {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, rhythm?: 'grid' | 'words', melody?: 'shaped' | 'first' | 'learned', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off', real?: boolean, patterns?: boolean, rewrite?: (fake: Idea) => void) {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
   singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid: rhythm === 'grid', words: rhythm === 'words', shaped: !!melody, first: melody === 'first', learned: melody === 'learned', move, high, energy, real, patterns }, 0);
+  // (another writer's lead tune, if any: the backing follows it)
+  rewrite?.(fake);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum, fake.vocalEnergy), mood, energy: fake.vocalEnergy }, -1);
+  if (rewrite) { idea.sung = fake.sung; idea.sungTop = fake.sungTop; }
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;
   idea.backing = fake.backing;

@@ -6,6 +6,9 @@
 // of a loud chorus, the line's level ridden (in renderFof), the genre's compression.
 
 import { lagFor, perform } from '../audio/feel';
+import { initScaleCheck } from './scaleCheck';
+import { initQuiz } from './quiz';
+import { initWords } from './words';
 import { FOF_RATE, type FofVoice, renderFof } from '../audio/fof';
 import { reverbIR } from '../audio/mixer';
 import { polishVoice } from '../audio/polish';
@@ -71,12 +74,20 @@ const GROUPS: [string, Spec[]][] = [
     { key: 'cons.level', label: 'Hiss level', min: -15, max: 3, step: 0.5, def: 0, tip: 'How loud s, f, sh, t, k are (dB).', fmt: (x) => `${x}` },
     { key: 'cons.dark', label: 'Hiss colour', min: 0.5, max: 1, step: 0.05, def: 1, tip: 'Lower: darker s and f, less fizz.', fmt: (x) => x.toFixed(2) },
     { key: 'stops.burst', label: 'P, t, k burst', min: -30, max: 0, step: 1, def: 0, tip: 'How hard p, t, k, b, d, g pop (dB).', fmt: (x) => `${x}` },
+    { key: 'stops.initial', label: 'Bite on word-start p, t, k', min: 0, max: 24, step: 1, def: 0, tip: 'Extra burst and breath on the p, t or k that starts a stressed word ("pat", not "spat"), dB.', fmt: (x) => `${x}` },
+    { key: 'stops.final', label: 'Release of word-end p, t, k', min: 0, max: 24, step: 1, def: 0, tip: 'Extra burst on the p, t, k, b, d or g that ends a word ("cap", "cat", "cab"), dB.', fmt: (x) => `${x}` },
     { key: 'stops.asp', label: 'Breath after p, t, k', min: -24, max: 0, step: 1, def: 0, tip: 'The puff after p, t, k (dB).', fmt: (x) => `${x}` },
   ]],
   ['Vibrato and pitch', [
     { key: 'vib', label: 'Vibrato depth', min: 0, max: 60, step: 1, def: 30, tip: 'Cents, on held notes.', fmt: (x) => `${x}` },
     { key: 'vibHz', label: 'Vibrato speed', min: 4, max: 7, step: 0.1, def: 5.6, tip: 'Slow and wide is a wobble; quick and narrow a tight one (Hz).', fmt: (x) => x.toFixed(1) },
     { key: 'drift', label: 'Pitch wander', min: 0, max: 15, step: 0.5, def: 4, tip: 'A slow drift in pitch (cents).', fmt: (x) => `${x}` },
+  ]],
+  ['Low notes, ee and falsetto', [
+    { key: 'lowBuzz', label: 'Low-note body', min: 0, max: 1.5, step: 0.05, def: 0, tip: 'Deep notes keep their overtones (not one low hum), so they carry on small speakers.', fmt: pct },
+    { key: 'lowTop', label: 'Low-note body up to', min: 48, max: 74, step: 1, def: 58, tip: 'The sounding note it works up to (fully an octave under, easing out toward it).', fmt: noteName },
+    { key: 'closeFill', label: '"ee" and "oo" fill', min: 0, max: 2, step: 0.05, def: 0, tip: 'Stops close vowels turning into one pure whistling tone at low and middle pitches.', fmt: pct },
+    { key: 'falFill', label: 'Falsetto fill', min: 0, max: 1.5, step: 0.05, def: 0, tip: 'A falsetto (the way up, for a voice that goes into one) kept from one bare, hissy tone: overtones in, less breath.', fmt: pct },
   ]],
   ['Range', [
     { key: 'brk', label: 'Break', min: 55, max: 72, step: 1, def: 64, tip: 'Where the voice changes gear into its way up (the low voice\'s; a high singer\'s is lifted by Break lift).', fmt: noteName },
@@ -147,14 +158,42 @@ function buildSliders() {
   }
 }
 
+/** The consonant sliders again on the Words tab, to tune them while listening to words (the same settings as the Voice tab's). */
+const WORD_KEYS = ['stops.initial', 'stops.final', 'stops.burst', 'stops.asp', 'cons.level', 'cons.short', 'cons.dark', 'cons.blend'];
+function buildWordSliders() {
+  const box = $('wSliders');
+  box.innerHTML = '';
+  for (const key of WORD_KEYS) {
+    const s = SPECS.find((x) => x.key === key)!;
+    const row = document.createElement('div');
+    row.className = 'slider';
+    row.dataset.key = key;
+    row.innerHTML = `<label>${s.label}</label><input type="range" min="${s.min}" max="${s.max}" step="${s.step}"><span class="val"></span><span class="tip">${s.tip}</span>`;
+    row.querySelector('input')!.addEventListener('input', (e) => { setAt(state.v, key, Number((e.target as HTMLInputElement).value)); show(); });
+    box.append(row);
+  }
+  // (the app's own consonants are quiet, short and dark: one button for the clear, speech-like ones, and one to go back)
+  const bar = document.createElement('div');
+  bar.className = 'f';
+  const set = (vals: Record<string, number>) => { for (const [k, x] of Object.entries(vals)) setAt(state.v, k, x); show(); };
+  for (const [label, vals] of [['Clear consonants', { 'cons.level': 3, 'cons.short': 1, 'cons.dark': 1 }], ['Original consonants', { 'cons.level': -6, 'cons.short': 0.6, 'cons.dark': 0.75 }]] as [string, Record<string, number>][]) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.addEventListener('click', () => set(vals));
+    bar.append(b);
+  }
+  box.prepend(bar);
+}
+
 function show() {
   for (const s of SPECS) {
-    const row = document.querySelector<HTMLElement>(`.slider[data-key="${s.key}"]`)!;
-    const input = row.querySelector('input')!;
-    const x = valueOf(s);
-    input.value = String(x);
-    row.querySelector('.val')!.textContent = (s.fmt ?? String)(x);
-    row.classList.toggle('changed', Math.abs(x - presetValue(s)) > 1e-9);
+    // (the same setting can have a second slider on the Words tab: all of them kept alike)
+    for (const row of document.querySelectorAll<HTMLElement>(`.slider[data-key="${s.key}"]`)) {
+      const x = valueOf(s);
+      row.querySelector('input')!.value = String(x);
+      row.querySelector('.val')!.textContent = (s.fmt ?? String)(x);
+      row.classList.toggle('changed', Math.abs(x - presetValue(s)) > 1e-9);
+    }
   }
   const up = document.getElementById('wayUp') as HTMLSelectElement | null;
   if (up) up.value = state.v.up ?? 'belt';
@@ -387,12 +426,17 @@ function showSaved() {
 const presetSel = $<HTMLSelectElement>('preset');
 presetSel.innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join('');
 presetSel.value = state.preset;
-presetSel.onchange = () => { state.preset = presetSel.value; state.v = presetV(state.preset, state.singer); replay(); };
+presetSel.onchange = () => { state.preset = presetSel.value; state.v = presetV(state.preset, state.singer); syncMirrors(); replay(); };
 const singerSel = $<HTMLSelectElement>('singer');
 singerSel.innerHTML = SINGERS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
 singerSel.value = state.singer;
-singerSel.onchange = () => { state.singer = singerSel.value as Singer; state.v = presetV(state.preset, state.singer); replay(); };
+singerSel.onchange = () => { state.singer = singerSel.value as Singer; state.v = presetV(state.preset, state.singer); syncMirrors(); replay(); };
 $('reset').onclick = () => { state.v = presetV(state.preset, state.singer); replay(); };
+/** The Scale check tab's own voice and singer choice: the same state as the Voice tab's. */
+const MIRRORS: [HTMLSelectElement, HTMLSelectElement][] = [['scPreset', 'scSinger'], ['wPreset', 'wSinger']].map(([p, s]) => [$<HTMLSelectElement>(p), $<HTMLSelectElement>(s)]);
+for (const [p, s] of MIRRORS) { p.innerHTML = presetSel.innerHTML; s.innerHTML = singerSel.innerHTML; }
+function syncMirrors() { for (const [p, s] of MIRRORS) { p.value = state.preset; s.value = state.singer; } }
+syncMirrors();
 $<HTMLSelectElement>('material').onchange = (e) => { state.material = (e.target as HTMLSelectElement).value; replay(); };
 $('down').onclick = () => { state.pitch = Math.max(40, state.pitch - 1); replay(); };
 $('up1').onclick = () => { state.pitch = Math.min(79, state.pitch + 1); replay(); };
@@ -414,5 +458,37 @@ $('copy').onclick = async () => {
 };
 
 buildSliders();
+buildWordSliders();
 showSaved();
 show();
+
+/* ---- tabs: the voice, and the scale check on the voice as set here */
+
+let scale: ReturnType<typeof initScaleCheck>;
+scale = initScaleCheck(() => ({ ...state.v }), () => `${PRESETS[state.preset].label}, ${SINGERS.find(([k]) => k === state.singer)![1]}${Object.keys(changed()).length ? ' (with your changes)' : ''}`);
+const voiceName = () => `${PRESETS[state.preset].label}, ${SINGERS.find(([k]) => k === state.singer)![1]}${Object.keys(changed()).length ? ' (with your changes)' : ''}`;
+const words = initWords(() => ({ ...state.v }), voiceName);
+initQuiz(() => ({ ...state.v }), () => Number($<HTMLInputElement>('wPitch').value));
+let tabNow = 'voice';
+const refresh = () => { show(); if (tabNow === 'scale') scale.measureAll(); else if (tabNow === 'words') words.show(); };
+for (const [p, s] of MIRRORS) {
+  p.onchange = () => { state.preset = p.value; state.v = presetV(state.preset, state.singer); presetSel.value = state.preset; singerSel.value = state.singer; syncMirrors(); refresh(); };
+  s.onchange = () => { state.singer = s.value as Singer; state.v = presetV(state.preset, state.singer); presetSel.value = state.preset; singerSel.value = state.singer; syncMirrors(); refresh(); };
+}
+for (const id of ['scReset', 'wReset']) $(id).onclick = () => { state.v = presetV(state.preset, state.singer); refresh(); };
+document.querySelectorAll<HTMLButtonElement>('#tabs button').forEach((b) => {
+  b.onclick = () => {
+    const tab = b.dataset.tab!;
+    document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
+    $('tab-voice').hidden = tab !== 'voice';
+    $('tab-scale').hidden = tab !== 'scale';
+    $('tab-words').hidden = tab !== 'words';
+    tabNow = tab;
+    document.querySelector<HTMLElement>('.dock')!.hidden = tab !== 'voice';
+    clearTimeout(timer);
+    stop();
+    words.stop();
+    if (tab === 'scale') scale.measureAll();
+    if (tab === 'words') words.show();
+  };
+});
