@@ -21,7 +21,7 @@ const OPTS = { range: { ...DEFAULT_RANGE }, bends: 'some' as const, meta: true, 
 const traits: Record<string, string[]> = {};
 const add = (k: string, v: string) => (traits[k] ??= []).push(v);
 const sigs: { i: number; hook: string; on: Set<number>; label: string }[] = [];
-let sections = 0, broken = 0;
+let sections = 0, broken = 0, shortUnits = 0;
 
 const byHook: Record<string, number[][]> = {};
 const within: number[] = [], silDiff: number[] = [], silErr: number[] = [];
@@ -54,6 +54,12 @@ for (let i = 0; i < N; i++) {
     // (the rules held: nothing overlaps, nothing past the end)
     for (let k = 1; k < ns.length; k++) if (ns[k].step < ns[k - 1].step + ns[k - 1].len - 1e-6) { broken++; if (process.env.DEBUG) console.log('overlap', s, idea2.section?.kind, JSON.stringify([ns[k - 1], ns[k]])); }
     if (ns.some((n) => n.step + n.len > total + 1e-6)) broken++;
+    // (rule 20: no unit of touching notes shorter than a quarter bar)
+    for (let k = 0, j = 0; k < ns.length; k = j + 1) {
+      j = k;
+      while (j + 1 < ns.length && ns[j + 1].step <= ns[j].step + ns[j].len + 1e-6) j++;
+      if (ns[j].step + ns[j].len - ns[k].step < bar / 4 - 1e-6) { shortUnits++; if (process.env.DEBUG) console.log('short unit', s, idea2.section?.kind, ns[k].step, ns[j].step + ns[j].len - ns[k].step); }
+    }
   }
 
   // the song's draws
@@ -93,7 +99,7 @@ for (let i = 0; i < N; i++) {
     add('chorus silence', sl < 0.29 ? '25-29%' : sl < 0.33 ? '29-33%' : sl < 0.37 ? '33-37%' : sl < 0.41 ? '37-41%' : '41%+');
     add('chorus notes a beat or longer', cn.filter((n) => n.len >= 4).length / cn.length < 0.25 ? 'under 25%' : cn.filter((n) => n.len >= 4).length / cn.length < 0.4 ? '25-40%' : cn.filter((n) => n.len >= 4).length / cn.length < 0.55 ? '40-55%' : '55%+');
     const al = mean(cn.map((n) => n.len));
-    add('chorus note length', al < 2.6 ? 'short' : al < 3.4 ? 'medium' : 'long');
+    add('chorus note length', al < 3 ? 'short' : al < 3.9 ? 'medium' : 'long');
     const pb = mean(bc.phrases.map((x) => x.len / bar));
     add('chorus phrase length', pb < 1.7 ? 'short' : pb < 2.7 ? 'medium' : 'long');
     const top = cn.reduce((a, n) => (n.midi > a.midi ? n : a), cn[0]);
@@ -143,6 +149,6 @@ for (const [h, rows] of Object.entries(byHook)) console.log(`  ${h.padEnd(7)} no
 console.log(`\nBends per section, outer (scoops, falls) / inside notes: verse ${(outerV / nSong).toFixed(1)} / ${(innerV / nSong).toFixed(1)}, chorus ${(outerC / nSong).toFixed(1)} / ${(innerC / nSong).toFixed(1)}`);
 console.log(`Chorus silence vs the song's draw: mean ${mean(silErr).toFixed(3)}, worst ${Math.max(...silErr.map(Math.abs)).toFixed(3)}`);
 console.log(`Choruses of one song: onsets the same as the last chorus's ${(100 * mean(within)).toFixed(0)}% (worst ${(100 * Math.min(...within)).toFixed(0)}%); vocal share differs by ${(100 * mean(silDiff)).toFixed(1)} points`);
-console.log(`${sections} sections written (${sigs.length} songs); overlaps/overruns: ${broken}`);
+console.log(`${sections} sections written (${sigs.length} songs); overlaps/overruns: ${broken}; units shorter than a quarter bar: ${shortUnits}`);
 console.log(`Choruses with nearly the same rhythm (85%+ the same onsets): ${dup} of ${pairs} pairs (${((100 * dup) / pairs).toFixed(2)}%)${ex.length ? '\n  e.g. ' + ex.join('\n       ') : ''}`);
 console.log(flags.length ? `\nMarked (!!): ${flags.join(', ')}` : '\nNo trait is dominated by one value.');

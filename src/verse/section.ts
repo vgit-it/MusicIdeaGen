@@ -41,11 +41,13 @@ export function chorusMaster(list: Idea[], idea: Idea, o: SectionOptions): Idea 
  */
 export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea), like?: Idea): Built {
   const chorus = isChorus(idea), p = personalityOf(idea);
+  // (the master's tries: each leaf starts on the dice the master's ended on, so the choruses match)
+  const tries = chorus && like ? buildSection(like, o, accents).tries : undefined;
   return buildVerse({
     key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: (chorus && like ? like : idea).section?.energy ?? 3,
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: chorus ? p.chorusVariation : o.variation,
     thirds: idea.song.bars.every((b) => b.len % 3 === 0),
-    seed: chorus ? hookSig(idea, o) : `${idea.seeds.song}|${idea.seeds.chords}`, dials: dialsFor(chorus ? 'chorus' : 'verse', p),
+    seed: chorus ? hookSig(idea, o) : `${idea.seeds.song}|${idea.seeds.chords}`, dials: dialsFor(chorus ? 'chorus' : 'verse', p), tries,
   });
 }
