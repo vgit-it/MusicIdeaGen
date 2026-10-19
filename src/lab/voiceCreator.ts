@@ -6,6 +6,7 @@
 // of a loud chorus, the line's level ridden (in renderFof), the genre's compression.
 
 import { lagFor, perform } from '../audio/feel';
+import { initScaleCheck } from './scaleCheck';
 import { FOF_RATE, type FofVoice, renderFof } from '../audio/fof';
 import { reverbIR } from '../audio/mixer';
 import { polishVoice } from '../audio/polish';
@@ -77,6 +78,12 @@ const GROUPS: [string, Spec[]][] = [
     { key: 'vib', label: 'Vibrato depth', min: 0, max: 60, step: 1, def: 30, tip: 'Cents, on held notes.', fmt: (x) => `${x}` },
     { key: 'vibHz', label: 'Vibrato speed', min: 4, max: 7, step: 0.1, def: 5.6, tip: 'Slow and wide is a wobble; quick and narrow a tight one (Hz).', fmt: (x) => x.toFixed(1) },
     { key: 'drift', label: 'Pitch wander', min: 0, max: 15, step: 0.5, def: 4, tip: 'A slow drift in pitch (cents).', fmt: (x) => `${x}` },
+  ]],
+  ['Low notes, ee and falsetto', [
+    { key: 'lowBuzz', label: 'Low-note body', min: 0, max: 1.5, step: 0.05, def: 0, tip: 'Deep notes keep their overtones (not one low hum), so they carry on small speakers.', fmt: pct },
+    { key: 'lowTop', label: 'Low-note body up to', min: 48, max: 74, step: 1, def: 58, tip: 'The sounding note it works up to (fully an octave under, easing out toward it).', fmt: noteName },
+    { key: 'closeFill', label: '"ee" and "oo" fill', min: 0, max: 2, step: 0.05, def: 0, tip: 'Stops close vowels turning into one pure whistling tone at low and middle pitches.', fmt: pct },
+    { key: 'falFill', label: 'Falsetto fill', min: 0, max: 1.5, step: 0.05, def: 0, tip: 'A falsetto (the way up, for a voice that goes into one) kept from one bare, hissy tone: overtones in, less breath.', fmt: pct },
   ]],
   ['Range', [
     { key: 'brk', label: 'Break', min: 55, max: 72, step: 1, def: 64, tip: 'Where the voice changes gear into its way up (the low voice\'s; a high singer\'s is lifted by Break lift).', fmt: noteName },
@@ -387,12 +394,18 @@ function showSaved() {
 const presetSel = $<HTMLSelectElement>('preset');
 presetSel.innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join('');
 presetSel.value = state.preset;
-presetSel.onchange = () => { state.preset = presetSel.value; state.v = presetV(state.preset, state.singer); replay(); };
+presetSel.onchange = () => { state.preset = presetSel.value; state.v = presetV(state.preset, state.singer); syncScale(); replay(); };
 const singerSel = $<HTMLSelectElement>('singer');
 singerSel.innerHTML = SINGERS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
 singerSel.value = state.singer;
-singerSel.onchange = () => { state.singer = singerSel.value as Singer; state.v = presetV(state.preset, state.singer); replay(); };
+singerSel.onchange = () => { state.singer = singerSel.value as Singer; state.v = presetV(state.preset, state.singer); syncScale(); replay(); };
 $('reset').onclick = () => { state.v = presetV(state.preset, state.singer); replay(); };
+/** The Scale check tab's own voice and singer choice: the same state as the Voice tab's. */
+const scPreset = $<HTMLSelectElement>('scPreset'), scSinger = $<HTMLSelectElement>('scSinger');
+scPreset.innerHTML = presetSel.innerHTML;
+scSinger.innerHTML = singerSel.innerHTML;
+function syncScale() { scPreset.value = state.preset; scSinger.value = state.singer; }
+syncScale();
 $<HTMLSelectElement>('material').onchange = (e) => { state.material = (e.target as HTMLSelectElement).value; replay(); };
 $('down').onclick = () => { state.pitch = Math.max(40, state.pitch - 1); replay(); };
 $('up1').onclick = () => { state.pitch = Math.min(79, state.pitch + 1); replay(); };
@@ -416,3 +429,24 @@ $('copy').onclick = async () => {
 buildSliders();
 showSaved();
 show();
+
+/* ---- tabs: the voice, and the scale check on the voice as set here */
+
+let scale: ReturnType<typeof initScaleCheck>;
+scale = initScaleCheck(() => ({ ...state.v }), () => `${PRESETS[state.preset].label}, ${SINGERS.find(([k]) => k === state.singer)![1]}${Object.keys(changed()).length ? ' (with your changes)' : ''}`);
+const pick = () => { state.preset = scPreset.value; state.singer = scSinger.value as Singer; state.v = presetV(state.preset, state.singer); presetSel.value = state.preset; singerSel.value = state.singer; show(); scale.measureAll(); };
+scPreset.onchange = pick;
+scSinger.onchange = pick;
+$('scReset').onclick = () => { state.v = presetV(state.preset, state.singer); show(); scale.measureAll(); };
+document.querySelectorAll<HTMLButtonElement>('#tabs button').forEach((b) => {
+  b.onclick = () => {
+    const tab = b.dataset.tab!;
+    document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
+    $('tab-voice').hidden = tab !== 'voice';
+    $('tab-scale').hidden = tab !== 'scale';
+    document.querySelector<HTMLElement>('.dock')!.hidden = tab !== 'voice';
+    clearTimeout(timer);
+    stop();
+    if (tab === 'scale') scale.measureAll();
+  };
+});
