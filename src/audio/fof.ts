@@ -20,7 +20,7 @@ export const FOF_RATE = 44100;
  * widths over the voice.
  */
 export interface VoicePrint {
-  vowels: Record<Vowel, [F3, F3?]>; high: [number, number]; bws: number[];
+  vowels: Partial<Record<Vowel, [F3, F3?]>>; high: [number, number]; bws: number[];
   /** The rest of the voice's tone, matched by ear-free measurement to the real voice: [centre Hz, dB] peaking bands (an octave wide). */
   eq?: [number, number][];
   /** How much of a diphthong glides (0-1 of the vowel, at most a quarter second; left out: its last 90 ms or so): a speaker's "go" glides all through. */
@@ -351,7 +351,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       const near = segs.slice(i + 1).find((x) => x.vowel)?.vowel?.[0] ?? segs.slice(0, i).reverse().find((x) => x.vowel)?.vowel?.[0] ?? s.cons.f;
       const lean = glide ? 1 : 0.5;
       const f: F3 = [lerp(near[0], s.cons.f[0], glide ? 1 : 0.8), lerp(near[1], s.cons.f[1], lean), lerp(near[2], s.cons.f[2], lean)];
-      keys.push({ t: (s.t0 + s.t1) / 2, f: sc(f) });
+      // (a held liquid, the dark l: its place reached early and kept to near its end, so it is heard as an l and not only passed through)
+      if (s.cons.hold) { keys.push({ t: s.t0 + 0.3 * (s.t1 - s.t0), f: sc(f) }); keys.push({ t: s.t1 - 0.15 * (s.t1 - s.t0), f: sc(f) }); }
+      else keys.push({ t: (s.t0 + s.t1) / 2, f: sc(f) });
     } else if (s.vowel) {
       const [a, b] = s.vowel, len = s.t1 - s.t0;
       const afterGlide = segs[i - 1]?.cons?.kind === 'liquid';
@@ -477,7 +479,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   // the control values (per CT samples)
   let f0 = 110, vT = 0, nasalT = 0, barT = 0, aspT = 0, effort = 0.5;
   // (the register: how far up past the break, 0-1; how deep below it, 0-1)
-  let upW = 0, lowW = 0, edgeW = 0, lowK = 0, closeW = 0;
+  let upW = 0, lowW = 0, edgeW = 0, lowK = 0, closeW = 0, erW = 0, latW = 0;
   const lowBuzz = v.lowBuzz ?? 0, lowTop = v.lowTop ?? 58 + shift, closeFill = v.closeFill ?? 0, falFill = fal ? v.falFill ?? 0 : 0;
   // (heft: a baritone's weight kept up high; fry: the creak at the line's ends and on the deepest notes, 0-1 now)
   const heft = v.heft ?? 0, fry = v.fry ?? 0;
@@ -539,6 +541,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       if (sag && held > 0.45 && !note.fall && !note.fadeBy) midi -= sag * 0.55 * smooth01((into - held * 0.65) / (held * 0.35));
       // (the slow wanders)
       const dtC = CT / fs;
+      // (the r-coloured vowel: its F3 and F4 brought up and F2 down a little while the vowel itself sounds, so the r-colour is heard, not just measured)
+      // (an l: its upper formants kept up and its F1 down a touch, the bright, unrounded side of it; low and dark alone it sounds rounded, like a w)
+      latW += ((inside && s.cons?.hold ? 1 : 0) - latW) * Math.min(1, dtC / 0.03);
+      erW += ((note.syl.vowel === 'ER' && inside && !s.cons ? 1 : 0) - erW) * Math.min(1, dtC / 0.04);
       if (rnd() < dtC / 0.08) tremTo = hu * 2.5 * gauss();
       trem += (tremTo - trem) * (dtC / 0.06);
       midi += trem / 100;
@@ -609,7 +615,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         const x = (t - s.t0) / Math.max(0.005, s.t1 - s.t0);
         const shapeI = (sh: Shape) => SHAPES.indexOf(sh);
         switch (c.kind) {
-          case 'liquid': voice = amp - (c.f[2] < 2000 ? 3 : 5); break;
+          case 'liquid': voice = amp - (c.lvl !== undefined ? -c.lvl : c.f[2] < 2000 ? 3 : 5); break;
           case 'nasal': voice = amp - 5; nas = 1; break;
           case 'h': aspir = amp - 6; lastVoiceless = true; break;
           case 'fric': case 'affric': {
@@ -705,6 +711,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
           if (k > 0) a *= db(-16 * vNasal) * db(-28 * vBar);
           if (k === 2 || k === 3) a *= twang * db(4 * edgeW + 7 * (v.twang ?? 0));
           if (k === 0) a *= db(-3 * (v.twang ?? 0) + 6 * closeW);
+          if (latW) a *= db(k === 0 ? -3 * latW : k === 2 ? 5 * latW : k === 3 ? 4 * latW : 0);
+          if (erW) a *= db(k === 1 ? -3 * erW : k === 2 ? 5 * erW : k === 3 ? 8 * erW : 0);
           if (k >= 2) a *= db(-3 * closeW);
           if (k >= 3) a *= db(-3 * plain);
           if (k === 1) a *= db(2 * edgeW);

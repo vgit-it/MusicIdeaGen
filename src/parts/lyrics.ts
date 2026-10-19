@@ -12,9 +12,11 @@ import type { Rng } from '../rng';
 import type { Mood } from '../tension';
 
 /** Phonemes (ARPAbet-like): vowels and diphthongs, then consonants. */
-export type Vowel = 'IY' | 'IH' | 'EY' | 'EH' | 'AE' | 'AA' | 'AO' | 'OW' | 'UH' | 'UW' | 'AH' | 'AX' | 'AY' | 'AW' | 'OY';
+export type Vowel = 'IY' | 'IH' | 'EY' | 'EH' | 'AE' | 'AA' | 'AO' | 'OW' | 'UH' | 'UW' | 'AH' | 'AX' | 'AY' | 'AW' | 'OY' | 'ER';
 export type Cons = 'P' | 'B' | 'T' | 'D' | 'K' | 'G' | 'M' | 'N' | 'NG' | 'F' | 'V' | 'TH' | 'DH' | 'S' | 'Z' | 'SH'
-  | 'CH' | 'JH' | 'HH' | 'L' | 'R' | 'W' | 'Y';
+  | 'CH' | 'JH' | 'HH' | 'L' | 'R' | 'W' | 'Y'
+  /** The flap (a quick voiced tap of the tongue: the t and d in "water", "better", "city"); only written by real words, not by the made-up ones. */
+  | 'DX';
 
 export interface Syllable {
   onset: Cons[];
@@ -25,6 +27,8 @@ export interface Syllable {
   text: string;
   /** Starts a word (spaces go before it). */
   wordStart: boolean;
+  /** The l or n carries the syllable, with hardly a vowel before it ("little", "button"); left out: an ordinary syllable. */
+  syllabic?: boolean;
 }
 
 /** What the melody asks of a syllable: on a strong beat, held, high in the singer's range. */
@@ -154,13 +158,13 @@ const roughness = (line: Syllable[]) => line.reduce((sum, s, i) => sum + (i ? 1 
 // spelling: consonants, and vowels as they'd be written open (no coda) or closed
 const CONS_TEXT: Record<Cons, string> = {
   P: 'p', B: 'b', T: 't', D: 'd', K: 'k', G: 'g', M: 'm', N: 'n', NG: 'ng', F: 'f', V: 'v', TH: 'th', DH: 'th', S: 's', Z: 'z', SH: 'sh',
-  CH: 'ch', JH: 'j', HH: 'h', L: 'l', R: 'r', W: 'w', Y: 'y',
+  CH: 'ch', JH: 'j', HH: 'h', L: 'l', R: 'r', W: 'w', Y: 'y', DX: 't',
 };
 const VOWEL_OPEN: Record<Vowel, string> = {
-  IY: 'ee', IH: 'i', EY: 'ay', EH: 'eh', AE: 'a', AA: 'ah', AO: 'aw', OW: 'o', UH: 'oo', UW: 'oo', AH: 'uh', AX: 'a', AY: 'y', AW: 'ow', OY: 'oy',
+  IY: 'ee', IH: 'i', EY: 'ay', EH: 'eh', AE: 'a', AA: 'ah', AO: 'aw', OW: 'o', UH: 'oo', UW: 'oo', AH: 'uh', AX: 'a', AY: 'y', AW: 'ow', OY: 'oy', ER: 'er',
 };
 const VOWEL_CLOSED: Record<Vowel, string> = {
-  IY: 'ee', IH: 'i', EY: 'a', EH: 'e', AE: 'a', AA: 'o', AO: 'au', OW: 'o', UH: 'oo', UW: 'oo', AH: 'u', AX: 'e', AY: 'i', AW: 'ou', OY: 'oi',
+  IY: 'ee', IH: 'i', EY: 'a', EH: 'e', AE: 'a', AA: 'o', AO: 'au', OW: 'o', UH: 'oo', UW: 'oo', AH: 'u', AX: 'e', AY: 'i', AW: 'ou', OY: 'oi', ER: 'ur',
 };
 
 function spellSyl(onset: Cons[], vowel: Vowel, coda: Cons[]): string {

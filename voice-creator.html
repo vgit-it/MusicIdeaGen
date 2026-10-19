@@ -45,6 +45,11 @@
     .tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
     [hidden] { display: none !important; }
     .chart svg { display: block; }
+    table.words { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.words th, table.words td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    table.words th { color: var(--muted); font-weight: 600; }
+    .miss { color: var(--accent); }
+    textarea.lines { min-height: 110px; font: 15px/1.5 system-ui, sans-serif; }
     .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin: 0 0 6px; }
     .legend i { display: inline-block; width: 22px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
     .legend i.off { border-top-style: dashed; border-color: var(--muted); }
@@ -59,6 +64,7 @@
     <div class="tabs" id="tabs">
       <button class="on" data-tab="voice">Voice</button>
       <button data-tab="scale">Scale check</button>
+      <button data-tab="words">Words</button>
     </div>
     <div id="tab-voice">
     <section class="card">
@@ -170,6 +176,45 @@
         <h2>Hear the whole climb</h2>
         <div class="row"><button id="scPlayClimb">&#9654; Now</button><button id="scPlayClimbOff">&#9654; Fixes off</button><button id="scStop">Stop</button></div>
         <p class="hint" style="margin-top:8px">One held note every three semitones, low to high, on the chosen vowel. Played plain (not the app's mix), so low notes can be judged on a phone speaker or a laptop. Measure first.</p>
+      </section>
+    </div>
+
+    <div id="tab-words" hidden>
+      <section class="card">
+        <h2>What this is</h2>
+        <p class="hint">The goal: sung words should sound like what is written. Type lines (or pick a test set), press Sing, and listen: can you hear each word and each sound? Below, the page shows the sounds the singer was given, and flags the ones the engine can only approximate (those are the sounds still to be built). Nothing is played until you press Sing. The plan for testing this properly is in <code>docs/VOICE-WORDS.md</code>.</p>
+        <div class="row" style="margin-bottom:10px">
+          <label class="f">Voice <select id="wPreset"></select></label>
+          <label class="f">Singer <select id="wSinger"></select></label>
+          <button id="wReset">Reset to it</button>
+        </div>
+        <p class="hint">Checking: <b id="wVoice"></b>. Shared with the Voice tab.</p>
+      </section>
+
+      <section class="card">
+        <h2>Words to sing</h2>
+        <div class="row" style="margin-bottom:8px" id="wSets"></div>
+        <p class="hint" id="wSetHint"></p>
+        <textarea id="wText" class="lines" spellcheck="false"></textarea>
+        <p class="hint">One line per phrase. Words come from the CMU pronouncing dictionary (<span id="wDict"></span>). A word it does not have can be typed as its sounds in braces, e.g. <code>{HH AH0 L OW1}</code> (ARPAbet; 1 after a vowel marks the stress).</p>
+        <div class="row">
+          <label class="f">Tune <select id="wTune"><option value="speech" selected>Speech-like (stressed syllables a little up, the end falling)</option><option value="flat">One note</option></select></label>
+          <label class="f">Pitch: <b id="wPitchName">G3</b><input type="range" id="wPitch" min="45" max="72" step="1" value="55" /></label>
+          <label class="f">Syllable length: <b id="wStepVal">0.34 s</b><input type="range" id="wStep" min="0.2" max="0.7" step="0.02" value="0.34" /></label>
+          <button class="primary" id="wSing">&#9654; Sing</button><button id="wStop">Stop</button>
+          <span class="status" id="wStatus"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>The sounds sung</h2>
+        <div id="wTable"></div>
+      </section>
+
+      <section class="card">
+        <h2>Sounds the engine only approximates in this text</h2>
+        <ul id="wGaps" class="hint"></ul>
+        <p class="hint">These are the "other sounds" to bring in. Each is sung today as the nearest sound it has.</p>
       </section>
     </div>
   </main>

@@ -7,6 +7,7 @@
 
 import { lagFor, perform } from '../audio/feel';
 import { initScaleCheck } from './scaleCheck';
+import { initWords } from './words';
 import { FOF_RATE, type FofVoice, renderFof } from '../audio/fof';
 import { reverbIR } from '../audio/mixer';
 import { polishVoice } from '../audio/polish';
@@ -394,18 +395,17 @@ function showSaved() {
 const presetSel = $<HTMLSelectElement>('preset');
 presetSel.innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join('');
 presetSel.value = state.preset;
-presetSel.onchange = () => { state.preset = presetSel.value; state.v = presetV(state.preset, state.singer); syncScale(); replay(); };
+presetSel.onchange = () => { state.preset = presetSel.value; state.v = presetV(state.preset, state.singer); syncMirrors(); replay(); };
 const singerSel = $<HTMLSelectElement>('singer');
 singerSel.innerHTML = SINGERS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
 singerSel.value = state.singer;
-singerSel.onchange = () => { state.singer = singerSel.value as Singer; state.v = presetV(state.preset, state.singer); syncScale(); replay(); };
+singerSel.onchange = () => { state.singer = singerSel.value as Singer; state.v = presetV(state.preset, state.singer); syncMirrors(); replay(); };
 $('reset').onclick = () => { state.v = presetV(state.preset, state.singer); replay(); };
 /** The Scale check tab's own voice and singer choice: the same state as the Voice tab's. */
-const scPreset = $<HTMLSelectElement>('scPreset'), scSinger = $<HTMLSelectElement>('scSinger');
-scPreset.innerHTML = presetSel.innerHTML;
-scSinger.innerHTML = singerSel.innerHTML;
-function syncScale() { scPreset.value = state.preset; scSinger.value = state.singer; }
-syncScale();
+const MIRRORS: [HTMLSelectElement, HTMLSelectElement][] = [['scPreset', 'scSinger'], ['wPreset', 'wSinger']].map(([p, s]) => [$<HTMLSelectElement>(p), $<HTMLSelectElement>(s)]);
+for (const [p, s] of MIRRORS) { p.innerHTML = presetSel.innerHTML; s.innerHTML = singerSel.innerHTML; }
+function syncMirrors() { for (const [p, s] of MIRRORS) { p.value = state.preset; s.value = state.singer; } }
+syncMirrors();
 $<HTMLSelectElement>('material').onchange = (e) => { state.material = (e.target as HTMLSelectElement).value; replay(); };
 $('down').onclick = () => { state.pitch = Math.max(40, state.pitch - 1); replay(); };
 $('up1').onclick = () => { state.pitch = Math.min(79, state.pitch + 1); replay(); };
@@ -434,19 +434,28 @@ show();
 
 let scale: ReturnType<typeof initScaleCheck>;
 scale = initScaleCheck(() => ({ ...state.v }), () => `${PRESETS[state.preset].label}, ${SINGERS.find(([k]) => k === state.singer)![1]}${Object.keys(changed()).length ? ' (with your changes)' : ''}`);
-const pick = () => { state.preset = scPreset.value; state.singer = scSinger.value as Singer; state.v = presetV(state.preset, state.singer); presetSel.value = state.preset; singerSel.value = state.singer; show(); scale.measureAll(); };
-scPreset.onchange = pick;
-scSinger.onchange = pick;
-$('scReset').onclick = () => { state.v = presetV(state.preset, state.singer); show(); scale.measureAll(); };
+const voiceName = () => `${PRESETS[state.preset].label}, ${SINGERS.find(([k]) => k === state.singer)![1]}${Object.keys(changed()).length ? ' (with your changes)' : ''}`;
+const words = initWords(() => ({ ...state.v }), voiceName);
+let tabNow = 'voice';
+const refresh = () => { show(); if (tabNow === 'scale') scale.measureAll(); else if (tabNow === 'words') words.show(); };
+for (const [p, s] of MIRRORS) {
+  p.onchange = () => { state.preset = p.value; state.v = presetV(state.preset, state.singer); presetSel.value = state.preset; singerSel.value = state.singer; syncMirrors(); refresh(); };
+  s.onchange = () => { state.singer = s.value as Singer; state.v = presetV(state.preset, state.singer); presetSel.value = state.preset; singerSel.value = state.singer; syncMirrors(); refresh(); };
+}
+for (const id of ['scReset', 'wReset']) $(id).onclick = () => { state.v = presetV(state.preset, state.singer); refresh(); };
 document.querySelectorAll<HTMLButtonElement>('#tabs button').forEach((b) => {
   b.onclick = () => {
     const tab = b.dataset.tab!;
     document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
     $('tab-voice').hidden = tab !== 'voice';
     $('tab-scale').hidden = tab !== 'scale';
+    $('tab-words').hidden = tab !== 'words';
+    tabNow = tab;
     document.querySelector<HTMLElement>('.dock')!.hidden = tab !== 'voice';
     clearTimeout(timer);
     stop();
+    words.stop();
     if (tab === 'scale') scale.measureAll();
+    if (tab === 'words') words.show();
   };
 });

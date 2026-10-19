@@ -30,10 +30,12 @@ export const VOWELS: Record<Vowel, [F3, F3?]> = {
   AE: [[650, 1650, 2450]], AA: [[700, 1100, 2550]], AO: [[580, 880, 2500]], OW: [[490, 920, 2450], [450, 1050, 2350]],
   UH: [[450, 1050, 2350]], UW: [[330, 880, 2300]], AH: [[620, 1200, 2500]], AX: [[500, 1400, 2500]],
   AY: [[700, 1150, 2550], [420, 1800, 2550]], AW: [[700, 1150, 2550], [450, 1050, 2350]], OY: [[580, 880, 2500], [420, 1800, 2550]],
+  // (the r-coloured vowel of "bird", "never": F3 pulled down to about 1.7 kHz; held steady: the colour is the whole of it)
+  ER: [[500, 1320, 1680]],
 };
 
 type Kind = 'stop' | 'fric' | 'nasal' | 'liquid' | 'h' | 'affric';
-export interface ConsSpec { kind: Kind; voiced: boolean; f: F3; /** stop/fricative noise shape */ shape?: 'lab' | 'alv' | 'vel' | 's' | 'sh' | 'flat'; anti?: number; dur: number }
+export interface ConsSpec { kind: Kind; voiced: boolean; /** liquids: dB under the vowel (left out: -3 or -5) */ lvl?: number; /** liquids: its formants held through the sound, not just touched in the middle */ hold?: boolean; f: F3; /** stop/fricative noise shape */ shape?: 'lab' | 'alv' | 'vel' | 's' | 'sh' | 'flat'; anti?: number; dur: number }
 export const CONS: Record<Cons, ConsSpec> = {
   P: { kind: 'stop', voiced: false, f: [250, 900, 2300], shape: 'lab', dur: 0.075 }, B: { kind: 'stop', voiced: true, f: [250, 900, 2300], shape: 'lab', dur: 0.06 },
   T: { kind: 'stop', voiced: false, f: [280, 1750, 2700], shape: 'alv', dur: 0.075 }, D: { kind: 'stop', voiced: true, f: [280, 1750, 2700], shape: 'alv', dur: 0.06 },
@@ -46,9 +48,18 @@ export const CONS: Record<Cons, ConsSpec> = {
   SH: { kind: 'fric', voiced: false, f: [300, 1700, 2400], shape: 'sh', dur: 0.09 },
   CH: { kind: 'affric', voiced: false, f: [300, 1800, 2400], shape: 'sh', dur: 0.1 }, JH: { kind: 'affric', voiced: true, f: [300, 1800, 2400], shape: 'sh', dur: 0.08 },
   HH: { kind: 'h', voiced: false, f: [500, 1400, 2500], dur: 0.06 },
-  L: { kind: 'liquid', voiced: true, f: [360, 1150, 2800], dur: 0.06 }, R: { kind: 'liquid', voiced: true, f: [350, 1150, 1650], dur: 0.065 },
+  L: { kind: 'liquid', voiced: true, f: [360, 1150, 2800], dur: 0.075, lvl: -2, hold: true }, R: { kind: 'liquid', voiced: true, f: [350, 1150, 1650], dur: 0.065 },
   W: { kind: 'liquid', voiced: true, f: [300, 700, 2200], dur: 0.07 }, Y: { kind: 'liquid', voiced: true, f: [260, 2200, 3000], dur: 0.06 },
+  // (the flap of "water", "better": the tongue taps the ridge once, the voice dipping for 25-30 ms and going on; no burst)
+  DX: { kind: 'liquid', voiced: true, f: [330, 1650, 2700], dur: 0.03, lvl: -9 },
 };
+
+/**
+ * The "l" at the end of a syllable ("all", "cold", "bell", "little"): dark, the back of the tongue pulled down, so F2 falls to about
+ * 1 kHz (a real voice saying "bell": F2 1350 -> 800, but taken lower here it sounded rounded, like "oo" or "w", Paul), with its upper
+ * formants kept strong (fof.ts, `hold`) so it stays an l and not a w; the "l" that starts a syllable ("love") keeps F2 near 1150.
+ */
+export const DARK_L: ConsSpec = { kind: 'liquid', voiced: true, f: [480, 1000, 2900], dur: 0.15, lvl: -1.5, hold: true };
 
 /**
  * A note to sing, in seconds from the line's start (its vowel lands at `t`); `slide`: scooped up into from
@@ -223,7 +234,7 @@ const PERSON: Person = { formants: 1, f45: 1, brk: 65, chest: [1.4, 0.85], belt:
  * resonance up there already (edge brought them up much more: harsh).
  */
 export const EDGE_VOWEL: Record<Vowel, number> = {
-  AA: 1, AO: 1, AW: 1, AY: 0.9, OY: 0.9, OW: 1, UH: 0.9, UW: 0.9, AH: 0.9, AX: 0.8, AE: 0.7, EH: 0.5, EY: 0.5, IH: 0.5, IY: 0.45,
+  AA: 1, AO: 1, AW: 1, AY: 0.9, OY: 0.9, OW: 1, UH: 0.9, UW: 0.9, AH: 0.9, AX: 0.8, AE: 0.7, EH: 0.5, EY: 0.5, IH: 0.5, IY: 0.45, ER: 0.6,
 };
 
 /**
@@ -249,7 +260,7 @@ export const REGISTER_MIX: Record<'grunge' | 'rock', [number, number, number, nu
  * and front the vowel is, until tried.)
  */
 const MID_FIT: Record<Vowel, number> = {
-  AA: 0, AY: 0.1, AW: 0.1, AO: 0.2, OY: 0.2, OW: 0.3, UH: 0.3, UW: 0.35, AH: 0.3, AX: 0.3, AE: 0.35, EH: 0.44, EY: 0.44, IH: 0.44, IY: 0.5,
+  AA: 0, AY: 0.1, AW: 0.1, AO: 0.2, OY: 0.2, OW: 0.3, UH: 0.3, UW: 0.35, AH: 0.3, AX: 0.3, AE: 0.35, EH: 0.44, EY: 0.44, IH: 0.44, IY: 0.5, ER: 0.35,
 };
 /** The vowel each voice's mix was made on (REGISTER_MIX). */
 const MIX_VOWEL: Record<keyof typeof REGISTER_MIX, Vowel> = { grunge: 'AH', rock: 'AA' };
@@ -311,12 +322,13 @@ const lerp = (a: number, b: number, x: number) => a + (b - a) * Math.max(0, Math
 const lerp3 = (a: F3, b: F3, x: number): F3 => [lerp(a[0], b[0], x), lerp(a[1], b[1], x), lerp(a[2], b[2], x)];
 
 /** Lay the line out as segments: onset consonants before each note's vowel, codas at its end. */
-export function layout(notes: SungNote[], cScale = 1, vowels: Record<Vowel, [F3, F3?]> = VOWELS): Seg[] {
+export function layout(notes: SungNote[], cScale = 1, vowels: Partial<Record<Vowel, [F3, F3?]>> = VOWELS): Seg[] {
   const segs: Seg[] = [];
   notes.forEach((n, i) => {
     const room = Math.max(0.03, Math.min(0.2, (n.t - (i > 0 ? notes[i - 1].t : n.t - 0.4)) * 0.45));
     // (a diphthong sung over a run glides only on its last note)
-    const vow: [F3, F3?] = notes[i + 1]?.syl.text === '~' ? [vowels[n.syl.vowel][0]] : vowels[n.syl.vowel];
+    const own = vowels[n.syl.vowel] ?? VOWELS[n.syl.vowel];
+    const vow: [F3, F3?] = notes[i + 1]?.syl.text === '~' ? [own[0]] : own;
     const firstF = vow[0];
     // onset consonants before the beat (shrunk to fit the room the last note leaves)
     const on = n.syl.onset.map((c) => ({ ...CONS[c], dur: CONS[c].dur * cScale }));
@@ -326,13 +338,16 @@ export function layout(notes: SungNote[], cScale = 1, vowels: Record<Vowel, [F3,
     for (const c of on) { segs.push({ t0: t, t1: t + c.dur * k, cons: c, next: firstF, midi: n.midi, vel: n.vel }); t += c.dur * k; }
     // the vowel, then the coda at the note's end (no longer than 40% of the note)
     const len = n.end - n.t;
-    const coda = n.syl.coda.map((c) => ({ ...CONS[c], dur: CONS[c].dur * cScale }));
-    const cw = coda.reduce((a, c) => a + c.dur * 0.8, 0);
+    const coda = n.syl.coda.map((c) => { const spec = c === 'L' ? DARK_L : CONS[c]; return { ...spec, dur: spec.dur * cScale }; });
+    const cw = coda.reduce((a, c) => a + c.dur * (c.hold ? 1 : 0.8), 0);
     const kc = cw > len * 0.4 ? (len * 0.4) / cw : 1;
-    const vEnd = n.end - cw * kc;
+    // (a syllabic l or n carries the syllable: a hint of vowel, then the l or n held to the note's end)
+    const syllabic = n.syl.syllabic && coda.length > 0;
+    const vEnd = syllabic ? n.t + Math.max(0.03, 0.2 * len) : n.end - cw * kc;
+    const kc2 = syllabic ? (n.end - vEnd) / Math.max(0.01, cw) : kc;
     segs.push({ t0: n.t, t1: vEnd, vowel: vow, midi: n.midi, vel: n.vel });
     let tc = vEnd;
-    for (const c of coda) { segs.push({ t0: tc, t1: tc + c.dur * 0.8 * kc, cons: c, midi: n.midi, vel: n.vel }); tc += c.dur * 0.8 * kc; }
+    for (const c of coda) { const d = c.dur * (c.hold ? 1 : 0.8) * kc2; segs.push({ t0: tc, t1: tc + d, cons: c, midi: n.midi, vel: n.vel }); tc += d; }
   });
   // nothing overlaps: a segment ends where the next starts
   segs.sort((a, b) => a.t0 - b.t0);
