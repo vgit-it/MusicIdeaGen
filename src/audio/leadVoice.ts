@@ -9,13 +9,14 @@ import type { Idea } from '../idea';
 import type { Genre } from '../genres';
 import { type Timbre, leadHigh } from '../parts/singers';
 import { FOF_RATE } from './fof';
-import { CHARACTERS, type Character, fofFor } from './voices';
+import { CHARACTERS, type Character, fofFor, fofHighVoice } from './voices';
 import { polishVoice } from './polish';
 import { polishFor, type TimbreChoice, type VocalChoice } from './singer';
 import { SING_RATE, type SungNote } from './sing';
 import { type RenderJob, singPool } from './singPool';
 import { DOWN } from '../guide/line';
 import { feelFor, feelSung, inhale } from '../guide/feel';
+import { lagFor, perform } from './feel';
 import { inContext } from './context';
 
 /** Seconds of lead-in before a line's first note (onset consonants, a breath). */
@@ -27,7 +28,8 @@ const LEVEL = -4.2;
 
 const isCharacter = (v: string): v is Character => v in CHARACTERS;
 
-interface Placed { key: string; notes: SungNote[]; t0: number; idea: Idea; energy: number; sung: Timbre | Character; breath: number }
+type Voice = Timbre | Character | 'tenor';
+interface Placed { key: string; notes: SungNote[]; t0: number; idea: Idea; energy: number; sung: Voice; breath: number }
 
 export class LeadVoice {
   readonly kind = 'singer';
@@ -93,15 +95,18 @@ export class LeadVoice {
     if (got && got.sig === sig) return got.byStep;
     const lines = idea.sung ?? [];
     const high = leadHigh(idea, this.choice, this.timbre);
-    // (Auto: the song's own genre voice, or the woman's when the singer sings high)
-    const sung: Timbre | Character = this.timbre !== 'auto' ? this.timbre : high === 'woman' ? 'woman' : idea.song.genre;
+    // (the verse melody writer's lead is sung as the experiment sang it: its high voices, at a middling energy, laid back behind the beat)
+    const verse = idea.opts?.vocalWriter !== 'classic';
+    // (Auto: the song's own genre voice, or the high singer's when the singer sings high)
+    const sung: Voice = this.timbre !== 'auto' ? this.timbre : high === 'woman' ? 'woman' : verse && high === 'chester' ? 'scream' : verse && high === 'tenor' ? 'tenor' : idea.song.genre;
     // (the woman sings the line an octave up, in her own range, unless the song's line is already up there)
     const shift = sung === 'woman' && (idea.sungTop ?? 0) + DOWN <= WOMAN_TOP ? DOWN : 0;
     const six = 15 / idea.song.bpm;
-    const energy = idea.section ? (idea.section.energy - 1) / 4 : 0.5;
+    const energy = idea.section && !verse ? (idea.section.energy - 1) / 4 : 0.5;
+    const lag = verse ? Math.max(0, lagFor(idea.seeds.vocal ?? idea.seeds.song) + (idea.vocalLay ?? 0)) : 0;
     const byStep = new Map<number, Placed[]>();
     // (human feel: this singer's, at this section's energy)
-    const fl = feelFor(sung === 'clear' ? 'clear' : sung, energy, idea.song.bpm);
+    const fl = feelFor(sung === 'clear' ? 'clear' : sung === 'tenor' ? idea.song.genre : sung, energy, idea.song.bpm);
     const at = (g: number) => LeadVoice.at(idea, g);
     let lastEnd = -Infinity;
     for (const L of lines) {
@@ -114,6 +119,8 @@ export class LeadVoice {
         ...(n.bend ? { bend: at(n.step + n.bend) - at(n.step) } : {}),
         ...(n.slide ? { slide: n.slide } : {}), ...(n.fall ? { fall: n.fall } : {}),
         ...(n.slideLen ? { slideLen: at(n.step + n.slideLen) - at(n.step) } : {}), ...(n.fade ? { fade: at(n.step + n.len) - at(n.step + n.len - n.fade), fadeBy: n.fadeBy } : {}) }));
+      // (laid back behind the beat, long-short after a stressed word, slowing at the line's end: as the experiment's singer)
+      if (verse) notes = perform(notes, lag, L.notes[0].step + L.notes.length * 7, 0);
       // (a short breath between words: the word before let go a moment early; the tune's timing kept)
       for (let j = 1; j < notes.length; j++) {
         const p = notes[j - 1], q = notes[j];
@@ -127,7 +134,7 @@ export class LeadVoice {
         return n;
       });
       // (the section's last line carried on into a section it sits out fades away over the part past this one's end)
-      if (L === lines[lines.length - 1] && !next?.sung?.length) {
+      if (!verse && L === lines[lines.length - 1] && !next?.sung?.length) {
         const last = notes[notes.length - 1], past = last.end - (at(idea.song.total) - t0);
         if (past > 0.3) notes[notes.length - 1] = { ...last, fade: Math.max(last.fade ?? 0, Math.min(past, last.end - last.t - 0.05)), fadeBy: undefined };
       }
@@ -165,7 +172,7 @@ export class LeadVoice {
     const clear = p.sung === 'clear';
     const rate = clear ? SING_RATE : FOF_RATE;
     const job: RenderJob = clear ? { kind: 'line', notes: p.notes, pre: PRE, rate, shape: { high: false, slides: 0.5, seed: v } }
-      : { kind: 'fof', notes: p.notes, pre: PRE, rate, fof: { ...(isCharacter(p.sung) ? fofFor(base, v, p.sung === 'woman', p.sung) : fofFor(p.sung as Genre, v, false)), energy: p.energy } };
+      : { kind: 'fof', notes: p.notes, pre: PRE, rate, fof: { ...(p.sung === 'tenor' ? fofHighVoice('tenor', base, v) : isCharacter(p.sung) ? fofFor(base, v, p.sung === 'woman', p.sung) : fofFor(p.sung as Genre, v, false)), energy: p.energy } };
     return { job, seed };
   }
 

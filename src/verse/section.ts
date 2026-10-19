@@ -10,7 +10,7 @@ import { bandAccents, type BendAmount, type Range } from './verse';
 import type { Chord } from '../theory';
 
 /** What the user can set on the card. */
-export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string }
+export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string; /** Dials moved to the song's tempo (personality.ts `paced`); the experiment's melodies are written without. */ pace?: boolean }
 
 export const isChorus = (idea: Idea) => idea.section?.kind === 'chorus';
 export const isPre = (idea: Idea) => idea.section?.kind === 'prechorus';
@@ -81,6 +81,6 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation,
     thirds: idea.song.bars.every((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
-    seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: paced(dialsFor(kind, p), idea.song.bpm), tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
+    seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: o.pace ? paced(dialsFor(kind, p), idea.song.bpm) : dialsFor(kind, p), tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
   });
 }
