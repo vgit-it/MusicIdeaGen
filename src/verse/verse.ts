@@ -753,6 +753,41 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total
 }
 
 /**
+ * Rule 20 (a constraint, not a chance): no unit shorter than a quarter bar with silence on both sides. A unit is one note or
+ * several touching; a phrase's start and end count as silence. A short unit is held out to a beat when the phrase has room
+ * before the next note (a hold never crosses a chord change); one that reaches the next note joins it. `ok` is false when a
+ * unit can't be fixed that way: the caller writes the leaf again (new dice) until it is. With `drop`, such a unit is removed
+ * instead (the last resort).
+ */
+export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], bar: number, drop = false): { notes: BandNote[]; ok: boolean } {
+  const beat = bar / 4;
+  let out = notes.map((n) => ({ ...n }));
+  let ok = true;
+  let i = 0;
+  while (i < out.length) {
+    let j = i;
+    while (j + 1 < out.length && out[j + 1].step <= out[j].step + out[j].len + 1e-6) j++;
+    const start = out[i].step, end = out[j].step + out[j].len;
+    if (end - start >= beat - 1e-6) { i = j + 1; continue; }
+    const ph = phrases.find((p) => out[j].step >= p.step - 1e-6 && out[j].step < p.step + p.len);
+    const nx = out[j + 1];
+    const sameNext = !!nx && !!ph && nx.step < ph.step + ph.len - 1e-6;
+    const limit = sameNext ? nx.step : ph ? ph.step + ph.len : end;
+    const to = Math.min(start + beat, limit);
+    const steady = (a: number, b: number) => { for (let s = Math.floor(a + 1e-6); s < Math.ceil(b - 1e-6); s++) if (chordAt[s] && (chordAt[s].root !== chordAt[Math.floor(a + 1e-6)].root || chordAt[s].q !== chordAt[Math.floor(a + 1e-6)].q)) return false; return true; };
+    if (to > end + 1e-6 && steady(end - 1e-6, to) && !out[j].third) {
+      out[j].len = to - out[j].step;
+      // (reached the next note: the two units are one now; look again)
+      continue;
+    }
+    ok = false;
+    if (!drop) break;
+    out = out.filter((_, k) => k < i || k > j);
+  }
+  return { notes: out, ok };
+}
+
+/**
  * Rule 15: bends inside a note. A held note holds its pitch for a fifth to two fifths of its length, then glides slowly (nearly
  * half the note) to another and sits there; an 8th starts gliding at its very first moment. Where it can:
  *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;

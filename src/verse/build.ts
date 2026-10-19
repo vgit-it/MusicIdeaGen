@@ -2,10 +2,10 @@
 // Pure: the same input gives the same notes.
 
 import type { Chord, Mode } from '../theory';
-import { planForm, leafSeeds, type Leaf, type Rule, type Variation } from './form';
+import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from './form';
 import { VERSE, type Dials } from './profile';
 import {
-  addBends, addNoteBends, addNeighbours, fitSilence, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, smallBreaks,
+  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, smallBreaks,
   thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
@@ -34,6 +34,8 @@ export interface BuildInput {
   thirds?: boolean;
   /** The dials the rules roll against (a section kind in a song's personality; left out: the verse's own). */
   dials?: Dials;
+  /** The try each leaf was written on in another build (a chorus built like its master starts there, so they match). */
+  tries?: number[];
 }
 
 export interface Built {
@@ -45,6 +47,8 @@ export interface Built {
   tones: ChordNote[];
   bars: BarTone[];
   leaves: Leaf[];
+  /** The try each leaf was written on (0: the first dice; more: it was written again for rule 20). */
+  tries: number[];
 }
 
 export function buildVerse(inp: BuildInput): Built {
@@ -58,7 +62,7 @@ export function buildVerse(inp: BuildInput): Built {
   const total = inp.chordAt.length;
   const leaves = planForm(inp.bars, inp.meta, inp.variation, inp.seed);
   const seeds = leafSeeds(leaves, inp.seed);
-  const out: Built = { notes: [], phrases: [], breaks: [], runs: [], holds: [], tones: [], bars: [], leaves };
+  const out: Built = { notes: [], phrases: [], breaks: [], runs: [], holds: [], tones: [], bars: [], leaves, tries: [] };
   // (what a rule looks at in the band: an answering leaf's rhythm rules look at the band under the leaf they answer, so the
   // rhythm repeats even where the band under it doesn't; the rules about notes look at the band under the leaf itself)
   const rootFrom = (leaf: Leaf, rule: Rule): number => {
@@ -71,36 +75,53 @@ export function buildVerse(inp: BuildInput): Built {
     while (w.length < len) w.push(w.length ? w[w.length - 1] : pad);
     return w;
   };
+  // (the try each leaf was written on: an answering leaf starts on its source's, so the two still match)
+  const tryOf = new Map<number, number>();
   for (const leaf of leaves) {
     const from = leaf.from * bar;
     const end = leaf.from + leaf.bars >= inp.bars ? total : from + leaf.bars * bar;
     const len = end - from;
-    const sd = seeds.get(leaf.id)!;
+    const sd0 = seeds.get(leaf.id)!;
     const chordAt = inp.chordAt.slice(from, end);
     const accOf = (rule: Rule) => win(inp.acc, rootFrom(leaf, rule), len, 0.5);
-    // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)
-    const tail = end < total ? Math.round(bar / 4) : 0;
-    const planned = planPhrases(len - tail, bar, sd.phrases, accOf('phrases'), d);
-    const phrases = planned.phrases, breaks = planned.breaks;
-    if (tail) {
-      const last = breaks[breaks.length - 1];
-      if (last && last.step + last.len >= len - tail) last.len = len - last.step;
-      else breaks.push({ step: phrases[phrases.length - 1].step + phrases[phrases.length - 1].len, len: tail });
+    const write = (sd: Record<Rule, string>, final: boolean) => {
+      // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)
+      const tail = end < total ? Math.round(bar / 4) : 0;
+      const planned = planPhrases(len - tail, bar, sd.phrases, accOf('phrases'), d);
+      const phrases = planned.phrases, breaks = planned.breaks;
+      if (tail) {
+        const last = breaks[breaks.length - 1];
+        if (last && last.step + last.len >= len - tail) last.len = len - last.step;
+        else breaks.push({ step: phrases[phrases.length - 1].step + phrases[phrases.length - 1].len, len: tail });
+      }
+      const runs = randomRuns(len, bar, inp.energy, breaks, sd.runs, accOf('runs'), d);
+      const { tones, bars } = randomTones(len, bar, sd.tones, accOf('tones'), d);
+      const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
+      const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
+      // (a phrase may open on one long note; the short notes after it stay short)
+      const held = withOpeners(withHolds(plain, holds), phrases, chordAt, bar, sd.phrases, accOf('phrases'), d);
+      const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, bar, sd.holds, accOf('holds'), d, held.opened), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
+      const pushed = pushNotes(limitSame(smallBreaks(foldIntoRange(walked, range), phrases, bar, sd.small, accOf('small'), d)), phrases, bar, sd.small, accOf('small'), d);
+      const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt, range }), phrases, bar, sd.thirds, d));
+      // (the chorus: fitted to the song's share of silence)
+      const fitted = d.silence === undefined ? shaped : fitSilence(shaped, phrases, bar, len, d.silence, sd.small, accOf('small'));
+      // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
+      const units = fixUnits(fitted, phrases, chordAt, bar, final);
+      if (!units.ok) return null;
+      const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
+      const bent = addBends(units.notes, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
+      const notes = addNoteBends(bent, bar, { amount: inp.bends, energy: inp.energy, key, chordAt, range, mult: d.bends }, `${sd.bends}|in`);
+      return { notes, phrases, breaks, runs, holds, tones, bars };
+    };
+    const MAX_TRIES = 40;
+    const t0 = Math.max(inp.tries?.[leaves.indexOf(leaf)] ?? 0, leaf.source === null ? 0 : tryOf.get(leaf.source) ?? 0);
+    let w: ReturnType<typeof write> = null;
+    for (let t = t0; !w; t++) {
+      const sd = t === 0 ? sd0 : (Object.fromEntries(RULES.map((r) => [r, `${sd0[r]}|try${t}`])) as Record<Rule, string>);
+      w = write(sd, t >= t0 + MAX_TRIES);
+      if (w) { tryOf.set(leaf.id, t); out.tries.push(t); }
     }
-    const runs = randomRuns(len, bar, inp.energy, breaks, sd.runs, accOf('runs'), d);
-    const { tones, bars } = randomTones(len, bar, sd.tones, accOf('tones'), d);
-    const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
-    const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
-    // (a phrase may open on one long note; the short notes after it stay short)
-    const held = withOpeners(withHolds(plain, holds), phrases, chordAt, bar, sd.phrases, accOf('phrases'), d);
-    const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, bar, sd.holds, accOf('holds'), d, held.opened), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
-    const pushed = pushNotes(limitSame(smallBreaks(foldIntoRange(walked, range), phrases, bar, sd.small, accOf('small'), d)), phrases, bar, sd.small, accOf('small'), d);
-    const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt, range }), phrases, bar, sd.thirds, d));
-    // (the chorus: fitted to the song's share of silence)
-    const fitted = d.silence === undefined ? shaped : fitSilence(shaped, phrases, bar, len, d.silence, sd.small, accOf('small'));
-    const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
-    const bent = addBends(fitted, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
-    const notes = addNoteBends(bent, bar, { amount: inp.bends, energy: inp.energy, key, chordAt, range, mult: d.bends }, `${sd.bends}|in`);
+    const { notes, phrases, breaks, runs, holds, tones, bars } = w;
     const shift = (g: Gap): Gap => ({ step: g.step + from, len: g.len });
     out.notes.push(...notes.map((n) => ({ ...n, step: n.step + from })));
     out.phrases.push(...phrases.map(shift));
