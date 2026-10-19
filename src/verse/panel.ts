@@ -62,7 +62,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
         <button id="v-remove" class="small">Remove</button>
       </div>
-      <div class="guiderow" hidden title="The line stays between Bottom and Top, and strays into the extended zone only when that saves a big leap. It never goes past the extended limits.">
+      <div class="guiderow" style="display:none" title="The line stays between Bottom and Top, and strays into the extended zone only when that saves a big leap. It never goes past the extended limits.">
         <label class="grange">Bottom <input type="range" id="v-lo" min="40" max="84" value="${range.lo}"> <b id="v-lo-o"></b></label>
         <label class="grange">Top <input type="range" id="v-hi" min="52" max="96" value="${range.hi}"> <b id="v-hi-o"></b></label>
         <label class="grange">Extended bottom <input type="range" id="v-xlo" min="36" max="84" value="${range.xlo}"> <b id="v-xlo-o"></b></label>
