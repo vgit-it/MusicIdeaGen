@@ -122,10 +122,10 @@ export class LeadVoice {
       // (the section's last line carried on into a section it sits out fades away over the part past this one's end)
       if (L === lines[lines.length - 1] && !next?.sung?.length) {
         const last = notes[notes.length - 1], past = last.end - (at(idea.song.total) - t0);
-        if (past > 0.3) notes[notes.length - 1] = { ...last, fade: Math.max(last.fade ?? 0, Math.min(past, last.end - last.t - 0.05)) };
+        if (past > 0.3) notes[notes.length - 1] = { ...last, fade: Math.max(last.fade ?? 0, Math.min(past, last.end - last.t - 0.05)), fadeBy: undefined };
       }
       const breath = restBefore >= 0.5 ? fl.breath : 0;
-      const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ''},${n.fade?.toFixed(2) ?? ''},${n.slide ?? ''},${n.fall ?? ''},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}|${breath.toFixed(2)}`;
+      const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ''},${n.fade?.toFixed(2) ?? ''},${n.fadeBy ?? ''},${n.gain ?? ''},${n.slide ?? ''},${n.fall ?? ''},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}|${breath.toFixed(2)}`;
       const p: Placed = { key, notes, t0, idea, energy, sung, breath };
       // (a line starting between steps: from the step before)
       const first = Math.max(0, Math.floor(L.notes[0].step - Math.ceil(PRE / six)));

@@ -62,6 +62,8 @@ export interface SungNote {
   glide?: number; swell?: number; fade?: number; sharp?: number;
   /** How many dB the `fade` takes the level down by (left out: 18). */
   fadeBy?: number;
+  /** A quieter note: its level times this (0.8: a fifth quieter in amplitude); the fades and the rest apply on top. */
+  gain?: number;
 }
 
 export interface VoiceShape {
@@ -653,7 +655,8 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
     let amp = lerp(-8, 0, note.vel) - (note.fall ? 9 * fx : 0) - 6 * fry;
     // (human feel: rising into the word, fading at its end)
     if (note.swell) amp -= 10 * (1 - smooth(-0.01, note.swell, into));
-    if (note.fade) amp -= 18 * smooth(note.end - note.fade, note.end, t);
+    if (note.fade) amp -= (note.fadeBy ?? 18) * smooth(note.end - note.fade, note.end, t);
+    if (note.gain) amp += 20 * Math.log10(note.gain);
     if (flow) {
       // (the loudness glides from note to note, not in steps)
       ampNow = ampNow === null ? amp : ampNow + (amp - ampNow) * 0.12;
