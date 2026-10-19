@@ -626,8 +626,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
             // (a fricative swells in and tapers out: s about 12 dB under the vowel, sh 14, f and th 22)
             const lvl = c.shape === 's' ? -12 : c.shape === 'sh' ? -7 : -19;
             const env = (c.kind === 'affric' ? lerp(4, -2, (x - closure) / 0.5) : lerp(-14, 0, (x - closure) / 0.35)) + lerp(0, -10, (x - 0.75) / 0.25);
-            fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -7 : 0));
-            if (c.voiced) voice = amp - 6; else lastVoiceless = true;
+            fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -13 : 0));
+            if (c.voiced) voice = amp - 4; else lastVoiceless = true;
             break;
           }
           case 'stop': {
