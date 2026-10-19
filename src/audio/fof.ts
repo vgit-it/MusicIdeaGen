@@ -624,10 +624,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
             const closure = c.kind === 'affric' ? 0.35 : 0;
             if (x < closure) { lastVoiceless = !c.voiced; if (c.voiced) { voice = amp - 22; bar = 1; } break; }
             // (a fricative swells in and tapers out: s about 12 dB under the vowel, sh 14, f and th 22)
-            const lvl = c.shape === 's' ? -12 : c.shape === 'sh' ? -7 : -22;
+            const lvl = c.shape === 's' ? -12 : c.shape === 'sh' ? -7 : -19;
             const env = (c.kind === 'affric' ? lerp(4, -2, (x - closure) / 0.5) : lerp(-14, 0, (x - closure) / 0.35)) + lerp(0, -10, (x - 0.75) / 0.25);
-            fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -3 : 0));
-            if (c.voiced) voice = amp - 8; else lastVoiceless = true;
+            fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -7 : 0));
+            if (c.voiced) voice = amp - 6; else lastVoiceless = true;
             break;
           }
           case 'stop': {
@@ -639,7 +639,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
             // (up past the break the vowel is brighter (a belt's ring, edge), so a burst of the same level is lost under it: it comes up there; not in a falsetto, which is not bright)
             const hiUp = s.init && !fal ? 18 * smooth01((s.midi + shift - brk + 2) / 8) * Math.min(1, ini / 8) : 0;
             const closeEnd = c.voiced ? (ini ? 0.6 : 0.7) : ini ? 0.4 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12) + (ini ? 0.04 : 0);
-            if (x < closeEnd) { if (c.voiced) { voice = amp - (ini ? 16 : fin ? 12 : 22); bar = 1; } else if (st.hold !== undefined && !ini) voice = amp - st.hold; else lastVoiceless = true; break; }
+            if (x < closeEnd) { if (c.voiced) { voice = amp - (ini ? 16 : fin ? 9 : 22); bar = 1; } else if (st.hold !== undefined && !ini) voice = amp - st.hold; else lastVoiceless = true; break; }
             if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : c.shape === 'lab' ? -2 : -6) + (st.burst ?? 0) + hiUp + (c.voiced ? ini * 1.6 - 0.4 * fin : ini + fin) + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && (st.hold === undefined || ini > 0); if (c.voiced) { voice = amp - 14; bar = 1; } break; }
             if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0) + 0.4 * ini + 0.8 * hiUp + 0.5 * fin; lastVoiceless = st.hold === undefined || ini > 0; } else voice = amp - 3;
             break;
