@@ -22,6 +22,9 @@ export interface Dials {
   holdTwice: number;
   /** The chance a plain 8th is stretched over the next one (two 8ths on one chord note become one note), and once more (a beat and a half). */
   stretch: number;
+  /** The chance a phrase opens on one long note (then the shorter notes follow); weights for it lasting 1, 1½, 2 and 3 beats. */
+  opener: number;
+  openLen: [number, number, number, number];
   /** The chance a bar moves from one chord note to another part way through. */
   moves: number;
   /** Weights for a bar sitting on the root, the 3rd and the 5th. */
@@ -56,6 +59,8 @@ export const VERSE: Dials = {
   holdLen: [0.4, 0.2, 0.3, 0.1],
   holdTwice: 0,
   stretch: 0,
+  opener: 0,
+  openLen: [0.25, 0.25, 0.35, 0.15],
   moves: 0.3,
   toneW: [1, 1, 1],
   neighbour: 0.3,

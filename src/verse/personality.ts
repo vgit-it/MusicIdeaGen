@@ -104,10 +104,10 @@ const lean = (tone: ChordNote | 'any', by: number): Dials['toneW'] => (tone === 
 
 /** The hooks, as dials: how a chorus built on each moves. */
 const HOOK_DIALS: Record<Hook, Partial<Dials>> = {
-  chant: { phraseLen: [0.3, 0.4, 0.2, 0.1], breakBeats: [0.5, 0.3, 0.15, 0.05], runs: 0.6, runLen: [0.8, 0.2, 0], holdBar: 0.3, holdLen: [0.3, 0.3, 0.3, 0.1], holdTwice: 0.2, stretch: 0.3, moves: 0.1, neighbour: 0.05, walk: 0.3, third: 0.3, small: 0.4, push: 0.1 },
-  anthem: { phraseLen: [0.03, 0.22, 0.3, 0.45], breakBeats: [0.2, 0.35, 0.25, 0.2], runs: 0.1, runLen: [1, 0, 0], holdBar: 0.85, holdLen: [0.05, 0.15, 0.4, 0.4], holdTwice: 0.5, stretch: 0.25, moves: 0.25, toneW: [1.4, 0.5, 1.2], neighbour: 0.1, walk: 0.9, third: 0.05, small: 0.3, push: 0 },
-  leap: { phraseLen: [0.1, 0.4, 0.3, 0.2], holdBar: 0.55, holdLen: [0.15, 0.25, 0.4, 0.2], holdTwice: 0.2, stretch: 0.35, moves: 0.85, toneW: [0.7, 0.7, 1.4], neighbour: 0.45, walk: 0.9, runs: 0.8, third: 0.1, small: 0.8, push: 0.05 },
-  push: { phraseLen: [0.1, 0.3, 0.3, 0.3], breakBeats: [0.6, 0.3, 0.07, 0.03], runs: 1.2, runLen: [0.5, 0.35, 0.15], holdBar: 0.3, holdLen: [0.3, 0.25, 0.35, 0.1], holdTwice: 0.2, stretch: 0.2, moves: 0.35, neighbour: 0.35, walk: 0.5, third: 0.05, small: 0.9, push: 0.55 },
+  chant: { phraseLen: [0.3, 0.4, 0.2, 0.1], breakBeats: [0.5, 0.3, 0.15, 0.05], runs: 0.6, runLen: [0.8, 0.2, 0], holdBar: 0.6, holdLen: [0.2, 0.3, 0.3, 0.2], holdTwice: 0.4, stretch: 0.4, opener: 0.5, moves: 0.1, neighbour: 0.05, walk: 0.3, third: 0.3, small: 0.4, push: 0.1 },
+  anthem: { phraseLen: [0.03, 0.22, 0.3, 0.45], breakBeats: [0.2, 0.35, 0.25, 0.2], runs: 0.1, runLen: [1, 0, 0], holdBar: 0.85, holdLen: [0.05, 0.15, 0.4, 0.4], holdTwice: 0.5, stretch: 0.3, opener: 0.55, moves: 0.25, toneW: [1.4, 0.5, 1.2], neighbour: 0.1, walk: 0.9, third: 0.05, small: 0.3, push: 0 },
+  leap: { phraseLen: [0.1, 0.4, 0.3, 0.2], holdBar: 0.75, holdLen: [0.1, 0.2, 0.4, 0.3], holdTwice: 0.4, stretch: 0.45, opener: 0.55, moves: 0.85, toneW: [0.7, 0.7, 1.4], neighbour: 0.45, walk: 0.9, runs: 0.8, third: 0.1, small: 0.8, push: 0.05 },
+  push: { phraseLen: [0.1, 0.3, 0.3, 0.3], breakBeats: [0.6, 0.3, 0.07, 0.03], runs: 1.2, runLen: [0.5, 0.35, 0.15], holdBar: 0.6, holdLen: [0.15, 0.25, 0.4, 0.2], holdTwice: 0.4, stretch: 0.3, opener: 0.4, moves: 0.35, neighbour: 0.35, walk: 0.5, third: 0.05, small: 0.9, push: 0.55 },
 };
 
 /** The dials a section kind writes with, in this song's personality. */
