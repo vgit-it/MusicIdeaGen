@@ -55,7 +55,9 @@ export function initQuiz(getVoice: () => Partial<FofVoice>, getBase: () => numbe
   }
 
   function next() {
-    const g = GROUPS[Math.floor(Math.random() * GROUPS.length)];
+    const only = $<HTMLSelectElement>('qGroup').value;
+    const pool = only ? GROUPS.filter((x) => x.name === only) : GROUPS;
+    const g = pool[Math.floor(Math.random() * pool.length)];
     const set = g.words[Math.floor(Math.random() * g.words.length)];
     const word = set[Math.floor(Math.random() * set.length)];
     const version: 'now' | 'orig' = $<HTMLInputElement>('qMix').checked && Math.random() < 0.5 ? 'orig' : 'now';
@@ -97,6 +99,7 @@ export function initQuiz(getVoice: () => Partial<FofVoice>, getBase: () => numbe
       : '<p class="hint">No answers yet.</p>';
   }
 
+  $<HTMLSelectElement>('qGroup').innerHTML = `<option value="">All contrasts</option>${GROUPS.map((g) => `<option>${g.name}</option>`).join('')}`;
   $('qStart').onclick = next;
   $('qNext').onclick = next;
   $('qAgain').onclick = () => { if (lastPcm) play(lastPcm); };
