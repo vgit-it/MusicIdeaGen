@@ -90,8 +90,10 @@ function rgb(h: number, s: number, l: number): [number, number, number] {
 
 /** Cloth: not the outline, not skin, not white (prints, soles). */
 const isCloth = (d: Uint8ClampedArray, i: number, skin: number[]) => {
-  const [, , l] = hsl(d[i], d[i + 1], d[i + 2]);
-  if (!d[i + 3] || l < 0.09 || l > 0.8) return false;
+  if (!d[i + 3]) return false;
+  // (the lightness, as hsl() has it, without making a list for every pixel)
+  const l = (Math.max(d[i], d[i + 1], d[i + 2]) / 255 + Math.min(d[i], d[i + 1], d[i + 2]) / 255) / 2;
+  if (l < 0.09 || l > 0.8) return false;
   const m = d[i] / Math.max(1, skin[0]);
   return !(m > 0.35 && m < 1.6 && Math.abs(d[i + 1] - skin[1] * m) < 18 && Math.abs(d[i + 2] - skin[2] * m) < 18);
 };
