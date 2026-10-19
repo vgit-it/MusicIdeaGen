@@ -56,6 +56,8 @@ export interface GenOptions {
   vocalReal?: boolean;
   /** Patterns (docs/PATTERNS.md): the vocal's rhythms and short shapes drawn from a library of common real ones. */
   vocalPatterns?: boolean;
+  /** Who writes the lead vocal: the verse melody writer (src/verse/, the default) or the classic one (Rhythm Words, Melody Learned...). */
+  vocalWriter?: 'verse' | 'classic';
   /** Real strum mix (docs/STUDY-RHYTHM.md): strumming patterns from a library widened to what real guitarists play: held chords, quarters, 8ths in many shapes, 16ths, stabs. */
   strumMix?: boolean;
   /** Guitar 2 (the lead player) plays whole lines, mostly by step, as well as short licks (docs/LEAD-LINES.md). Off: as before. */

@@ -5,12 +5,12 @@ import type { Idea } from '../idea';
 import { autoMood } from '../tension';
 import { buildVerse, type Built } from './build';
 import { leafSeeds, planForm, type Rule, type Variation } from './form';
-import { dialsFor, drawPersonality, type Personality } from './personality';
+import { dialsFor, drawPersonality, paced, type Personality } from './personality';
 import { bandAccents, type BendAmount, type Range } from './verse';
 import type { Chord } from '../theory';
 
 /** What the user can set on the card. */
-export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean }
+export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string }
 
 export const isChorus = (idea: Idea) => idea.section?.kind === 'chorus';
 export const isPre = (idea: Idea) => idea.section?.kind === 'prechorus';
@@ -34,12 +34,12 @@ export function accentsOf(idea: Idea): number[] {
   return bandAccents(idea.chords.chordIdx.length, { kick, snare, strum: idea.strum, bass: idea.bass, changes: idea.chords.timeline.map((e) => e.step) });
 }
 /** The song's melodic personality (personality.ts): the same for every section of a song. */
-export const personalityOf = (idea: Idea): Personality => drawPersonality(idea.seeds.song, idea.song.genre, autoMood(idea.song, idea.seeds.song));
+export const personalityOf = (idea: Idea, salt?: string): Personality => drawPersonality(salt ? `${idea.seeds.song}|${salt}` : idea.seeds.song, idea.song.genre, autoMood(idea.song, idea.seeds.song));
 /** The chords of a section as a string (what a chorus's pitches follow). */
 export const chordsKey = (idea: Idea) => idea.chords.timeline.map((e) => `${e.step}${e.chord.root}${e.chord.q}`).join(',');
 /** The choruses of a song (of one length, tuned alike) are one hook: one melody, over each chorus's own chords. Pre-choruses likewise. */
 export const hookSig = (idea: Idea, o: SectionOptions) =>
-  `${idea.seeds.song}|${kindOf(idea)}|${idea.chords.chordIdx.length}|${Object.values(o.range).join(',')}|${o.bends}|${o.meta}|${o.variation}|${o.pentatonic ? 'pent' : ''}`;
+  `${idea.seeds.song}|${kindOf(idea)}|${idea.chords.chordIdx.length}|${Object.values(o.range).join(',')}|${o.bends}|${o.meta}|${o.variation}|${o.pentatonic ? 'pent' : ''}${o.seed ? `|${o.seed}` : ''}`;
 /** The chorus (or pre-chorus) the others are built like: the song's last one of this hook (usually the fullest: the highest energy). */
 export function chorusMaster(list: Idea[], idea: Idea, o: SectionOptions): Idea {
   const sig = hookSig(idea, o);
@@ -47,10 +47,13 @@ export function chorusMaster(list: Idea[], idea: Idea, o: SectionOptions): Idea 
   return idea;
 }
 
+/** The seed a verse is written from. */
+export const verseSeed = (idea: Idea, o: SectionOptions) => `${idea.seeds.song}|${idea.seeds.chords}${o.seed ? `|${o.seed}` : ''}`;
+
 /** The rules a pre-chorus takes from the verse it follows: its phrasing and small breaks are the verse's dice, so the two feel related. */
 const BORROWED: Rule[] = ['phrases', 'small'];
 function borrowedFrom(verse: Idea, o: SectionOptions): Partial<Record<Rule, string>> {
-  const seed = `${verse.seeds.song}|${verse.seeds.chords}`;
+  const seed = verseSeed(verse, o);
   const leaves = planForm(verse.song.bars.length, o.meta, o.variation, seed);
   const seeds = leafSeeds(leaves, seed).get(leaves[0].id)!;
   return Object.fromEntries(BORROWED.map((r) => [r, seeds[r]]));
@@ -60,7 +63,7 @@ function borrowedFrom(verse: Idea, o: SectionOptions): Partial<Record<Rule, stri
 const ECHOED: Rule[] = ['phrases', 'tones', 'holds'];
 function echoedFrom(chorus: Idea, o: SectionOptions): Partial<Record<Rule, string>> {
   const seed = hookSig(chorus, o);
-  const leaves = planForm(chorus.song.bars.length, o.meta, personalityOf(chorus).chorusVariation, seed);
+  const leaves = planForm(chorus.song.bars.length, o.meta, personalityOf(chorus, o.seed).chorusVariation, seed);
   const seeds = leafSeeds(leaves, seed).get(leaves[0].id)!;
   return Object.fromEntries(ECHOED.map((r) => [r, seeds[r]]));
 }
@@ -70,7 +73,7 @@ function echoedFrom(chorus: Idea, o: SectionOptions): Partial<Record<Rule, strin
  * master's accents) writes with the master's seed, energy and accents, so its rhythm and shape are the master's, over its own chords.
  */
 export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea), like?: Idea, verse?: Idea, chorusIdea?: Idea): Built {
-  const chorus = isShared(idea), p = personalityOf(idea), kind = kindOf(idea);
+  const chorus = isShared(idea), p = personalityOf(idea, o.seed), kind = kindOf(idea);
   // (the master's tries: each leaf starts on the dice the master's ended on, so the choruses match)
   const tries = chorus && like ? buildSection(like, o, accents, undefined, verse, chorusIdea).tries : undefined;
   return buildVerse({
@@ -78,6 +81,6 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation,
     thirds: idea.song.bars.every((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
-    seed: chorus ? hookSig(idea, o) : `${idea.seeds.song}|${idea.seeds.chords}`, dials: dialsFor(kind, p), tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
+    seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: paced(dialsFor(kind, p), idea.song.bpm), tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
   });
 }

@@ -1,6 +1,6 @@
-# Verse melody writer: sections and variety (experiment)
+# Verse melody writer: sections and variety
 
-The verse melody card (`src/verse/`) writes a verse and now a chorus, one rule at a time. Goal: great songs that don't sound alike.
+The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at a time (the main voice since 2026-10-19, `docs/VOCAL.md`; `sing.ts` hooks it into the song builder, the card is now a report). Goal: great songs that don't sound alike.
 
 ## How it fits together
 - `profile.ts`: **dials**, every number the rules roll against (phrase lengths, runs, holds, endings, lift...). `VERSE` is the verse as it always was.

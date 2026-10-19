@@ -15,7 +15,11 @@ import { type Cons, type Rhyme, type Syllable, lyricLine, openUp, rhymeOf, spell
 import { type Flick, type GuideLine, WORD_STARTS } from './line';
 
 /** One sung sound: a syllable (or the one before carried on, text '~') on a stretch of the line. */
-export interface GuideSyl { step: number; len: number; midi: number; vel: number; syl: Syllable; bend?: number; slide?: number; fall?: number }
+export interface GuideSyl {
+  step: number; len: number; midi: number; vel: number; syl: Syllable; bend?: number; slide?: number; fall?: number;
+  /** The verse melody writer's: the scoop into the note lasts so many steps; a held ending dies away over its last `fade` steps by `fadeBy` dB. */
+  slideLen?: number; fade?: number; fadeBy?: number;
+}
 export interface GuideSungLine { notes: GuideSyl[]; text: string }
 
 /**

@@ -112,20 +112,27 @@ export class LeadVoice {
       lastEnd = at(L.notes[L.notes.length - 1].step + L.notes[L.notes.length - 1].len);
       let notes: SungNote[] = L.notes.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi + shift, vel: n.vel, syl: n.syl,
         ...(n.bend ? { bend: at(n.step + n.bend) - at(n.step) } : {}),
-        ...(n.slide ? { slide: n.slide } : {}), ...(n.fall ? { fall: n.fall } : {}) }));
+        ...(n.slide ? { slide: n.slide } : {}), ...(n.fall ? { fall: n.fall } : {}),
+        ...(n.slideLen ? { slideLen: at(n.step + n.slideLen) - at(n.step) } : {}), ...(n.fade ? { fade: at(n.step + n.len) - at(n.step + n.len - n.fade), fadeBy: n.fadeBy } : {}) }));
       // (a short breath between words: the word before let go a moment early; the tune's timing kept)
       for (let j = 1; j < notes.length; j++) {
         const p = notes[j - 1], q = notes[j];
         if (q.syl.wordStart && q.syl.text !== '~' && Math.abs(p.end - q.t) < 1e-6) p.end -= Math.min(0.05, 0.2 * (p.end - p.t));
       }
-      notes = feelSung(notes, fl, order + L.notes[0].step);
+      const pre = notes;
+      notes = feelSung(notes, fl, order + L.notes[0].step).map((n, j) => {
+        const b = pre[j];
+        // (the verse melody's own fade at a held ending is the longer one: it keeps it, and its depth; no extra fall on top)
+        if (b.fade) { if (b.fade >= (n.fade ?? 0)) { n.fade = b.fade; n.fadeBy = b.fadeBy; } if (b.fall === undefined) delete n.fall; }
+        return n;
+      });
       // (the section's last line carried on into a section it sits out fades away over the part past this one's end)
       if (L === lines[lines.length - 1] && !next?.sung?.length) {
         const last = notes[notes.length - 1], past = last.end - (at(idea.song.total) - t0);
         if (past > 0.3) notes[notes.length - 1] = { ...last, fade: Math.max(last.fade ?? 0, Math.min(past, last.end - last.t - 0.05)), fadeBy: undefined };
       }
       const breath = restBefore >= 0.5 ? fl.breath : 0;
-      const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ''},${n.fade?.toFixed(2) ?? ''},${n.fadeBy ?? ''},${n.gain ?? ''},${n.slide ?? ''},${n.fall ?? ''},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}|${breath.toFixed(2)}`;
+      const key = `${sung}|${idea.song.genre}|${energy}|${six.toFixed(5)}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.bend?.toFixed(3) ?? ''},${n.fade?.toFixed(2) ?? ''},${n.fadeBy ?? ''},${n.gain ?? ''},${n.slide ?? ''},${n.slideLen?.toFixed(3) ?? ''},${n.fall ?? ''},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')}`).join(';')}|${breath.toFixed(2)}`;
       const p: Placed = { key, notes, t0, idea, energy, sung, breath };
       // (a line starting between steps: from the step before)
       const first = Math.max(0, Math.floor(L.notes[0].step - Math.ceil(PRE / six)));

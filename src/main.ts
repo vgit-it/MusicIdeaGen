@@ -62,27 +62,12 @@ let preparing = false;
 engine.onBar = highlightBar;
 
 // the new verse melody writer (src/verse/): its own card
-const verse = buildVersePanel($('verse'), engine, {
-  async generateAndPlay() {
-    await Tone.start();
-    newIdea();
-    await playIfStopped();
-  },
-  async playFromStart() {
-    if (engine.playing) { playBtn.click(); return; }
-    if (track) {
-      // (from the first verse, not the intro)
-      const v = Math.max(0, track.sections.findIndex((x) => x.section?.kind === 'verse'));
-      looping = null;
-      shown = v;
-      engine.setList(track.sections, false, v);
-      render();
-      await playIfStopped();
-      return;
-    }
-    if (idea) engine.setList([idea], true, 0);
-    await Tone.start();
-    await playIfStopped();
+const verse = buildVersePanel($('verse'), {
+  writer: () => idea?.opts.vocalWriter ?? 'verse',
+  setWriter(w) {
+    if (!idea) return;
+    // (the same song with the other writer: only the lead vocal changes)
+    showIdea(generate({ ...idea.opts, vocalWriter: w === 'verse' ? undefined : w }, idea.seeds), true);
   },
 });
 
@@ -115,7 +100,6 @@ function render() {
 function setPlaying(on: boolean) {
   playBtn.textContent = on ? 'Stop' : 'Play';
   playBtn.classList.toggle('on', on);
-  verse.setPlaying(on);
 }
 
 /* ---- chords you set: tap a bar to open the editor; the band is rewritten around them */
@@ -415,7 +399,7 @@ function newIdea() {
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
   // (the vocal's rhythm and the singer's lift carry over to the new idea; the lift then set for its own
   // singer: the new song may sing in the other voice)
-  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns };
+  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns, vocalWriter: idea?.opts.vocalWriter };
   let next = generate(opts, seeds);
   const h = singerFor(next);
   if ((next.opts.vocalLift ?? 0) !== (h ? HIGH_VOICES[h].lift : 0) || next.opts.vocalSinger !== (h ?? undefined)) next = generate({ ...opts, ...singerOpts(h) }, seeds);

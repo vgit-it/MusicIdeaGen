@@ -426,3 +426,12 @@ Paul made the Guide card's **Vocal tune** the vocal, and fixed the vocal row's w
 - **MIDI export and the drawn words:** the sung line (its new words as lyrics).
 - **On by default:** the singer (it was off until turned on), and the piano and strings layers (Auto).
 - **The Guide card is gone** (its writers and checks stay in `src/guide/`, `npm run guide-check`).
+
+## The main vocal is the verse melody writer (2026-10-19)
+Paul brought the Verse melody experiment (`docs/VERSE-SECTIONS.md`, `src/verse/`) in as the lead vocal.
+- **Written by:** `src/verse/sing.ts` (`singSong`): every singing section (verse, pre-chorus, chorus, bridge, the 4-bar interlude, the chorus-based outro) in song order, then the words (`src/verse/words.ts`). A lone 8-bar idea sings as a chorus. Intro, solo, breakdown, lead breaks and jam / solo outros stay silent.
+- **Where it plugs in:** right after `singTrack` in `buildTrack` (and in `generate()` for a lone idea). It replaces each section's `vocal` (so Guitar 2's room, backing vocals and ad-libs follow it) and sets `sung` (the lines the lead voice sings, MIDI and the roll read). Human feel stays the lead voice's own (`src/audio/leadVoice.ts`); held-ending fades and scoop lengths pass through.
+- **Seeds:** the song's vocal seed is mixed into the personality, the melody and the words, so rerolling the vocal gives a new melody. A high singer's lift (`vocalLift`) moves the range up.
+- **Tempo:** `paced` (`personality.ts`): slow songs get more 16th runs and fewer long notes, fast ones fewer runs and more stretched notes and long notes (notes a second about 1.2 at 60 bpm, 2.9 at 210).
+- **Writer menu** on the Vocal melody card: New (default) or Classic (`vocalWriter: 'classic'`, the old Words / Learned / Real songs / Patterns tune with `singLead`; unchanged). Same song, only the lead vocal changes.
+- **Not in the new writer yet:** verse 2 answering verse 1, a lifted last chorus, the last note carried into a solo, the vocal Energy styles.
