@@ -123,6 +123,8 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         const syl = w ? w.syls[i] : la, vel = w && !w.syls[i].stress ? 0.68 : 0.82;
         const head: VocalNote = { step: n.step, len: n.len, midi: n.midi, vel, syl, start: w ? w.starts[i] : n.step % 64 === 0, ...(n.slide ? { slide: n.slide } : {}), ...(n.fall ? { fall: n.fall } : {}) };
         if (n.bendTo === undefined) return [head];
+        // (an 8th bends from its first moment: one note, scooped into from its own pitch, slowly)
+        if (n.bendAt === 0) return [{ ...head, midi: n.bendTo, slide: n.bendTo - n.midi, slideLen: n.bendLen }];
         // (a bend inside the note: it holds, then the same word goes on to the new pitch, gliding to it)
         head.len = n.bendAt!;
         delete head.fall;
@@ -159,7 +161,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
       `${notes.length} notes (${notes.filter((n) => n.nb).length} neighbour, ${walks(notes, bar)}, ${notes.filter((n) => n.third).length / 3} third-bar shapes) · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
       `On the band's hits: ${Math.round((100 * notes.filter((n) => accOf(first)[Math.floor(n.step + 1e-6)] >= 0.5).length) / Math.max(1, notes.length))}% of notes start on a drum or chord hit (${Math.round((100 * accOf(first).filter((a) => a >= 0.5).length) / accOf(first).length)}% of steps are one)`,
       `Bends (${notes.filter((n) => n.bend).length}): ${notes.filter((n) => n.bend).map((n) => `${pos(n.step, bar)} ${n.bend} ${n.fall ? `falls ${n.fall}` : n.slide! > 0 ? `from ${n.slide} below` : `from ${-n.slide!} above`}`).join(', ') || 'none'}`,
-      `Bends inside notes (${notes.filter((n) => n.inner).length}): ${notes.filter((n) => n.inner).map((n) => `${pos(n.step, bar)} ${n.inner} (${n.bendTo! > n.midi ? '+' : ''}${n.bendTo! - n.midi}, held ${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
+      `Bends inside notes (${notes.filter((n) => n.inner).length}): ${notes.filter((n) => n.inner).map((n) => `${pos(n.step, bar)} ${n.inner} (${n.bendTo! > n.midi ? '+' : ''}${n.bendTo! - n.midi}, note ${+(n.len / (bar / 4)).toFixed(1)} beats, ${n.bendAt === 0 ? 'bends from its start' : `bends after ${+(n.bendAt! / (bar / 4)).toFixed(2)} beats`})`).join(', ') || 'none'}`,
       `Notes starting in each quarter of the bar: ${[0, 1, 2, 3].map((q) => notes.filter((n) => quarterOf(n.step, bar) === q).length).join(' · ')}`,
       `Phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} ${n.style ?? 'held'} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,

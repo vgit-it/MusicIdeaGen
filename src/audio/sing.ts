@@ -56,6 +56,8 @@ export const CONS: Record<Cons, ConsSpec> = {
  */
 export interface SungNote {
   t: number; end: number; midi: number; vel: number; syl: Syllable; slide?: number; fall?: number; bend?: number;
+  /** The scoop into the note lasts this many seconds (left out: the voice's own). */
+  slideLen?: number;
   /** Human feel (the guide line, src/guide/feel.ts; left out: as before): `glide` seconds from the note before; `swell` seconds rising into it; `fade` seconds fading out at its end; `sharp` cents over. */
   glide?: number; swell?: number; fade?: number; sharp?: number;
 }
@@ -420,7 +422,7 @@ export function renderLine(notes: SungNote[], voice: VoiceShape, pre: number): F
       midi = lerp(prevN.midi + (voice.high ? 12 : 0), midi, Math.max(0, Math.min(1, into / note.bend)));
     } else if (note.slide) {
       // a scoop up into the note (easing in), over up to a fifth of a second
-      const sd = Math.min(0.22, held * 0.35);
+      const sd = note.slideLen ?? Math.min(0.22, held * 0.35);
       midi -= note.slide * (1 - Math.max(0, Math.min(1, (into + 0.02) / sd))) ** 2;
     } else if (prevN && prevN.end >= note.t - 0.12) {
       // a glide from the last note (quicker between the quick notes of a run)

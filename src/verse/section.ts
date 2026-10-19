@@ -34,6 +34,7 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
     key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: idea.section?.energy ?? 3,
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: chorus ? p.chorusVariation : o.variation,
+    thirds: idea.song.bars.every((b) => b.len % 3 === 0),
     seed: chorus ? hookSig(idea, o) : `${idea.seeds.song}|${idea.seeds.chords}`, dials: dialsFor(chorus ? 'chorus' : 'verse', p),
   });
 }
