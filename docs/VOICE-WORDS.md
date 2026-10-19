@@ -36,6 +36,8 @@ For each sound: can you tell which word it is without looking? Mark the ones tha
 
 **D. Regression set.** About 40 fixed lines (all sounds, hard clusters like "strong", "world", "thousands"), rendered per voice, scored by B and C, results kept in a file. Run after any change to the sounds or the voices.
 
+**C, first results (2026-10-19; `npm run asr-render`, then `node asr-run.mjs` in `experiments/kokoro-singer`; Whisper tiny.en, 40 lines):** Kokoro speaking the lines: 3-5% word errors. The FOF voices: about 80% sung (Rock, Pop at G3), 90% on one flat low note at speaking pace (Rock, Pop, Woman), and the same with the earlier quiet consonants (91%): so the recognizer is too coarse for the consonant work (it hears "music", and drops short words like "the", "and", "me"), and a synthesized voice with no speech rhythm is far from what it is trained on. Use it only as a rough floor; judge by ear and by layer B (the blind quiz, still to build), on isolated content words.
+
 ## 3. Build order (each step tested by A-D before the next)
 1. Dictionary: add the full CMU pronouncing dictionary (BSD licence; dev-only package for the lab, a trimmed word list later for the app) and a spelling-to-sound fallback for unknown words. Now: about 250 words built into `words.ts`.
 2. ER, dark l, flapped t/d, syllabic l/n: all done; Paul to listen to the last two.
