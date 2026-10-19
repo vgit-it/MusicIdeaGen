@@ -164,7 +164,7 @@ for (let i = 0; i < N; i++) {
     if (bn.length) {
       const m = (a: BandNote[]) => mean(a.map((n) => n.midi)), sdOf = (a: BandNote[]) => Math.sqrt(mean(a.map((n) => (n.midi - m(a)) ** 2)));
       const sl = 1 - bn.reduce((a, n) => a + n.len, 0) / tot;
-      add('bridge silence', sl < 0.3 ? 'under 30%' : sl < 0.35 ? '30-35%' : sl < 0.4 ? '35-40%' : '40%+');
+      add('bridge silence', sl < 0.25 ? 'under 25%' : sl < 0.3 ? '25-30%' : sl < 0.37 ? '30-37%' : '37%+');
       add('bridge leads into the chorus', bn.some((n) => n.lead) ? 'yes' : 'no');
       add('bridge pitch vs verse', m(bn) - m(vn) >= 2 ? 'higher' : m(bn) - m(vn) <= -2 ? 'lower' : 'level');
       add('bridge notes per bar', (bn.length * brbar) / tot < 2.5 ? 'few' : (bn.length * brbar) / tot < 3.5 ? 'some' : 'many');

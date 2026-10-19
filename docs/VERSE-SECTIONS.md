@@ -40,16 +40,16 @@ The verse melody card (`src/verse/`) writes a verse and now a chorus, one rule a
 - The card now sings the bridge too (`dialsFor('bridge')`), after the chorus on the card. Its own material: nothing is borrowed from the verse or chorus (its seed is its own). A song's bridges are one melody (the last one is the master), like choruses.
 - **Dials.** Phrases mostly 2-4 bars, longer breaks (2-4 beats), half the 16th runs, more and longer long notes, more stretched 8ths, openers 40%, fewer bar moves, small breaks 0.6x, endings mostly held / open / hang (60-90% of phrases), bends 1.2x.
 - **Register.** `bridgeLift` per song: -3 (lower, intimate moods), 0, +2, +4 (higher, tense/triumphant/angry moods), applied like the chorus lift.
-- **Silence.** 30-50% per song (`bridgeSilence`, mostly nearer 30), fitted by rule 18 like the chorus.
+- **Silence.** 30-50% per song (`bridgeSilence`, mostly nearer 30), a loose aim: rule 18 only steps in when the line is more than 7 points off (`silenceTol`); it lands about 7 points under its draw on average.
 - **Rule 24 - dwell** (`d.dwell`, low / middle / high of the range, drawn per song). Like rule 22 but a constant target: `voiceLead` is pulled toward one home pitch, so the line circles it. A mild tendency (chords still decide the pitch classes): 73% of bridge notes sit within 4 semitones of the home pitch, against 59% of verse notes.
 - **Lead-in** (rule 23) reuses `leadIn`: 30-85% per song (`bridgeLeadIn`); about 55% of bridges end on a long open or hanging note held into the next section.
-- Checked: 144 bridges in 168 songs, none empty, no overlaps, 0 short units, Pentatonic gives 0 off-scale notes; silence mean 3.7 points under its draw (worst 14). Verse, pre-chorus and chorus are note for note the same as before (948 sections by hash).
+- Checked: 144 bridges in 168 songs, none empty, no overlaps, 0 short units, Pentatonic gives 0 off-scale notes; silence mean 3.7 points under its draw (worst 14) before the looser fit. Verse, pre-chorus and chorus are note for note the same as before (948 sections by hash).
 
 ## Interlude (an echo of the chorus)
 - Sings only the 4-bar hook interlude. The 8-bar lead break is the guitar's: it carries a `lead` flag (`idea.section.lead`) and stays silent.
 - Takes the song's last chorus's phrasing, chord-note and long-note dice (`echoedFrom` in `section.ts`), so it is the chorus heard again, shorter. The rest is its own dials: 1–2 bar phrases, long gaps, few 16ths, long notes, phrases often ending held or open, no lead-in.
 - One melody per song (the interludes share it, like choruses), over each one's own chords.
-- Drawn per song: silence 50–70% (the fit gets within about 6 points on average, short of it in a 4-bar section) and a lift of -2, 0 or +2 semitones from the verse.
+- Drawn per song: silence 50–70% as a loose aim (the fit only steps in when it is more than 10 points off; `silenceTol`; it lands about 11 points under on average) and a lift of -2, 0 or +2 semitones from the verse.
 - Words are sparse (density 0.4), shown as INTERLUDE on the card.
 - Checked on 168 songs (121 interludes with the interlude switched on, 15 lead breaks left silent): none empty, no overlaps, 0 short units; verse, pre-chorus, bridge and chorus notes identical to before.
 

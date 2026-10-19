@@ -748,12 +748,11 @@ export function withOpeners(notes: BandNote[], phrases: Gap[], chordAt: Chord[],
 
 /**
  * Rule 18: the share of silence (the chorus: about a third to a half of it without vocals, drawn for the song). The line is
- * fitted to `target` (within 3 points): too full, the weakest notes drop out (short, off the band's hits, off the beat; never a
+ * fitted to `target` (within `tol`, 3 points unless a section takes it looser): too full, the weakest notes drop out (short, off the band's hits, off the beat; never a
  * phrase's first or last note, a walk, a long note or a third-bar note); too empty, notes are held into the gaps inside their phrase.
  * `total`: steps in the section.
  */
-export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total: number, target: number, seed: string, acc?: number[]): BandNote[] {
-  const tol = 0.03;
+export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total: number, target: number, seed: string, acc?: number[], tol = 0.03): BandNote[] {
   const out = notes.map((n) => ({ ...n }));
   let cover = out.reduce((a, n) => a + n.len, 0);
   const sil = () => 1 - cover / total;

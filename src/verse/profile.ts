@@ -48,6 +48,8 @@ export interface Dials {
   bends: number;
   /** The share of the section left silent that the line is fitted to (left out: whatever the rules leave). */
   silence?: number;
+  /** How far from that share the fit lets the line be (left out: 3 points; a bridge and an interlude take it as a loose aim). */
+  silenceTol?: number;
   /** Semitones the line climbs across the section (rule 22; a pre-chorus: left out, none). */
   climb?: number;
   /** Where the line dwells (rule 24; a bridge): a home pitch as a fraction of the range (0 bottom, 1 top) the line is pulled toward; left out: none. */

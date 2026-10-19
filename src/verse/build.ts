@@ -117,7 +117,7 @@ export function buildVerse(inp: BuildInput): Built {
       // (rule 23: the section's last phrase leads into the next section)
       const led = end >= total ? withLeadIn(shaped, phrases, bar, len, sd.endings, d, { key, mode, chordAt, range }) : shaped;
       // (the chorus: fitted to the song's share of silence)
-      const fitted = d.silence === undefined ? led : fitSilence(led, phrases, bar, len, d.silence, sd.small, accOf('small'));
+      const fitted = d.silence === undefined ? led : fitSilence(led, phrases, bar, len, d.silence, sd.small, accOf('small'), d.silenceTol);
       // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
       const units = fixUnits(fitted, phrases, chordAt, bar, final);
       if (!units.ok) return null;
