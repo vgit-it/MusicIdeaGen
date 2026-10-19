@@ -5,6 +5,7 @@
 // pairs of songs whose choruses have nearly the same rhythm. Tune the weights in personality.ts until nothing is marked.
 //   npm run verse-variety            (N=224 songs)
 //   N=500 npm run verse-variety      (more)
+//   PENT=1 npm run verse-variety     (every note from the pentatonic scale)
 
 import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
@@ -16,7 +17,7 @@ import type { Built } from '../src/verse/build';
 
 const N = Number(process.env.N ?? 224);
 const GENRES = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'];
-const OPTS = { range: { ...DEFAULT_RANGE }, bends: 'some' as const, meta: true, variation: 'some' as const };
+const OPTS = { range: { ...DEFAULT_RANGE }, bends: 'some' as const, meta: true, variation: 'some' as const, pentatonic: !!process.env.PENT };
 
 const traits: Record<string, string[]> = {};
 const add = (k: string, v: string) => (traits[k] ??= []).push(v);

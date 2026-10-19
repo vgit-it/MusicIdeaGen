@@ -10,7 +10,7 @@ import { bandAccents, type BendAmount, type Range } from './verse';
 import type { Chord } from '../theory';
 
 /** What the user can set on the card. */
-export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation }
+export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean }
 
 export const isChorus = (idea: Idea) => idea.section?.kind === 'chorus';
 export const chordsOf = (idea: Idea): Chord[] => idea.chords.chordIdx.map((i) => idea.chords.timeline[i].chord);
@@ -27,7 +27,7 @@ export const personalityOf = (idea: Idea): Personality => drawPersonality(idea.s
 export const chordsKey = (idea: Idea) => idea.chords.timeline.map((e) => `${e.step}${e.chord.root}${e.chord.q}`).join(',');
 /** The choruses of a song (of one length, tuned alike) are one hook: one melody, over each chorus's own chords. */
 export const hookSig = (idea: Idea, o: SectionOptions) =>
-  `${idea.seeds.song}|chorus|${idea.chords.chordIdx.length}|${Object.values(o.range).join(',')}|${o.bends}|${o.meta}|${o.variation}`;
+  `${idea.seeds.song}|chorus|${idea.chords.chordIdx.length}|${Object.values(o.range).join(',')}|${o.bends}|${o.meta}|${o.variation}|${o.pentatonic ? 'pent' : ''}`;
 /** The chorus the others are built like: the song's last one of this hook (usually the fullest: the highest energy). */
 export function chorusMaster(list: Idea[], idea: Idea, o: SectionOptions): Idea {
   const sig = hookSig(idea, o);
@@ -47,7 +47,7 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
     key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: (chorus && like ? like : idea).section?.energy ?? 3,
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: chorus ? p.chorusVariation : o.variation,
-    thirds: idea.song.bars.every((b) => b.len % 3 === 0),
+    thirds: idea.song.bars.every((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
     seed: chorus ? hookSig(idea, o) : `${idea.seeds.song}|${idea.seeds.chords}`, dials: dialsFor(chorus ? 'chorus' : 'verse', p), tries,
   });
 }

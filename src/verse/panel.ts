@@ -37,6 +37,8 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   let bends: BendAmount = 'some';
   // (human feel, as the main vocal has it: glides, scoops, swells into words, fades at word ends, a breath in; Auto voice only)
   let humanFeel = true;
+  // (every note from the key's pentatonic scale)
+  let pentatonic = false;
   let singer: Singer | null = null;
   let out: Tone.Gain | null = null;
   const six = () => 15 / Tone.getTransport().bpm.value;
@@ -57,6 +59,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <label title="Words: the line sung as pseudo-English words set to its rhythm and breaks. La: every note on 'la'">Sing <select id="v-words" class="gsing"><option value="words">Words</option><option value="la">La</option></select></label>
         <label title="Bends: the voice scoops into some notes (from below or above) and fades out some held endings (in volume, not pitch). Only the Auto voice bends, not the synth">Bends <select id="v-bends" class="gsing"><option value="off">Off</option><option value="some" selected>Some</option><option value="lots">Lots</option></select></label>
         <label title="Human feel: the voice sings as the main vocal does: gliding between notes, scooping into some words, swelling into words and fading at their ends, a breath in before a line. Auto voice only">Human feel <select id="v-feel" class="gsing"><option value="on" selected>On</option><option value="off">Off</option></select></label>
+        <label title="Notes: All, or only the key's pentatonic scale (major pentatonic 1 2 3 5 6, or minor 1 b3 4 5 b7). Pentatonic limits every note, the chord notes, steps, neighbours, walks, endings and bends included: a chord note outside the scale gives way to another chord note in it, or the nearest scale note">Notes <select id="v-pent" class="gsing"><option value="all" selected>All</option><option value="pent">Pentatonic only</option></select></label>
         <label title="Meta-phrases: the bars are grouped (8 bars: 4+4; 16: 8+8, each 4+4) and the second half answers the first with variations. Off: one long verse with no grouping">Meta-phrases <select id="v-meta" class="gsing"><option value="on" selected>On</option><option value="off">Off</option></select></label>
         <label title="How much the answering half changes: Little keeps almost everything, Lots changes most things (the phrasing mostly stays)">Variation <select id="v-var" class="gsing"><option value="little">Little</option><option value="some" selected>Some</option><option value="lots">Lots</option></select></label>
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
@@ -80,7 +83,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     if (!a) { a = accentsOf(idea); accents.set(idea, a); }
     return a;
   };
-  const opts = (): SectionOptions => ({ range, bends, meta, variation });
+  const opts = (): SectionOptions => ({ range, bends, meta, variation, pentatonic });
   const persFor = personalityOf;
   const hookSigOf = (idea: Idea) => hookSig(idea, opts());
   let hooks = new Map<string, Built>();
@@ -236,6 +239,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   $('v-bends').addEventListener('change', (e) => { bends = (e.target as HTMLSelectElement).value as BendAmount; cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); hooks = new Map(); hookWords = new Map(); singer?.releaseAll(); info(); prepare(); });
   const rebuild = () => { cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); hooks = new Map(); hookWords = new Map(); singer?.releaseAll(); info(); prepare(); };
   $('v-feel').addEventListener('change', (e) => { humanFeel = (e.target as HTMLSelectElement).value === 'on'; if (singer) singer.humanFeel = humanFeel; singer?.releaseAll(); prepare(); });
+  $('v-pent').addEventListener('change', (e) => { pentatonic = (e.target as HTMLSelectElement).value === 'pent'; rebuild(); });
   $('v-meta').addEventListener('change', (e) => { meta = (e.target as HTMLSelectElement).value === 'on'; rebuild(); });
   $('v-var').addEventListener('change', (e) => { variation = (e.target as HTMLSelectElement).value as Variation; rebuild(); });
   $('v-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); if (out) out.gain.value = (level / 100) ** 2; });

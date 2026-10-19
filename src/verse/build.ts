@@ -6,7 +6,7 @@ import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from
 import { VERSE, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, smallBreaks,
-  thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withOpeners, withRuns, withStretch,
+  pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
 
@@ -34,6 +34,8 @@ export interface BuildInput {
   thirds?: boolean;
   /** The dials the rules roll against (a section kind in a song's personality; left out: the verse's own). */
   dials?: Dials;
+  /** Limit every note to the key's pentatonic scale (chosen so at every step: chord notes, steps, endings, bends). */
+  pentatonic?: boolean;
   /** The try each leaf was written on in another build (a chorus built like its master starts there, so they match). */
   tries?: number[];
 }
@@ -54,7 +56,8 @@ export interface Built {
 export function buildVerse(inp: BuildInput): Built {
   const { bar, key, mode } = inp;
   const d0 = inp.dials ?? VERSE;
-  const d = inp.thirds === false ? { ...d0, third: 0 } : d0;
+  const pent = inp.pentatonic ? pentatonic(key, mode) : undefined;
+  const d: Dials = { ...(inp.thirds === false ? { ...d0, third: 0 } : d0), ...(pent ? { pent } : {}) };
   // (a lift moves the band the line lives in, not the extended limits: those are the voice's, and a lift stops at them)
   const width = inp.range.hi - inp.range.lo;
   const lo = Math.max(inp.range.xlo, Math.min(inp.range.xhi - width, inp.range.lo + d.lift));
@@ -97,7 +100,7 @@ export function buildVerse(inp: BuildInput): Built {
       const runs = randomRuns(len, bar, inp.energy, breaks, sd.runs, accOf('runs'), d);
       const { tones, bars } = randomTones(len, bar, sd.tones, accOf('tones'), d);
       const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
-      const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
+      const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones, undefined, pent), breaks), runs, key, chordAt, tones, undefined, pent);
       // (a phrase may open on one long note; the short notes after it stay short)
       const held = withOpeners(withHolds(plain, holds), phrases, chordAt, bar, sd.phrases, accOf('phrases'), d);
       const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, bar, sd.holds, accOf('holds'), d, held.opened), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
@@ -110,7 +113,7 @@ export function buildVerse(inp: BuildInput): Built {
       if (!units.ok) return null;
       const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
       const bent = addBends(units.notes, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
-      const notes = addNoteBends(bent, bar, { amount: inp.bends, energy: inp.energy, key, chordAt, range, mult: d.bends }, `${sd.bends}|in`);
+      const notes = addNoteBends(bent, bar, { amount: inp.bends, energy: inp.energy, key, chordAt, range, mult: d.bends, pent }, `${sd.bends}|in`);
       return { notes, phrases, breaks, runs, holds, tones, bars };
     };
     const MAX_TRIES = 40;
