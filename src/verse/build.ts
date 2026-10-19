@@ -105,7 +105,9 @@ export function buildVerse(inp: BuildInput): Built {
       const { tones, bars } = rerollTones(drawn.tones, drawn.bars, phrases, bar, sd.tones, d);
       const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
       // (rule 22: a climbing section pulls toward a register that rises from just over the bottom of its range by `climb` + 2 semitones)
-      const climbTo = d.climb ? (step: number) => range.lo + 2 + (d.climb! + 2) * Math.min(1, (from + step) / Math.max(1, total - bar)) : undefined;
+      // (rule 24: a dwelling section pulls toward one home pitch instead)
+      const climbTo = d.climb ? (step: number) => range.lo + 2 + (d.climb! + 2) * Math.min(1, (from + step) / Math.max(1, total - bar))
+        : d.dwell !== undefined ? () => range.lo + d.dwell! * (range.hi - range.lo) : undefined;
       const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones, undefined, pent), breaks), runs, key, chordAt, tones, undefined, pent);
       // (a phrase may open on one long note; the short notes after it stay short)
       const held = withOpeners(withHolds(plain, holds), phrases, chordAt, bar, sd.phrases, accOf('phrases'), d);
