@@ -210,6 +210,7 @@ $('copylink').onclick = async () => {
 $('openband').onclick = () => {
   updateLink();
   const url = new URL('band.html', location.href);
+  url.searchParams.set('art', '');
   url.hash = location.hash;
   window.open(url, '_blank');
 };
