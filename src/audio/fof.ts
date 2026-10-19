@@ -350,7 +350,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     if (s.cons) {
       const glide = s.cons.kind === 'liquid';
       const near = segs.slice(i + 1).find((x) => x.vowel)?.vowel?.[0] ?? segs.slice(0, i).reverse().find((x) => x.vowel)?.vowel?.[0] ?? s.cons.f;
-      const lean = glide ? 1 : 0.5;
+      // (the place cue: how far the vowel's resonances lean to the consonant's: m, n, ng most, since the murmur is theirs)
+      const lean = glide ? 1 : s.cons.kind === 'nasal' ? 0.8 : 0.65;
       const f: F3 = [lerp(near[0], s.cons.f[0], glide ? 1 : 0.8), lerp(near[1], s.cons.f[1], lean), lerp(near[2], s.cons.f[2], lean)];
       // (a held liquid, the dark l: its place reached early and kept to near its end, so it is heard as an l and not only passed through)
       if (s.cons.hold) { keys.push({ t: s.t0 + 0.3 * (s.t1 - s.t0), f: sc(f) }); keys.push({ t: s.t1 - 0.15 * (s.t1 - s.t0), f: sc(f) }); }
@@ -620,11 +621,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
           case 'nasal': voice = amp - 3; nas = 1; break;
           case 'h': aspir = amp - 6; lastVoiceless = true; break;
           case 'fric': case 'affric': {
-            const closure = c.kind === 'affric' ? 0.3 : 0;
+            const closure = c.kind === 'affric' ? 0.35 : 0;
             if (x < closure) { lastVoiceless = !c.voiced; if (c.voiced) { voice = amp - 22; bar = 1; } break; }
             // (a fricative swells in and tapers out: s about 12 dB under the vowel, sh 14, f and th 22)
             const lvl = c.shape === 's' ? -12 : c.shape === 'sh' ? -7 : -22;
-            const env = lerp(-14, 0, (x - closure) / 0.35) + lerp(0, -10, (x - 0.75) / 0.25);
+            const env = (c.kind === 'affric' ? lerp(4, -2, (x - closure) / 0.5) : lerp(-14, 0, (x - closure) / 0.35)) + lerp(0, -10, (x - 0.75) / 0.25);
             fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -3 : 0));
             if (c.voiced) voice = amp - 8; else lastVoiceless = true;
             break;
@@ -637,10 +638,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
             const fin = !s.next && !s.init ? st.final ?? 0 : 0;
             // (up past the break the vowel is brighter (a belt's ring, edge), so a burst of the same level is lost under it: it comes up there; not in a falsetto, which is not bright)
             const hiUp = s.init && !fal ? 18 * smooth01((s.midi + shift - brk + 2) / 8) * Math.min(1, ini / 8) : 0;
-            const closeEnd = c.voiced ? (ini ? 0.6 : 0.7) : ini ? 0.5 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12) + (ini ? 0.04 : 0);
-            if (x < closeEnd) { if (c.voiced) { voice = amp - (ini ? 16 : 22); bar = 1; } else if (st.hold !== undefined && !ini) voice = amp - st.hold; else lastVoiceless = true; break; }
-            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : -6) + (st.burst ?? 0) + hiUp + (c.voiced ? ini * 2.25 + 0.5 * fin : ini) + fin + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && (st.hold === undefined || ini > 0); if (c.voiced) { voice = amp - 14; bar = 1; } break; }
-            if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0) + 0.3 * ini + 0.8 * hiUp + 0.5 * fin; lastVoiceless = st.hold === undefined || ini > 0; } else voice = amp - 3;
+            const closeEnd = c.voiced ? (ini ? 0.6 : 0.7) : ini ? 0.4 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12) + (ini ? 0.04 : 0);
+            if (x < closeEnd) { if (c.voiced) { voice = amp - (ini ? 16 : fin ? 12 : 22); bar = 1; } else if (st.hold !== undefined && !ini) voice = amp - st.hold; else lastVoiceless = true; break; }
+            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : c.shape === 'lab' ? -2 : -6) + (st.burst ?? 0) + hiUp + (c.voiced ? ini * 1.6 - 0.4 * fin : ini + fin) + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && (st.hold === undefined || ini > 0); if (c.voiced) { voice = amp - 14; bar = 1; } break; }
+            if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0) + 0.4 * ini + 0.8 * hiUp + 0.5 * fin; lastVoiceless = st.hold === undefined || ini > 0; } else voice = amp - 3;
             break;
           }
         }
