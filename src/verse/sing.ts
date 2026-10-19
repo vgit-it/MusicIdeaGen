@@ -103,7 +103,7 @@ export function writeSong(list: Idea[], o: SectionOptions): Map<Idea, SectionVoi
     const wsig = shared ? `${hookSig(idea, o)}|${built.notes.map((n) => `${n.step}:${n.len}`).join(',')}` : '';
     let words = wsig ? hookWords.get(wsig) : undefined;
     if (!words) {
-      words = writeWords(built.notes, built.phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre },
+      words = writeWords(built.notes, built.phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre, real: true },
         o.range.hi + dialsFor(kind, personalityOf(idea, o.seed)).lift - 4, shared ? hookSig(idea, o) : verseSeed(idea, o), accOf(idea), DENSITY[kind]);
       if (wsig) hookWords.set(wsig, words);
     }

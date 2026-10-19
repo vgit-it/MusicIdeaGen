@@ -306,7 +306,7 @@ function writeWords(rng: Rng, tune: Tune, style: LyricStyle, hook: Syllable[] | 
     if (mine) {
       // (long and high notes open their closed vowels, now the pitches are known)
       line = ns.map((n) => { const s: Syllable = n.syl ? { ...n.syl } : { onset: [], vowel: 'AX', coda: [], stress: false, text: 'a', wordStart: true }; return n.len >= 4 || n.midi >= hi - 3 ? openUp(s) : s; });
-      if (li % 2 === 1 && rhyme) rhymeWith(line, rhyme);
+      if (li % 2 === 1 && rhyme) rhymeWith(line, rhyme, rng);
       if (li % 2 === 0) rhyme = rhymeOf(line);
       sung.push(...line);
       continue;
@@ -375,7 +375,7 @@ export interface SingContext {
  */
 export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   const rng = new Rng(`${ctx.seed}-vocal`);
-  const style: LyricStyle = { mood: ctx.mood, genre: ctx.genre };
+  const style: LyricStyle = { mood: ctx.mood, genre: ctx.genre, real: true };
   // the song's melody style: its mood's and genre's ways, with a little chance (docs/VOCAL.md, section 6)
   const melody = melodyStyle(ctx.seed, ctx.mood, ctx.genre, ctx.lift ?? 0);
   if (ctx.grid) melody.grid = true;

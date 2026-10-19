@@ -10,6 +10,7 @@
 import type { Genre } from '../genres';
 import type { Rng } from '../rng';
 import type { Mood } from '../tension';
+import bankData from './wordbank.json';
 
 /** Phonemes (ARPAbet-like): vowels and diphthongs, then consonants. */
 export type Vowel = 'IY' | 'IH' | 'EY' | 'EH' | 'AE' | 'AA' | 'AO' | 'OW' | 'UH' | 'UW' | 'AH' | 'AX' | 'AY' | 'AW' | 'OY' | 'ER';
@@ -29,6 +30,8 @@ export interface Syllable {
   wordStart: boolean;
   /** The l or n carries the syllable, with hardly a vowel before it ("little", "button"); left out: an ordinary syllable. */
   syllabic?: boolean;
+  /** Part of a real word from the word bank (its spelling is what is sung: not reopened or rhymed by rewriting its sounds). */
+  real?: boolean;
 }
 
 /** What the melody asks of a syllable: on a strong beat, held, high in the singer's range. */
@@ -41,6 +44,8 @@ export interface LyricSlot {
 export interface LyricStyle {
   mood: Mood;
   genre: Genre;
+  /** Real words from the word bank (docs/VOICE-WORDS.md) in place of made-up ones, picked by syllables, stress and sound, not meaning. */
+  real?: boolean;
 }
 
 type W<T> = [T, number][];
@@ -203,6 +208,120 @@ const fromList = (e: [Cons[], Vowel, Cons[], string], stress: boolean, wordStart
 const pick = (rng: Rng, list: W<[Cons[], Vowel, Cons[], string]>, prev: Syllable | undefined, stress: boolean, wordStart: boolean) =>
   fromList(weighted(rng, list, (e) => seam(prev, { onset: e[0], vowel: e[1], coda: e[2] })), stress, wordStart);
 
+/* ---- real words (docs/VOICE-WORDS.md): a bank of words picked by how they sing, not by what they mean */
+
+interface BankWord { text: string; parts: string[]; syl: Syllable[]; /** Which syllable carries the stress. */ at: number }
+type BankRow = [Cons[], Vowel, Cons[], number, number?];
+/** The bank by shape: S one syllable, Sw BA-by, wS a-WAY, Sww BEAU-ti-ful, wSw to-MOR-row (scripts/word-bank.ts). */
+const BANK = new Map<string, BankWord[]>();
+for (const [text, rows] of bankData as unknown as [string, BankRow[]][]) {
+  const parts = text.split('-');
+  const shape = rows.map((r) => (r[3] ? 'S' : 'w')).join('');
+  const syl = rows.map((r, k): Syllable => ({ onset: r[0], vowel: r[1], coda: r[2], stress: !!r[3], text: parts[k] ?? '', wordStart: k === 0, real: true, ...(r[4] ? { syllabic: true } : {}) }));
+  const list = BANK.get(shape) ?? [];
+  list.push({ text, parts, syl, at: rows.findIndex((r) => r[3]) });
+  BANK.set(shape, list);
+}
+const sameRhyme = (s: Syllable, r: Rhyme) => s.vowel === r.vowel && s.coda.join() === r.coda.join();
+/** Real words wanted, unless the page is opened with ?words=made (the earlier made-up words, to compare). */
+const REAL_OFF = typeof location !== 'undefined' && new URLSearchParams(location.search).get('words') === 'made';
+const useReal = (style: LyricStyle) => !!style.real && !REAL_OFF;
+/** The light words that are real words (the made-up ta, da, na... left out). */
+const FUNCTION_REAL = FUNCTION.filter(([e]) => !['ta', 'ya', 'da', 'na', 'ba', 'la'].includes(e[3]));
+// (sounds the singer tells apart less well: a little less often; the quiz, docs/VOICE-WORDS.md)
+const CLEAR: Partial<Record<Cons, number>> = { V: 0.7, TH: 0.7, DH: 0.8, F: 0.85 };
+const STAYS: Cons[] = ['N', 'M', 'L', 'NG', 'R', 'Z', 'V'];
+
+/**
+ * A word of this shape, by its sounds: the stressed vowel leaning with the mood (and open on a held or high note), the first
+ * sound hard or soft with the mood, a clean meeting with the syllable before, not the vowel just sung, not a word used already,
+ * and, for a rhyme, the stressed vowel and ending the rhyme asks for.
+ */
+function pickWord(rng: Rng, shape: string, o: { style: LyricStyle; sustain: boolean; prev?: Syllable; lastV?: Vowel; used: Set<string>; rhyme?: Rhyme | null }): BankWord | null {
+  let list = BANK.get(shape);
+  if (!list?.length) return null;
+  const r = o.rhyme;
+  if (r) {
+    const exact = list.filter((w) => sameRhyme(w.syl[w.at], r));
+    const vowel = list.filter((w) => w.syl[w.at].vowel === r.vowel);
+    list = exact.length ? exact : vowel.length ? vowel : list;
+  }
+  const mv = MOOD_VOWELS[o.style.mood], mc = MOOD_CONS[o.style.mood];
+  const count: Partial<Record<Vowel, number>> = {};
+  for (const w of list) { const v = w.syl[w.at].vowel; count[v] = (count[v] ?? 0) + 1; }
+  const items: W<BankWord> = list.map((w) => {
+    const st = w.syl[w.at], first = w.syl[0];
+    let f = ((VOWELS.find(([v]) => v === st.vowel)?.[1] ?? 1.2) * (mv[st.vowel] ?? 1)) / Math.sqrt(count[st.vowel]!);
+    if (o.sustain) {
+      if (!OPEN.includes(st.vowel)) f *= 0.15;
+      if (st.coda.length) f *= STAYS.includes(st.coda[st.coda.length - 1]) ? 2 : 0.4;
+    }
+    const on = first.onset[0];
+    if (on) f *= HARD.includes(on) ? mc.hard * (o.style.genre === 'funk' ? 1.3 : 1) : SOFT.includes(on) ? 1 / mc.hard : 1;
+    if (st.onset.length > 1 || st.coda.length > 1) f *= mc.cluster;
+    for (const x of w.syl) for (const c of [...x.onset, ...x.coda]) f *= CLEAR[c] ?? 1;
+    f *= seam(o.prev, first);
+    if (st.vowel === o.lastV) f *= 0.2;
+    if (o.used.has(w.text)) f *= 0.05;
+    return [w, f];
+  });
+  return rng.weighted(items);
+}
+/** A bank word as syllables on a line (its stressed syllable stressed or not as the line asks). */
+const placeWord = (w: BankWord, stress: boolean, start: boolean): Syllable[] =>
+  w.syl.map((x, k) => ({ ...x, onset: x.onset.slice(), coda: x.coda.slice(), stress: k === w.at ? stress : false, wordStart: k === 0 ? start : false }));
+
+/** A sung line of real words, a syllable per note: a strong note starts a word, the weak notes after it end it or are light words (the, in, my...). */
+function realLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts: { rhyme?: Rhyme | null; hook?: Syllable[] }): Syllable[] {
+  let best: Syllable[] | null = null, bestRough = Infinity;
+  const n = slots.length, lastStress = slots.map((x) => x.stress).lastIndexOf(true);
+  for (let tries = 0; tries < 6; tries++) {
+    const out: Syllable[] = [];
+    const used = new Set<string>();
+    const prev = () => out[out.length - 1];
+    let lastV: Vowel | undefined;
+    let i = 0;
+    if (opts.hook) for (const h of opts.hook) if (i < n) out.push({ ...h }), i++;
+    const fns = (k: number) => {
+      if (k === 2) { for (const e of weighted(rng, FN_PAIRS)) out.push(fromList(e, false, true)); return; }
+      for (let q = 0; q < k; q++) out.push(pick(rng, FUNCTION_REAL, prev(), false, true));
+    };
+    /** A word of this shape from slot `from`; false if the bank has none. */
+    const word = (shape: string, from: number): boolean => {
+      const k = from + (shape[0] === 'w' ? 1 : 0);
+      const w = pickWord(rng, shape, { style, sustain: slots[k].long || slots[k].high, prev: prev(), lastV, used, rhyme: k === lastStress ? opts.rhyme : null });
+      if (!w) return false;
+      used.add(w.text);
+      lastV = w.syl[w.at].vowel;
+      out.push(...placeWord(w, slots[k].stress, true));
+      return true;
+    };
+    while (i < n) {
+      let lead = false;
+      if (!slots[i].stress) {
+        // a pickup, or a weak-strong word (a-WAY) leading into the next strong note
+        if (slots[i + 1]?.stress && rng.chance(0.3)) lead = true;
+        else { out.push(pick(rng, FUNCTION_REAL, prev(), false, true)); i++; continue; }
+      }
+      const s0 = lead ? i + 1 : i;
+      let j = s0 + 1;
+      while (j < n && !slots[j].stress) j++;
+      const weak = j - s0 - 1;
+      let shape = lead ? (weak >= 1 && rng.chance(0.4) ? 'wSw' : 'wS') : weak === 0 ? 'S' : weak === 1 ? (rng.chance(0.65) ? 'Sw' : 'S') : rng.weighted<string>([['Sww', 0.3], ['Sw', 0.35], ['S', 0.35]]);
+      if (!word(shape, i)) { shape = lead ? 'wS' : 'S'; if (!word(shape, i)) { out.push(syl([], 'OW', [], slots[s0].stress, true, 'oh')); if (lead) out.push(syl([], 'OW', [], false, true, 'oh')); } }
+      i += shape.length;
+      // (the weak notes left after the word: light words)
+      const left = j - i;
+      if (left > 0) { fns(left); i = j; }
+    }
+    if (BLOCKED.test(spell(out).toLowerCase().replace(/[^a-z]/g, ''))) continue;
+    const r = roughness(out);
+    if (r < 0.75) return out;
+    if (r < bestRough) best = out, bestRough = r;
+  }
+  return best ?? slots.map((x) => syl([], x.long ? 'OW' : 'AX', [], x.stress, true, x.long ? 'oh' : 'a'));
+}
+
 /** The rhyme of a syllable (its vowel and what follows). */
 export interface Rhyme { vowel: Vowel; coda: Cons[] }
 export const rhymeOf = (line: Syllable[]): Rhyme | null => {
@@ -217,6 +336,7 @@ export const rhymeOf = (line: Syllable[]): Rhyme | null => {
  * syllables go first, exactly (the chorus title).
  */
 export function lyricLine(rng: Rng, slots: LyricSlot[], style: LyricStyle, opts: { rhyme?: Rhyme | null; hook?: Syllable[] } = {}): Syllable[] {
+  if (useReal(style)) return realLine(rng, slots, style, opts);
   let best: Syllable[] | null = null, bestRough = Infinity;
   for (let tries = 0; tries < 6; tries++) {
     const out: Syllable[] = [];
@@ -334,8 +454,20 @@ export function wordLine(rng: Rng, n: number, style: LyricStyle, opts: { fem?: b
       lastV = s.vowel;
       out.push({ ...s, wordStart, level, brk });
     };
+    const used = new Set<string>();
+    const real = useReal(style);
+    const FN = real ? FUNCTION_REAL : FUNCTION;
+    /** A real word of this shape from the bank, its stress weighted `lvl`. */
+    const bankWord = (shape: string, lvl: number, key: boolean) => {
+      const w = pickWord(rng, shape, { style, sustain: key, prev: prev(), lastV, used, rhyme: null }) ?? pickWord(rng, 'S', { style, sustain: key, prev: prev(), lastV, used, rhyme: null })!;
+      used.add(w.text);
+      lastV = w.syl[w.at].vowel;
+      const ps = placeWord(w, true, true);
+      ps.forEach((x, k) => out.push({ ...x, level: k === w.at ? lvl : 0, brk: k === ps.length - 1 ? 1 : 0 }));
+    };
     /** A word of shape `sh`; `level`: its stress's weight; `tail`: the line's soft ending (a final Sw / wSw). */
     const word = (sh: Shape, level: number, key: boolean) => {
+      if (real) { if (sh === 'SS') { bankWord('S', 1, false); bankWord('S', level, key); } else bankWord(sh, level, key); return; }
       if (sh === 'SS') { stressed(1, true, false, 1); stressed(level, true, key, 1); return; }
       if (sh[0] === 'w') weak(WEAK_START, true);
       stressed(level, sh[0] !== 'w', key, sh.endsWith('S') ? 1 : 0);
@@ -349,7 +481,7 @@ export function wordLine(rng: Rng, n: number, style: LyricStyle, opts: { fem?: b
     };
     const fns = (k: number) => {
       if (k === 2) { for (const e of weighted(rng, FN_PAIRS)) out.push({ ...fromList(e, false, true), level: 0, brk: 1 }); return; }
-      for (let i = 0; i < k; i++) weak(FUNCTION, true, 1);
+      for (let i = 0; i < k; i++) weak(FN, true, 1);
     };
     const endGroup = (clause: boolean) => { const s = prev(); if (s) s.brk = clause ? 3 : Math.max(s.brk, 2); };
     // the last group first (its size decides what's left): a light word or two, then the key word
@@ -386,15 +518,29 @@ export function wordLine(rng: Rng, n: number, style: LyricStyle, opts: { fem?: b
 
 /** A stressed syllable on a long or high note, its closed ee and oo opened up (to ay, oh), as singers do. */
 export function openUp(s: Syllable): Syllable {
-  if (!s.stress || (s.vowel !== 'IY' && s.vowel !== 'UW')) return s;
+  if (s.real || !s.stress || (s.vowel !== 'IY' && s.vowel !== 'UW')) return s;
   const vowel: Vowel = s.vowel === 'IY' ? 'EY' : 'OW';
   return { ...s, vowel, text: spellSyl(s.onset, vowel, s.coda) };
 }
 
 /** A line's last stressed syllable given a rhyme (in place). */
-export function rhymeWith(line: Syllable[], r: Rhyme) {
-  const last = [...line].reverse().find((x) => x.stress);
+export function rhymeWith(line: Syllable[], r: Rhyme, rng?: Rng) {
+  const at = line.map((x) => x.stress).lastIndexOf(true);
+  const last = line[at];
   if (!last) return;
+  // (a real word is swapped for a real word that rhymes, of the same shape; never respelled)
+  if (last.real) {
+    if (!rng) return;
+    let ws = at, we = at;
+    while (ws > 0 && !line[ws].wordStart) ws--;
+    while (we + 1 < line.length && !line[we + 1].wordStart) we++;
+    const shape = line.slice(ws, we + 1).map((x) => (x.stress ? 'S' : 'w')).join('');
+    const same = (BANK.get(shape) ?? []).filter((w) => w.text !== line.slice(ws, we + 1).map((x) => x.text).join('-') && sameRhyme(w.syl[w.at], r));
+    if (!same.length) return;
+    const w = rng.pick(same);
+    w.syl.forEach((x, k) => { line[ws + k] = { ...x, stress: line[ws + k].stress, wordStart: k === 0, real: true, text: w.parts[k] }; });
+    return;
+  }
   last.vowel = r.vowel;
   last.coda = [...r.coda];
   last.text = spellSyl(last.onset, last.vowel, last.coda);
@@ -415,5 +561,5 @@ export function filler(rng: Rng): Syllable[] {
 export function spell(line: Syllable[]): string {
   // (two vowels meeting inside a word get a hyphen: a-ay, not aay)
   const v = /[aeiouy]/;
-  return line.map((s, i) => (i > 0 && s.wordStart ? ' ' : i > 0 && v.test(line[i - 1].text.slice(-1)) && v.test(s.text[0]) ? '-' : '') + s.text).join('');
+  return line.map((s, i) => (i > 0 && s.wordStart ? ' ' : i > 0 && !s.real && v.test(line[i - 1].text.slice(-1)) && v.test(s.text[0]) ? '-' : '') + s.text).join('');
 }
