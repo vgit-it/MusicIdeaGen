@@ -1625,6 +1625,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       // Breaks: a short melodic solo, quoting the hook, lower and sparer than a full one; the band as it is
       const sol = generateSolo2(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3);
       idea.guitar2 = sol.hits;
+      idea.section!.lead = true;
       g2 = 'Guitar 2: a lead break, a short melodic solo over the chorus chords';
     } else if (s.g2 === 'play') g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));
     else if (s.g2 === 'swell') g2 = writeGuitar2(idea, g2o, r, new Array<Guitar2Style>(runs).fill('swell'));

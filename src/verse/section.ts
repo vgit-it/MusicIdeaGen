@@ -15,10 +15,12 @@ export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean
 export const isChorus = (idea: Idea) => idea.section?.kind === 'chorus';
 export const isPre = (idea: Idea) => idea.section?.kind === 'prechorus';
 export const isBridge = (idea: Idea) => idea.section?.kind === 'bridge';
+/** An interlude the singer takes (the 8-bar lead break is the guitar's: no singing). */
+export const isInterlude = (idea: Idea) => idea.section?.kind === 'interlude' && !idea.section.lead;
 /** The section kinds the writer sings, as dials know them. */
-export type SungKind = 'verse' | 'prechorus' | 'bridge' | 'chorus';
-export const kindOf = (idea: Idea): SungKind => (isChorus(idea) ? 'chorus' : isPre(idea) ? 'prechorus' : isBridge(idea) ? 'bridge' : 'verse');
-/** A kind whose sections of a song are one melody (a chorus, a pre-chorus, a bridge): built from the song's last one, over each one's own chords. */
+export type SungKind = 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'chorus';
+export const kindOf = (idea: Idea): SungKind => (isChorus(idea) ? 'chorus' : isPre(idea) ? 'prechorus' : isBridge(idea) ? 'bridge' : isInterlude(idea) ? 'interlude' : 'verse');
+/** A kind whose sections of a song are one melody (a chorus, a pre-chorus, a bridge, an interlude): built from the song's last one, over each one's own chords. */
 export const isShared = (idea: Idea) => kindOf(idea) !== 'verse';
 export const chordsOf = (idea: Idea): Chord[] => idea.chords.chordIdx.map((i) => idea.chords.timeline[i].chord);
 /** Steps in a bar. */
@@ -51,19 +53,28 @@ function borrowedFrom(verse: Idea, o: SectionOptions): Partial<Record<Rule, stri
   return Object.fromEntries(BORROWED.map((r) => [r, seeds[r]]));
 }
 
+/** The rules an interlude takes from the chorus: its phrasing, chord notes and long notes, so it is the chorus heard again, shorter and sparser. */
+const ECHOED: Rule[] = ['phrases', 'tones', 'holds'];
+function echoedFrom(chorus: Idea, o: SectionOptions): Partial<Record<Rule, string>> {
+  const seed = hookSig(chorus, o);
+  const leaves = planForm(chorus.song.bars.length, o.meta, personalityOf(chorus).chorusVariation, seed);
+  const seeds = leafSeeds(leaves, seed).get(leaves[0].id)!;
+  return Object.fromEntries(ECHOED.map((r) => [r, seeds[r]]));
+}
+
 /**
  * The melody over a section; `accents` are the band's (computed when left out). A chorus built `like` another (its master, with the
  * master's accents) writes with the master's seed, energy and accents, so its rhythm and shape are the master's, over its own chords.
  */
-export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea), like?: Idea, verse?: Idea): Built {
+export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea), like?: Idea, verse?: Idea, chorusIdea?: Idea): Built {
   const chorus = isShared(idea), p = personalityOf(idea), kind = kindOf(idea);
   // (the master's tries: each leaf starts on the dice the master's ended on, so the choruses match)
-  const tries = chorus && like ? buildSection(like, o, accents, undefined, verse).tries : undefined;
+  const tries = chorus && like ? buildSection(like, o, accents, undefined, verse, chorusIdea).tries : undefined;
   return buildVerse({
     key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: (chorus && like ? like : idea).section?.energy ?? 3,
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation,
     thirds: idea.song.bars.every((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
-    seed: chorus ? hookSig(idea, o) : `${idea.seeds.song}|${idea.seeds.chords}`, dials: dialsFor(kind, p), tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : undefined,
+    seed: chorus ? hookSig(idea, o) : `${idea.seeds.song}|${idea.seeds.chords}`, dials: dialsFor(kind, p), tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : kind === 'interlude' && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
   });
 }

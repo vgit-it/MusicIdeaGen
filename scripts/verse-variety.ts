@@ -11,7 +11,7 @@ import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { MOODS } from '../src/tension';
 import { QUALITIES } from '../src/theory';
-import { accentsOf, buildSection, chordsOf, barOf, chorusMaster, isBridge, isChorus, isPre, personalityOf } from '../src/verse/section';
+import { accentsOf, buildSection, chordsOf, barOf, chorusMaster, isBridge, isChorus, isInterlude, isPre, personalityOf } from '../src/verse/section';
 import { DEFAULT_RANGE, type BandNote } from '../src/verse/verse';
 import type { Built } from '../src/verse/build';
 
@@ -28,6 +28,7 @@ const byHook: Record<string, number[][]> = {};
 const within: number[] = [], silDiff: number[] = [], silErr: number[] = [];
 let preShared = 0, preCmp = 0;
 const bridgeSil: number[] = [];
+const interSil: number[] = [];
 let outerV = 0, innerV = 0, outerC = 0, innerC = 0, nSong = 0;
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
@@ -171,6 +172,27 @@ for (let i = 0; i < N; i++) {
       bridgeSil.push(sl - bp.bridgeSilence);
     }
   }
+
+  // the interlude (an echo of the chorus: it takes the chorus's phrasing, chord notes and long notes)
+  const inter = [...list].reverse().find(isInterlude);
+  if (inter && chorus) {
+    const bi = buildSection(inter, OPTS, accentsOf(inter), undefined, verse, chorus), inn = bi.notes, tot = inter.chords.chordIdx.length, ibar = barOf(inter), ip = personalityOf(inter);
+    sections++;
+    for (let k = 1; k < inn.length; k++) if (inn[k].step < inn[k - 1].step + inn[k - 1].len - 1e-6) broken++;
+    for (let k = 0, j = 0; k < inn.length; k = j + 1) {
+      j = k;
+      while (j + 1 < inn.length && inn[j + 1].step <= inn[j].step + inn[j].len + 1e-6) j++;
+      if (inn[j].step + inn[j].len - inn[k].step < ibar / 4 - 1e-6) shortUnits++;
+    }
+    if (inn.length) {
+      const sl = 1 - inn.reduce((a, n) => a + n.len, 0) / tot;
+      add('interlude silence', sl < 0.45 ? 'under 45%' : sl < 0.52 ? '45-52%' : sl < 0.58 ? '52-58%' : '58%+');
+      add('interlude notes per bar', (inn.length * ibar) / tot < 1.5 ? 'few' : (inn.length * ibar) / tot < 2 ? 'some' : (inn.length * ibar) / tot < 2.7 ? 'more' : 'many');
+      const endShare = inn.filter((n) => n.end).length / Math.max(1, bi.phrases.length);
+      add('interlude phrases that end in a treatment', endShare < 0.5 ? 'few' : endShare < 0.9 ? 'most' : 'all');
+      interSil.push(sl - ip.interludeSilence);
+    }
+  }
 }
 
 const flags: string[] = [];
@@ -204,5 +226,6 @@ console.log(`Choruses of one song: onsets the same as the last chorus's ${(100 *
 console.log(`${sections} sections written (${sigs.length} songs); overlaps/overruns: ${broken}; units shorter than a quarter bar: ${shortUnits}`);
 console.log(`Choruses with nearly the same rhythm (85%+ the same onsets): ${dup} of ${pairs} pairs (${((100 * dup) / pairs).toFixed(2)}%)${ex.length ? '\n  e.g. ' + ex.join('\n       ') : ''}`);
 console.log(`Bridge silence vs the song's draw: mean ${mean(bridgeSil).toFixed(3)}, worst ${Math.max(...bridgeSil.map(Math.abs)).toFixed(3)} (${bridgeSil.length} bridges)`);
+console.log(`Interlude silence vs the song's draw: mean ${mean(interSil).toFixed(3)}, worst ${interSil.length ? Math.max(...interSil.map(Math.abs)).toFixed(3) : 'n/a'} (${interSil.length} interludes)`);
 console.log(`Pre-chorus phrase starts shared with the verse: ${preCmp ? Math.round((100 * preShared) / preCmp) : 0}% of ${preCmp}`);
 console.log(flags.length ? `\nMarked (!!): ${flags.join(', ')}` : '\nNo trait is dominated by one value.');

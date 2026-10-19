@@ -329,6 +329,8 @@ export interface SectionInfo {
   bandFrom?: number;
   /** Guitar 2 plays a solo here (the mix lifts it). */
   solo?: boolean;
+  /** Guitar 2 takes the whole section (a lead break): nobody sings. */
+  lead?: boolean;
   /** How the section ends into the next one, so added layers stop or hit with the band. */
   tail?: { stop: number } | { hits: number[] } | { build: number } | { push: number } | { ring: number };
   /** A reversed cymbal swells up into the next section (a big lift). */
