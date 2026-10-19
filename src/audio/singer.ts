@@ -230,7 +230,7 @@ export class Singer {
           notes = feelSung(notes, fl, order + L[0].step).map((n, j) => {
             const b = pre[j];
             // (the verse melody's own fade at a held ending is the longer one: it keeps it, and its depth; no extra fall on top)
-            if (b.fade) { if (b.fade >= (n.fade ?? 0)) { n.fade = b.fade; n.fadeBy = b.fadeBy; } else delete n.fadeBy; if (b.fall === undefined) delete n.fall; }
+            if (b.fade) { if (b.fade >= (n.fade ?? 0)) { n.fade = b.fade; n.fadeBy = b.fadeBy; } if (b.fall === undefined) delete n.fall; }
             return n;
           });
           // (a breath in before a line after a rest of half a second or more)
@@ -239,7 +239,7 @@ export class Singer {
         }
         const popts = polishFor(idea, this.role === 'lead' && stream !== 'adlib', notes.some((n) => n.vel >= 0.85));
         // (an effect is part of the line: the same tune in another verse is another line)
-        const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''},${n.bend?.toFixed(3) ?? ''},${n.slideLen?.toFixed(3) ?? ''},${n.fade?.toFixed(3) ?? ''},${n.fadeBy ?? ''},${n.glide?.toFixed(3) ?? ''},${n.swell?.toFixed(3) ?? ''},${n.sharp?.toFixed(1) ?? ''}`).join(';')}|${breath.toFixed(2)}`;
+        const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''},${n.bend?.toFixed(3) ?? ''},${n.slideLen?.toFixed(3) ?? ''},${n.fade?.toFixed(3) ?? ''},${n.fadeBy ?? ''},${n.gain ?? ''},${n.glide?.toFixed(3) ?? ''},${n.swell?.toFixed(3) ?? ''},${n.sharp?.toFixed(1) ?? ''}`).join(';')}|${breath.toFixed(2)}`;
         // started a little ahead of its first note, from the step that leaves room for the lead-in
         const first = Math.max(0, L[0].step - Math.ceil(PRE / six));
         const line: Line = { first, key, notes, t0, pan: S.pan, gain: S.gain, delay: S.delay, ...(breath ? { breath } : {}) };
