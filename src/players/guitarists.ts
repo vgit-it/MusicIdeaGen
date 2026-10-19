@@ -74,7 +74,9 @@ export function playGuitars(sections: Idea[], seed: string) {
       const from = info.bandFrom ?? 0;
       const lastBar = song.bars[song.bars.length - 1];
       const changes = new Set(chords.timeline.map((t) => t.step));
-      const ok = (g: number) => g >= from && g < lastBar.start && !inFill.has(g);
+      // (never in the steps where the guitar sits out: Guitar plan)
+      const out = idea.guitarOut;
+      const ok = (g: number) => g >= from && g < lastBar.start && !inFill.has(g) && !(out && g >= out.from && g < out.until);
 
       if (round === 0 && kind === 'verse') {
         let n = 0;

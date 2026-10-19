@@ -206,6 +206,14 @@ $('copylink').onclick = async () => {
   setTimeout(() => setStatus(''), 3000);
 };
 
+// the band view plays this same song (idea, track, parts and singer travel in the link)
+$('openband').onclick = () => {
+  updateLink();
+  const url = new URL('band.html', location.href);
+  url.hash = location.hash;
+  window.open(url, '_blank');
+};
+
 /* ---- export: the idea, or the whole track in track mode */
 
 type ExportKind = 'midi' | 'mp3' | 'wav' | 'stems';
