@@ -26,8 +26,8 @@ if (wavArg > 0) {
   const genre = (process.argv[3] as Genre) || 'rock';
   const syls = wordsOf(word).flatMap((w) => w.syllables);
   let t = 0;
-  const notes: SungNote[] = syls.map((s) => { const d = s.stress ? 0.5 : 0.35; const n: SungNote = { t, end: t + d * 0.95, midi: 55 + (s.stress ? 2 : 0), vel: 0.7, syl: s }; t += d; return n; });
-  out = renderFof(notes, { ...fofFor(genre, 17, false), human: 0, vib: 0, drift: 0, energy: 0.5 }, 0.3);
+  const notes: SungNote[] = syls.map((s) => { const d = s.stress ? 0.5 : 0.35; const n: SungNote = { t, end: t + d * 0.95, midi: Number(process.argv.find((a) => a.startsWith('--midi='))?.split('=')[1] ?? 55) + (s.stress ? 2 : 0), vel: 0.7, syl: s }; t += d; return n; });
+  out = renderFof(notes, { ...fofFor(genre, 17, false), ...(process.argv.find((a) => a.startsWith('--cf=')) ? { closeFill: Number(process.argv.find((a) => a.startsWith('--cf='))!.split('=')[1]) } : {}), human: 0, vib: 0, drift: 0, energy: 0.5 }, 0.3);
   console.log(word, syls.map((s) => [...s.onset, s.vowel, ...s.coda].join(' ')).join(' | '), ' (time s: level, resonances Hz)');
 }
 

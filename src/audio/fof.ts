@@ -170,9 +170,10 @@ export interface FofVoice {
   /**
    * The stops (p t k, b d g; left out: as before): their burst (dB, added), a voiced stop's burst on top
    * (dB, added), the breath after p/t/k (dB, added), the burst's length (share of the stop, default
-   * 0.12), and the voice kept through a p/t/k's closure (dB under the vowel; left out: silent).
+   * 0.12), the voice kept through a p/t/k's closure (dB under the vowel; left out: silent), and the bite of the stop that starts
+   * a stressed word (dB added to its burst, more for a b, d or g, and a little to the breath after a p, t or k; left out: 0: as the others).
    */
-  stops?: { burst?: number; voiced?: number; asp?: number; len?: number; hold?: number };
+  stops?: { burst?: number; voiced?: number; asp?: number; len?: number; hold?: number; initial?: number; final?: number };
   /**
    * The noisy consonants (s, f, sh, th, t, k, p...; left out: as before): blend (s: the vowel fading out
    * as the hiss fades in, instead of the voice stopping at once), short (x: a word's starting noisy
@@ -237,7 +238,7 @@ function toneMatch(x: Float32Array, fs: number, eq: [number, number][]) {
 /** The noise colours of the consonants: [band centre, width] pairs, summed (each scaled to the same loudness). */
 const NOISE: Record<'s' | 'sh' | 'flat' | 'alv' | 'lab' | 'vel', [number, number][]> = {
   s: [[6200, 3000], [8500, 3000]],
-  sh: [[2900, 1200], [4200, 1800]],
+  sh: [[3000, 2200], [4600, 3200]],
   flat: [[2500, 4000], [6500, 5000]],
   alv: [[3800, 2500], [5500, 3000]],
   lab: [[900, 1400], [2200, 2500]],
@@ -260,7 +261,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   const notes = joinNotes(notes0, 'phrases').map((n) => ({ ...n, t: n.t + pre, end: n.end + pre }));
   // (each note's own vibrato: rate within about 8%, depth within about 30%; a start a little under the note)
   const noteVib = notes.map(() => ({ hz: 1 + hu * 0.08 * (nr() * 2 - 1), depth: 1 + hu * 0.3 * (nr() * 2 - 1), under: hu * (0.05 + 0.1 * nr()) }));
-  const segs = layout(notes, 0.7, v.print?.vowels);
+  const segs = layout(notes, 1, v.print?.vowels);
   const cv = v.cons ?? {};
   const noisy = (c?: ConsSpec) => !!c && !c.voiced && (c.kind === 'fric' || c.kind === 'affric' || c.kind === 'stop');
   // (a word's starting noisy consonants shortened toward the beat: the run before each vowel squeezed to its end, the note before held on)
@@ -479,7 +480,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   // the control values (per CT samples)
   let f0 = 110, vT = 0, nasalT = 0, barT = 0, aspT = 0, effort = 0.5;
   // (the register: how far up past the break, 0-1; how deep below it, 0-1)
-  let upW = 0, lowW = 0, edgeW = 0, lowK = 0, closeW = 0, erW = 0, latW = 0;
+  let upW = 0, lowW = 0, edgeW = 0, lowK = 0, closeW = 0, closeV = 0, erW = 0, latW = 0;
   const lowBuzz = v.lowBuzz ?? 0, lowTop = v.lowTop ?? 58 + shift, closeFill = v.closeFill ?? 0, falFill = fal ? v.falFill ?? 0 : 0;
   // (heft: a baritone's weight kept up high; fry: the creak at the line's ends and on the deepest notes, 0-1 now)
   const heft = v.heft ?? 0, fry = v.fry ?? 0;
@@ -616,24 +617,30 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         const shapeI = (sh: Shape) => SHAPES.indexOf(sh);
         switch (c.kind) {
           case 'liquid': voice = amp - (c.lvl !== undefined ? -c.lvl : c.f[2] < 2000 ? 3 : 5); break;
-          case 'nasal': voice = amp - 5; nas = 1; break;
+          case 'nasal': voice = amp - 3; nas = 1; break;
           case 'h': aspir = amp - 6; lastVoiceless = true; break;
           case 'fric': case 'affric': {
             const closure = c.kind === 'affric' ? 0.3 : 0;
             if (x < closure) { lastVoiceless = !c.voiced; if (c.voiced) { voice = amp - 22; bar = 1; } break; }
             // (a fricative swells in and tapers out: s about 12 dB under the vowel, sh 14, f and th 22)
-            const lvl = c.shape === 's' ? -12 : c.shape === 'sh' ? -14 : -22;
+            const lvl = c.shape === 's' ? -12 : c.shape === 'sh' ? -7 : -22;
             const env = lerp(-14, 0, (x - closure) / 0.35) + lerp(0, -10, (x - 0.75) / 0.25);
-            fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -5 : 0));
-            if (c.voiced) voice = amp - 10; else lastVoiceless = true;
+            fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -3 : 0));
+            if (c.voiced) voice = amp - 8; else lastVoiceless = true;
             break;
           }
           case 'stop': {
             const st = v.stops ?? {};
-            const closeEnd = c.voiced ? 0.7 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12);
-            if (x < closeEnd) { if (c.voiced) { voice = amp - 22; bar = 1; } else if (st.hold !== undefined) voice = amp - st.hold; else lastVoiceless = true; break; }
-            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : -6) + (st.burst ?? 0) + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && st.hold === undefined; if (c.voiced) { voice = amp - 14; bar = 1; } break; }
-            if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0); lastVoiceless = st.hold === undefined; } else voice = amp - 3;
+            // (the p, t or k that starts a stressed word: a shorter closure, a louder, longer burst and the breath after it, as English aspirates it)
+            const ini = s.init ? st.initial ?? 0 : 0;
+            // (a word-final p, t, k, b, d, g released: a burst you can hear, as it is what tells cap from cat from cab)
+            const fin = !s.next && !s.init ? st.final ?? 0 : 0;
+            // (up past the break the vowel is brighter (a belt's ring, edge), so a burst of the same level is lost under it: it comes up there; not in a falsetto, which is not bright)
+            const hiUp = s.init && !fal ? 18 * smooth01((s.midi + shift - brk + 2) / 8) * Math.min(1, ini / 8) : 0;
+            const closeEnd = c.voiced ? (ini ? 0.6 : 0.7) : ini ? 0.5 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12) + (ini ? 0.04 : 0);
+            if (x < closeEnd) { if (c.voiced) { voice = amp - (ini ? 16 : 22); bar = 1; } else if (st.hold !== undefined && !ini) voice = amp - st.hold; else lastVoiceless = true; break; }
+            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : -6) + (st.burst ?? 0) + hiUp + (c.voiced ? ini * 2.25 + 0.5 * fin : ini) + fin + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && (st.hold === undefined || ini > 0); if (c.voiced) { voice = amp - 14; bar = 1; } break; }
+            if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0) + 0.3 * ini + 0.8 * hiUp + 0.5 * fin; lastVoiceless = st.hold === undefined || ini > 0; } else voice = amp - 3;
             break;
           }
         }
@@ -644,8 +651,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // the formants: F1 kept above the pitch, a little up on loud notes (the mouth opens)
       const f3 = formantsAt(t).slice() as F3;
       // (close vowels: a wider F1 and a smaller hump while the pitch is low or middling)
-      closeW = closeFill * clamp01((520 - f3[0] / fscale) / 150) * smooth01((lowTop + 18 - (note.midi + shift)) / 8);
-      B[0] *= 1 + 1.2 * closeW;
+      // (close vowels at any pitch: F1 a little fuller and F2 a little less, so the vowel is warm and not thin and nasal)
+      closeV = closeFill ? clamp01((520 - f3[0] / fscale) / 150) : 0;
+      closeW = closeFill * clamp01((520 - f3[0] / fscale) / 150) * smooth01((lowTop + 4 - (note.midi + shift)) / 8);
+      B[0] *= 1 + 0.6 * closeW;
       // (life: up high the vowels drift toward a neutral "uh", from a few semitones under the break)
       if (life) {
         const nw = life * 0.35 * smooth01((place + 3) / 8);
@@ -670,7 +679,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       if (fal) f1 = Math.max(f1, f0 * 1.3);
       if (falFill) f1 = lerp(f1, Math.min(Math.max(f1, 2 * f0), f1 * 1.8), Math.min(1, 0.6 * falFill * upW));
       // (close vowels: F1 let up toward the 2nd harmonic, so the pitch isn't alone on the resonance)
-      if (closeW) f1 = lerp(f1, Math.min(Math.max(f1, 2 * f0), f1 * 1.8), Math.min(1, 0.6 * closeW));
+      if (closeW) f1 = lerp(f1, Math.min(Math.max(f1, 2 * f0), f1 * 1.8), Math.min(1, 0.25 * closeW));
       const lx = fal ? 1 : 1 + 0.04 * upW;
       // (formants kept apart: F1 riding up into F2 pushes it up, as the tongue does)
       const f2 = Math.max(f3[1] * lx, f1 + 250), f3b = Math.max(f3[2] * lx, f2 + 350);
@@ -710,10 +719,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
           let a = formantLevel(F, B, k, tiltX);
           if (k > 0) a *= db(-16 * vNasal) * db(-28 * vBar);
           if (k === 2 || k === 3) a *= twang * db(4 * edgeW + 7 * (v.twang ?? 0));
-          if (k === 0) a *= db(-3 * (v.twang ?? 0) + 6 * closeW);
+          if (k === 0) a *= db(-3 * (v.twang ?? 0) + 6 * closeW + 5 * closeV);
+          if (k === 1) a *= db(-3 * closeV);
           if (latW) a *= db(k === 0 ? -3 * latW : k === 2 ? 5 * latW : k === 3 ? 4 * latW : 0);
           if (erW) a *= db(k === 1 ? -3 * erW : k === 2 ? 5 * erW : k === 3 ? 8 * erW : 0);
-          if (k >= 2) a *= db(-3 * closeW);
+          if (k >= 2) a *= db(0 * closeW);
           if (k >= 3) a *= db(-3 * plain);
           if (k === 1) a *= db(2 * edgeW);
           return a;

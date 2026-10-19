@@ -40,11 +40,11 @@ export const CONS: Record<Cons, ConsSpec> = {
   P: { kind: 'stop', voiced: false, f: [250, 900, 2300], shape: 'lab', dur: 0.075 }, B: { kind: 'stop', voiced: true, f: [250, 900, 2300], shape: 'lab', dur: 0.06 },
   T: { kind: 'stop', voiced: false, f: [280, 1750, 2700], shape: 'alv', dur: 0.075 }, D: { kind: 'stop', voiced: true, f: [280, 1750, 2700], shape: 'alv', dur: 0.06 },
   K: { kind: 'stop', voiced: false, f: [300, 1900, 2400], shape: 'vel', dur: 0.08 }, G: { kind: 'stop', voiced: true, f: [300, 1900, 2400], shape: 'vel', dur: 0.065 },
-  M: { kind: 'nasal', voiced: true, f: [260, 1100, 2400], anti: 750, dur: 0.07 }, N: { kind: 'nasal', voiced: true, f: [260, 1500, 2600], anti: 1450, dur: 0.065 },
-  NG: { kind: 'nasal', voiced: true, f: [260, 2100, 2700], anti: 2600, dur: 0.07 },
-  F: { kind: 'fric', voiced: false, f: [300, 1000, 2300], shape: 'flat', dur: 0.08 }, V: { kind: 'fric', voiced: true, f: [300, 1000, 2300], shape: 'flat', dur: 0.06 },
-  TH: { kind: 'fric', voiced: false, f: [350, 1500, 2600], shape: 'flat', dur: 0.08 }, DH: { kind: 'fric', voiced: true, f: [350, 1500, 2600], shape: 'flat', dur: 0.045 },
-  S: { kind: 'fric', voiced: false, f: [320, 1700, 2700], shape: 's', dur: 0.09 }, Z: { kind: 'fric', voiced: true, f: [320, 1700, 2700], shape: 's', dur: 0.07 },
+  M: { kind: 'nasal', voiced: true, f: [260, 1100, 2400], anti: 750, dur: 0.06 }, N: { kind: 'nasal', voiced: true, f: [260, 1500, 2600], anti: 1450, dur: 0.055 },
+  NG: { kind: 'nasal', voiced: true, f: [260, 2100, 2700], anti: 2600, dur: 0.06 },
+  F: { kind: 'fric', voiced: false, f: [300, 1000, 2300], shape: 'flat', dur: 0.08 }, V: { kind: 'fric', voiced: true, f: [300, 1000, 2300], shape: 'flat', dur: 0.08 },
+  TH: { kind: 'fric', voiced: false, f: [350, 1500, 2600], shape: 'flat', dur: 0.08 }, DH: { kind: 'fric', voiced: true, f: [350, 1500, 2600], shape: 'flat', dur: 0.06 },
+  S: { kind: 'fric', voiced: false, f: [320, 1700, 2700], shape: 's', dur: 0.065 }, Z: { kind: 'fric', voiced: true, f: [320, 1700, 2700], shape: 's', dur: 0.07 },
   SH: { kind: 'fric', voiced: false, f: [300, 1700, 2400], shape: 'sh', dur: 0.09 },
   CH: { kind: 'affric', voiced: false, f: [300, 1800, 2400], shape: 'sh', dur: 0.1 }, JH: { kind: 'affric', voiced: true, f: [300, 1800, 2400], shape: 'sh', dur: 0.08 },
   HH: { kind: 'h', voiced: false, f: [500, 1400, 2500], dur: 0.06 },
@@ -315,7 +315,7 @@ function seededRnd(seed: number) {
 }
 
 /** A segment of the line's timeline: a consonant, or a vowel (with an optional glide target at its end). */
-export interface Seg { t0: number; t1: number; cons?: ConsSpec; vowel?: [F3, F3?]; next?: F3; midi: number; vel: number }
+export interface Seg { t0: number; t1: number; /** the first consonant of a stressed word's start, if a stop: the one with the bite ("pat" and "bat", not "spat") */ init?: boolean; cons?: ConsSpec; vowel?: [F3, F3?]; next?: F3; midi: number; vel: number }
 
 const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
 const lerp = (a: number, b: number, x: number) => a + (b - a) * Math.max(0, Math.min(1, x));
@@ -331,11 +331,12 @@ export function layout(notes: SungNote[], cScale = 1, vowels: Partial<Record<Vow
     const vow: [F3, F3?] = notes[i + 1]?.syl.text === '~' ? [own[0]] : own;
     const firstF = vow[0];
     // onset consonants before the beat (shrunk to fit the room the last note leaves)
-    const on = n.syl.onset.map((c) => ({ ...CONS[c], dur: CONS[c].dur * cScale }));
+    const initStop = (c: Cons, ci: number) => ci === 0 && !!n.syl.wordStart && n.syl.stress && CONS[c].kind === 'stop';
+    const on = n.syl.onset.map((c, ci) => ({ ...CONS[c], dur: CONS[c].dur * cScale * (initStop(c, ci) ? (CONS[c].voiced ? 1.2 : 1.5) : 1), init: initStop(c, ci) }));
     const want = on.reduce((a, c) => a + c.dur, 0);
     const k = want > room ? room / want : 1;
     let t = n.t - want * k;
-    for (const c of on) { segs.push({ t0: t, t1: t + c.dur * k, cons: c, next: firstF, midi: n.midi, vel: n.vel }); t += c.dur * k; }
+    for (const c of on) { segs.push({ t0: t, t1: t + c.dur * k, cons: c, init: c.init, next: firstF, midi: n.midi, vel: n.vel }); t += c.dur * k; }
     // the vowel, then the coda at the note's end (no longer than 40% of the note)
     const len = n.end - n.t;
     const coda = n.syl.coda.map((c) => { const spec = c === 'L' ? DARK_L : CONS[c]; return { ...spec, dur: spec.dur * cScale }; });

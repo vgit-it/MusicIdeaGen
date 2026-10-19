@@ -15,6 +15,7 @@ Lacks, so a real word is sung as the nearest sound (the Words tab flags each one
 4. **Syllabic l/n** ("little, bottle, button"). DONE (2026-10-19): `Syllable.syllabic`: a hint of vowel, then the l or n held to the note's end.
 5. **Glottal stop**, "uh-oh", "button" (later).
 6. zh ("vision") sung as sh.
+7. **Consonant clarity** (2026-10-19), found by looking at spectrograms of real speech (Kokoro) beside the sung word (`npm run spec-png`, `npm run cons-check`): the app's consonants were set quiet, short and dark for made-up words (hiss -6 dB, shortened to 60%, colour 75%): now clear (hiss +3, full length, no darkening; all voices); sh and ch a wider, softer noise; word-start p, t, k bite (`stops.initial`, lifted past the break) and b, d, g; word-end stops released (`stops.final`); m, n, ng shorter than first tried, s and z shorter, v, th a little stronger. "ee" and "i" kept warm, not nasal: F1 fuller, F2 lower, the low-note fill only on low notes.
 Also to check, not yet flagged: how clearly each consonant is told apart (b/p voicing, s/sh, f/th, m/n), the transitions of the vowel into and out of consonants, and final consonants being released.
 
 ## 2. How to test (four layers, cheapest first)

@@ -73,6 +73,8 @@ const GROUPS: [string, Spec[]][] = [
     { key: 'cons.level', label: 'Hiss level', min: -15, max: 3, step: 0.5, def: 0, tip: 'How loud s, f, sh, t, k are (dB).', fmt: (x) => `${x}` },
     { key: 'cons.dark', label: 'Hiss colour', min: 0.5, max: 1, step: 0.05, def: 1, tip: 'Lower: darker s and f, less fizz.', fmt: (x) => x.toFixed(2) },
     { key: 'stops.burst', label: 'P, t, k burst', min: -30, max: 0, step: 1, def: 0, tip: 'How hard p, t, k, b, d, g pop (dB).', fmt: (x) => `${x}` },
+    { key: 'stops.initial', label: 'Bite on word-start p, t, k', min: 0, max: 24, step: 1, def: 0, tip: 'Extra burst and breath on the p, t or k that starts a stressed word ("pat", not "spat"), dB.', fmt: (x) => `${x}` },
+    { key: 'stops.final', label: 'Release of word-end p, t, k', min: 0, max: 24, step: 1, def: 0, tip: 'Extra burst on the p, t, k, b, d or g that ends a word ("cap", "cat", "cab"), dB.', fmt: (x) => `${x}` },
     { key: 'stops.asp', label: 'Breath after p, t, k', min: -24, max: 0, step: 1, def: 0, tip: 'The puff after p, t, k (dB).', fmt: (x) => `${x}` },
   ]],
   ['Vibrato and pitch', [
@@ -155,14 +157,42 @@ function buildSliders() {
   }
 }
 
+/** The consonant sliders again on the Words tab, to tune them while listening to words (the same settings as the Voice tab's). */
+const WORD_KEYS = ['stops.initial', 'stops.final', 'stops.burst', 'stops.asp', 'cons.level', 'cons.short', 'cons.dark', 'cons.blend'];
+function buildWordSliders() {
+  const box = $('wSliders');
+  box.innerHTML = '';
+  for (const key of WORD_KEYS) {
+    const s = SPECS.find((x) => x.key === key)!;
+    const row = document.createElement('div');
+    row.className = 'slider';
+    row.dataset.key = key;
+    row.innerHTML = `<label>${s.label}</label><input type="range" min="${s.min}" max="${s.max}" step="${s.step}"><span class="val"></span><span class="tip">${s.tip}</span>`;
+    row.querySelector('input')!.addEventListener('input', (e) => { setAt(state.v, key, Number((e.target as HTMLInputElement).value)); show(); });
+    box.append(row);
+  }
+  // (the app's own consonants are quiet, short and dark: one button for the clear, speech-like ones, and one to go back)
+  const bar = document.createElement('div');
+  bar.className = 'f';
+  const set = (vals: Record<string, number>) => { for (const [k, x] of Object.entries(vals)) setAt(state.v, k, x); show(); };
+  for (const [label, vals] of [['Clear consonants', { 'cons.level': 3, 'cons.short': 1, 'cons.dark': 1 }], ['Original consonants', { 'cons.level': -6, 'cons.short': 0.6, 'cons.dark': 0.75 }]] as [string, Record<string, number>][]) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.addEventListener('click', () => set(vals));
+    bar.append(b);
+  }
+  box.prepend(bar);
+}
+
 function show() {
   for (const s of SPECS) {
-    const row = document.querySelector<HTMLElement>(`.slider[data-key="${s.key}"]`)!;
-    const input = row.querySelector('input')!;
-    const x = valueOf(s);
-    input.value = String(x);
-    row.querySelector('.val')!.textContent = (s.fmt ?? String)(x);
-    row.classList.toggle('changed', Math.abs(x - presetValue(s)) > 1e-9);
+    // (the same setting can have a second slider on the Words tab: all of them kept alike)
+    for (const row of document.querySelectorAll<HTMLElement>(`.slider[data-key="${s.key}"]`)) {
+      const x = valueOf(s);
+      row.querySelector('input')!.value = String(x);
+      row.querySelector('.val')!.textContent = (s.fmt ?? String)(x);
+      row.classList.toggle('changed', Math.abs(x - presetValue(s)) > 1e-9);
+    }
   }
   const up = document.getElementById('wayUp') as HTMLSelectElement | null;
   if (up) up.value = state.v.up ?? 'belt';
@@ -427,6 +457,7 @@ $('copy').onclick = async () => {
 };
 
 buildSliders();
+buildWordSliders();
 showSaved();
 show();
 
