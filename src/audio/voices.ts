@@ -133,8 +133,8 @@ const SUNG: Partial<FofVoice> = {
   lowBuzz: 1, closeFill: 1.5, falFill: 1,
   // (no fuzz between syllables, Paul's pick of the ess lab's takes, C5: the vowel fading into s, t, k, f;
   // those shorter toward the beat, quieter and darker; p, t, k, b, d, g with barely a burst)
-  cons: { blend: 0.04, short: 0.6, level: -6, dark: 0.75 },
-  stops: { burst: -22, voiced: -20, asp: -14, len: 0.05, hold: 24 },
+  cons: { blend: 0.04, short: 1, level: 3, dark: 1 },
+  stops: { burst: -22, voiced: -20, asp: -14, len: 0.05, hold: 24, initial: 16, final: 10 },
 };
 
 /** A genre's voice for the FOF singer (`high`: an octave up, the high voice type), or a character on top of it. */
