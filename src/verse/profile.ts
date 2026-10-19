@@ -20,6 +20,8 @@ export interface Dials {
   holdLen: [number, number, number, number];
   /** The chance a bar that holds one long note holds a second in the quarters left. */
   holdTwice: number;
+  /** The chance a plain 8th is stretched over the next one (two 8ths on one chord note become one note), and once more (a beat and a half). */
+  stretch: number;
   /** The chance a bar moves from one chord note to another part way through. */
   moves: number;
   /** Weights for a bar sitting on the root, the 3rd and the 5th. */
@@ -41,6 +43,8 @@ export interface Dials {
   lift: number;
   /** Times the chances of bends. */
   bends: number;
+  /** The share of the section left silent that the line is fitted to (left out: whatever the rules leave). */
+  silence?: number;
 }
 
 export const VERSE: Dials = {
@@ -51,6 +55,7 @@ export const VERSE: Dials = {
   holdBar: 0.4,
   holdLen: [0.4, 0.2, 0.3, 0.1],
   holdTwice: 0,
+  stretch: 0,
   moves: 0.3,
   toneW: [1, 1, 1],
   neighbour: 0.3,

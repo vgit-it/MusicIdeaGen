@@ -23,15 +23,26 @@ export function accentsOf(idea: Idea): number[] {
 }
 /** The song's melodic personality (personality.ts): the same for every section of a song. */
 export const personalityOf = (idea: Idea): Personality => drawPersonality(idea.seeds.song, idea.song.genre, autoMood(idea.song, idea.seeds.song));
-/** Choruses with the same chords, energy and tuning are one hook: the first one's melody (and words) are every one's. */
+/** The chords of a section as a string (what a chorus's pitches follow). */
+export const chordsKey = (idea: Idea) => idea.chords.timeline.map((e) => `${e.step}${e.chord.root}${e.chord.q}`).join(',');
+/** The choruses of a song (of one length, tuned alike) are one hook: one melody, over each chorus's own chords. */
 export const hookSig = (idea: Idea, o: SectionOptions) =>
-  `${idea.seeds.song}|chorus|${idea.chords.timeline.map((e) => `${e.step}${e.chord.root}${e.chord.q}`).join(',')}|${idea.section?.energy ?? 4}|${Object.values(o.range).join(',')}|${o.bends}|${o.meta}|${o.variation}`;
+  `${idea.seeds.song}|chorus|${idea.chords.chordIdx.length}|${Object.values(o.range).join(',')}|${o.bends}|${o.meta}|${o.variation}`;
+/** The chorus the others are built like: the song's last one of this hook (usually the fullest: the highest energy). */
+export function chorusMaster(list: Idea[], idea: Idea, o: SectionOptions): Idea {
+  const sig = hookSig(idea, o);
+  for (let i = list.length - 1; i >= 0; i--) if (isChorus(list[i]) && hookSig(list[i], o) === sig) return list[i];
+  return idea;
+}
 
-/** The melody over a section; `accents` are the band's (computed when left out). */
-export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea)): Built {
+/**
+ * The melody over a section; `accents` are the band's (computed when left out). A chorus built `like` another (its master, with the
+ * master's accents) writes with the master's seed, energy and accents, so its rhythm and shape are the master's, over its own chords.
+ */
+export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea), like?: Idea): Built {
   const chorus = isChorus(idea), p = personalityOf(idea);
   return buildVerse({
-    key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: idea.section?.energy ?? 3,
+    key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: (chorus && like ? like : idea).section?.energy ?? 3,
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: chorus ? p.chorusVariation : o.variation,
     thirds: idea.song.bars.every((b) => b.len % 3 === 0),
