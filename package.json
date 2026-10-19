@@ -14,6 +14,7 @@
     "words-check": "rolldown scripts/words-check.ts --no-code-splitting --platform node --format esm -o node_modules/.cache/words-check.mjs && node node_modules/.cache/words-check.mjs",
     "cons-check": "rolldown scripts/cons-check.ts --no-code-splitting --platform node --format esm -o node_modules/.cache/cons-check.mjs && node node_modules/.cache/cons-check.mjs",
     "spec-png": "rolldown scripts/spec-png.ts --no-code-splitting --platform node --format esm -o node_modules/.cache/spec-png.mjs && node node_modules/.cache/spec-png.mjs",
+    "asr-render": "rolldown scripts/asr-render.ts --no-code-splitting --platform node --format esm -o node_modules/.cache/asr-render.mjs && node node_modules/.cache/asr-render.mjs",
     "stop-check": "rolldown scripts/stop-check.ts --no-code-splitting --platform node --format esm -o node_modules/.cache/stop-check.mjs && node node_modules/.cache/stop-check.mjs",
     "track-check": "rolldown scripts/track-check.ts --no-code-splitting --platform node --format esm -o node_modules/.cache/track-check.mjs && node node_modules/.cache/track-check.mjs",
     "fof-scale": "rolldown scripts/fof-scale.ts --platform node --format esm -o node_modules/.cache/fof-scale.mjs && node node_modules/.cache/fof-scale.mjs",

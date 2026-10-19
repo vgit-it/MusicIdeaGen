@@ -42,14 +42,14 @@ export const CONS: Record<Cons, ConsSpec> = {
   K: { kind: 'stop', voiced: false, f: [300, 1900, 2400], shape: 'vel', dur: 0.08 }, G: { kind: 'stop', voiced: true, f: [300, 1900, 2400], shape: 'vel', dur: 0.065 },
   M: { kind: 'nasal', voiced: true, f: [260, 1100, 2400], anti: 750, dur: 0.06 }, N: { kind: 'nasal', voiced: true, f: [260, 1500, 2600], anti: 1450, dur: 0.055 },
   NG: { kind: 'nasal', voiced: true, f: [260, 2100, 2700], anti: 2600, dur: 0.06 },
-  F: { kind: 'fric', voiced: false, f: [300, 1000, 2300], shape: 'flat', dur: 0.08 }, V: { kind: 'fric', voiced: true, f: [300, 1000, 2300], shape: 'flat', dur: 0.08 },
-  TH: { kind: 'fric', voiced: false, f: [350, 1500, 2600], shape: 'flat', dur: 0.08 }, DH: { kind: 'fric', voiced: true, f: [350, 1500, 2600], shape: 'flat', dur: 0.06 },
+  F: { kind: 'fric', voiced: false, f: [300, 1000, 2300], shape: 'flat', dur: 0.095 }, V: { kind: 'fric', voiced: true, f: [300, 1000, 2300], shape: 'flat', dur: 0.06 },
+  TH: { kind: 'fric', voiced: false, f: [350, 1500, 2600], shape: 'flat', dur: 0.095 }, DH: { kind: 'fric', voiced: true, f: [350, 1500, 2600], shape: 'flat', dur: 0.05 },
   S: { kind: 'fric', voiced: false, f: [320, 1700, 2700], shape: 's', dur: 0.065 }, Z: { kind: 'fric', voiced: true, f: [320, 1700, 2700], shape: 's', dur: 0.07 },
   SH: { kind: 'fric', voiced: false, f: [300, 1700, 2400], shape: 'sh', dur: 0.09 },
-  CH: { kind: 'affric', voiced: false, f: [300, 1800, 2400], shape: 'sh', dur: 0.1 }, JH: { kind: 'affric', voiced: true, f: [300, 1800, 2400], shape: 'sh', dur: 0.08 },
+  CH: { kind: 'affric', voiced: false, f: [300, 1800, 2400], shape: 'sh', dur: 0.085 }, JH: { kind: 'affric', voiced: true, f: [300, 1800, 2400], shape: 'sh', dur: 0.075 },
   HH: { kind: 'h', voiced: false, f: [500, 1400, 2500], dur: 0.06 },
-  L: { kind: 'liquid', voiced: true, f: [360, 1150, 2800], dur: 0.075, lvl: -2, hold: true }, R: { kind: 'liquid', voiced: true, f: [350, 1150, 1650], dur: 0.065 },
-  W: { kind: 'liquid', voiced: true, f: [300, 700, 2200], dur: 0.07 }, Y: { kind: 'liquid', voiced: true, f: [260, 2200, 3000], dur: 0.06 },
+  L: { kind: 'liquid', voiced: true, f: [360, 1150, 2800], dur: 0.085, lvl: -2, hold: true }, R: { kind: 'liquid', voiced: true, f: [350, 1150, 1650], dur: 0.08 },
+  W: { kind: 'liquid', voiced: true, f: [300, 700, 2200], dur: 0.085 }, Y: { kind: 'liquid', voiced: true, f: [260, 2200, 3000], dur: 0.06 },
   // (the flap of "water", "better": the tongue taps the ridge once, the voice dipping for 25-30 ms and going on; no burst)
   DX: { kind: 'liquid', voiced: true, f: [330, 1650, 2700], dur: 0.03, lvl: -9 },
 };
@@ -339,7 +339,8 @@ export function layout(notes: SungNote[], cScale = 1, vowels: Partial<Record<Vow
     for (const c of on) { segs.push({ t0: t, t1: t + c.dur * k, cons: c, init: c.init, next: firstF, midi: n.midi, vel: n.vel }); t += c.dur * k; }
     // the vowel, then the coda at the note's end (no longer than 40% of the note)
     const len = n.end - n.t;
-    const coda = n.syl.coda.map((c) => { const spec = c === 'L' ? DARK_L : CONS[c]; return { ...spec, dur: spec.dur * cScale }; });
+    // (a word-final stop: voiceless longer, with its silent closure; voiced shorter, with the voice carried through it: how cap and cab, seat and seed differ)
+    const coda = n.syl.coda.map((c) => { const spec = c === 'L' ? DARK_L : CONS[c]; return { ...spec, dur: spec.dur * cScale * (spec.kind === 'stop' ? (spec.voiced ? 0.85 : 1.3) : 1) }; });
     const cw = coda.reduce((a, c) => a + c.dur * (c.hold ? 1 : 0.8), 0);
     const kc = cw > len * 0.4 ? (len * 0.4) / cw : 1;
     // (a syllabic l or n carries the syllable: a hint of vowel, then the l or n held to the note's end)

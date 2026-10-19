@@ -27,7 +27,7 @@ Also to check, not yet flagged: how clearly each consonant is told apart (b/p vo
 - Real lines.
 For each sound: can you tell which word it is without looking? Mark the ones that blur. Repeat after each change, old against new.
 
-**B. Blind quiz (next to build).** The page plays one word, you pick it from 2-4 minimal-pair choices; the page keeps accuracy per sound. Order is random and the version (old/new) is hidden. Gives a number per sound that you can compare run to run.
+**B. Blind quiz (built 2026-10-19, `src/lab/quiz.ts`, the Words tab).** The page plays one word, you pick it from 2-4 minimal-pair choices; the page keeps accuracy per sound. Order is random and the version (old/new) is hidden. Gives a number per sound that you can compare run to run.
 
 **C. A speech recognizer as a second listener (next; needs your OK).** Render each test line, ask a recognizer (Whisper tiny English, run in the browser page) what it hears, and score word error rate against the written line.
 - Caveats: recognizers are trained on speech, so singing scores worse than a human would judge. Use it for before/after and for finding the worst sounds, not as an absolute pass mark.
@@ -35,6 +35,8 @@ For each sound: can you tell which word it is without looking? Mark the ones tha
 - Needs a one-time model download (about 40 MB, from a public model host). Ask first.
 
 **D. Regression set.** About 40 fixed lines (all sounds, hard clusters like "strong", "world", "thousands"), rendered per voice, scored by B and C, results kept in a file. Run after any change to the sounds or the voices.
+
+**C, first results (2026-10-19; `npm run asr-render`, then `node asr-run.mjs` in `experiments/kokoro-singer`; Whisper tiny.en, 40 lines):** Kokoro speaking the lines: 3-5% word errors. The FOF voices: about 80% sung (Rock, Pop at G3), 90% on one flat low note at speaking pace (Rock, Pop, Woman), and the same with the earlier quiet consonants (91%): so the recognizer is too coarse for the consonant work (it hears "music", and drops short words like "the", "and", "me"), and a synthesized voice with no speech rhythm is far from what it is trained on. Use it only as a rough floor; judge by ear and by layer B (the blind quiz, still to build), on isolated content words.
 
 ## 3. Build order (each step tested by A-D before the next)
 1. Dictionary: add the full CMU pronouncing dictionary (BSD licence; dev-only package for the lab, a trimmed word list later for the app) and a spelling-to-sound fallback for unknown words. Now: about 250 words built into `words.ts`.
