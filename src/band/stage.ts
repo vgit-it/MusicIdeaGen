@@ -94,8 +94,11 @@ export class Stage {
   private bandLayer = Object.assign(document.createElement('canvas'), { width: W, height: H });
   private crowdLayer = Object.assign(document.createElement('canvas'), { width: W, height: H });
   /** The edges of the picture fading to dark, and four frames of grain (made once). */
-  private vignette = makeVignette();
-  private grain = [0, 1, 2, 3].map(makeGrain);
+  private vignette = sharedVignette();
+  private grain = sharedGrain();
+  /** The lit crowd as last drawn, and what it was drawn from (it only changes when the crowd moves or the light does). */
+  private crowdLit = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  private crowdKey = '';
   /** The players' shadow shape (for the back wall). */
   private shade = Object.assign(document.createElement('canvas'), { width: W, height: H });
   /** The light layer, at the stage's own pixel size (the camera is close: half-size light pixels read as a screen door). */
@@ -239,10 +242,18 @@ export class Stage {
     ctx.drawImage(this.bandLayer, 0, 0);
     if (this.cast.front && this.cast.lights.front) ctx.drawImage(this.cast.front, this.cast.lights.front.x, this.cast.lights.front.y);
     // the crowd: nearly black, rim-lit by the stage
-    const cr = this.layer(this.crowdLayer);
-    this.crowd(cr, m, playing);
-    rimLight(cr, 0.7, playing ? 0.5 + e * 0.07 + flash * 0.3 : 0.3);
-    ctx.drawImage(this.crowdLayer, 0, 0);
+    // (the crowd bobs in a few poses and the light moves slowly: the same picture comes up again and again, so it's kept)
+    const crowdRim = playing ? 0.5 + e * 0.07 + flash * 0.3 : 0.3, crowdKey = this.crowdLook(m, playing) + `|${crowdRim}`;
+    if (crowdKey !== this.crowdKey) {
+      const cr = this.layer(this.crowdLayer);
+      this.crowd(cr, m, playing);
+      rimLight(cr, 0.7, crowdRim);
+      const lit = this.crowdLit.getContext('2d')!;
+      lit.clearRect(0, 0, W, H);
+      lit.drawImage(this.crowdLayer, 0, 0);
+      this.crowdKey = crowdKey;
+    }
+    ctx.drawImage(this.crowdLit, 0, 0);
     this.lights(ctx, m, playing, wall);
     this.grade(ctx, wall);
   }
@@ -347,6 +358,18 @@ export class Stage {
    */
   private crowd(ctx: CanvasRenderingContext2D, m: Moment, playing: boolean) {
     const a = this.cast.crowd;
+    const { up, bob0, bob1 } = this.crowdPose(m, playing);
+    // (close to the camera: drawn at CROWD.scale, their heads just under the band's feet)
+    ctx.save();
+    ctx.translate(W / 2, CROWD.y);
+    ctx.scale(CROWD.scale, CROWD.scale);
+    draw(ctx, a, `crowd/0/${up ? 'up' : 'idle'}`, 0, bob0);
+    draw(ctx, a, `crowd/1/${up ? 'up' : 'idle'}`, 0, bob1);
+    ctx.restore();
+  }
+
+  /** How the crowd stands now: hands up or not, and which group is on its bob. */
+  private crowdPose(m: Moment, playing: boolean) {
     const e = playing ? m.section.energy : 1;
     const jumps = this.score.moves.jumps;
     let ji = -1;
@@ -357,13 +380,12 @@ export class Stage {
     const final = this.score.moves.final;
     const up = (sinceJump < 1.5 && e >= 4) || (sinceCrash < 0.5 && e >= 4) || (playing && final !== null && m.t >= final);
     const bob = (side: number) => (e >= 3 && ((m.beat + side * 0.5) % 1) < 0.25 ? 1 : 0);
-    // (close to the camera: drawn at CROWD.scale, their heads just under the band's feet)
-    ctx.save();
-    ctx.translate(W / 2, CROWD.y);
-    ctx.scale(CROWD.scale, CROWD.scale);
-    draw(ctx, a, `crowd/0/${up ? 'up' : 'idle'}`, 0, bob(0));
-    draw(ctx, a, `crowd/1/${up ? 'up' : 'idle'}`, 0, bob(1));
-    ctx.restore();
+    return { up, bob0: bob(0), bob1: bob(1) };
+  }
+
+  private crowdLook(m: Moment, playing: boolean) {
+    const { up, bob0, bob1 } = this.crowdPose(m, playing);
+    return `${up ? 1 : 0}${bob0}${bob1}`;
   }
 
   /**
@@ -479,6 +501,12 @@ function rimLight(c: CanvasRenderingContext2D, dark: number, rim: number) {
   }
   c.putImageData(img, 0, 0);
 }
+
+/** (the vignette and the grain are the same for every song: made once, not for every new band) */
+let vignetteMade: HTMLCanvasElement | undefined;
+let grainMade: HTMLCanvasElement[] | undefined;
+const sharedVignette = () => (vignetteMade ??= makeVignette());
+const sharedGrain = () => (grainMade ??= [0, 1, 2, 3].map(makeGrain));
 
 /** The vignette: the picture's edges and corners stepping down into the dark, dithered. */
 function makeVignette() {

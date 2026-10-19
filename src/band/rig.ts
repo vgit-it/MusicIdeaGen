@@ -221,41 +221,58 @@ function lowered(src: Image, dy: number): Image {
 }
 
 /** The thigh foreshortened: its rows from the hip to the knee squeezed into `lift` fewer. */
+const squashed = new WeakMap<Image, Map<string, Image>>();
 function squash(src: Image, hipY: number, kneeY: number, lift: number): Image {
   if (!lift) return src;
+  // (the same squeeze of the same piece comes up in many poses: made once, so its turned copy is too)
+  let mine = squashed.get(src);
+  if (!mine) squashed.set(src, (mine = new Map()));
+  const key = `${hipY}|${kneeY}|${lift}`, hit = mine.get(key);
+  if (hit) return hit;
   const out = blank(src.w, src.h), len = kneeY - hipY, k = len / Math.max(1, len - lift);
   for (let y = 0; y < src.h; y++) {
     const sy = y <= hipY ? y : Math.round(hipY + (y - hipY) * k);
     if (sy >= src.h) continue;
     out.d.set(src.d.subarray(sy * src.w * 4, (sy + 1) * src.w * 4), y * src.w * 4);
   }
+  mine.set(key, out);
   return out;
+}
+
+/** A picture's pixels as one number each (RGBA together), to compare and copy a pixel at a time. */
+function words(img: Image): Uint32Array {
+  const { d } = img;
+  return d.byteOffset % 4 === 0 ? new Uint32Array(d.buffer, d.byteOffset, d.length >> 2) : new Uint32Array(d.slice().buffer);
 }
 
 /** b drawn over a (same size). */
 export function over(a: Image, b: Image) {
-  const A = a.d, B = b.d;
-  for (let i = 0; i < A.length; i += 4) if (B[i + 3]) { A[i] = B[i]; A[i + 1] = B[i + 1]; A[i + 2] = B[i + 2]; A[i + 3] = B[i + 3]; }
+  if (a.d.byteOffset % 4) {
+    const A = a.d, B = b.d;
+    for (let i = 0; i < A.length; i += 4) if (B[i + 3]) { A[i] = B[i]; A[i + 1] = B[i + 1]; A[i + 2] = B[i + 2]; A[i + 3] = B[i + 3]; }
+    return;
+  }
+  const A = words(a), B = words(b), n = A.length;
+  // (a pixel is drawn where b's isn't clear: its alpha is the top byte)
+  for (let i = 0; i < n; i++) if (B[i] >>> 24) A[i] = B[i];
 }
 
 /* ---------------------------------------------------------------- turning pixel art cleanly */
 
 /** Scale2x (EPX): twice the size, diagonal edges smoothed, no new colours. */
 function scale2x(src: Image): Image {
-  const { w, h, d } = src, out = blank(w * 2, h * 2);
-  const at = (x: number, y: number) => (Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))) * 4;
-  const same = (i: number, j: number) => d[i] === d[j] && d[i + 1] === d[j + 1] && d[i + 2] === d[j + 2] && d[i + 3] === d[j + 3];
+  const { w, h } = src, out = blank(w * 2, h * 2), s = words(src), o = words(out), ow = w * 2;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const P = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
-    const q = [P, P, P, P];
-    if (same(C, A) && !same(C, D) && !same(A, B)) q[0] = A;
-    if (same(A, B) && !same(A, C) && !same(B, D)) q[1] = B;
-    if (same(D, C) && !same(D, B) && !same(C, A)) q[2] = C;
-    if (same(B, D) && !same(B, A) && !same(D, C)) q[3] = D;
-    for (let k = 0; k < 4; k++) {
-      const o = ((y * 2 + (k >> 1)) * out.w + x * 2 + (k & 1)) * 4;
-      out.d[o] = d[q[k]]; out.d[o + 1] = d[q[k] + 1]; out.d[o + 2] = d[q[k] + 2]; out.d[o + 3] = d[q[k] + 3];
-    }
+    // (the edge pixels stand in for the ones beyond them)
+    const p = y * w + x, a = y > 0 ? p - w : p, b = x < w - 1 ? p + 1 : p, c = x > 0 ? p - 1 : p, dd = y < h - 1 ? p + w : p;
+    const P = s[p], A = s[a], B = s[b], C = s[c], D = s[dd];
+    let q0 = P, q1 = P, q2 = P, q3 = P;
+    if (C === A && C !== D && A !== B) q0 = A;
+    if (A === B && A !== C && B !== D) q1 = B;
+    if (D === C && D !== B && C !== A) q2 = C;
+    if (B === D && B !== A && D !== C) q3 = D;
+    const i = y * 2 * ow + x * 2;
+    o[i] = q0; o[i + 1] = q1; o[i + ow] = q2; o[i + ow + 1] = q3;
   }
   return out;
 }

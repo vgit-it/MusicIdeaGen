@@ -195,8 +195,23 @@ function sizeCheck() {
 addEventListener('resize', sizeCheck);
 sizeCheck();
 
-function frame() {
+/** The page text shown now, so a frame only touches the page where something changed. */
+const shownText = new Map<string, string>();
+function setText(id: string, text: string, html = false) {
+  const key = `${html ? 'h' : 't'}${text}`;
+  if (shownText.get(id) === key) return;
+  shownText.set(id, key);
+  if (html) $(id).innerHTML = text; else $(id).textContent = text;
+}
+
+/** The stage is drawn 60 times a second at most (a 120 Hz screen would only draw the same moves twice). */
+const FRAME_MS = 1000 / 60;
+let drawAt = 0;
+
+function frame(now: number) {
   requestAnimationFrame(frame);
+  if (now < drawAt - 2) return;
+  drawAt = Math.max(drawAt + FRAME_MS, now - FRAME_MS);
   if (!stage || !score) return;
   if (endHold && performance.now() > endHold.until) endHold = null;
   const t = frozen ?? (endHold ? endHold.t : songNow());
@@ -206,7 +221,7 @@ function frame() {
   const pre = t >= 0 ? undefined : walk ? raw.currentTime - walk.at : walkOnBox.checked && (+fromSel.value || 0) === 0 ? -1 : undefined;
   stage.render(ctx, t, undefined, pre);
   const m = stage.moment(Math.max(0, t));
-  $('sect').textContent = t >= 0 ? `${m.section.label} · energy ${m.section.energy}` : '';
+  setText('sect', t >= 0 ? `${m.section.label} · energy ${m.section.energy}` : '');
   // a banner as each section starts
   const label = t >= 0 ? m.section.label : '';
   if (label !== shownLabel) {
@@ -221,9 +236,9 @@ function frame() {
   const line = lines[li];
   if (t >= 0 && line && t < line.end + 4) {
     const si = lastAt(line.syls, t);
-    $('lyric').innerHTML = line.syls.map((s, k) => (s.space ? ' ' : '') + (k === si && t < line.end + 0.5 ? `<b>${s.text}</b>` : s.text)).join('');
-  } else $('lyric').textContent = '';
-  $('info').textContent = t >= 0 ? `${Math.floor((t * score.six) / 60)}:${String(Math.floor(t * score.six) % 60).padStart(2, '0')}` : '';
+    setText('lyric', line.syls.map((s, k) => (s.space ? ' ' : '') + (k === si && t < line.end + 0.5 ? `<b>${s.text}</b>` : s.text)).join(''), true);
+  } else setText('lyric', '');
+  setText('info', t >= 0 ? `${Math.floor((t * score.six) / 60)}:${String(Math.floor(t * score.six) % 60).padStart(2, '0')}` : '');
   const showCheck = $<HTMLInputElement>('checkview').checked;
   check.style.display = showCheck ? 'block' : 'none';
   if (showCheck) renderCheck(cctx, score, Math.max(t, -1), check.clientWidth, check.clientHeight);
