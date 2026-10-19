@@ -147,7 +147,7 @@ export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 
     return {
       ...VERSE, phraseLen: [0.05, 0.3, 0.3, 0.35], breakBeats: [0.15, 0.35, 0.3, 0.2], runs: 0.5, runLen: [0.8, 0.2, 0], holdBar: 0.6, holdLen: [0.15, 0.2, 0.4, 0.25],
       stretch: 0.3, opener: 0.4, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6, end: [0.6, 0.9], endStyle: { held: 3, open: 2, hang: 2, punch: 0, sync: 0.3, plain: 0.5 },
-      lift: p.bridgeLift, bends: p.bends * 1.2, silence: p.bridgeSilence, dwell: p.bridgeDwell, leadIn: p.bridgeLeadIn,
+      lift: p.bridgeLift, bends: p.bends * 1.2, silence: p.bridgeSilence, silenceTol: 0.07, dwell: p.bridgeDwell, leadIn: p.bridgeLeadIn,
     };
   }
   if (kind === 'interlude') {
@@ -155,7 +155,7 @@ export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 
     return {
       ...VERSE, phraseLen: [0.5, 0.4, 0.1, 0], breakBeats: [0.05, 0.2, 0.35, 0.4], runs: 0.3, runLen: [1, 0, 0], holdBar: 0.6, holdLen: [0.15, 0.25, 0.35, 0.25],
       stretch: 0.3, opener: 0.4, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6, end: [0.4, 0.85], endStyle: { held: 3, open: 2, hang: 1, punch: 0, sync: 0, plain: 0.5 },
-      lift: p.interludeLift, bends: p.bends, silence: p.interludeSilence,
+      lift: p.interludeLift, bends: p.bends, silence: p.interludeSilence, silenceTol: 0.1,
     };
   }
   if (kind === 'chorus') {

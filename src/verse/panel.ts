@@ -188,7 +188,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     if (verse) lines.push('', 'VERSE', ...report(verse));
     if (pre) lines.push('', 'PRE-CHORUS', `Pre-chorus climbs ${dialsFor('prechorus', persFor(pre)).climb} semitones`, ...report(pre));
     if (chorus) lines.push('', 'CHORUS', `Chorus range lifted ${dialsFor('chorus', persFor(chorus)).lift} semitones`, ...report(chorus));
-    if (bridge) lines.push('', 'BRIDGE', `Bridge sits ${dialsFor('bridge', persFor(bridge)).lift} semitones from the verse, circling a ${Math.round(100 * dialsFor('bridge', persFor(bridge)).dwell!)}%-height note`, ...report(bridge));
+    if (bridge) lines.push('', 'BRIDGE', `Bridge sits ${dialsFor('bridge', persFor(bridge)).lift} semitones from the verse, circling a ${Math.round(100 * dialsFor('bridge', persFor(bridge)).dwell!)}%-height note, ${Math.round(100 * (1 - notesFor(bridge).reduce((t, n) => t + n.len, 0) / bridge.chords.chordIdx.length))}% silent`, ...report(bridge));
     if (inter) lines.push('', 'INTERLUDE', `Interlude echoes the chorus, ${Math.round(100 * (1 - notesFor(inter).reduce((t, n) => t + n.len, 0) / inter.chords.chordIdx.length))}% silent`, ...report(inter));
     $('v-info').textContent = lines.join('\n');
   };
