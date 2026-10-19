@@ -30,6 +30,8 @@ export interface BuildInput {
   meta: boolean;
   variation: Variation;
   seed: string;
+  /** Whether a bar may be three even notes (a third of a bar a note): only where a third of the bar is whole 16ths. */
+  thirds?: boolean;
   /** The dials the rules roll against (a section kind in a song's personality; left out: the verse's own). */
   dials?: Dials;
 }
@@ -47,7 +49,8 @@ export interface Built {
 
 export function buildVerse(inp: BuildInput): Built {
   const { bar, key, mode } = inp;
-  const d = inp.dials ?? VERSE;
+  const d0 = inp.dials ?? VERSE;
+  const d = inp.thirds === false ? { ...d0, third: 0 } : d0;
   const range: Range = d.lift ? { lo: inp.range.lo + d.lift, hi: inp.range.hi + d.lift, xlo: inp.range.xlo + d.lift, xhi: inp.range.xhi + d.lift } : inp.range;
   const total = inp.chordAt.length;
   const leaves = planForm(inp.bars, inp.meta, inp.variation, inp.seed);

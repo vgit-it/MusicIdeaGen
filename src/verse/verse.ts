@@ -538,6 +538,8 @@ export function pushNotes(notes: BandNote[], phrases: Gap[], bar: number, seed: 
  * Done last, so nothing else has to know about them.
  */
 export function thirdBars(notes: BandNote[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE): BandNote[] {
+  // (only where a third of the bar is whole 16ths: 3/4, 6/8, 9/8...; not in 4/4, 7/8...)
+  if (Math.abs(bar / 3 - Math.round(bar / 3)) > 1e-6) return notes;
   const total = Math.max(0, ...notes.map((n) => n.step + n.len));
   let out = notes;
   for (let b0 = 0; b0 + bar <= total; b0 += bar) {
@@ -617,7 +619,8 @@ export function addBends(
 }
 
 /**
- * Rule 15: bends inside a note. A held note holds its pitch, then glides to another and sits there. Where it can:
+ * Rule 15: bends inside a note. A held note holds its pitch for a fifth to two fifths of its length, then glides slowly (nearly
+ * half the note) to another and sits there; an 8th starts gliding at its very first moment. Where it can:
  *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;
  *   - for a note that ends on the bar line: to the next bar's core note, landing as the bar turns;
  * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
@@ -640,8 +643,10 @@ export function addNoteBends(
     // (how many of the same pitch came just before)
     let same = 0;
     for (let k = i - 1; k >= 1 && out[k].midi === out[k - 1].midi && n.step - out[k].step <= bar; k--) same++;
-    const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.03 * n.len) + (same >= 2 ? 0.3 : 0);
-    const glide = Math.min(4, Math.max(1, Math.floor(n.len / 3)));
+    const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.02 * n.len) + (same >= 2 ? 0.3 : 0);
+    // (a slow glide, nearly half the note and at most 6 steps; an 8th is bent from its very first moment, over the whole note)
+    const whole = n.len < 3;
+    const glide = whole ? n.len : Math.min(6, Math.max(1, Math.round(n.len * 0.45)));
     const end = n.step + n.len;
     const nx = out[i + 1];
     const barLine = Math.abs(end / bar - Math.round(end / bar)) < 1e-6;
@@ -651,11 +656,12 @@ export function addNoteBends(
       const d = nx.midi - n.midi;
       if (Math.abs(d) >= 1 && Math.abs(d) <= 6 && ok(nx.midi)) {
         const lead = n.len >= 8 ? Math.round(n.len * 0.15) : 0;
-        cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at: Math.max(1, n.len - glide - lead), glide, kind: 'next bar' });
+        cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at: whole ? 0 : Math.max(1, n.len - glide - lead), glide, kind: 'next bar' });
       }
     }
     // to the next chord note
-    const at = Math.max(1, Math.min(n.len - glide, Math.round(n.len * (0.45 + 0.25 * r('at')))));
+    // (it starts early: after a fifth to two fifths of the note)
+    const at = whole ? 0 : Math.max(1, Math.min(n.len - glide, Math.round(n.len * (0.2 + 0.2 * r('at')))));
     const c = ctx.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(n.step + at + 1e-6))];
     if (c) {
       const pcs = [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);

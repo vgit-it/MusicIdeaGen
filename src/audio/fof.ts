@@ -395,7 +395,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       let m = n.midi;
       // (a bend from the note before, over `bend` seconds: the guide line's bends)
       if (n.bend && ni > 0) m = notes[ni - 1].midi + (n.midi - notes[ni - 1].midi) * smooth01((t - n.t) / n.bend);
-      if (n.slide) m -= n.slide * (1 - smooth01((t - n.t + 0.03) / Math.min(0.25, Math.max(0.08, (n.end - n.t) * 0.4))));
+      if (n.slide) m -= n.slide * (1 - smooth01((t - n.t + 0.03) / (n.slideLen ?? Math.min(0.25, Math.max(0.08, (n.end - n.t) * 0.4)))));
       if (ni === notes.length - 1 && n.fall) { const fd = fallLen(n); m -= n.fall * smooth01((t - (n.end - fd)) / fd); }
       pitchLine[j] = m;
     }
