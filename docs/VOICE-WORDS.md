@@ -27,7 +27,7 @@ Also to check, not yet flagged: how clearly each consonant is told apart (b/p vo
 - Real lines.
 For each sound: can you tell which word it is without looking? Mark the ones that blur. Repeat after each change, old against new.
 
-**B. Blind quiz (next to build).** The page plays one word, you pick it from 2-4 minimal-pair choices; the page keeps accuracy per sound. Order is random and the version (old/new) is hidden. Gives a number per sound that you can compare run to run.
+**B. Blind quiz (built 2026-10-19, `src/lab/quiz.ts`, the Words tab).** The page plays one word, you pick it from 2-4 minimal-pair choices; the page keeps accuracy per sound. Order is random and the version (old/new) is hidden. Gives a number per sound that you can compare run to run.
 
 **C. A speech recognizer as a second listener (next; needs your OK).** Render each test line, ask a recognizer (Whisper tiny English, run in the browser page) what it hears, and score word error rate against the written line.
 - Caveats: recognizers are trained on speech, so singing scores worse than a human would judge. Use it for before/after and for finding the worst sounds, not as an absolute pass mark.

@@ -110,7 +110,7 @@ const SETS: Record<string, { label: string; text: string; hint: string }> = {
 /* ---- what to sing it on */
 
 type Tune = 'flat' | 'speech';
-function noteList(lines: WordInfo[][], base: number, tune: Tune, step: number): SungNote[][] {
+export function noteList(lines: WordInfo[][], base: number, tune: Tune, step: number): SungNote[][] {
   return lines.map((words) => {
     const syls = words.flatMap((w) => w.syllables);
     let t = 0;

@@ -49,6 +49,8 @@
     table.words th, table.words td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
     table.words th { color: var(--muted); font-weight: 600; }
     .miss { color: var(--accent); }
+    #qChoices button.right { background: #2e7d32; color: #fff; }
+    #qChoices button.wrong { background: #c62828; color: #fff; }
     textarea.lines { min-height: 110px; font: 15px/1.5 system-ui, sans-serif; }
     .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin: 0 0 6px; }
     .legend i { display: inline-block; width: 22px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
@@ -204,6 +206,18 @@
           <button class="primary" id="wSing">&#9654; Sing</button><button id="wStop">Stop</button>
           <span class="status" id="wStatus"></span>
         </div>
+      </section>
+
+      <section class="card">
+        <h2>Blind quiz: which word was it?</h2>
+        <p class="hint">A word is sung, you pick it from words that differ in one sound. The score per contrast shows which sounds are not clear. Tick the box to mix in the app's earlier consonants without telling you which is which, and compare the two columns. Uses the voice, pitch and consonant sliders above.</p>
+        <div class="row" style="margin-bottom:8px">
+          <button class="primary" id="qStart">&#9654; Start / new word</button><button id="qAgain">Hear it again</button><button id="qNext" disabled>Next word</button><button id="qReset">Clear scores</button>
+          <label class="f"><input type="checkbox" id="qMix" /> Mix in the earlier consonants (blind)</label>
+        </div>
+        <div class="row" id="qChoices" style="margin-bottom:8px"></div>
+        <p class="hint" id="qFeedback"></p>
+        <div id="qTable"></div>
       </section>
 
       <section class="card">

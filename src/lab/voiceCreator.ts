@@ -7,6 +7,7 @@
 
 import { lagFor, perform } from '../audio/feel';
 import { initScaleCheck } from './scaleCheck';
+import { initQuiz } from './quiz';
 import { initWords } from './words';
 import { FOF_RATE, type FofVoice, renderFof } from '../audio/fof';
 import { reverbIR } from '../audio/mixer';
@@ -467,6 +468,7 @@ let scale: ReturnType<typeof initScaleCheck>;
 scale = initScaleCheck(() => ({ ...state.v }), () => `${PRESETS[state.preset].label}, ${SINGERS.find(([k]) => k === state.singer)![1]}${Object.keys(changed()).length ? ' (with your changes)' : ''}`);
 const voiceName = () => `${PRESETS[state.preset].label}, ${SINGERS.find(([k]) => k === state.singer)![1]}${Object.keys(changed()).length ? ' (with your changes)' : ''}`;
 const words = initWords(() => ({ ...state.v }), voiceName);
+initQuiz(() => ({ ...state.v }), () => Number($<HTMLInputElement>('wPitch').value));
 let tabNow = 'voice';
 const refresh = () => { show(); if (tabNow === 'scale') scale.measureAll(); else if (tabNow === 'words') words.show(); };
 for (const [p, s] of MIRRORS) {
