@@ -762,10 +762,13 @@ function breakCopies(idea: Idea): number {
 }
 
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, rhythm?: 'grid' | 'words', melody?: 'shaped' | 'first' | 'learned', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off', real?: boolean, patterns?: boolean) {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, rhythm?: 'grid' | 'words', melody?: 'shaped' | 'first' | 'learned', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off', real?: boolean, patterns?: boolean, rewrite?: (fake: Idea) => void) {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
   singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid: rhythm === 'grid', words: rhythm === 'words', shaped: !!melody, first: melody === 'first', learned: melody === 'learned', move, high, energy, real, patterns }, 0);
+  // (another writer's lead tune, if any: the backing follows it)
+  rewrite?.(fake);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum, fake.vocalEnergy), mood, energy: fake.vocalEnergy }, -1);
+  if (rewrite) { idea.sung = fake.sung; idea.sungTop = fake.sungTop; }
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;
   idea.backing = fake.backing;

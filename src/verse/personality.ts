@@ -189,6 +189,22 @@ export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 
   };
 }
 
+/**
+ * The same dials at the song's tempo: a slow song gets more 16th runs and fewer long notes (the singer fills the time), a fast one fewer
+ * runs and more stretched 8ths and long notes (the singer can't say that many words), so notes a second stay in a singable range.
+ */
+export function paced(d: Dials, bpm: number): Dials {
+  const pace = Math.min(2, Math.max(0.5, bpm / 110));
+  if (Math.abs(pace - 1) < 0.08) return d;
+  const fast = Math.max(0, pace - 1), slow = Math.max(0, 1 - pace);
+  return {
+    ...d,
+    runs: d.runs * Math.min(3.5, Math.max(0.25, pace ** -1.9)),
+    stretch: Math.min(0.85, d.stretch + fast * 0.55),
+    holdBar: Math.min(0.95, Math.max(0.1, d.holdBar * (1 + fast * 0.7 - slow * 0.6))),
+  };
+}
+
 const TONE: Record<string, string> = { root: 'root', third: '3rd', fifth: '5th' };
 
 /** One line for the card: what this song drew. */

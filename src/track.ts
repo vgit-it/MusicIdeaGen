@@ -19,6 +19,7 @@ import { type G2Options, type Guitar2Style, chordTones, generateGuitar2, generat
 import { TUNINGS } from './theory/fretboard';
 import { generateSolo2 } from './parts/solo2';
 import { singLead } from './parts/leadvocal';
+import { singSong } from './verse/sing';
 import { BASS_LINE_DESC } from './parts/bass';
 import { RIFF_STYLE_LABEL } from './parts/riff';
 import { naturalStrokes } from './parts/strum';
@@ -1818,6 +1819,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   // the singer: a tune per kind of section, words that sound like English, the hook in every chorus
   const vocalSeed = src.seeds.vocal ?? `${src.seeds.chords}-vocal`;
   singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', words: src.opts.vocalRhythm === 'words', shaped: !!src.opts.vocalMelody, first: src.opts.vocalMelody === 'first', learned: src.opts.vocalMelody === 'learned', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger, energy: src.opts.vocalEnergy as EnergyStyle | 'off' | undefined, real: src.opts.vocalReal, patterns: src.opts.vocalPatterns }, arc.climax);
+  // the verse melody writer's lead vocal (the default): its notes, words and lines replace the classic tune
+  const verseVocal = src.opts.vocalWriter !== 'classic';
+  if (verseVocal) singSong(sections, vocalSeed, src.opts.vocalLift ?? 0);
   // Room (switch): the lead out from under the singer's lines, by genre
   if (src.opts.leadRoom) makeRoom(sections, src.song.partGenres.strum, `${S.band ?? `${src.seeds.song}-band`}-room`);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);
@@ -1835,7 +1839,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   const bars = sections.reduce((a, s) => a + s.song.bars.length, 0);
   const steps = sections.reduce((a, s) => a + s.song.total, 0);
   // the lead vocal as it's sung, worked out over the whole song
-  singLead(sections, mood);
+  if (!verseVocal) singLead(sections, mood);
   return { source: src, opts, order: slots.map((s) => s.kind), sections, bars, steps, edit, riffVerse, newChorus, mood, climax: arc.climax };
 }
 
