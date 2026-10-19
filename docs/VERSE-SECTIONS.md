@@ -61,6 +61,11 @@ The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at
 - Words density 0.5; shown as OUTRO on the card.
 - Checked on 168 songs (151 sung, 17 jam/solo outros left silent): none empty, no overlaps, 0 short units, Pentatonic 0 off-scale. Verse, pre-chorus, bridge and chorus notes identical to before (1092 sections by hash).
 
+## Rule 15: bends inside a held note (done by the half)
+- A held note that glides to another pitch finishes the glide by the half of its length and holds the end note for the second half. Two shapes, about 6 in 10 and 4 in 10: glide from the first moment over the first half; or (notes of a beat or more) hold a quarter, glide in the second quarter, hold the end note for the last two quarters. Never a glide longer than half the note, and no phrase ends while moving (a held ending that bends holds its end note, then fades as before).
+- The "next bar" bend (landing as the bar turns) only stays when the next bar's core note is also a note of the chord sounding now, since the end note is held before the bar turns: 450 of them became 76 over 168 songs. The chord-note bends are as before.
+- Checked on 168 songs: every inner bend ends by the half (2,710 of them), every note's step, length and pitch before bending is the same as before.
+
 ## Rule 21: a fresh core note at every phrase start
 - `rerollTones` (`verse.ts`), right after rule 4's bar picks and before holds and notes. At each phrase start the chord note to sit on (1, 3 or 5) is drawn again with the same weights as rule 4 (the hook's, in a chorus), and holds to the next change in the bar's picks or the bar's end. The part of the bar before it (the last phrase's end, or the break) keeps its pick.
 - Drawn by step, so a leaf repeating a seed repeats it. Pentatonic still applies when the note is chosen. Bar labels on the card ("1→3") show the result.

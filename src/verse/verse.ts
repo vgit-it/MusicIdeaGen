@@ -856,10 +856,11 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
 }
 
 /**
- * Rule 15: bends inside a note. A held note holds its pitch for a fifth to two fifths of its length, then glides slowly (nearly
- * half the note) to another and sits there; an 8th starts gliding at its very first moment. Where it can:
+ * Rule 15: bends inside a note. A held note glides to another pitch and holds it: the glide is done by the half of the note, and the
+ * end note is held for the second half. Either it glides from the first moment over the first half, or (a note of a beat or more, about
+ * half of them) the note holds a quarter, glides in the second quarter, and holds the end note for the last two. Where it can:
  *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;
- *   - for a note that ends on the bar line: to the next bar's core note, landing as the bar turns;
+ *   - to the next bar's core note, when that is also a note of the chord sounding now;
  * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
  * breaks the repeating). Raised by the verse's energy and the Bends amount. Notes scooped into, walks, neighbours and
  * third-bar notes are left alone (a long held ending that fades out may bend first, and then fades half as far), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
@@ -881,27 +882,24 @@ export function addNoteBends(
     let same = 0;
     for (let k = i - 1; k >= 1 && out[k].midi === out[k - 1].midi && n.step - out[k].step <= bar; k--) same++;
     const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.02 * n.len) + (same >= 2 ? 0.3 : 0) + (n.opener && n.len >= 4 ? 0.12 : 0);
-    // (a slow glide, nearly half the note and at most 6 steps; an 8th is bent from its very first moment, over the whole note)
-    const whole = n.len < 3;
-    const glide = whole ? n.len : Math.min(6, Math.max(1, Math.round(n.len * 0.45)));
+    // (the glide is done by the half of the note and the end note held for the second half: either it glides over the first half,
+    // or the note holds a quarter, glides in the second quarter and holds the end note for the last two. Notes under a beat glide over their first half)
+    const quarter = n.len >= 4 && r('shape') < 0.5;
+    const at = quarter ? n.len / 4 : 0;
+    const glide = quarter ? n.len / 4 : n.len / 2;
     const end = n.step + n.len;
     const nx = out[i + 1];
     const barLine = Math.abs(end / bar - Math.round(end / bar)) < 1e-6;
     const ok = (m: number) => m >= ctx.range.xlo && m <= ctx.range.xhi;
-    // to the next bar's core note
-    if (barLine && nx && nx.step - end <= bar / 4 && !nx.nb && !nx.third) {
+    const c = ctx.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(n.step + at + 1e-6))];
+    const pcs = c ? [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12) : [];
+    // to the next bar's core note: only when it is also a note of the chord sounding now (the end note is held before the bar turns)
+    if (barLine && nx && nx.step - end <= bar / 4 && !nx.nb && !nx.third && pcs.includes(((nx.midi % 12) + 12) % 12)) {
       const d = nx.midi - n.midi;
-      if (Math.abs(d) >= 1 && Math.abs(d) <= 6 && ok(nx.midi)) {
-        const lead = n.len >= 8 ? Math.round(n.len * 0.15) : 0;
-        cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at: whole ? 0 : Math.max(1, n.len - glide - lead), glide, kind: 'next bar' });
-      }
+      if (Math.abs(d) >= 1 && Math.abs(d) <= 6 && ok(nx.midi)) cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at, glide, kind: 'next bar' });
     }
     // to the next chord note
-    // (it starts early: after a fifth to two fifths of the note)
-    const at = whole ? 0 : Math.max(1, Math.min(n.len - glide, Math.round(n.len * (0.2 + 0.2 * r('at')))));
-    const c = ctx.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(n.step + at + 1e-6))];
     if (c) {
-      const pcs = [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
       const tones = [];
       // (a bend to a chord note stays in the main range; the extended zone is for a note that saves a leap)
       for (let d = -5; d <= 5; d++) if (d && pcs.includes((((n.midi + d) % 12) + 12) % 12) && (!ctx.pent || ctx.pent.has((((n.midi + d) % 12) + 12) % 12)) && n.midi + d >= ctx.range.lo && n.midi + d <= ctx.range.hi) tones.push(d);
