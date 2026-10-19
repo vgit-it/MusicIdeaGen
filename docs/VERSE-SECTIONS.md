@@ -53,6 +53,14 @@ The verse melody card (`src/verse/`) writes a verse and now a chorus, one rule a
 - Words are sparse (density 0.4), shown as INTERLUDE on the card.
 - Checked on 168 songs (121 interludes with the interlude switched on, 15 lead breaks left silent): none empty, no overlaps, 0 short units; verse, pre-chorus, bridge and chorus notes identical to before.
 
+## Outro (the chorus's tail)
+- Sings the chorus-based outros (the long outro with its repeated tag, and the short one). A jam outro (new key) and a guitar-solo outro are the guitar's: they carry the `lead` flag (`idea.section.lead`) and stay silent, like the lead break.
+- Takes the song's last chorus's phrasing, chord-note and long-note dice (`echoedFrom`, as the interlude does), so it is the chorus heard again. One melody per song, over each outro's own chords.
+- Drawn per song: silence 35-55% as a loose aim (+8 points when the song fades; `silenceTol` 0.1; lands about 7 points under on average) and a lift of -2, 0 or +2 semitones, never above the chorus's.
+- **Fades or holds**, from the mood's outro (`tension.ts`). Fading moods (melancholic, nostalgic, dreamy, dark): sparser, nearly every phrase ends held, open or hanging (70-100%), and a held ending already fades in volume. Holding moods: fuller, 50-85% of phrases end in a treatment, a short punched ending now and then, bends 1.5x.
+- Words density 0.5; shown as OUTRO on the card.
+- Checked on 168 songs (151 sung, 17 jam/solo outros left silent): none empty, no overlaps, 0 short units, Pentatonic 0 off-scale. Verse, pre-chorus, bridge and chorus notes identical to before (1092 sections by hash).
+
 ## Rule 21: a fresh core note at every phrase start
 - `rerollTones` (`verse.ts`), right after rule 4's bar picks and before holds and notes. At each phrase start the chord note to sit on (1, 3 or 5) is drawn again with the same weights as rule 4 (the hook's, in a chorus), and holds to the next change in the bar's picks or the bar's end. The part of the bar before it (the last phrase's end, or the break) keeps its pick.
 - Drawn by step, so a leaf repeating a seed repeats it. Pentatonic still applies when the note is chosen. Bar labels on the card ("1→3") show the result.
@@ -71,4 +79,4 @@ The verse melody card (`src/verse/`) writes a verse and now a chorus, one rule a
 - The card's **Human feel** switch (on by default) runs the experiment line through the main vocal's human feel (`guide/feel.ts`): glides, scoops, swells, a short fade at every word end, a softer last word, a breath before lines after a rest. The ending fade above stays when it is the longer one.
 
 ## Next
-Verse 2 answering verse 1, a lifted last chorus, outro, breakdown (same recipe as above).
+Verse 2 answering verse 1, a lifted last chorus, breakdown (same recipe as above).

@@ -11,7 +11,7 @@ import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { MOODS } from '../src/tension';
 import { QUALITIES } from '../src/theory';
-import { accentsOf, buildSection, chordsOf, barOf, chorusMaster, isBridge, isChorus, isInterlude, isPre, personalityOf } from '../src/verse/section';
+import { accentsOf, buildSection, chordsOf, barOf, chorusMaster, isBridge, isChorus, isInterlude, isOutro, isPre, personalityOf } from '../src/verse/section';
 import { DEFAULT_RANGE, type BandNote } from '../src/verse/verse';
 import type { Built } from '../src/verse/build';
 
@@ -29,6 +29,7 @@ const within: number[] = [], silDiff: number[] = [], silErr: number[] = [];
 let preShared = 0, preCmp = 0;
 const bridgeSil: number[] = [];
 const interSil: number[] = [];
+const outroSil: number[] = [];
 let outerV = 0, innerV = 0, outerC = 0, innerC = 0, nSong = 0;
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
@@ -193,6 +194,27 @@ for (let i = 0; i < N; i++) {
       interSil.push(sl - ip.interludeSilence);
     }
   }
+  // the outro (the chorus's tail, fading or held; a jam or solo outro is the guitar's and is left out)
+  const outro = [...list].reverse().find(isOutro);
+  if (outro && chorus) {
+    const bo = buildSection(outro, OPTS, accentsOf(outro), undefined, verse, chorus), on = bo.notes, tot = outro.chords.chordIdx.length, obar = barOf(outro), op = personalityOf(outro);
+    sections++;
+    for (let k = 1; k < on.length; k++) if (on[k].step < on[k - 1].step + on[k - 1].len - 1e-6) broken++;
+    for (let k = 0, j = 0; k < on.length; k = j + 1) {
+      j = k;
+      while (j + 1 < on.length && on[j + 1].step <= on[j].step + on[j].len + 1e-6) j++;
+      if (on[j].step + on[j].len - on[k].step < obar / 4 - 1e-6) shortUnits++;
+    }
+    if (on.length) {
+      const sl = 1 - on.reduce((a, n) => a + n.len, 0) / tot;
+      add('outro silence', sl < 0.35 ? 'under 35%' : sl < 0.42 ? '35-42%' : sl < 0.5 ? '42-50%' : '50%+');
+      add('outro notes per bar', (on.length * obar) / tot < 1.5 ? 'few' : (on.length * obar) / tot < 2 ? 'some' : (on.length * obar) / tot < 2.7 ? 'more' : 'many');
+      const endShare = on.filter((n) => n.end).length / Math.max(1, bo.phrases.length);
+      add('outro phrases that end in a treatment', endShare < 0.5 ? 'few' : endShare < 0.9 ? 'most' : 'all');
+      add('outro finish', op.outroFade ? 'fades' : 'holds');
+      outroSil.push(sl - op.outroSilence);
+    }
+  }
 }
 
 const flags: string[] = [];
@@ -227,5 +249,6 @@ console.log(`${sections} sections written (${sigs.length} songs); overlaps/overr
 console.log(`Choruses with nearly the same rhythm (85%+ the same onsets): ${dup} of ${pairs} pairs (${((100 * dup) / pairs).toFixed(2)}%)${ex.length ? '\n  e.g. ' + ex.join('\n       ') : ''}`);
 console.log(`Bridge silence vs the song's draw: mean ${mean(bridgeSil).toFixed(3)}, worst ${Math.max(...bridgeSil.map(Math.abs)).toFixed(3)} (${bridgeSil.length} bridges)`);
 console.log(`Interlude silence vs the song's draw: mean ${mean(interSil).toFixed(3)}, worst ${interSil.length ? Math.max(...interSil.map(Math.abs)).toFixed(3) : 'n/a'} (${interSil.length} interludes)`);
+console.log(`Outro silence vs the song's draw: mean ${mean(outroSil).toFixed(3)}, worst ${outroSil.length ? Math.max(...outroSil.map(Math.abs)).toFixed(3) : 'n/a'} (${outroSil.length} outros)`);
 console.log(`Pre-chorus phrase starts shared with the verse: ${preCmp ? Math.round((100 * preShared) / preCmp) : 0}% of ${preCmp}`);
 console.log(flags.length ? `\nMarked (!!): ${flags.join(', ')}` : '\nNo trait is dominated by one value.');

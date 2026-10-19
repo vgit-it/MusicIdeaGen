@@ -1559,6 +1559,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     const r = new Rng(`${S.structure}-${si}-${s.kind}`);
     const label = s.n ? `${KIND_LABEL[s.kind]} ${s.n}` : KIND_LABEL[s.kind];
     const idea = join(s.segs, { kind: s.kind, label, energy: s.energy, sound: sounds[si] });
+    // (an outro that is a jam or a guitar solo is the guitar's: nobody sings)
+    if (s.kind === 'outro' && (jam || s.g2 === 'solo')) idea.section!.lead = true;
     const notes: string[] = [];
 
     // energy

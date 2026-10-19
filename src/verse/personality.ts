@@ -8,6 +8,7 @@ import { Rng } from '../rng';
 import { VERSE, END_STYLES, type Dials, type EndStyle } from './profile';
 import type { ChordNote } from './verse';
 import type { Variation } from './form';
+import { PROFILES, type Mood } from '../tension';
 
 export type Hook = 'chant' | 'anthem' | 'leap' | 'push';
 export const HOOKS: Hook[] = ['chant', 'anthem', 'leap', 'push'];
@@ -51,6 +52,10 @@ export interface Personality {
   /** The interlude (a short echo of the chorus): its share of silence (50-70%) and semitones it sits above (or below) the verse. */
   interludeSilence: number;
   interludeLift: number;
+  /** The outro (the chorus's tail): its share of silence (35-55%, sparser when the mood lets the song fade), semitones it sits above the verse (never above the chorus), and whether it fades out (the mood's outro) or holds to the end. */
+  outroSilence: number;
+  outroLift: number;
+  outroFade: boolean;
 }
 
 type Tilt = Partial<Record<string, number>>;
@@ -107,7 +112,11 @@ export function drawPersonality(seed: string, genre: string, mood: string): Pers
   const bridgeLeadIn = r('blead').weighted([[0.3, 1], [0.6, 2], [0.85, 1]]);
   const interludeSilence = 0.5 + 0.2 * r('isilence').next();
   const interludeLift = r('ilift').weighted<number>([[-2, 1], [0, 2], [2, 1]]);
+  const outroFade = PROFILES[mood as Mood]?.outro === 'fade';
+  const outroSilence = 0.35 + 0.2 * r('osilence').next() + (outroFade ? 0.08 : 0);
+  const outroLift = Math.min(r('olift').weighted<number>([[-2, 1], [0, 2], [2, 1]]), chorusLift);
   return {
+    outroSilence, outroLift, outroFade,
     preSilence, preClimb, preLeadIn, bridgeLift, bridgeSilence, bridgeDwell, bridgeLeadIn, interludeSilence, interludeLift,
     hook, hookTone, chorusLift, chorusEnd, chorusEndMain, chorusEndChance: [lo, Math.min(1, lo + 0.25)], chorusVariation, chorusRuns, chorusSilence,
     verseRuns: r('vruns').weighted([[0.6, 1], [0.85, 2], [1, 3], [1.25, 2], [1.5, 1]]) * (genre === 'funk' ? 1.3 : 1),
@@ -133,7 +142,7 @@ const HOOK_DIALS: Record<Hook, Partial<Dials>> = {
 };
 
 /** The dials a section kind writes with, in this song's personality. */
-export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'chorus', p: Personality): Dials {
+export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'outro' | 'chorus', p: Personality): Dials {
   if (kind === 'prechorus') {
     // (between the verse and the chorus: tighter phrases, a little busier, a few long notes, the line climbing and leading into the chorus)
     return {
@@ -156,6 +165,16 @@ export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 
       ...VERSE, phraseLen: [0.5, 0.4, 0.1, 0], breakBeats: [0.05, 0.2, 0.35, 0.4], runs: 0.3, runLen: [1, 0, 0], holdBar: 0.6, holdLen: [0.15, 0.25, 0.35, 0.25],
       stretch: 0.3, opener: 0.4, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6, end: [0.4, 0.85], endStyle: { held: 3, open: 2, hang: 1, punch: 0, sync: 0, plain: 0.5 },
       lift: p.interludeLift, bends: p.bends, silence: p.interludeSilence, silenceTol: 0.1,
+    };
+  }
+  if (kind === 'outro') {
+    // (the chorus's tail: its phrasing again, sparse, a few long notes; a fading song ends nearly every phrase held and open, a holding song stays fuller and finishes with a punch now and then)
+    return {
+      ...VERSE, phraseLen: [0.4, 0.45, 0.15, 0], breakBeats: [0.05, 0.25, 0.35, 0.35], runs: 0.3, runLen: [1, 0, 0], holdBar: 0.65, holdLen: [0.1, 0.2, 0.4, 0.3],
+      stretch: 0.35, opener: 0.45, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6,
+      end: p.outroFade ? [0.7, 1] : [0.5, 0.85],
+      endStyle: p.outroFade ? { held: 4, open: 2, hang: 2, punch: 0, sync: 0, plain: 0.3 } : { held: 3, open: 2, hang: 1, punch: 1, sync: 0, plain: 0.5 },
+      lift: p.outroLift, bends: p.bends * (p.outroFade ? 1 : 1.5), silence: p.outroSilence, silenceTol: 0.1,
     };
   }
   if (kind === 'chorus') {
@@ -184,6 +203,7 @@ export function describe(p: Personality): string {
     `pre-chorus climbs ${p.preClimb} semitones, ${Math.round(100 * p.preSilence)}% silent${p.preLeadIn >= 0.7 ? ', usually leads into the chorus' : ''}`,
     `bridge ${p.bridgeLift > 0 ? `${p.bridgeLift} semitones above the verse` : p.bridgeLift < 0 ? 'under the verse' : 'level with the verse'}, ${Math.round(100 * p.bridgeSilence)}% silent, circles a ${p.bridgeDwell < 0.4 ? 'low' : p.bridgeDwell > 0.6 ? 'high' : 'middle'} note`,
     `interlude a short, sparse echo of the chorus`,
+    `outro the chorus's tail, ${p.outroFade ? 'fading out' : 'held to the end'}`,
     `bends ${p.bends < 0.8 ? 'rare' : p.bends > 1.2 ? 'frequent' : 'ordinary'}`,
   ].join(' · ');
 }
