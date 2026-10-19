@@ -200,7 +200,7 @@ rhythm cells, runs of at most three notes, the top note around E4. Measured over
   sung full out (brighter, louder), no more than an octave over the note before it; the climax's last
   held note can go higher still (up to C5 for a wailer). The lead guitar no longer cuts them short. ✓
 - [P] Delivery: scoops up into held notes (a semitone to a fourth below; more on wails: Staley and
-  Vedder), falls off line ends (2-7 semitones, fading). In the voice: per-note slides and falls, quicker
+  Vedder), falls off line ends (a fall of 2-7 "semitones" is now a fade in volume, 18-26 dB, the pitch staying level: Paul). In the voice: per-note slides and falls, quicker
   glides between the quick notes of a run, diphthongs gliding only on a run's last note. ✓
 
 | Singer | Lines | Words | Held notes | Runs | Wails | Delivery | Mostly in |

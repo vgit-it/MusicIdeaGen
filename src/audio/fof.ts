@@ -171,8 +171,10 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const smooth01 = (x: number) => { const k = clamp01(x); return k * k * (3 - 2 * k); };
 const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
 const db = (x: number) => 10 ** (x / 20);
-/** How long a fall off a line's end takes: up to 0.3 s, at most half the note. */
-const fallLen = (n: { t: number; end: number }) => Math.max(0.06, Math.min(0.3, (n.end - n.t) * 0.5));
+/** A fall off a line's end is in volume, not pitch (Paul): it dies away over up to 0.6 s, at most 60% of the note... */
+const fallLen = (n: { t: number; end: number }) => Math.max(0.08, Math.min(0.6, (n.end - n.t) * 0.6));
+/** ...by 14 dB for a fall of 1 (what the writers call 1 semitone), 18 for 2, up to 26 for 4 and over. */
+const fallDb = (fall: number) => Math.min(26, 10 + 4 * fall);
 
 function rng(seed: number) {
   let a = (seed * 2654435761 + 1) >>> 0;
@@ -386,8 +388,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   {
     let ni = 0;
     // (bends in the line itself, so the spring smooths them too (Paul: "voice bends should be smooth"):
-    // a scoop up into a note eased in and out over up to a quarter second; a fall off the line's end
-    // easing away over its last part)
+    // a scoop up into a note eased in and out over up to a quarter second)
     for (let j = 0; j < nT; j++) {
       const t = j * dt;
       while (ni + 1 < notes.length && notes[ni + 1].t <= t) ni++;
@@ -396,7 +397,6 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // (a bend from the note before, over `bend` seconds: the guide line's bends)
       if (n.bend && ni > 0) m = notes[ni - 1].midi + (n.midi - notes[ni - 1].midi) * smooth01((t - n.t) / n.bend);
       if (n.slide) m -= n.slide * (1 - smooth01((t - n.t + 0.03) / (n.slideLen ?? Math.min(0.25, Math.max(0.08, (n.end - n.t) * 0.4)))));
-      if (ni === notes.length - 1 && n.fall) { const fd = fallLen(n); m -= n.fall * smooth01((t - (n.end - fd)) / fd); }
       pitchLine[j] = m;
     }
     const spring = (from: number, to: number, w: number, z: number, back: boolean) => {
@@ -572,7 +572,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // (a held note swells a little in and eases at its end)
       const sw = swells[ni], xs = clamp01(into / Math.max(0.1, held));
       const swell = life ? (sw.kind === 1 ? sw.by * lerp(-1, 0.6, xs) : sw.kind === 2 ? sw.by * lerp(0.4, -1, xs) : sw.kind === 3 ? sw.by * (Math.sin(Math.PI * xs) - 0.6) : 0) : held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
-      const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? 12 * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0)
+      const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? fallDb(note.fall) * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0)
         // (human feel: rising into the word, fading at its end)
         - (note.swell ? 10 * (1 - smooth01((into + 0.01) / note.swell)) : 0) - (note.fade ? (note.fadeBy ?? 18) * smooth01((t - (note.end - note.fade)) / note.fade) : 0);
       // (a word starting on a vowel: a small dip so the words don't slur together)
