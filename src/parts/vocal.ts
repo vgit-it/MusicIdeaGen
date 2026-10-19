@@ -57,6 +57,9 @@ export interface VocalNote {
   bend?: number;
   /** The scoop into this note lasts so many steps (left out: the voice's own, about 40% of the note). */
   slideLen?: number;
+  /** The note dies away in volume over its last `fade` steps, by `fadeBy` dB (the pitch stays; the verse melody's fall). */
+  fade?: number;
+  fadeBy?: number;
   /** A colour note against the chord on purpose (a signature move: a 9th, a sigh, a sour ending): fitting to the band leaves it be. */
   colour?: boolean;
   /** A note of a real shape (Patterns, docs/PATTERNS.md): fitting to the band moves it only off a real clash. */
