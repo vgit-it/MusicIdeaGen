@@ -48,6 +48,8 @@ export interface Dials {
   bends: number;
   /** The share of the section left silent that the line is fitted to (left out: whatever the rules leave). */
   silence?: number;
+  /** The pitch classes the line is limited to (the pentatonic option): every note is chosen from them, steps and endings too. */
+  pent?: ReadonlySet<number>;
 }
 
 export const VERSE: Dials = {

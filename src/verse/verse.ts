@@ -82,6 +82,25 @@ function pitchClass(key: number, c: Chord, tone: ChordNote): number {
   return (key + c.root + (tone === 'root' ? 0 : tone === 'third' ? third(c) : fifth(c))) % 12;
 }
 
+/** The key's pentatonic scale as pitch classes: the major pentatonic (1 2 3 5 6) for a mode with a major 3rd, else the minor (1 b3 4 5 b7). */
+export function pentatonic(key: number, mode: Mode): Set<number> {
+  const major = SCALES[mode][2] === 4;
+  return new Set((major ? [0, 2, 4, 7, 9] : [0, 3, 5, 7, 10]).map((i) => (key + i) % 12));
+}
+
+/**
+ * The pitch class of a chord note; with a pentatonic, one inside it: the chord's other notes (the 5th, 3rd, root, nearest in that
+ * order of the one asked for) if one is in the scale, else the nearest pentatonic note (a semitone down before a semitone up).
+ */
+function pickPc(key: number, c: Chord, tone: ChordNote, pent?: ReadonlySet<number>): number {
+  const pc = pitchClass(key, c, tone);
+  if (!pent || pent.has(pc)) return pc;
+  const order: ChordNote[] = tone === 'root' ? ['fifth', 'third'] : tone === 'third' ? ['fifth', 'root'] : ['third', 'root'];
+  for (const t of order) { const q = pitchClass(key, c, t); if (pent.has(q)) return q; }
+  for (const k of [1, 2, 3]) for (const sgn of [-1, 1]) { const q = (((pc + sgn * k) % 12) + 12) % 12; if (pent.has(q)) return q; }
+  return pc;
+}
+
 /** The pitch class nearest to `centre`. */
 function nearest(pc: number, centre: number): number {
   let m = Math.round((centre - pc) / 12) * 12 + pc;
@@ -109,11 +128,11 @@ export interface BandNote { step: number; len: number; midi: number; /** A neigh
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
  * `chordAt[s]`: the chord sounding on 16th step s (the idea's chord timeline, spread per step).
  */
-export function verseOverBand(key: number, chordAt: Chord[], tones: ChordNote[] = [], centre = 67): BandNote[] {
+export function verseOverBand(key: number, chordAt: Chord[], tones: ChordNote[] = [], centre = 67, pent?: ReadonlySet<number>): BandNote[] {
   const notes: BandNote[] = [];
   for (let s = 0; s < chordAt.length; s += 2) {
     const c = chordAt[s];
-    notes.push({ step: s, len: 2, midi: nearest(pitchClass(key, c, tones[s] ?? 'fifth'), centre) });
+    notes.push({ step: s, len: 2, midi: nearest(pickPc(key, c, tones[s] ?? 'fifth', pent), centre) });
   }
   return notes;
 }
@@ -221,13 +240,13 @@ export function randomRuns(totalSteps: number, bar: number, energy: number, gaps
 }
 
 /** The 8th notes inside each run swapped for 16ths on the 5th of the chord at each step. */
-export function withRuns(notes: BandNote[], runs: Gap[], key: number, chordAt: Chord[], tones: ChordNote[] = [], centre = 67): BandNote[] {
+export function withRuns(notes: BandNote[], runs: Gap[], key: number, chordAt: Chord[], tones: ChordNote[] = [], centre = 67, pent?: ReadonlySet<number>): BandNote[] {
   const inRun = (s: number) => runs.some((r) => s >= r.step && s < r.step + r.len);
   const out = notes.filter((n) => !inRun(n.step));
   for (const r of runs) {
     for (let s = r.step; s < r.step + r.len && s < chordAt.length; s++) {
       const c = chordAt[s];
-      out.push({ step: s, len: 1, midi: nearest(pitchClass(key, c, tones[s] ?? 'fifth'), centre) });
+      out.push({ step: s, len: 1, midi: nearest(pickPc(key, c, tones[s] ?? 'fifth', pent), centre) });
     }
   }
   return out.sort((a, b) => a.step - b.step);
@@ -376,14 +395,15 @@ export function foldIntoRange(notes: BandNote[], r: Range = DEFAULT_RANGE): Band
  * Only 8ths and 16ths; the first note of a bar stays on the core.
  */
 export function addNeighbours(notes: BandNote[], key: number, mode: Mode, bar: number, seed: string, d: Dials = VERSE): BandNote[] {
-  const scale = new Set(SCALES[mode].map((i) => (key + i) % 12));
+  const scale = d.pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12));
   const out: BandNote[] = [];
   for (const n of notes) {
     const prev = out[out.length - 1];
     const sameBar = prev && Math.floor(prev.step / bar) === Math.floor(n.step / bar);
     if (sameBar && !prev.nb && n.len <= 2 && roll(seed, 'nb', n.step) < d.neighbour) {
       const dir = roll(seed, 'nbd', n.step) < 0.5 ? 1 : -1;
-      const k = [1, 2].find((x) => scale.has((((n.midi + dir * x) % 12) + 12) % 12));
+      // (a step of the scale: in the pentatonic, 2 or 3 semitones)
+      const k = (d.pent ? [1, 2, 3] : [1, 2]).find((x) => scale.has((((n.midi + dir * x) % 12) + 12) % 12));
       if (k) { out.push({ ...n, midi: n.midi + dir * k, nb: true }); continue; }
     }
     out.push(n);
@@ -399,7 +419,7 @@ export function addNeighbours(notes: BandNote[], key: number, mode: Mode, bar: n
  * If the cores are further apart than the walk covers, the line leaps first, then walks in.
  */
 export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode: Mode, bar: number, seed: string, dials: Dials = VERSE): BandNote[] {
-  const scale = new Set(SCALES[mode].map((i) => (key + i) % 12));
+  const scale = dials.pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12));
   const ladder: number[] = [];
   for (let m = 24; m <= 108; m++) if (scale.has(m % 12)) ladder.push(m);
   const nearest = (m: number) => ladder.reduce((best, x, i) => (Math.abs(x - m) < Math.abs(ladder[best] - m) ? i : best), 0);
@@ -531,8 +551,8 @@ export function phraseEndings(
     const c = ctx?.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(from))];
     if (ctx && c && (style === 'open' || style === 'hang')) {
       const pcs = [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
-      const scale = new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12));
-      const want = (pc: number) => (style === 'open' ? pcs.slice(1).includes(pc) && pc !== (((core.midi % 12) + 12) % 12) : scale.has(pc) && !pcs.includes(pc));
+      const scale = d.pent ?? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12));
+      const want = (pc: number) => (style === 'open' ? pcs.slice(1).includes(pc) && pc !== (((core.midi % 12) + 12) % 12) && (!d.pent || d.pent.has(pc)) : scale.has(pc) && !pcs.includes(pc));
       const up = roll(seed, 'enddir', ph.step) < 0.6;
       // (in the main range if it can be, else the extended zone, never past the extended limits)
       const ks = [1, 2, 3, 4, 5, -1, -2, -3, -4, -5].map((k) => (up ? k : -k)).filter((k) => want((((core.midi + k) % 12) + 12) % 12));
@@ -798,7 +818,7 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
  */
 export function addNoteBends(
   notes: BandNote[], bar: number,
-  ctx: { amount: BendAmount; energy: number; key: number; chordAt: Chord[]; range: Range; mult?: number },
+  ctx: { amount: BendAmount; energy: number; key: number; chordAt: Chord[]; range: Range; mult?: number; pent?: ReadonlySet<number> },
   seed: string,
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
@@ -836,7 +856,7 @@ export function addNoteBends(
       const pcs = [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
       const tones = [];
       // (a bend to a chord note stays in the main range; the extended zone is for a note that saves a leap)
-      for (let d = -5; d <= 5; d++) if (d && pcs.includes((((n.midi + d) % 12) + 12) % 12) && n.midi + d >= ctx.range.lo && n.midi + d <= ctx.range.hi) tones.push(d);
+      for (let d = -5; d <= 5; d++) if (d && pcs.includes((((n.midi + d) % 12) + 12) % 12) && (!ctx.pent || ctx.pent.has((((n.midi + d) % 12) + 12) % 12)) && n.midi + d >= ctx.range.lo && n.midi + d <= ctx.range.hi) tones.push(d);
       const ups = tones.filter((d) => d > 0), downs = tones.filter((d) => d < 0);
       const up = r('dir') < 0.75 ? ups.length > 0 : downs.length === 0;
       const d = up ? Math.min(...ups) : Math.max(...downs);
