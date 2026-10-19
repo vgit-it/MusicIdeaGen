@@ -38,7 +38,7 @@ export interface GenreVoice {
 export const VOICES: Record<Genre, GenreVoice> = {
   // (rock: the FOF lab's voice Paul signed off; the others leaning off it as their voice-box recipes did)
   rock: { label: 'Rock', recipe: { regMix: 'rock' }, brk: 64, up: 'belt', three: true,
-    fof: { grit: 0.45, breath: -34, bw: 1.25, tract: 0.96, bright: 0.5, edge: 0.25, brk: 64, up: 'belt' },
+    fof: { grit: 0.45, breath: -34, bw: 1.25, tract: 0.96, bright: 0.5, edge: 0.25, brk: 64, up: 'belt', lowBuzz: 1, closeFill: 1.5 },
     // (the high voice: a tenor Paul tuned in the voice creator, 2026-10-13, about a minor 6th over the low
     // voice (tunes 4 semitones lower, an octave up): a slightly smaller person with a big low end and his
     // weight kept up high, purer, a strong scream on pushed notes and little rasp, a forward ring, very
@@ -84,7 +84,7 @@ export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoic
   // and sags; his break lower, around D#4 with the tenor's lift)
   scream: { label: 'Chester (clean & scream)', fof: {
     tract: 1.04, body: 10, heft: 0.65, bw: 0.9, grit: 0.35, distort: 0.65, fry: 0.65, breath: -27, twang: 1, edge: 0.2, nasal: 0.12,
-    bright: 1, plain: 1, soft: 0.7, expr: 0.5, scoop: 0.65, sag: 0.7, vib: 15, vibHz: 5.8, brk: 60, up: 'belt', size: 1.02, brkUp: 3,
+    bright: 1, plain: 1, soft: 0.7, expr: 0.5, scoop: 0.65, sag: 0.7, vib: 15, vibHz: 5.8, brk: 60, up: 'belt', size: 1.02, brkUp: 3, lowBuzz: 1, closeFill: 1.8, lowTop: 66,
   } },
   // dark and soaring (Chris Cornell-like): built from Paul's notes on what the rock voice was missing (a
   // dark baritone's weight carried up into a full belt, a bluesy rasp and fry, a forward ring), then
@@ -112,7 +112,7 @@ export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoic
   woman: { label: 'Woman (soaring)', fof: {
     tract: 0.86, body: 10, heft: 0.9, bw: 1.55, grit: 0.15, distort: 0.35, fry: 0.05, breath: -39, twang: 1, edge: 0, nasal: 0,
     bright: 3, cover: 0.55, spread: 0.85, raw: 0, plain: 0.05, soft: 1, softPushed: 1, expr: 1, human: 0.65, scoop: 0.65, sag: 0.75,
-    life: 0.8, vib: 43, vibHz: 6.2, drift: 5, brk: 63, up: 'belt', shift: 12, size: 1.23, brkUp: 12,
+    life: 0.8, vib: 43, vibHz: 6.2, drift: 5, brk: 63, up: 'belt', shift: 12, size: 1.23, brkUp: 12, lowBuzz: 1, closeFill: 1.8, lowTop: 68,
   } },
   // Onyx (Paul: "Onyx clean is a good voice"): a real man's vowels, measured from Kokoro's Onyx (prints.ts),
   // as measured (his own size: tract and size 1); clean: little rasp and breath
@@ -129,6 +129,8 @@ export const CHARACTERS: Record<Character, { label: string; fof: Partial<FofVoic
  */
 const SUNG: Partial<FofVoice> = {
   expr: 1, plain: 0.6, raw: 1, soft: 0.75, softPushed: 1, life: 1,
+  // (deep notes keep their overtones and "ee" its body, so neither is one bare tone: fof.ts, the voice creator's Scale check)
+  lowBuzz: 1, closeFill: 1.5, falFill: 1,
   // (no fuzz between syllables, Paul's pick of the ess lab's takes, C5: the vowel fading into s, t, k, f;
   // those shorter toward the beat, quieter and darker; p, t, k, b, d, g with barely a burst)
   cons: { blend: 0.04, short: 0.6, level: -6, dark: 0.75 },
