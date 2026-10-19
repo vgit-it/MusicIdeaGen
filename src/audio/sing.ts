@@ -339,7 +339,8 @@ export function layout(notes: SungNote[], cScale = 1, vowels: Partial<Record<Vow
     for (const c of on) { segs.push({ t0: t, t1: t + c.dur * k, cons: c, init: c.init, next: firstF, midi: n.midi, vel: n.vel }); t += c.dur * k; }
     // the vowel, then the coda at the note's end (no longer than 40% of the note)
     const len = n.end - n.t;
-    const coda = n.syl.coda.map((c) => { const spec = c === 'L' ? DARK_L : CONS[c]; return { ...spec, dur: spec.dur * cScale }; });
+    // (a word-final stop: voiceless longer, with its silent closure; voiced shorter, with the voice carried through it: how cap and cab, seat and seed differ)
+    const coda = n.syl.coda.map((c) => { const spec = c === 'L' ? DARK_L : CONS[c]; return { ...spec, dur: spec.dur * cScale * (spec.kind === 'stop' ? (spec.voiced ? 0.85 : 1.3) : 1) }; });
     const cw = coda.reduce((a, c) => a + c.dur * (c.hold ? 1 : 0.8), 0);
     const kc = cw > len * 0.4 ? (len * 0.4) / cw : 1;
     // (a syllabic l or n carries the syllable: a hint of vowel, then the l or n held to the note's end)
