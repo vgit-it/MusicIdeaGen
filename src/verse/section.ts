@@ -14,10 +14,11 @@ export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean
 
 export const isChorus = (idea: Idea) => idea.section?.kind === 'chorus';
 export const isPre = (idea: Idea) => idea.section?.kind === 'prechorus';
+export const isBridge = (idea: Idea) => idea.section?.kind === 'bridge';
 /** The section kinds the writer sings, as dials know them. */
-export type SungKind = 'verse' | 'prechorus' | 'chorus';
-export const kindOf = (idea: Idea): SungKind => (isChorus(idea) ? 'chorus' : isPre(idea) ? 'prechorus' : 'verse');
-/** A kind whose sections of a song are one melody (a chorus, a pre-chorus): built from the song's last one, over each one's own chords. */
+export type SungKind = 'verse' | 'prechorus' | 'bridge' | 'chorus';
+export const kindOf = (idea: Idea): SungKind => (isChorus(idea) ? 'chorus' : isPre(idea) ? 'prechorus' : isBridge(idea) ? 'bridge' : 'verse');
+/** A kind whose sections of a song are one melody (a chorus, a pre-chorus, a bridge): built from the song's last one, over each one's own chords. */
 export const isShared = (idea: Idea) => kindOf(idea) !== 'verse';
 export const chordsOf = (idea: Idea): Chord[] => idea.chords.chordIdx.map((i) => idea.chords.timeline[i].chord);
 /** Steps in a bar. */

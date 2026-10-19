@@ -50,6 +50,8 @@ export interface Dials {
   silence?: number;
   /** Semitones the line climbs across the section (rule 22; a pre-chorus: left out, none). */
   climb?: number;
+  /** Where the line dwells (rule 24; a bridge): a home pitch as a fraction of the range (0 bottom, 1 top) the line is pulled toward; left out: none. */
+  dwell?: number;
   /** The chance the section's last phrase leads into the next section: an open or hanging note held to the end, sung strongly (rule 23). */
   leadIn?: number;
   /** The pitch classes the line is limited to (the pentatonic option): every note is chosen from them, steps and endings too. */

@@ -43,6 +43,11 @@ export interface Personality {
   preSilence: number;
   preClimb: number;
   preLeadIn: number;
+  /** The bridge: semitones it sits above (or below) the verse, its share of silence (30-50%, mostly nearer 30), its home pitch (0 bottom to 1 top of the range), the chance its last phrase leads into the next chorus. */
+  bridgeLift: number;
+  bridgeSilence: number;
+  bridgeDwell: number;
+  bridgeLeadIn: number;
 }
 
 type Tilt = Partial<Record<string, number>>;
@@ -93,8 +98,12 @@ export function drawPersonality(seed: string, genre: string, mood: string): Pers
   const preSilence = 0.15 + 0.15 * r('presilence').next() ** 1.2;
   const preClimb = r('preclimb').weighted([[3, 1], [4, 2], [5, 3], [6, 2], [7, 1]]);
   const preLeadIn = r('prelead').weighted([[0.45, 1], [0.7, 2], [0.9, 1]]);
+  const bridgeLift = r('bridgelift').weighted<number>([[-3, mul(1, intimate ? 1.8 : 1, big ? 0.5 : 1)], [0, 1], [2, 1.2], [4, mul(1, big || mood === 'tense' ? 1.8 : 1, intimate ? 0.5 : 1)]]);
+  const bridgeSilence = 0.3 + 0.2 * r('bsilence').next() ** 2;
+  const bridgeDwell = r('bdwell').weighted([[0.25, 1], [0.5, 2], [0.75, 1]]);
+  const bridgeLeadIn = r('blead').weighted([[0.3, 1], [0.6, 2], [0.85, 1]]);
   return {
-    preSilence, preClimb, preLeadIn,
+    preSilence, preClimb, preLeadIn, bridgeLift, bridgeSilence, bridgeDwell, bridgeLeadIn,
     hook, hookTone, chorusLift, chorusEnd, chorusEndMain, chorusEndChance: [lo, Math.min(1, lo + 0.25)], chorusVariation, chorusRuns, chorusSilence,
     verseRuns: r('vruns').weighted([[0.6, 1], [0.85, 2], [1, 3], [1.25, 2], [1.5, 1]]) * (genre === 'funk' ? 1.3 : 1),
     verseHold: r('vhold').weighted([[0.2, 1], [0.3, 2], [0.4, 3], [0.55, 2], [0.7, 1]]),
@@ -119,13 +128,21 @@ const HOOK_DIALS: Record<Hook, Partial<Dials>> = {
 };
 
 /** The dials a section kind writes with, in this song's personality. */
-export function dialsFor(kind: 'verse' | 'prechorus' | 'chorus', p: Personality): Dials {
+export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'chorus', p: Personality): Dials {
   if (kind === 'prechorus') {
     // (between the verse and the chorus: tighter phrases, a little busier, a few long notes, the line climbing and leading into the chorus)
     return {
       ...VERSE, phraseLen: [0.3, 0.45, 0.2, 0.05], breakBeats: [0.55, 0.3, 0.1, 0.05], runs: Math.max(0.9, p.verseRuns * 1.25), holdBar: 0.35, holdLen: [0.4, 0.25, 0.25, 0.1],
       stretch: 0.15, opener: 0.2, moves: 0.4, neighbour: 0.35, walk: 0.8, end: [0.3, 0.6], endStyle: { held: 2, open: 2, hang: 1, punch: 0, sync: 0.6, plain: 1 },
       lift: 2, bends: p.bends * 1.5, silence: p.preSilence, climb: p.preClimb, leadIn: p.preLeadIn,
+    };
+  }
+  if (kind === 'bridge') {
+    // (the song's contrast: its own register, slower and sparser than the verse, long notes, held endings, circling one home pitch)
+    return {
+      ...VERSE, phraseLen: [0.05, 0.3, 0.3, 0.35], breakBeats: [0.15, 0.35, 0.3, 0.2], runs: 0.5, runLen: [0.8, 0.2, 0], holdBar: 0.6, holdLen: [0.15, 0.2, 0.4, 0.25],
+      stretch: 0.3, opener: 0.4, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6, end: [0.6, 0.9], endStyle: { held: 3, open: 2, hang: 2, punch: 0, sync: 0.3, plain: 0.5 },
+      lift: p.bridgeLift, bends: p.bends * 1.2, silence: p.bridgeSilence, dwell: p.bridgeDwell, leadIn: p.bridgeLeadIn,
     };
   }
   if (kind === 'chorus') {
@@ -152,6 +169,7 @@ export function describe(p: Personality): string {
     `verse ${p.verseBias} phrases, ${p.verseRuns < 0.8 ? 'few' : p.verseRuns > 1.1 ? 'many' : 'some'} 16th runs, ${p.verseHold < 0.3 ? 'few' : p.verseHold > 0.5 ? 'many' : 'some'} long notes${p.verseTone === 'any' ? '' : `, leans on the ${TONE[p.verseTone]}`}`,
     `${Math.round(100 * p.chorusSilence)}% of the chorus without vocals`,
     `pre-chorus climbs ${p.preClimb} semitones, ${Math.round(100 * p.preSilence)}% silent${p.preLeadIn >= 0.7 ? ', usually leads into the chorus' : ''}`,
+    `bridge ${p.bridgeLift > 0 ? `${p.bridgeLift} semitones above the verse` : p.bridgeLift < 0 ? 'under the verse' : 'level with the verse'}, ${Math.round(100 * p.bridgeSilence)}% silent, circles a ${p.bridgeDwell < 0.4 ? 'low' : p.bridgeDwell > 0.6 ? 'high' : 'middle'} note`,
     `bends ${p.bends < 0.8 ? 'rare' : p.bends > 1.2 ? 'frequent' : 'ordinary'}`,
   ].join(' · ');
 }

@@ -11,7 +11,7 @@ import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { MOODS } from '../src/tension';
 import { QUALITIES } from '../src/theory';
-import { accentsOf, buildSection, chordsOf, barOf, chorusMaster, isChorus, isPre, personalityOf } from '../src/verse/section';
+import { accentsOf, buildSection, chordsOf, barOf, chorusMaster, isBridge, isChorus, isPre, personalityOf } from '../src/verse/section';
 import { DEFAULT_RANGE, type BandNote } from '../src/verse/verse';
 import type { Built } from '../src/verse/build';
 
@@ -27,6 +27,7 @@ let sections = 0, broken = 0, shortUnits = 0;
 const byHook: Record<string, number[][]> = {};
 const within: number[] = [], silDiff: number[] = [], silErr: number[] = [];
 let preShared = 0, preCmp = 0;
+const bridgeSil: number[] = [];
 let outerV = 0, innerV = 0, outerC = 0, innerC = 0, nSong = 0;
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
@@ -147,6 +148,29 @@ for (let i = 0; i < N; i++) {
       preShared += bp.phrases.filter((x) => vs.has(x.step)).length; preCmp += bp.phrases.length;
     }
   }
+
+  // the bridge (its own material: nothing borrowed; the song's last one is the master)
+  const bridge = [...list].reverse().find(isBridge);
+  if (bridge && vn.length) {
+    const bb = buildSection(bridge, OPTS, accentsOf(bridge), undefined, verse), bn = bb.notes, tot = bridge.chords.chordIdx.length, brbar = barOf(bridge), bp = personalityOf(bridge);
+    sections++;
+    for (let k = 1; k < bn.length; k++) if (bn[k].step < bn[k - 1].step + bn[k - 1].len - 1e-6) broken++;
+    for (let k = 0, j = 0; k < bn.length; k = j + 1) {
+      j = k;
+      while (j + 1 < bn.length && bn[j + 1].step <= bn[j].step + bn[j].len + 1e-6) j++;
+      if (bn[j].step + bn[j].len - bn[k].step < brbar / 4 - 1e-6) shortUnits++;
+    }
+    if (bn.length) {
+      const m = (a: BandNote[]) => mean(a.map((n) => n.midi)), sdOf = (a: BandNote[]) => Math.sqrt(mean(a.map((n) => (n.midi - m(a)) ** 2)));
+      const sl = 1 - bn.reduce((a, n) => a + n.len, 0) / tot;
+      add('bridge silence', sl < 0.3 ? 'under 30%' : sl < 0.35 ? '30-35%' : sl < 0.4 ? '35-40%' : '40%+');
+      add('bridge leads into the chorus', bn.some((n) => n.lead) ? 'yes' : 'no');
+      add('bridge pitch vs verse', m(bn) - m(vn) >= 2 ? 'higher' : m(bn) - m(vn) <= -2 ? 'lower' : 'level');
+      add('bridge notes per bar', (bn.length * brbar) / tot < 2.5 ? 'few' : (bn.length * brbar) / tot < 3.5 ? 'some' : 'many');
+      add('bridge pitch spread vs verse', sdOf(bn) < sdOf(vn) - 0.3 ? 'narrower' : sdOf(bn) > sdOf(vn) + 0.3 ? 'wider' : 'alike');
+      bridgeSil.push(sl - bp.bridgeSilence);
+    }
+  }
 }
 
 const flags: string[] = [];
@@ -179,5 +203,6 @@ console.log(`Chorus silence vs the song's draw: mean ${mean(silErr).toFixed(3)},
 console.log(`Choruses of one song: onsets the same as the last chorus's ${(100 * mean(within)).toFixed(0)}% (worst ${(100 * Math.min(...within)).toFixed(0)}%); vocal share differs by ${(100 * mean(silDiff)).toFixed(1)} points`);
 console.log(`${sections} sections written (${sigs.length} songs); overlaps/overruns: ${broken}; units shorter than a quarter bar: ${shortUnits}`);
 console.log(`Choruses with nearly the same rhythm (85%+ the same onsets): ${dup} of ${pairs} pairs (${((100 * dup) / pairs).toFixed(2)}%)${ex.length ? '\n  e.g. ' + ex.join('\n       ') : ''}`);
+console.log(`Bridge silence vs the song's draw: mean ${mean(bridgeSil).toFixed(3)}, worst ${Math.max(...bridgeSil.map(Math.abs)).toFixed(3)} (${bridgeSil.length} bridges)`);
 console.log(`Pre-chorus phrase starts shared with the verse: ${preCmp ? Math.round((100 * preShared) / preCmp) : 0}% of ${preCmp}`);
 console.log(flags.length ? `\nMarked (!!): ${flags.join(', ')}` : '\nNo trait is dominated by one value.');

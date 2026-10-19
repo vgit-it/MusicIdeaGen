@@ -36,6 +36,15 @@ The verse melody card (`src/verse/`) writes a verse and now a chorus, one rule a
 - Rules 20 and 21 apply as everywhere. The card shows PRE-CHORUS between VERSE and CHORUS, with its words.
 - To add a section the same way: a kind in `section.ts` (`kindOf`), a `dialsFor` branch, its personality traits on new random streams (so other sections don't change), and a rule or two.
 
+## Bridge (rule 24)
+- The card now sings the bridge too (`dialsFor('bridge')`), after the chorus on the card. Its own material: nothing is borrowed from the verse or chorus (its seed is its own). A song's bridges are one melody (the last one is the master), like choruses.
+- **Dials.** Phrases mostly 2-4 bars, longer breaks (2-4 beats), half the 16th runs, more and longer long notes, more stretched 8ths, openers 40%, fewer bar moves, small breaks 0.6x, endings mostly held / open / hang (60-90% of phrases), bends 1.2x.
+- **Register.** `bridgeLift` per song: -3 (lower, intimate moods), 0, +2, +4 (higher, tense/triumphant/angry moods), applied like the chorus lift.
+- **Silence.** 30-50% per song (`bridgeSilence`, mostly nearer 30), fitted by rule 18 like the chorus.
+- **Rule 24 - dwell** (`d.dwell`, low / middle / high of the range, drawn per song). Like rule 22 but a constant target: `voiceLead` is pulled toward one home pitch, so the line circles it. A mild tendency (chords still decide the pitch classes): 73% of bridge notes sit within 4 semitones of the home pitch, against 59% of verse notes.
+- **Lead-in** (rule 23) reuses `leadIn`: 30-85% per song (`bridgeLeadIn`); about 55% of bridges end on a long open or hanging note held into the next section.
+- Checked: 144 bridges in 168 songs, none empty, no overlaps, 0 short units, Pentatonic gives 0 off-scale notes; silence mean 3.7 points under its draw (worst 14). Verse, pre-chorus and chorus are note for note the same as before (948 sections by hash).
+
 ## Rule 21: a fresh core note at every phrase start
 - `rerollTones` (`verse.ts`), right after rule 4's bar picks and before holds and notes. At each phrase start the chord note to sit on (1, 3 or 5) is drawn again with the same weights as rule 4 (the hook's, in a chorus), and holds to the next change in the bar's picks or the bar's end. The part of the bar before it (the last phrase's end, or the break) keeps its pick.
 - Drawn by step, so a leaf repeating a seed repeats it. Pentatonic still applies when the note is chosen. Bar labels on the card ("1→3") show the result.
@@ -54,4 +63,4 @@ The verse melody card (`src/verse/`) writes a verse and now a chorus, one rule a
 - The card's **Human feel** switch (on by default) runs the experiment line through the main vocal's human feel (`guide/feel.ts`): glides, scoops, swells, a short fade at every word end, a softer last word, a breath before lines after a rest. The ending fade above stays when it is the longer one.
 
 ## Next
-Pre-chorus (climb / stall / stop / call / none), verse 2 answering verse 1, a lifted last chorus, bridge, outro.
+Verse 2 answering verse 1, a lifted last chorus, outro, interlude, breakdown (same recipe as above).
