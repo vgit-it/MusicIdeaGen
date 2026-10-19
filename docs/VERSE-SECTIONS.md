@@ -71,7 +71,7 @@ The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at
 - Checked on 168 songs: 0 of 29,845 notes outside the scale; with the menu on All, notes are as before.
 
 ## Range
-- The line lives in D3-D4 (a man's range) and dips out of it, down to D3 or up to A5, only when that saves a big leap (a note in the extended zone costs 4 semitones extra). About 3% of verse notes and 4% of chorus notes do. Bends to a chord note and open/hang endings stay in the main range where they can.
+- The line lives in D3-D4 (a man's range) and dips out of it, down to B2 or up to A5, only when that saves a big leap (a note in the extended zone costs 4 semitones extra). About 3% of verse notes and 4% of chorus notes do. Bends to a chord note and open/hang endings stay in the main range where they can.
 - A chorus lift moves the D3-D4 band, not the extended limits: it stops at them (so a lift down from D3 stays at D3).
 
 ## Singing
