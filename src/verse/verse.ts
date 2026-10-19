@@ -384,8 +384,8 @@ export function withStretch(notes: BandNote[], tones: ChordNote[], chordAt: Chor
 
 /** The pitch range (MIDI): the line lives between `lo` and `hi`, and may stray out to `xlo` / `xhi` but no further. */
 export interface Range { lo: number; hi: number; xlo: number; xhi: number }
-/** D3 to D4, dipping out of it (down to D3, up to A5) only rarely, when a note there saves a big leap. */
-export const DEFAULT_RANGE: Range = { lo: 50, hi: 62, xlo: 50, xhi: 81 };
+/** D3 to D4, dipping out of it (down to B2, up to A5) only rarely, when a note there saves a big leap. */
+export const DEFAULT_RANGE: Range = { lo: 50, hi: 62, xlo: 47, xhi: 81 };
 
 /**
  * Rule 6: smooth steps. Each note takes the octave nearest the one before, so the line moves by the smallest jump.
