@@ -5,7 +5,7 @@ import type { Chord, Mode } from '../theory';
 import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from './form';
 import { VERSE, type Dials } from './profile';
 import {
-  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, smallBreaks,
+  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
   pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
@@ -98,7 +98,9 @@ export function buildVerse(inp: BuildInput): Built {
         else breaks.push({ step: phrases[phrases.length - 1].step + phrases[phrases.length - 1].len, len: tail });
       }
       const runs = randomRuns(len, bar, inp.energy, breaks, sd.runs, accOf('runs'), d);
-      const { tones, bars } = randomTones(len, bar, sd.tones, accOf('tones'), d);
+      // (rule 21: each phrase starts on a freshly drawn core note)
+      const drawn = randomTones(len, bar, sd.tones, accOf('tones'), d);
+      const { tones, bars } = rerollTones(drawn.tones, drawn.bars, phrases, bar, sd.tones, d);
       const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
       const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones, undefined, pent), breaks), runs, key, chordAt, tones, undefined, pent);
       // (a phrase may open on one long note; the short notes after it stay short)
