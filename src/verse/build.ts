@@ -6,7 +6,7 @@ import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from
 import { VERSE, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
-  pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withOpeners, withRuns, withStretch,
+  pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withLeadIn, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
 
@@ -36,6 +36,8 @@ export interface BuildInput {
   dials?: Dials;
   /** Limit every note to the key's pentatonic scale (chosen so at every step: chord notes, steps, endings, bends). */
   pentatonic?: boolean;
+  /** Dice borrowed from another section for some rules (a pre-chorus takes the verse's phrasing). */
+  borrow?: Partial<Record<Rule, string>>;
   /** The try each leaf was written on in another build (a chorus built like its master starts there, so they match). */
   tries?: number[];
 }
@@ -84,7 +86,7 @@ export function buildVerse(inp: BuildInput): Built {
     const from = leaf.from * bar;
     const end = leaf.from + leaf.bars >= inp.bars ? total : from + leaf.bars * bar;
     const len = end - from;
-    const sd0 = seeds.get(leaf.id)!;
+    const sd0 = { ...seeds.get(leaf.id)!, ...(leaf.source === null ? inp.borrow : undefined) };
     const chordAt = inp.chordAt.slice(from, end);
     const accOf = (rule: Rule) => win(inp.acc, rootFrom(leaf, rule), len, 0.5);
     const write = (sd: Record<Rule, string>, final: boolean) => {
@@ -99,17 +101,21 @@ export function buildVerse(inp: BuildInput): Built {
       }
       const runs = randomRuns(len, bar, inp.energy, breaks, sd.runs, accOf('runs'), d);
       // (rule 21: each phrase starts on a freshly drawn core note)
-      const drawn = randomTones(len, bar, sd.tones, accOf('tones'), d);
+      const drawn = randomTones(len, bar, sd.tones, accOf('tones'), d, { from, total });
       const { tones, bars } = rerollTones(drawn.tones, drawn.bars, phrases, bar, sd.tones, d);
       const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
+      // (rule 22: a climbing section pulls toward a register that rises from just over the bottom of its range by `climb` + 2 semitones)
+      const climbTo = d.climb ? (step: number) => range.lo + 2 + (d.climb! + 2) * Math.min(1, (from + step) / Math.max(1, total - bar)) : undefined;
       const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones, undefined, pent), breaks), runs, key, chordAt, tones, undefined, pent);
       // (a phrase may open on one long note; the short notes after it stay short)
       const held = withOpeners(withHolds(plain, holds), phrases, chordAt, bar, sd.phrases, accOf('phrases'), d);
-      const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, bar, sd.holds, accOf('holds'), d, held.opened), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
+      const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, bar, sd.holds, accOf('holds'), d, held.opened), range, climbTo), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
       const pushed = pushNotes(limitSame(smallBreaks(foldIntoRange(walked, range), phrases, bar, sd.small, accOf('small'), d)), phrases, bar, sd.small, accOf('small'), d);
       const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt, range }), phrases, bar, sd.thirds, d));
+      // (rule 23: the section's last phrase leads into the next section)
+      const led = end >= total ? withLeadIn(shaped, phrases, bar, len, sd.endings, d, { key, mode, chordAt, range }) : shaped;
       // (the chorus: fitted to the song's share of silence)
-      const fitted = d.silence === undefined ? shaped : fitSilence(shaped, phrases, bar, len, d.silence, sd.small, accOf('small'));
+      const fitted = d.silence === undefined ? led : fitSilence(led, phrases, bar, len, d.silence, sd.small, accOf('small'));
       // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
       const units = fixUnits(fitted, phrases, chordAt, bar, final);
       if (!units.ok) return null;

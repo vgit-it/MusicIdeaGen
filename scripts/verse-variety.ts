@@ -11,7 +11,7 @@ import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { MOODS } from '../src/tension';
 import { QUALITIES } from '../src/theory';
-import { accentsOf, buildSection, chordsOf, barOf, chorusMaster, isChorus, personalityOf } from '../src/verse/section';
+import { accentsOf, buildSection, chordsOf, barOf, chorusMaster, isChorus, isPre, personalityOf } from '../src/verse/section';
 import { DEFAULT_RANGE, type BandNote } from '../src/verse/verse';
 import type { Built } from '../src/verse/build';
 
@@ -26,6 +26,7 @@ let sections = 0, broken = 0, shortUnits = 0;
 
 const byHook: Record<string, number[][]> = {};
 const within: number[] = [], silDiff: number[] = [], silErr: number[] = [];
+let preShared = 0, preCmp = 0;
 let outerV = 0, innerV = 0, outerC = 0, innerC = 0, nSong = 0;
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
@@ -120,6 +121,32 @@ for (let i = 0; i < N; i++) {
     add('verse bends', nb(vn) <= 1 ? '0-1' : nb(vn) <= 3 ? '2-3' : nb(vn) <= 5 ? '4-5' : '6+');
     sigs.push({ i, hook: p.hook, on: new Set(cn.map((n) => Math.round(n.step))), label: `${genre}/${mood}` });
   }
+
+  // the pre-chorus (the song's last one is the master; its phrasing is borrowed from the verse)
+  const pre = [...list].reverse().find(isPre);
+  if (pre && vn.length) {
+    const bp = buildSection(pre, OPTS, accentsOf(pre), undefined, verse), pn = bp.notes, tot = pre.chords.chordIdx.length, pbar = barOf(pre);
+    sections++;
+    for (let k = 1; k < pn.length; k++) if (pn[k].step < pn[k - 1].step + pn[k - 1].len - 1e-6) broken++;
+    for (let k = 0, j = 0; k < pn.length; k = j + 1) {
+      j = k;
+      while (j + 1 < pn.length && pn[j + 1].step <= pn[j].step + pn[j].len + 1e-6) j++;
+      if (pn[j].step + pn[j].len - pn[k].step < pbar / 4 - 1e-6) shortUnits++;
+    }
+    if (pn.length) {
+      const half = tot / 2, m = (a: BandNote[]) => mean(a.map((n) => n.midi));
+      const first = pn.filter((n) => n.step < half), second = pn.filter((n) => n.step >= half && !n.lead);
+      const c = first.length && second.length ? m(second) - m(first) : 0;
+      add('pre-chorus climb (2nd half vs 1st)', c >= 1 ? 'climbs' : c <= -1 ? 'falls' : 'level');
+      add('pre-chorus leads into the chorus', pn.some((n) => n.lead) ? 'yes' : 'no');
+      const sl = 1 - pn.reduce((a, n) => a + n.len, 0) / tot;
+      add('pre-chorus silence', sl < 0.15 ? 'under 15%' : sl < 0.19 ? '15-19%' : sl < 0.23 ? '19-23%' : sl < 0.27 ? '23-27%' : '27%+');
+      add('pre-chorus pitch vs verse', m(pn) - m(vn) >= 2 ? 'higher' : m(pn) - m(vn) <= -2 ? 'lower' : 'level');
+      add('pre-chorus notes per bar', (pn.length * pbar) / tot < 3.8 ? 'few' : (pn.length * pbar) / tot < 5 ? 'some' : 'many');
+      const vs = new Set(bv.phrases.map((x) => x.step));
+      preShared += bp.phrases.filter((x) => vs.has(x.step)).length; preCmp += bp.phrases.length;
+    }
+  }
 }
 
 const flags: string[] = [];
@@ -152,4 +179,5 @@ console.log(`Chorus silence vs the song's draw: mean ${mean(silErr).toFixed(3)},
 console.log(`Choruses of one song: onsets the same as the last chorus's ${(100 * mean(within)).toFixed(0)}% (worst ${(100 * Math.min(...within)).toFixed(0)}%); vocal share differs by ${(100 * mean(silDiff)).toFixed(1)} points`);
 console.log(`${sections} sections written (${sigs.length} songs); overlaps/overruns: ${broken}; units shorter than a quarter bar: ${shortUnits}`);
 console.log(`Choruses with nearly the same rhythm (85%+ the same onsets): ${dup} of ${pairs} pairs (${((100 * dup) / pairs).toFixed(2)}%)${ex.length ? '\n  e.g. ' + ex.join('\n       ') : ''}`);
+console.log(`Pre-chorus phrase starts shared with the verse: ${preCmp ? Math.round((100 * preShared) / preCmp) : 0}% of ${preCmp}`);
 console.log(flags.length ? `\nMarked (!!): ${flags.join(', ')}` : '\nNo trait is dominated by one value.');

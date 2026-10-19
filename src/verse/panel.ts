@@ -12,7 +12,7 @@ import { VerseSynth } from './synth';
 import { NOTE_NAMES } from '../theory';
 import { DEFAULT_RANGE, quarterOf, type BandNote, type BendAmount, type Gap, type Range } from './verse';
 import type { Built } from './build';
-import { accentsOf, barOf, buildSection, chordsKey, chorusMaster, hookSig, isChorus, personalityOf, type SectionOptions } from './section';
+import { accentsOf, barOf, buildSection, chordsKey, chorusMaster, hookSig, isChorus, isPre, isShared, kindOf, personalityOf, type SectionOptions } from './section';
 import type { Variation } from './form';
 import { describe, dialsFor } from './personality';
 
@@ -49,7 +49,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 21: each new phrase draws its core note again (so a phrase starting part-way through a bar can sit on a different chord note than the bar did). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 14: the form, meta-phrases (4+4, 8+8...) with the second answering the first and varying. Rule 13: bends (scoops, and held endings fading out in volume) at good spots, Auto voice only. Rule 15: bends inside held notes, to the next chord note or the next bar's core note, likelier on longer notes and after repeated notes. Rule 16: the chorus, with its own hook (a chant, a long-note anthem, a leap and fall, or pushed rhythm), its height, and its own ways of ending phrases; every song draws a personality, so two songs rarely share much. Rule 17: the chorus holds plain 8ths into longer notes (fewer, longer notes, more bends). Rule 20 (a constraint): no short stray bit of singing, under a quarter bar, with silence either side. Rule 19: a chorus phrase often opens on one long note (scooped or bent now and then), with shorter notes after it. Rule 18: every chorus of a song is the song's last chorus's melody over its own chords, and 25–45% of it (drawn per song, mostly nearer 25) is left without vocals. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 22: a pre-chorus climbs (core notes lean from the root toward the 5th, the register rises 3–7 semitones). Rule 23: its last phrase now and then leads into the chorus on a held open or hanging note, sung strongly. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 21: each new phrase draws its core note again (so a phrase starting part-way through a bar can sit on a different chord note than the bar did). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 14: the form, meta-phrases (4+4, 8+8...) with the second answering the first and varying. Rule 13: bends (scoops, and held endings fading out in volume) at good spots, Auto voice only. Rule 15: bends inside held notes, to the next chord note or the next bar's core note, likelier on longer notes and after repeated notes. Rule 16: the chorus, with its own hook (a chant, a long-note anthem, a leap and fall, or pushed rhythm), its height, and its own ways of ending phrases; every song draws a personality, so two songs rarely share much. Rule 17: the chorus holds plain 8ths into longer notes (fewer, longer notes, more bends). Rule 20 (a constraint): no short stray bit of singing, under a quarter bar, with silence either side. Rule 19: a chorus phrase often opens on one long note (scooped or bent now and then), with shorter notes after it. Rule 18: every chorus of a song is the song's last chorus's melody over its own chords, and 25–45% of it (drawn per song, mostly nearer 25) is left without vocals. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
@@ -93,11 +93,11 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     let b = cache.get(idea);
     if (!b) {
       // (a chorus is built like the song's last one: its melody over this chorus's chords; two with the same chords are one build)
-      const master = isChorus(idea) ? chorusMaster(list, idea, opts()) : idea;
-      const sig = isChorus(idea) ? `${hookSigOf(idea)}|${chordsKey(idea)}` : '';
+      const master = isShared(idea) ? chorusMaster(list, idea, opts()) : idea;
+      const sig = isShared(idea) ? `${hookSigOf(idea)}|${chordsKey(idea)}` : '';
       b = sig ? hooks.get(sig) : undefined;
       if (!b) {
-        b = buildSection(idea, opts(), accOf(master), master !== idea ? master : undefined);
+        b = buildSection(idea, opts(), accOf(master), master !== idea ? master : undefined, list.find((i) => i.section?.kind === 'verse'));
         if (sig) hooks.set(sig, b);
       }
       cache.set(idea, b);
@@ -114,10 +114,10 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     let w = wordsCache.get(idea);
     if (!w) {
       // (choruses with the same rhythm sing the same words; one over other chords that moves a note has its own)
-      const chorus = isChorus(idea), sig = chorus ? `${hookSigOf(idea)}|${notesFor(idea).map((n) => `${n.step}:${n.len}`).join(',')}` : '';
+      const chorus = isShared(idea), sig = chorus ? `${hookSigOf(idea)}|${notesFor(idea).map((n) => `${n.step}:${n.len}`).join(',')}` : '';
       w = chorus ? hookWords.get(sig) : undefined;
       if (!w) {
-        w = writeWords(notesFor(idea), builtFor(idea).phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre }, range.hi + dialsFor(chorus ? 'chorus' : 'verse', persFor(idea)).lift - 4, chorus ? hookSigOf(idea) : `${idea.seeds.song}|${idea.seeds.chords}`, accOf(idea), chorus ? 0.9 : 0.6);
+        w = writeWords(notesFor(idea), builtFor(idea).phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre }, range.hi + dialsFor(kindOf(idea), persFor(idea)).lift - 4, chorus ? hookSigOf(idea) : `${idea.seeds.song}|${idea.seeds.chords}`, accOf(idea), kindOf(idea) === 'chorus' ? 0.9 : kindOf(idea) === 'prechorus' ? 0.75 : 0.6);
         if (chorus) hookWords.set(sig, w);
       }
       wordsCache.set(idea, w);
@@ -131,7 +131,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     if (!d) {
       const w = wordsOn ? wordsFor(idea) : null;
       const vocal: VocalNote[] = notesFor(idea).flatMap((n, i) => {
-        const syl = w ? w.syls[i] : la, vel = w && !w.syls[i].stress ? 0.68 : 0.82;
+        const syl = w ? w.syls[i] : la, vel = (w && !w.syls[i].stress ? 0.68 : 0.82) + (n.lead ? 0.12 : 0);
         const head: VocalNote = { step: n.step, len: n.len, midi: n.midi, vel, syl, start: w ? w.starts[i] : n.step % 64 === 0, ...(n.slide ? { slide: n.slide } : {}), ...fadeOf(n, n.len) };
         if (n.bendTo === undefined) return [head];
         // (an 8th bends from its first moment: one note, scooped into from its own pitch, slowly)
@@ -150,7 +150,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     return d;
   };
   const prepare = () => { if (on && sing && singer) singer.prepare(list.filter(sings).map(singable), six); };
-  const sings = (idea: Idea) => !idea.section || idea.section.kind === 'verse' || idea.section.kind === 'chorus';
+  const sings = (idea: Idea) => !idea.section || idea.section.kind === 'verse' || idea.section.kind === 'prechorus' || idea.section.kind === 'chorus';
 
   const pos = (step: number, bar: number) => +(step / bar + 1).toFixed(2);
   const at = (g: Gap, bar: number) => `${pos(g.step, bar)} (${bar / g.len > 6 ? '⅛' : bar / g.len > 3 ? '¼' : '½'} bar)`;
@@ -181,11 +181,12 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   };
 
   const info = () => {
-    const verse = list.find((i) => sings(i) && !isChorus(i)), chorus = list.find(isChorus), any = verse ?? chorus;
+    const verse = list.find((i) => sings(i) && !isShared(i)), pre = list.find(isPre), chorus = list.find(isChorus), any = verse ?? pre ?? chorus;
     if (!any) { $('v-info').textContent = 'No verse in this song.'; $('v-lyrics').textContent = ''; return; }
-    $('v-lyrics').textContent = wordsOn ? [verse && ['VERSE', verse], chorus && ['CHORUS', chorus]].filter((x): x is [string, Idea] => !!x).map(([t, i]) => `${t}\n${wordsFor(i).lines.map((l, k) => `${k + 1}  ${l}`).join('\n')}`).join('\n\n') : '';
+    $('v-lyrics').textContent = wordsOn ? [verse && ['VERSE', verse], pre && ['PRE-CHORUS', pre], chorus && ['CHORUS', chorus]].filter((x): x is [string, Idea] => !!x).map(([t, i]) => `${t}\n${wordsFor(i).lines.map((l, k) => `${k + 1}  ${l}`).join('\n')}`).join('\n\n') : '';
     const lines = [`This song: ${describe(persFor(any))}`];
     if (verse) lines.push('', 'VERSE', ...report(verse));
+    if (pre) lines.push('', 'PRE-CHORUS', `Pre-chorus climbs ${dialsFor('prechorus', persFor(pre)).climb} semitones`, ...report(pre));
     if (chorus) lines.push('', 'CHORUS', `Chorus range lifted ${dialsFor('chorus', persFor(chorus)).lift} semitones`, ...report(chorus));
     $('v-info').textContent = lines.join('\n');
   };

@@ -122,7 +122,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** How the phrase ended on this note. */ style?: EndStyle }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** The held note a section leads into the next on (rule 23): sung strongly, no fall. */ lead?: boolean; /** How the phrase ended on this note. */ style?: EndStyle }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -263,15 +263,18 @@ const NOTES: ChordNote[] = ['root', 'third', 'fifth'];
  * another part way through, at the half bar or the third beat.
  * Returns the chord note for every 16th step, and each bar's choice.
  */
-export function randomTones(totalSteps: number, bar: number, seed: string, acc?: number[], d: Dials = VERSE): { tones: ChordNote[]; bars: BarTone[] } {
+export function randomTones(totalSteps: number, bar: number, seed: string, acc?: number[], d: Dials = VERSE, whole?: { from: number; total: number }): { tones: ChordNote[]; bars: BarTone[] } {
   const rng = new Rng(seed + '|tones');
   const tones: ChordNote[] = [];
   const bars: BarTone[] = [];
   for (let from = 0; from < totalSteps; from += bar) {
-    const uniform = d.toneW.every((x) => x === d.toneW[0]);
-    const first = uniform ? rng.pick(NOTES) : NOTES[cumulative(d.toneW, rng.next())];
+    // (rule 22: a climbing section leans from the root toward the 5th, bar by bar)
+    const pr = d.climb ? Math.min(1, ((whole?.from ?? 0) + from) / Math.max(1, (whole?.total ?? totalSteps) - bar)) : 0;
+    const toneW: [number, number, number] = d.climb ? [1.6 - pr, 1, 0.6 + pr] : d.toneW;
+    const uniform = toneW.every((x) => x === toneW[0]);
+    const first = uniform ? rng.pick(NOTES) : NOTES[cumulative(toneW, rng.next())];
     const moves = rng.chance(d.moves);
-    const then = moves ? (uniform ? rng.pick(NOTES.filter((n) => n !== first)) : rng.weighted(NOTES.filter((n) => n !== first).map((n) => [n, d.toneW[NOTES.indexOf(n)]] as const))) : first;
+    const then = moves ? (uniform ? rng.pick(NOTES.filter((n) => n !== first)) : rng.weighted(NOTES.filter((n) => n !== first).map((n) => [n, toneW[NOTES.indexOf(n)]] as const))) : first;
     bars.push(moves ? `${NAMES[first]}→${NAMES[then]}` : NAMES[first]);
     // (the move comes at the half bar or the third beat: a bit more often where the band hits harder)
     const half = 0.65 * nudge(acc, from + bar / 2), late = 0.35 * nudge(acc, from + (bar * 3) / 4);
@@ -389,13 +392,14 @@ export const DEFAULT_RANGE: Range = { lo: 50, hi: 62, xlo: 50, xhi: 81 };
  * Notes in the extended zone (past the top or bottom, up to the extended limits) cost 4 semitones extra, so the line
  * only strays there when it saves a real leap.
  */
-export function voiceLead(notes: BandNote[], r: Range = DEFAULT_RANGE): BandNote[] {
+export function voiceLead(notes: BandNote[], r: Range = DEFAULT_RANGE, target?: (step: number) => number): BandNote[] {
   let prev = Math.round((r.lo + r.hi) / 2);
   return notes.map((n) => {
     const pc = ((n.midi % 12) + 12) % 12;
     let best = Math.round((prev - pc) / 12) * 12 + pc, score = Infinity;
     for (let m = pc + 12 * Math.ceil((r.xlo - pc) / 12); m <= r.xhi; m += 12) {
-      const sc = Math.abs(m - prev) + (m < r.lo || m > r.hi ? 4 : 0);
+      // (rule 22: a climbing section pulls toward a register that rises across it)
+      const sc = (target ? 0.3 : 1) * Math.abs(m - prev) + (m < r.lo || m > r.hi ? 4 : 0) + (target ? 2 * Math.abs(m - target(n.step)) : 0);
       if (sc < score) { best = m; score = sc; }
     }
     prev = best;
@@ -590,6 +594,27 @@ export function phraseEndings(
 }
 
 /**
+ * Rule 23: lead-in. A section that leads into another (a pre-chorus into the chorus) now and then ends its last phrase on one long
+ * note, open (the 3rd or 5th) or hanging, held on to the end of the section and sung strongly (no fall), so the next section lands.
+ * Run after the phrase endings: it overrides the last phrase's own ending.
+ */
+export function withLeadIn(
+  notes: BandNote[], phrases: Gap[], bar: number, total: number, seed: string, d: Dials,
+  ctx: { key: number; mode: Mode; chordAt: Chord[]; range?: Range },
+): BandNote[] {
+  const last = phrases[phrases.length - 1];
+  if (!d.leadIn || !last || roll(seed, 'leadin', last.step) >= d.leadIn) return notes;
+  const forced: Dials = { ...d, end: [1, 1], endStyle: { held: 0, open: 3, hang: 1, punch: 0, sync: 0, plain: 0 }, endLen: [0, 0.2, 0.4, 0.3, 0.1] };
+  const out = phraseEndings(notes, [last], bar, `${seed}|lead`, forced, ctx);
+  const end = last.step + last.len;
+  const i = out.findIndex((n) => n.end && n.step + n.len === end);
+  if (i < 0) return notes;
+  // (held on into the break that follows, by up to half a bar, but not to the section's very end)
+  const len = Math.max(out[i].len, Math.min(total - 1 - out[i].step, out[i].len + bar / 2));
+  return out.map((n, k) => (k === i ? { ...n, len, lead: true } : n));
+}
+
+/**
  * Rule 16 (push): a note on a beat now and then comes a 16th early, so the line leans ahead of the band. Not the first note
  * of a phrase, and only where the 16th before it is free. More where the band hits hard.
  */
@@ -669,7 +694,7 @@ export function addBends(
     const joined = !!prev && Math.abs(n.step - (prev.step + prev.len)) < 1e-6;
     const at = (tag: string) => new Rng(`${seed}|bsz|${tag}|${Math.round(n.step * 100)}`);
     const sign = (tag: string) => (at(tag).chance(0.85) ? 1 : -1);
-    if (n.end && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fade: at('fall').weighted([[10, 2], [16, 2], [24, 1]]), kind: 'fall' });
+    if (n.end && !n.lead && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fade: at('fall').weighted([[10, 2], [16, 2], [24, 1]]), kind: 'fall' });
     if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.75, 0.2 + 0.15 * (firsts.get(i)! - 1) + (n.opener ? 0.15 : 0)), slide: sign('ps') * at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
     if (n.land && prev?.walk && n.len >= 2) cand.push({ i, pri: 3, p: 0.4, slide: Math.max(-3, Math.min(3, n.midi - prev.midi)), kind: 'walk arrival' });
     const step = Math.floor(n.step + 1e-6);
