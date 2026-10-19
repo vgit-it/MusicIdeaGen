@@ -26,6 +26,16 @@ The verse melody card (`src/verse/`) writes a verse and now a chorus, one rule a
 - A short unit is first held out to a beat when the phrase has room (never across a chord change); one that reaches the next note joins it. If it can't be fixed that way, the whole leaf is written again with new dice until it passes (up to 40 tries; the last try drops the unit, so the rule always holds). An answering leaf starts on its source's try; a chorus built like its master starts on the master's.
 - Side effects: held notes get longer; a chorus's silence lands a little under its draw (mean 2 points); in 2 songs in 224 a chorus over different chords needed another try than its master, so it differs from it.
 
+## Pre-chorus (rules 22 and 23)
+- The card now sings the song's pre-chorus too. It is the same engine with its own dials (`dialsFor('prechorus')`): tighter phrases (mostly 1-2 bars, short breaks), a few more 16th runs than the verse, a few long notes (less than the chorus), bends 1.5x. Verse and chorus are note for note as before (checked by hash over 486 sections).
+- **Shared melody.** Like choruses, the pre-choruses of a song are one melody: the last one is the master, the others are written like it over their own chords. `hookSig` now includes the section kind.
+- **Borrowed from the verse.** Its phrasing and small breaks use the verse's dice (`borrow` in `build.ts`), so the two feel related (about 70% of pre-chorus phrase starts land where the verse's do). Its chord notes, long notes, endings and bends are its own.
+- **Silence.** 15-30% per song (`preSilence`, mostly nearer 15), fitted by rule 18 like the chorus.
+- **Rule 22 - climb** (`d.climb`, 3-7 semitones drawn per song). The core note leans from the root toward the 5th bar by bar (`randomTones`), and `voiceLead` is pulled toward a register that rises across the section (starts a little above the range's bottom; the band is lifted 2 semitones). Mild: 55% of pre-choruses end their second half higher than the first by a semitone or more, 21% fall (chords decide the pitch classes).
+- **Rule 23 - lead-in** (`withLeadIn`, `d.leadIn` 45-90% per song). The last phrase ends on one long open (3rd or 5th) or hanging note, 2-4 beats, held on into the break (up to half a bar more, never to the section's last 16th), sung stronger (more velocity) and without the ending fade. About 70% of pre-choruses do it.
+- Rules 20 and 21 apply as everywhere. The card shows PRE-CHORUS between VERSE and CHORUS, with its words.
+- To add a section the same way: a kind in `section.ts` (`kindOf`), a `dialsFor` branch, its personality traits on new random streams (so other sections don't change), and a rule or two.
+
 ## Rule 21: a fresh core note at every phrase start
 - `rerollTones` (`verse.ts`), right after rule 4's bar picks and before holds and notes. At each phrase start the chord note to sit on (1, 3 or 5) is drawn again with the same weights as rule 4 (the hook's, in a chorus), and holds to the next change in the bar's picks or the bar's end. The part of the bar before it (the last phrase's end, or the break) keeps its pick.
 - Drawn by step, so a leaf repeating a seed repeats it. Pentatonic still applies when the note is chosen. Bar labels on the card ("1→3") show the result.

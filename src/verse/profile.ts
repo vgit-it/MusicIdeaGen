@@ -48,6 +48,10 @@ export interface Dials {
   bends: number;
   /** The share of the section left silent that the line is fitted to (left out: whatever the rules leave). */
   silence?: number;
+  /** Semitones the line climbs across the section (rule 22; a pre-chorus: left out, none). */
+  climb?: number;
+  /** The chance the section's last phrase leads into the next section: an open or hanging note held to the end, sung strongly (rule 23). */
+  leadIn?: number;
   /** The pitch classes the line is limited to (the pentatonic option): every note is chosen from them, steps and endings too. */
   pent?: ReadonlySet<number>;
 }
