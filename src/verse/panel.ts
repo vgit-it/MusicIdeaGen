@@ -12,7 +12,7 @@ import { VerseSynth } from './synth';
 import { NOTE_NAMES } from '../theory';
 import { DEFAULT_RANGE, quarterOf, type BandNote, type BendAmount, type Gap, type Range } from './verse';
 import type { Built } from './build';
-import { accentsOf, barOf, buildSection, hookSig, isChorus, personalityOf, type SectionOptions } from './section';
+import { accentsOf, barOf, buildSection, chordsKey, chorusMaster, hookSig, isChorus, personalityOf, type SectionOptions } from './section';
 import type { Variation } from './form';
 import { describe, dialsFor } from './personality';
 
@@ -35,6 +35,8 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   let sing = true;
   let wordsOn = true;
   let bends: BendAmount = 'some';
+  // (human feel, as the main vocal has it: glides, scoops, swells into words, fades at word ends, a breath in; Auto voice only)
+  let humanFeel = true;
   let singer: Singer | null = null;
   let out: Tone.Gain | null = null;
   const six = () => 15 / Tone.getTransport().bpm.value;
@@ -45,7 +47,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
 
   root.innerHTML = `
     <h2>Verse melody <span class="exp">experiment</span></h2>
-    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 14: the form, meta-phrases (4+4, 8+8...) with the second answering the first and varying. Rule 13: bends (scoops, and held endings fading out in volume) at good spots, Auto voice only. Rule 15: bends inside held notes, to the next chord note or the next bar's core note, likelier on longer notes and after repeated notes. Rule 16: the chorus, with its own hook (a chant, a long-note anthem, a leap and fall, or pushed rhythm), its height, and its own ways of ending phrases; every song draws a personality, so two songs rarely share much. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
+    <p class="hint">A new vocal melody writer, built one rule at a time. Plays over the band. Rule 1: an 8th note on the 5th of every chord. Rule 2: phrases of 1–4 bars with a break after each (¼ bar up to a whole bar). Rule 3: runs of 16th notes (⅛, ¼ or ½ bar), fewer in high-energy verses. Rule 4: each bar sits on the root, 3rd or 5th, or moves between them (1→3, 5→3 ...). Rule 5: some long notes. Rule 6: smooth steps between bars. Rule 7: small 8th and 16th breaks; never more than 4 of one kind of note in a row. Rule 8: a bar's core note, now and then one scale step up or down from it. Rule 9: inside a phrase, the end of a bar walks by scale steps into the next bar's core note. Rule 10: now and then a bar is three even notes, a third of a bar each. Rule 11: some phrases end on a held core note, a beat to a bar long. The band's drums and chords are one factor in the choices below (a nudge, never a rule). Rule 14: the form, meta-phrases (4+4, 8+8...) with the second answering the first and varying. Rule 13: bends (scoops, and held endings fading out in volume) at good spots, Auto voice only. Rule 15: bends inside held notes, to the next chord note or the next bar's core note, likelier on longer notes and after repeated notes. Rule 16: the chorus, with its own hook (a chant, a long-note anthem, a leap and fall, or pushed rhythm), its height, and its own ways of ending phrases; every song draws a personality, so two songs rarely share much. Rule 17: the chorus holds plain 8ths into longer notes (fewer, longer notes, more bends). Rule 18: every chorus of a song is the song's last chorus's melody over its own chords, and 30–50% of it (drawn per song, mostly nearer 30) is left without vocals. Throughout: a lean (not a rule) to more notes in the 1st and 3rd quarter of a bar, longer notes or silence in the 2nd and 4th.</p>
     <button id="v-add" class="small">+ Add verse melody</button>
     <div id="v-body" hidden>
       <div class="guiderow">
@@ -54,6 +56,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
         <label title="Auto voice: the song's own singer sings the line on 'la'. Synth: a plain tone. Mute the main vocal above to hear the line alone">Sound <select id="v-sing" class="gsing"><option value="sing">Auto voice</option><option value="synth">Synth</option></select></label>
         <label title="Words: the line sung as pseudo-English words set to its rhythm and breaks. La: every note on 'la'">Sing <select id="v-words" class="gsing"><option value="words">Words</option><option value="la">La</option></select></label>
         <label title="Bends: the voice scoops into some notes (from below or above) and fades out some held endings (in volume, not pitch). Only the Auto voice bends, not the synth">Bends <select id="v-bends" class="gsing"><option value="off">Off</option><option value="some" selected>Some</option><option value="lots">Lots</option></select></label>
+        <label title="Human feel: the voice sings as the main vocal does: gliding between notes, scooping into some words, swelling into words and fading at their ends, a breath in before a line. Auto voice only">Human feel <select id="v-feel" class="gsing"><option value="on" selected>On</option><option value="off">Off</option></select></label>
         <label title="Meta-phrases: the bars are grouped (8 bars: 4+4; 16: 8+8, each 4+4) and the second half answers the first with variations. Off: one long verse with no grouping">Meta-phrases <select id="v-meta" class="gsing"><option value="on" selected>On</option><option value="off">Off</option></select></label>
         <label title="How much the answering half changes: Little keeps almost everything, Lots changes most things (the phrasing mostly stays)">Variation <select id="v-var" class="gsing"><option value="little">Little</option><option value="some" selected>Some</option><option value="lots">Lots</option></select></label>
         <label class="grow">Volume <input type="range" id="v-vol" min="0" max="100" value="${level}"></label>
@@ -86,10 +89,12 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   const builtFor = (idea: Idea): Built => {
     let b = cache.get(idea);
     if (!b) {
-      const sig = isChorus(idea) ? hookSigOf(idea) : '';
+      // (a chorus is built like the song's last one: its melody over this chorus's chords; two with the same chords are one build)
+      const master = isChorus(idea) ? chorusMaster(list, idea, opts()) : idea;
+      const sig = isChorus(idea) ? `${hookSigOf(idea)}|${chordsKey(idea)}` : '';
       b = sig ? hooks.get(sig) : undefined;
       if (!b) {
-        b = buildSection(idea, opts(), accOf(idea));
+        b = buildSection(idea, opts(), accOf(master), master !== idea ? master : undefined);
         if (sig) hooks.set(sig, b);
       }
       cache.set(idea, b);
@@ -105,10 +110,11 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   const wordsFor = (idea: Idea): Words => {
     let w = wordsCache.get(idea);
     if (!w) {
-      const chorus = isChorus(idea), sig = chorus ? hookSigOf(idea) : '';
+      // (choruses with the same rhythm sing the same words; one over other chords that moves a note has its own)
+      const chorus = isChorus(idea), sig = chorus ? `${hookSigOf(idea)}|${notesFor(idea).map((n) => `${n.step}:${n.len}`).join(',')}` : '';
       w = chorus ? hookWords.get(sig) : undefined;
       if (!w) {
-        w = writeWords(notesFor(idea), builtFor(idea).phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre }, range.hi + dialsFor(chorus ? 'chorus' : 'verse', persFor(idea)).lift - 4, chorus ? sig : `${idea.seeds.song}|${idea.seeds.chords}`, accOf(idea), chorus ? 0.9 : 0.6);
+        w = writeWords(notesFor(idea), builtFor(idea).phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre }, range.hi + dialsFor(chorus ? 'chorus' : 'verse', persFor(idea)).lift - 4, chorus ? hookSigOf(idea) : `${idea.seeds.song}|${idea.seeds.chords}`, accOf(idea), chorus ? 0.9 : 0.6);
         if (chorus) hookWords.set(sig, w);
       }
       wordsCache.set(idea, w);
@@ -197,7 +203,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
     $('v-add').hidden = v;
     if (v) {
       synth ??= new VerseSynth(engine.mixer.sectionLevel); synth.setLevel(level);
-      if (!singer) { out = new Tone.Gain((level / 100) ** 2).connect(engine.mixer.sectionLevel); singer = new Singer(out, 'lead'); }
+      if (!singer) { out = new Tone.Gain((level / 100) ** 2).connect(engine.mixer.sectionLevel); singer = new Singer(out, 'lead'); singer.humanFeel = humanFeel; }
       prepare();
     } else { synth?.releaseAll(); singer?.releaseAll(); }
     info();
@@ -229,6 +235,7 @@ export function buildVersePanel(root: HTMLElement, engine: Engine, ctl: VerseCon
   $('v-words').addEventListener('change', (e) => { wordsOn = (e.target as HTMLSelectElement).value === 'words'; sung = new WeakMap(); singer?.releaseAll(); info(); prepare(); });
   $('v-bends').addEventListener('change', (e) => { bends = (e.target as HTMLSelectElement).value as BendAmount; cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); hooks = new Map(); hookWords = new Map(); singer?.releaseAll(); info(); prepare(); });
   const rebuild = () => { cache = new WeakMap(); sung = new WeakMap(); wordsCache = new WeakMap(); hooks = new Map(); hookWords = new Map(); singer?.releaseAll(); info(); prepare(); };
+  $('v-feel').addEventListener('change', (e) => { humanFeel = (e.target as HTMLSelectElement).value === 'on'; if (singer) singer.humanFeel = humanFeel; singer?.releaseAll(); prepare(); });
   $('v-meta').addEventListener('change', (e) => { meta = (e.target as HTMLSelectElement).value === 'on'; rebuild(); });
   $('v-var').addEventListener('change', (e) => { variation = (e.target as HTMLSelectElement).value as Variation; rebuild(); });
   $('v-vol').addEventListener('input', (e) => { level = +(e.target as HTMLInputElement).value; synth?.setLevel(level); if (out) out.gain.value = (level / 100) ** 2; });

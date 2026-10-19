@@ -37,6 +37,8 @@ export interface Personality {
   verseTone: ChordNote | 'any';
   /** Times the chances of bends, everywhere. */
   bends: number;
+  /** The share of every chorus of the song with no vocals: 30-50%, mostly nearer 30. */
+  chorusSilence: number;
 }
 
 type Tilt = Partial<Record<string, number>>;
@@ -81,9 +83,11 @@ export function drawPersonality(seed: string, genre: string, mood: string): Pers
   const lo = 0.25 + r('endlo').next() * 0.5;
   const chorusVariation = r('chorusvar').weighted<Variation>([['little', 0.45], ['some', 0.4], ['lots', 0.15]]);
   const vlo = 0.15 + r('vendlo').next() * 0.35;
-  const chorusRuns = r('chorusruns').weighted([[0.6, 1], [1, 2], [1.8, 2], [3, 2]]);
+  const chorusRuns = r('chorusruns').weighted([[0.4, 1], [0.7, 2], [1.1, 2], [1.8, 2]]);
+  // (30-50% of the chorus without vocals: a square of a draw, so 30% is common and 50% rare)
+  const chorusSilence = 0.3 + 0.2 * r('csilence').next() ** 2;
   return {
-    hook, hookTone, chorusLift, chorusEnd, chorusEndMain, chorusEndChance: [lo, Math.min(1, lo + 0.25)], chorusVariation, chorusRuns,
+    hook, hookTone, chorusLift, chorusEnd, chorusEndMain, chorusEndChance: [lo, Math.min(1, lo + 0.25)], chorusVariation, chorusRuns, chorusSilence,
     verseRuns: r('vruns').weighted([[0.6, 1], [0.85, 2], [1, 3], [1.25, 2], [1.5, 1]]) * (genre === 'funk' ? 1.3 : 1),
     verseHold: r('vhold').weighted([[0.2, 1], [0.3, 2], [0.4, 3], [0.55, 2], [0.7, 1]]),
     verseMoves: r('vmoves').weighted([[0.15, 1], [0.3, 2], [0.45, 1]]),
@@ -100,10 +104,10 @@ const lean = (tone: ChordNote | 'any', by: number): Dials['toneW'] => (tone === 
 
 /** The hooks, as dials: how a chorus built on each moves. */
 const HOOK_DIALS: Record<Hook, Partial<Dials>> = {
-  chant: { phraseLen: [0.3, 0.4, 0.2, 0.1], breakBeats: [0.5, 0.3, 0.15, 0.05], runs: 1.2, runLen: [0.8, 0.2, 0], holdBar: 0.1, holdLen: [0.6, 0.2, 0.2, 0], moves: 0.1, neighbour: 0.05, walk: 0.3, third: 0.3, small: 0.4, push: 0.1 },
-  anthem: { phraseLen: [0.03, 0.22, 0.3, 0.45], breakBeats: [0.2, 0.35, 0.25, 0.2], runs: 0.1, runLen: [1, 0, 0], holdBar: 0.85, holdLen: [0.05, 0.15, 0.4, 0.4], holdTwice: 0.5, moves: 0.25, toneW: [1.4, 0.5, 1.2], neighbour: 0.1, walk: 0.9, third: 0.05, small: 0.3, push: 0 },
-  leap: { phraseLen: [0.1, 0.4, 0.3, 0.2], holdBar: 0.3, holdLen: [0.25, 0.25, 0.35, 0.15], moves: 0.85, toneW: [0.7, 0.7, 1.4], neighbour: 0.45, walk: 0.9, runs: 1.5, third: 0.1, small: 0.8, push: 0.05 },
-  push: { phraseLen: [0.1, 0.3, 0.3, 0.3], breakBeats: [0.6, 0.3, 0.07, 0.03], runs: 2.4, runLen: [0.5, 0.35, 0.15], holdBar: 0.12, holdLen: [0.5, 0.2, 0.25, 0.05], moves: 0.35, neighbour: 0.35, walk: 0.5, third: 0.05, small: 0.9, push: 0.55 },
+  chant: { phraseLen: [0.3, 0.4, 0.2, 0.1], breakBeats: [0.5, 0.3, 0.15, 0.05], runs: 0.6, runLen: [0.8, 0.2, 0], holdBar: 0.3, holdLen: [0.3, 0.3, 0.3, 0.1], holdTwice: 0.2, stretch: 0.3, moves: 0.1, neighbour: 0.05, walk: 0.3, third: 0.3, small: 0.4, push: 0.1 },
+  anthem: { phraseLen: [0.03, 0.22, 0.3, 0.45], breakBeats: [0.2, 0.35, 0.25, 0.2], runs: 0.1, runLen: [1, 0, 0], holdBar: 0.85, holdLen: [0.05, 0.15, 0.4, 0.4], holdTwice: 0.5, stretch: 0.25, moves: 0.25, toneW: [1.4, 0.5, 1.2], neighbour: 0.1, walk: 0.9, third: 0.05, small: 0.3, push: 0 },
+  leap: { phraseLen: [0.1, 0.4, 0.3, 0.2], holdBar: 0.55, holdLen: [0.15, 0.25, 0.4, 0.2], holdTwice: 0.2, stretch: 0.35, moves: 0.85, toneW: [0.7, 0.7, 1.4], neighbour: 0.45, walk: 0.9, runs: 0.8, third: 0.1, small: 0.8, push: 0.05 },
+  push: { phraseLen: [0.1, 0.3, 0.3, 0.3], breakBeats: [0.6, 0.3, 0.07, 0.03], runs: 1.2, runLen: [0.5, 0.35, 0.15], holdBar: 0.3, holdLen: [0.3, 0.25, 0.35, 0.1], holdTwice: 0.2, stretch: 0.2, moves: 0.35, neighbour: 0.35, walk: 0.5, third: 0.05, small: 0.9, push: 0.55 },
 };
 
 /** The dials a section kind writes with, in this song's personality. */
@@ -112,7 +116,7 @@ export function dialsFor(kind: 'verse' | 'chorus', p: Personality): Dials {
     const h: Partial<Dials> = { ...HOOK_DIALS[p.hook] };
     if (p.hook === 'chant') h.toneW = lean(p.hookTone, 3);
     h.runs = (h.runs ?? 1) * p.chorusRuns;
-    return { ...VERSE, ...h, end: p.chorusEndChance, endStyle: p.chorusEnd, lift: p.chorusLift, bends: p.bends * 1.2 };
+    return { ...VERSE, ...h, end: p.chorusEndChance, endStyle: p.chorusEnd, lift: p.chorusLift, bends: p.bends * 3.2, silence: p.chorusSilence };
   }
   return {
     ...VERSE, phraseLen: BIAS[p.verseBias], runs: p.verseRuns, holdBar: p.verseHold, moves: p.verseMoves, toneW: lean(p.verseTone, 2.2),
@@ -130,6 +134,7 @@ export function describe(p: Personality): string {
     `Hook: ${hook}`,
     `chorus ${lift}, ${p.chorusEndMain === 'plain' ? 'phrases mostly just stop' : `phrases mostly end ${{ held: 'held', open: 'open (3rd or 5th)', hang: 'hanging (off the chord)', punch: 'short and punched', sync: 'syncopated' }[p.chorusEndMain]}`} (${Math.round(100 * p.chorusEndChance[0])}–${Math.round(100 * p.chorusEndChance[1])}% of them), answers ${p.chorusVariation === 'little' ? 'barely change' : p.chorusVariation === 'some' ? 'change some' : 'change a lot'}`,
     `verse ${p.verseBias} phrases, ${p.verseRuns < 0.8 ? 'few' : p.verseRuns > 1.1 ? 'many' : 'some'} 16th runs, ${p.verseHold < 0.3 ? 'few' : p.verseHold > 0.5 ? 'many' : 'some'} long notes${p.verseTone === 'any' ? '' : `, leans on the ${TONE[p.verseTone]}`}`,
+    `${Math.round(100 * p.chorusSilence)}% of the chorus without vocals`,
     `bends ${p.bends < 0.8 ? 'rare' : p.bends > 1.2 ? 'frequent' : 'ordinary'}`,
   ].join(' · ');
 }

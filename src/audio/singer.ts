@@ -16,6 +16,7 @@ import { type VoiceType, backingVoice } from '../parts/vocal';
 import { stepAt } from '../rhythm';
 import { inContext } from './context';
 import { lagFor, perform } from './feel';
+import { feelFor, feelSung, inhale } from '../guide/feel';
 import { FOF_RATE } from './fof';
 import { type PolishOpts, type VocalComp, type VocalFx, polishVoice } from './polish';
 import { Rng } from '../rng';
@@ -77,8 +78,8 @@ const PRE = 0.3;
 const SLIDES: Record<Genre, number> = { rock: 0.6, pop: 0.4, funk: 0.3, hardrock: 0.5, metal: 0.3, grunge: 0.7, altmetal: 0.5 };
 
 /** `order`: where the line comes in the list (what plays first is made first). */
-interface Job { key: string; notes: SungNote[]; voice: VoiceType; timbre: Sung; base: Genre; slides: number; variant: number; energy: number; order: number }
-interface Line { first: number; key: string; notes: SungNote[]; t0: number; pan: number; gain: number; delay: number }
+interface Job { key: string; notes: SungNote[]; voice: VoiceType; timbre: Sung; base: Genre; slides: number; variant: number; energy: number; order: number; breath?: number }
+interface Line { first: number; key: string; notes: SungNote[]; t0: number; pan: number; gain: number; delay: number; breath?: number }
 
 /** The voices around the lead: where each sits (pan), how loud, how late (a double is a second take), which take. */
 const STREAMS = {
@@ -110,7 +111,9 @@ export class Singer {
   private polOpts = new Map<string, PolishOpts>();
   /** Sing the polished lines (on with the Prepare button, and in exports made with it on). */
   polish = false;
-  private lines = new WeakMap<Idea, { six: number; voice: VoiceType; timbre: Sung; byStep: Map<number, Line[]> }>();
+  /** Human feel on the lead (src/guide/feel.ts, as the main vocal has it): glides, scoops, swells into words, fades at word ends, a breath in. */
+  humanFeel = false;
+  private lines = new WeakMap<Idea, { six: number; voice: VoiceType; timbre: Sung; feel: boolean; byStep: Map<number, Line[]> }>();
   private sources = new Map<AudioBufferSourceNode, GainNode>();
   private queue: Job[] = [];
   /** Lines being made in the background (singPool.ts), by key; and which idea each belongs to. */
@@ -179,7 +182,8 @@ export class Singer {
     const voice = this.voiceOf(idea);
     const timbre = this.timbreOf(idea);
     const got = this.lines.get(idea);
-    if (got && got.six === six && got.voice === voice && got.timbre === timbre) return got;
+    const feel = this.humanFeel && this.role === 'lead';
+    if (got && got.six === six && got.voice === voice && got.timbre === timbre && got.feel === feel) return got;
     const { song } = idea;
     // the band's swing and lilt move the off-beat 16ths, as the engine plays them
     const at = stepAt((g) => g * six + (g % 2 ? (song.swing * (2 / 3) + (idea.lilt ?? 0)) * six : 0));
@@ -192,6 +196,8 @@ export class Singer {
     const base = this.baseOf(idea);
     // (in loud sections the singer rushes now and then, ahead of the beat; feel.ts)
     const rush = Math.max(0, Math.min(1, (energy - 0.5) * 2));
+    // (human feel: this singer's, at this section's energy)
+    const fl = feelFor(timbre, energy, song.bpm);
     // the lead, its double (choruses) and ad-libs; or the backing vocals by role; each as its own lines
     const mine = ROLE_STREAMS[this.role];
     const streams: [Stream, NonNullable<Idea['vocal']>][] = [];
@@ -208,25 +214,44 @@ export class Singer {
         if (n.start || !groups.length) groups.push([]);
         groups[groups.length - 1].push(n);
       }
+      let lastEnd = -Infinity;
       for (const L of groups) {
         const t0 = at(L[0].step);
         // (as the singer feels it: laid back, long-short, slowing at the end; feel.ts)
-        const notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall, ...(n.bend ? { bend: at(n.step + n.bend) - at(n.step) } : {}), ...(n.slideLen ? { slideLen: at(n.step + n.slideLen) - at(n.step) } : {}), ...(n.fade ? { fade: at(n.step + n.len) - at(n.step + n.len - n.fade), fadeBy: n.fadeBy } : {}) })), lag, L[0].step + L.length * 7, rush);
+        let notes: SungNote[] = perform(L.map((n) => ({ t: at(n.step) - t0, end: at(n.step + n.len) - t0, midi: n.midi, vel: n.vel, syl: n.syl, slide: n.slide, fall: n.fall, ...(n.bend ? { bend: at(n.step + n.bend) - at(n.step) } : {}), ...(n.slideLen ? { slideLen: at(n.step + n.slideLen) - at(n.step) } : {}), ...(n.fade ? { fade: at(n.step + n.len) - at(n.step + n.len - n.fade), fadeBy: n.fadeBy } : {}) })), lag, L[0].step + L.length * 7, rush);
+        let breath = 0;
+        if (feel && stream === 'lead') {
+          // (a short breath between words: the word before let go a moment early; the tune's timing kept)
+          for (let j = 1; j < notes.length; j++) {
+            const p = notes[j - 1], q = notes[j];
+            if (q.syl.wordStart && q.syl.text !== '~' && Math.abs(p.end - q.t) < 1e-6) p.end -= Math.min(0.05, 0.2 * (p.end - p.t));
+          }
+          const pre = notes;
+          notes = feelSung(notes, fl, order + L[0].step).map((n, j) => {
+            const b = pre[j];
+            // (the verse melody's own fade at a held ending is the longer one: it keeps it, and its depth; no extra fall on top)
+            if (b.fade) { if (b.fade >= (n.fade ?? 0)) { n.fade = b.fade; n.fadeBy = b.fadeBy; } else delete n.fadeBy; if (b.fall === undefined) delete n.fall; }
+            return n;
+          });
+          // (a breath in before a line after a rest of half a second or more)
+          breath = at(L[0].step) - lastEnd >= 0.5 ? fl.breath : 0;
+          lastEnd = at(L[L.length - 1].step + L[L.length - 1].len);
+        }
         const popts = polishFor(idea, this.role === 'lead' && stream !== 'adlib', notes.some((n) => n.vel >= 0.85));
         // (an effect is part of the line: the same tune in another verse is another line)
-        const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''},${n.bend?.toFixed(3) ?? ''},${n.slideLen?.toFixed(3) ?? ''},${n.fade?.toFixed(3) ?? ''},${n.fadeBy ?? ''}`).join(';')}`;
+        const key = `${voice}|${S.variant}|${timbre}|${energy}|${base}|${popts.fx ?? ''}|${six.toFixed(5)}|${slides}|${notes.map((n) => `${n.t.toFixed(4)},${n.end.toFixed(4)},${n.midi},${n.vel},${n.syl.onset.join('')}${n.syl.vowel}${n.syl.coda.join('')},${n.slide ?? ''},${n.fall ?? ''},${n.bend?.toFixed(3) ?? ''},${n.slideLen?.toFixed(3) ?? ''},${n.fade?.toFixed(3) ?? ''},${n.fadeBy ?? ''},${n.glide?.toFixed(3) ?? ''},${n.swell?.toFixed(3) ?? ''},${n.sharp?.toFixed(1) ?? ''}`).join(';')}|${breath.toFixed(2)}`;
         // started a little ahead of its first note, from the step that leaves room for the lead-in
         const first = Math.max(0, L[0].step - Math.ceil(PRE / six));
-        const line: Line = { first, key, notes, t0, pan: S.pan, gain: S.gain, delay: S.delay };
+        const line: Line = { first, key, notes, t0, pan: S.pan, gain: S.gain, delay: S.delay, ...(breath ? { breath } : {}) };
         this.polOpts.set(key, popts);
         (byStep.get(first) ?? byStep.set(first, []).get(first)!).push(line);
         if (!this.bufs.has(key)) {
-          this.queue.push({ key, notes, voice, timbre, slides: stream === 'lead' || stream === 'adlib' ? slides : slides * 0.4, variant: S.variant, energy, base, order: order + first });
+          this.queue.push({ key, notes, voice, timbre, slides: stream === 'lead' || stream === 'adlib' ? slides : slides * 0.4, variant: S.variant, energy, base, order: order + first, ...(breath ? { breath } : {}) });
           this.pendingOf.set(key, idea);
         }
       }
     }
-    const entry = { six, voice, timbre, byStep };
+    const entry = { six, voice, timbre, feel, byStep };
     this.lines.set(idea, entry);
     return entry;
   }
@@ -245,10 +270,22 @@ export class Singer {
       const spec = this.spec(job);
       const key = job.key;
       this.pending.set(key, singPool().render(spec, job.order).then((d) => {
+        if (job.breath) this.breathe(d.pcm, spec.rate, job.breath, key);
         this.bufs.set(key, this.toBuffer(d.pcm, spec.rate));
-        if (d.pol) this.pol.set(key, this.toBuffer(d.pol, spec.rate));
+        // (a line with a breath is polished afterwards, from the buffer that has it)
+        if (d.pol && !job.breath) this.pol.set(key, this.toBuffer(d.pol, spec.rate));
       }).finally(() => { this.pending.delete(key); this.pendingOf.delete(key); }));
     }
+  }
+
+  /** A breath in before the line (human feel): quiet noise just ahead of the lead-in's end, added to the made line. */
+  private breathe(pcm: Float32Array, rate: number, amount: number, key: string) {
+    let seed = 0;
+    for (let i = 0; i < key.length; i += 7) seed = (seed * 31 + key.charCodeAt(i)) >>> 0;
+    let peak = 0;
+    for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
+    const len = 0.22, br = inhale(rate, len, seed), at = Math.round((PRE - len - 0.06) * rate);
+    for (let i = 0; i < br.length; i++) if (at + i >= 0 && at + i < pcm.length) pcm[at + i] += br[i] * peak * 0.06 * amount;
   }
 
   private toBuffer(pcm: Float32Array, rate: number): AudioBuffer {
@@ -310,10 +347,11 @@ export class Singer {
     for (const line of lines) {
       const start = time + (line.t0 - PRE - at(g)) + line.delay;
       if (!this.bufs.has(line.key)) {
-        const job: Job = { key: line.key, notes: line.notes, voice: entry.voice, timbre: entry.timbre, slides: SLIDES[idea.song.partGenres.strum], variant: Number(line.key.split('|')[1]), energy: Number(line.key.split('|')[3]), base: line.key.split('|')[4] as Genre, order: -1 };
+        const job: Job = { key: line.key, notes: line.notes, voice: entry.voice, timbre: entry.timbre, slides: SLIDES[idea.song.partGenres.strum], variant: Number(line.key.split('|')[1]), energy: Number(line.key.split('|')[3]), base: line.key.split('|')[4] as Genre, order: -1, ...(line.breath ? { breath: line.breath } : {}) };
         if (this.ctx.isOffline) {
           // an offline render (it waited for every line first): made here and now
           const spec = this.spec(job), d = renderNow(spec);
+          if (job.breath) this.breathe(d.pcm, spec.rate, job.breath, line.key);
           this.bufs.set(line.key, this.toBuffer(d.pcm, spec.rate));
         } else {
           // live: never made on the spot (that held up the band); it comes in once the workers have it

@@ -173,8 +173,8 @@ const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
 const db = (x: number) => 10 ** (x / 20);
 /** A fall off a line's end is in volume, not pitch (Paul): it dies away over up to 0.6 s, at most 60% of the note... */
 const fallLen = (n: { t: number; end: number }) => Math.max(0.08, Math.min(0.6, (n.end - n.t) * 0.6));
-/** ...by 14 dB for a fall of 1 (what the writers call 1 semitone), 18 for 2, up to 26 for 4 and over. */
-const fallDb = (fall: number) => Math.min(26, 10 + 4 * fall);
+/** ...by 14 dB for a fall of 1 (what the writers call 1 semitone), 18 for 2, up to 26 for 4 and over; half as far on a note that bends (glides in, or is scooped into). */
+const fallDb = (n: { fall?: number; bend?: number; slide?: number }) => Math.min(26, 10 + 4 * (n.fall ?? 0)) * (n.bend || n.slide ? 0.5 : 1);
 
 function rng(seed: number) {
   let a = (seed * 2654435761 + 1) >>> 0;
@@ -572,7 +572,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // (a held note swells a little in and eases at its end)
       const sw = swells[ni], xs = clamp01(into / Math.max(0.1, held));
       const swell = life ? (sw.kind === 1 ? sw.by * lerp(-1, 0.6, xs) : sw.kind === 2 ? sw.by * lerp(0.4, -1, xs) : sw.kind === 3 ? sw.by * (Math.sin(Math.PI * xs) - 0.6) : 0) : held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
-      const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? fallDb(note.fall) * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0)
+      const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? fallDb(note) * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0)
         // (human feel: rising into the word, fading at its end)
         - (note.swell ? 10 * (1 - smooth01((into + 0.01) / note.swell)) : 0) - (note.fade ? (note.fadeBy ?? 18) * smooth01((t - (note.end - note.fade)) / note.fade) : 0);
       // (a word starting on a vowel: a small dip so the words don't slur together)

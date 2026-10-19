@@ -5,8 +5,8 @@ import type { Chord, Mode } from '../theory';
 import { planForm, leafSeeds, type Leaf, type Rule, type Variation } from './form';
 import { VERSE, type Dials } from './profile';
 import {
-  addBends, addNoteBends, addNeighbours, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, smallBreaks,
-  thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withRuns,
+  addBends, addNoteBends, addNeighbours, fitSilence, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, smallBreaks,
+  thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
 
@@ -88,11 +88,13 @@ export function buildVerse(inp: BuildInput): Built {
     const { tones, bars } = randomTones(len, bar, sd.tones, accOf('tones'), d);
     const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
     const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones), breaks), runs, key, chordAt, tones);
-    const walked = walkToNext(addNeighbours(voiceLead(withHolds(plain, holds), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
+    const walked = walkToNext(addNeighbours(voiceLead(withStretch(withHolds(plain, holds), tones, chordAt, bar, sd.holds, accOf('holds'), d), range), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
     const pushed = pushNotes(limitSame(smallBreaks(foldIntoRange(walked, range), phrases, bar, sd.small, accOf('small'), d)), phrases, bar, sd.small, accOf('small'), d);
     const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt }), phrases, bar, sd.thirds, d));
+    // (the chorus: fitted to the song's share of silence)
+    const fitted = d.silence === undefined ? shaped : fitSilence(shaped, phrases, bar, len, d.silence, sd.small, accOf('small'));
     const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
-    const bent = addBends(shaped, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
+    const bent = addBends(fitted, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
     const notes = addNoteBends(bent, bar, { amount: inp.bends, energy: inp.energy, key, chordAt, range, mult: d.bends }, `${sd.bends}|in`);
     const shift = (g: Gap): Gap => ({ step: g.step + from, len: g.len });
     out.notes.push(...notes.map((n) => ({ ...n, step: n.step + from })));

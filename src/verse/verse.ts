@@ -309,6 +309,33 @@ export function withHolds(notes: BandNote[], holds: Gap[]): BandNote[] {
   return out;
 }
 
+/**
+ * Rule 17: stretched notes (the chorus; the verse has none). A plain 8th is held through the next one, when both sit on the same
+ * chord note over the same chord: two 8ths become one note a beat long, and now and then a third joins (a beat and a half).
+ * Fewer, longer notes, mostly starting on the beat or where the band hits.
+ */
+export function withStretch(notes: BandNote[], tones: ChordNote[], chordAt: Chord[], bar: number, seed: string, acc?: number[], d: Dials = VERSE): BandNote[] {
+  if (d.stretch <= 0) return notes;
+  const same = (a: number, b: number) => tones[a] === tones[b] && chordAt[a].root === chordAt[b].root && chordAt[a].q === chordAt[b].q;
+  const out: BandNote[] = [];
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i];
+    let len = n.len, k = i;
+    if (n.len === 2) {
+      const p = d.stretch * (isStrong(n.step, bar) ? 1 : 0.6) * nudge(acc, n.step);
+      while (len < 6 && roll(seed, `stretch${len}`, n.step) < p * (len === 2 ? 1 : 0.5)) {
+        const nx = notes[k + 1];
+        if (!nx || nx.len !== 2 || nx.step !== n.step + len || nx.step >= chordAt.length || !same(n.step, nx.step)) break;
+        len += 2;
+        k++;
+      }
+    }
+    out.push(len === n.len ? n : { ...n, len });
+    i = k;
+  }
+  return out;
+}
+
 /** The pitch range (MIDI): the line lives between `lo` and `hi`, and may stray out to `xlo` / `xhi` but no further. */
 export interface Range { lo: number; hi: number; xlo: number; xhi: number }
 export const DEFAULT_RANGE: Range = { lo: 58, hi: 76, xlo: 53, xhi: 81 };
@@ -619,13 +646,88 @@ export function addBends(
 }
 
 /**
+ * Rule 18: the share of silence (the chorus: about a third to a half of it without vocals, drawn for the song). The line is
+ * fitted to `target` (within 3 points): too full, the weakest notes drop out (short, off the band's hits, off the beat; never a
+ * phrase's first or last note, a walk, a long note or a third-bar note); too empty, notes are held into the gaps inside their phrase.
+ * `total`: steps in the section.
+ */
+export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total: number, target: number, seed: string, acc?: number[]): BandNote[] {
+  const tol = 0.03;
+  const out = notes.map((n) => ({ ...n }));
+  let cover = out.reduce((a, n) => a + n.len, 0);
+  const sil = () => 1 - cover / total;
+  if (sil() < target - tol) {
+    const edge = new Set<BandNote>();
+    for (const ph of phrases) {
+      const inside = out.filter((n) => n.step >= ph.step && n.step < ph.step + ph.len);
+      if (inside.length) { edge.add(inside[0]); edge.add(inside[inside.length - 1]); }
+    }
+    const cand = out.filter((n) => !edge.has(n) && !n.walk && !n.land && !n.third && !n.end && n.len < 4);
+    const score = (n: BandNote) => n.len + 1.5 * accAt(acc, n.step) + (isStrong(n.step, bar) ? 0.7 : 0) - (n.nb ? 1 : 0) + roll(seed, 'fit', n.step) * 0.6;
+    cand.sort((a, b) => score(a) - score(b));
+    const drop = new Set<BandNote>();
+    for (const n of cand) {
+      if (sil() >= target - tol) break;
+      if (1 - (cover - n.len) / total > target + tol) continue;
+      drop.add(n);
+      cover -= n.len;
+    }
+    const kept = out.filter((n) => !drop.has(n));
+    // (still too full: the long notes let go of their last 8th, the longest first)
+    if (sil() < target - tol) {
+      const longs = kept.filter((n) => n.len >= 4 && !n.third).sort((x, y) => y.len - x.len || roll(seed, 'fit', x.step) - roll(seed, 'fit', y.step));
+      for (let pass = 0; pass < 3 && sil() < target - tol; pass++) {
+        for (const n of longs) {
+          if (sil() >= target - tol) break;
+          if (n.len - 2 < 2 || n.len < 4 || 1 - (cover - 2) / total > target + tol) continue;
+          n.len -= 2;
+          cover -= 2;
+        }
+      }
+    }
+    return kept;
+  }
+  if (sil() > target + tol) {
+    const order = out.map((_, i) => i).filter((i) => !out[i].third).sort((a, b) => out[b].len - out[a].len || roll(seed, 'fit', out[a].step) - roll(seed, 'fit', out[b].step));
+    for (const i of order) {
+      if (sil() <= target + tol) break;
+      const n = out[i], nx = out[i + 1];
+      const ph = phrases.find((p) => n.step >= p.step && n.step < p.step + p.len);
+      if (!nx || !ph || nx.step >= ph.step + ph.len) continue;
+      const gap = nx.step - (n.step + n.len);
+      if (gap < 1) continue;
+      const by = Math.min(gap, 4, Math.ceil((sil() - target) * total));
+      n.len += by;
+      cover += by;
+    }
+    // (still too empty: a phrase's last note held on into the break after it, up to half a bar, leaving a beat of silence)
+    const beat = bar / 4;
+    const lasts = phrases.map((ph) => {
+      const idx = out.map((n, i) => (n.step >= ph.step && n.step < ph.step + ph.len ? i : -1)).filter((i) => i >= 0);
+      return idx.length ? idx[idx.length - 1] : -1;
+    }).filter((i) => i >= 0);
+    for (const i of lasts.sort((a, b) => roll(seed, 'fit', out[a].step) - roll(seed, 'fit', out[b].step))) {
+      if (sil() <= target + tol) break;
+      const n = out[i];
+      if (n.third) continue;
+      const room = (out[i + 1] ? out[i + 1].step : total) - (n.step + n.len) - beat;
+      const by = Math.min(Math.floor(room), bar / 2, Math.ceil((sil() - target) * total));
+      if (by < 1) continue;
+      n.len += by;
+      cover += by;
+    }
+  }
+  return out;
+}
+
+/**
  * Rule 15: bends inside a note. A held note holds its pitch for a fifth to two fifths of its length, then glides slowly (nearly
  * half the note) to another and sits there; an 8th starts gliding at its very first moment. Where it can:
  *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;
  *   - for a note that ends on the bar line: to the next bar's core note, landing as the bar turns;
  * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
  * breaks the repeating). Raised by the verse's energy and the Bends amount. Notes scooped into, walks, neighbours and
- * third-bar notes are left alone (a long held ending that fades out may bend first), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
+ * third-bar notes are left alone (a long held ending that fades out may bend first, and then fades half as far), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
  */
 export function addNoteBends(
   notes: BandNote[], bar: number,
@@ -683,6 +785,8 @@ export function addNoteBends(
     n.bendAt = c.at;
     n.bendLen = c.glide;
     n.inner = c.kind;
+    // (an ending that bends and fades out fades half as far: the bend is already doing the work)
+    if (n.fadeBy) n.fadeBy = Math.round(n.fadeBy / 2);
   }
   return out;
 }
