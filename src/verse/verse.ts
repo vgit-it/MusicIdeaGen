@@ -282,6 +282,30 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
 }
 
 /**
+ * Rule 21: a new phrase starts on a fresh core note. At every phrase start the chord note to sit on is drawn again (the same
+ * weights as rule 4), and holds from there to the next change in the bar's picks or the bar's end. The earlier part of the bar
+ * (the end of the last phrase, or the break) keeps its pick. The draw is by step, so a leaf that repeats a seed repeats it.
+ */
+export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE): { tones: ChordNote[]; bars: BarTone[] } {
+  const out = tones.slice();
+  const uniform = d.toneW.every((x) => x === d.toneW[0]);
+  for (const ph of phrases) {
+    const u = roll(seed, 'reroll', ph.step);
+    const pick = uniform ? NOTES[Math.min(2, Math.floor(u * 3))] : NOTES[cumulative(d.toneW, u)];
+    let end = ph.step + 1;
+    while (end < out.length && end % bar !== 0 && tones[end] === tones[ph.step]) end++;
+    for (let s = ph.step; s < end && s < out.length; s++) out[s] = pick;
+  }
+  // (each bar's label again: its picks in order, "1", or "1→3" and so on)
+  const labels = bars.map((_, b) => {
+    const seq: ChordNote[] = [];
+    for (let s = b * bar; s < Math.min(out.length, (b + 1) * bar); s++) if (seq[seq.length - 1] !== out[s]) seq.push(out[s]);
+    return seq.map((t) => NAMES[t]).join('→');
+  });
+  return { tones: out, bars: labels };
+}
+
+/**
  * Rule 5: longer notes. About 4 bars in 10 hold one note for a beat, a beat and a half, two beats or a whole bar,
  * starting on a beat, only where the line is plain 8ths on one chord note over one chord.
  */
