@@ -4,7 +4,7 @@
 
 import { Rng } from '../rng';
 import { QUALITIES, SCALES, degreeChord, type Chord, type Mode } from '../theory';
-import { END_STYLES, VERSE, cumulative, type Dials, type EndStyle } from './profile';
+import { END_STYLES, VERSE, cumulative, energyEdge, type Dials, type EndStyle } from './profile';
 
 export const BARS = 8;
 export const STEPS_PER_BAR = 8; // 8th notes, 4/4
@@ -212,12 +212,12 @@ export function withGaps(notes: BandNote[], gaps: Gap[]): BandNote[] {
 
 /**
  * Rule 3: stretches of 16th notes, an eighth of a bar, a quarter or a half, at random, in the open spaces between the breaks.
- * The higher the verse's energy (1-5), the fewer.
+ * Most at the middle energy (3), fewer toward both ends (1 and 5).
  */
 export function randomRuns(totalSteps: number, bar: number, energy: number, gaps: Gap[], seed: string, acc?: number[], d: Dials = VERSE): Gap[] {
   const rng = new Rng(seed + '|runs');
   const runs: Gap[] = [];
-  const p = Math.min(1, Math.max(0.05, (6 - energy) / 6) * d.runs); // energy 1: 83%, 3: 50%, 5: 17% (of 4 tries every 4 bars)
+  const p = Math.min(1, Math.max(0.05, 0.5 - 0.33 * energyEdge(energy)) * d.runs); // energy 3: 50%, 2 and 4: 33%, 1 and 5: 17% (of 4 tries every 4 bars)
   const block = bar * 4;
   for (let from = 0; from < totalSteps; from += block) {
     const to = Math.min(totalSteps, from + block);
@@ -692,7 +692,7 @@ const BLUE: Record<string, number> = { rock: 1, hardrock: 1, grunge: 1, funk: 1,
  *   - a note that climbs 3-5 semitones from the one before glides up from it;
  *   - a long major 3rd is scooped up from the minor 3rd, by genre (the blue 3rd);
  *   - a long note landing on a chord change is scooped into.
- * Each spot rolls its own chance, raised by the verse's energy and the Bends amount; the ones that win are thinned so no two
+ * Each spot rolls its own chance, raised at the lowest and highest energies (fewest at 3) and by the Bends amount; the ones that win are thinned so no two
  * bends are closer than 2 bars (Some) or 1 bar (Lots), keeping the ones listed first.
  */
 export function addBends(
@@ -702,7 +702,7 @@ export function addBends(
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
   const out = notes.map((n) => ({ ...n }));
-  const lift = (ctx.amount === 'lots' ? 1.6 : 1) * (0.7 + 0.15 * (ctx.energy - 1)) * (ctx.mult ?? 1);
+  const lift = (ctx.amount === 'lots' ? 1.6 : 1) * (0.7 + 0.6 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 1 : 2) * bar;
   const beat = bar / 4;
   const cand: { i: number; pri: number; p: number; slide?: number; fade?: number; kind: string }[] = [];
@@ -883,7 +883,7 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
  *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;
  *   - to the next bar's core note, when that is also a note of the chord sounding now;
  * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
- * breaks the repeating). Raised by the verse's energy and the Bends amount. Notes scooped into, walks, neighbours and
+ * breaks the repeating). Raised at the lowest and highest energies (fewest at 3) and by the Bends amount. Notes scooped into, walks, neighbours and
  * third-bar notes are left alone (a long held ending that fades out may bend first, and then fades half as far), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
  */
 export function addNoteBends(
@@ -893,7 +893,7 @@ export function addNoteBends(
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
   const out = notes.map((n) => ({ ...n }));
-  const lift = (ctx.amount === 'lots' ? 1 : 0.5) * (0.75 + 0.12 * (ctx.energy - 1)) * (ctx.mult ?? 1);
+  const lift = (ctx.amount === 'lots' ? 1 : 0.5) * (0.75 + 0.48 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 0.75 : 1) * bar;
   const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string }[] = [];
   out.forEach((n, i) => {

@@ -90,6 +90,21 @@ export const VERSE: Dials = {
   octaveUp: 0.6,
 };
 
+/** How far a section's energy (1-5) is from the middle: 0 at 3, 1 at 1 and 5, between at 2 and 4. */
+export const energyEdge = (energy: number): number => Math.min(1, Math.abs(energy - 3) / 2);
+
+/** Which way a section's energy leans: +1 at energy 1 (calm), -1 at 5 (driving), 0 at 3. */
+export const energyCalm = (energy: number): number => Math.max(-1, Math.min(1, (3 - energy) / 2));
+
+/** A section's volume against the middle: x0.85 at energy 1, x1 at 3, x1.15 at 5. */
+export const energyVolume = (energy: number): number => 1 - 0.15 * energyCalm(energy);
+
+/** The phrase lengths (1-4 bars) leaned by energy: calm sections toward the longer ones, driving ones toward the shorter ones. */
+export function phraseLenFor(w: Dials['phraseLen'], energy: number): Dials['phraseLen'] {
+  const s = energyCalm(energy);
+  return w.map((x, i) => x * (1 + 0.6 * s * (i - 1.5) / 1.5)) as Dials['phraseLen'];
+}
+
 /** Weighted pick of an index. */
 export function cumulative(w: readonly number[], r: number): number {
   let q = r * w.reduce((a, b) => a + b, 0);

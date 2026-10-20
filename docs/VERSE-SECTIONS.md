@@ -93,3 +93,11 @@ Verse 2 answering verse 1, a lifted last chorus, breakdown (same recipe as above
 - At every core note (the first note of a bar, or where the chord note or the chord changes part way through) there is a chance it is sung in the other octave of the main range instead of the nearest one (`voiceLead` in `verse.ts`, dials `octave` and `octaveUp`). Never the extended zone. The rest of that core note's notes stay in the new octave; the next core note then takes the nearest octave to it.
 - Chances: verse, pre-chorus, interlude and outro 25% (60% of jumps go up when both ways are open); chorus 30% (50/50); bridge 25% (50/50). Each song scales them 0.5-1.5x (`octaves` in the personality).
 - Measured on 224 songs: the share of core notes in the upper third of the range went verse 19% to 28%, pre-chorus 4% to 22%, chorus 37% to 41%, bridge 31% to 36%.
+
+## Rule 26: energy (2026-10-20)
+- A section's energy (1-5) now shapes four things (`energyEdge`, `energyCalm`, `energyVolume`, `phraseLenFor` in `src/verse/profile.ts`). Pitch height is not affected.
+- 16th runs: most at energy 3 (50% per try), 33% at 2 and 4, 17% at 1 and 5 (`randomRuns`).
+- Bends: fewest at energy 3, most at 1 and 5, between at 2 and 4 (range 0.7x-1.3x; `addBends`, `addNoteBends`).
+- Phrase length: the 1-4 bar weights are leaned by up to 60%: calm sections toward longer phrases, driving ones toward shorter (`buildVerse`). Energy 3 is as before.
+- Volume: the singer's note strength x0.85 at energy 1, x1 at 3, x1.15 at 5, capped at 1 (`vocalOf`). A chorus is written with its master's energy but sung at its own.
+- Same seeds now give different melodies than before this rule.

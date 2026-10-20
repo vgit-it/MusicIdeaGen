@@ -9,6 +9,7 @@ import type { GuideSungLine, GuideSyl } from '../guide/words';
 import { autoMood } from '../tension';
 import type { Built } from './build';
 import { dialsFor } from './personality';
+import { energyVolume } from './profile';
 import { accentsOf, barOf, buildSection, chordsKey, chorusMaster, hookSig, isChorus, isInterlude, isOutro, isShared, kindOf, personalityOf, verseSeed, type SectionOptions, type SungKind } from './section';
 import { DEFAULT_RANGE, type BandNote, type Range } from './verse';
 import { writeWords, type Words } from './words';
@@ -44,10 +45,10 @@ export interface SectionVoice {
 /** A held ending's fall: it dies away in volume over the last half of the note (or of its tail, if a bend split it). */
 const fadeOf = (n: BandNote, len: number): Partial<VocalNote> => (n.fadeBy ? { fade: Math.min(len, Math.max(1, Math.round(n.len / 2))), fadeBy: n.fadeBy } : {});
 
-/** A section's melody as the singer's notes. */
-function vocalOf(notes: BandNote[], w: Words): VocalNote[] {
+/** A section's melody as the singer's notes, sung harder the higher the section's energy. */
+function vocalOf(notes: BandNote[], w: Words, energy: number): VocalNote[] {
   return notes.flatMap((n, i) => {
-    const syl = w.syls[i], vel = (!syl.stress ? 0.68 : 0.82) + (n.lead ? 0.12 : 0);
+    const syl = w.syls[i], vel = Math.min(1, ((!syl.stress ? 0.68 : 0.82) + (n.lead ? 0.12 : 0)) * energyVolume(energy));
     const head: VocalNote = { step: n.step, len: n.len, midi: n.midi, vel, syl, start: w.starts[i], ...(n.slide ? { slide: n.slide } : {}), ...fadeOf(n, n.len) };
     if (n.bendTo === undefined) return [head];
     // (a bend inside the note: the first half holds, then the same word goes on to the new pitch, a quick glide across the middle)
@@ -105,7 +106,7 @@ export function writeSong(list: Idea[], o: SectionOptions): Map<Idea, SectionVoi
         o.range.hi + dialsFor(kind, personalityOf(idea, o.seed)).lift - 4, shared ? hookSig(idea, o) : verseSeed(idea, o), accOf(idea), DENSITY[kind]);
       if (wsig) hookWords.set(wsig, words);
     }
-    const vocal = vocalOf(built.notes, words);
+    const vocal = vocalOf(built.notes, words, idea.section?.energy ?? 3);
     out.set(idea, { seed: o.seed ?? '', range: o.range, built, words, vocal, lines: linesOf(vocal, words) });
   }
   return out;
