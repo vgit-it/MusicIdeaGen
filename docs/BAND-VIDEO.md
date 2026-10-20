@@ -1,6 +1,6 @@
 # Band video: render the band view as a video file
 
-Scope and plan (2026-10-20). Not built yet.
+Scope and plan (2026-10-20). **Built (2026-10-20)**: see "What was built" at the end.
 
 From the band view (`band.html`), a **Render video** button makes a video file of the band playing the
 song, with the real-amp sound, in 360p or 720p. Everything is made in the browser (GitHub Pages, no
@@ -108,3 +108,41 @@ What changed after a closer look at the code:
   an MP4.
 - **Hidden tabs**: the frame loop must not wait on timers (the same trap the audio export hit).
 - Size of the job: about 1-2 days, unchanged.
+
+## What was built (2026-10-20)
+
+- `src/band/video.ts`: `stepTimes` (when each step sounds), `planVideo` (which file this browser can make),
+  `renderVideo` (the whole thing), `measureStepTimes` (the check). Page: the Render video button, size
+  (360p / 720p), Lyrics on video and Cancel in `band.html` / `src/band/main.ts`; works in `band.html?art`
+  too (it draws whatever stage is on the page: the dressed band, Paul's art). Small hooks:
+  `Stage.full` (full quality for a render), `Engine.reportOffline` (step times for the check),
+  `LEAD` and `TAIL` exported from the audio export.
+- Real sound: the button prepares the real amps and the polished singer first (`engine.prepareRealAmps`),
+  so the video has them whatever was on before; Real sound stays on afterwards.
+- Codecs, in order: MP4 with H.264 + AAC (the browser's own encoders); MP4 with H.264 + AAC from a small
+  WebAssembly encoder (`@mediabunny/aac-encoder`, loaded only then) where the browser has no AAC; WebM
+  with VP9 or VP8 + Opus where it has no H.264. **Changed from the plan**: AAC from an encoder extension,
+  not MP3 in an MP4 (AAC plays everywhere an MP4 does).
+- **AAC delay**: an AAC encoder starts one frame (1024 samples, 23 ms) before its first sound and these
+  files don't say so, so players heard the sound that much late (found by the check). The audio is fed
+  one frame early for AAC. Opus (WebM) needed nothing.
+- The video starts 30 ms before the first beat (so a note played a hair early isn't cut) and runs to the
+  end of the 5 s tail; the audio's last second fades.
+
+### Checked (`npm run video-check`, headless Chromium, 360p; options `--genre`, `--size`, `--only steps|webm|mp4`)
+
+- Step times against the engine's own, rock (lilt), funk (swing 0.18), hardrock (lilt): within 0.00 ms.
+- A real render to WebM (VP9 + Opus) and to MP4 (VP9 video, AAC from the extension: headless Chromium has
+  no H.264): size 640 x 360, 30 fps, length within 0.05 s of the song's, every frame there, and the
+  kicks in the file landing where the rendered audio has them (+0 to +1 ms) and where the step times put
+  them (about 35 ms later: a kick sample's own attack).
+- Frames looked at: crisp pixels, the band lit as live, lyrics in the syllable-by-syllable style, with the
+  dressed band (`?art`) too.
+- Time: a 2.5-3 minute song at 360p took 110-170 s in headless Chromium (about 50 s preparing the real
+  amps, 30-40 s of audio, the rest frames); file 27-38 MB.
+
+### Not checked yet
+
+- H.264 and the browser's own AAC (headless Chromium has neither): Paul tries an MP4 in Chrome, Safari
+  and on a phone. If the sound is a little early or late in some player, `AAC_DELAY` is the knob.
+- 720p on a phone.
