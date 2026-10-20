@@ -101,3 +101,10 @@ Verse 2 answering verse 1, a lifted last chorus, breakdown (same recipe as above
 - Phrase length: the 1-4 bar weights are leaned by up to 60%: calm sections toward longer phrases, driving ones toward shorter (`buildVerse`). Energy 3 is as before.
 - Volume: the singer's note strength x0.85 at energy 1, x1 at 3, x1.15 at 5, capped at 1 (`vocalOf`). A chorus is written with its master's energy but sung at its own.
 - Same seeds now give different melodies than before this rule.
+
+## Rule 27: core notes stay in the key (2026-10-20)
+- A core note (rule 4's bar picks, rule 21's phrase-start draws) is checked against the section's own key and mode (`KeyFit` in `verse.ts`; `buildVerse` passes the section's `idea.song.key` / `mode`, so after a last-chorus key change, or in a jam outro, it is the new key). If the chord note drawn is out of the key on any step it covers, it is drawn again from the chord notes that are in it, by the same weights.
+- A bar that moves (1→5) checks both halves; a second half with no other chord note in the key leaves the bar on the first, if that one is in.
+- A chord with no note in the key keeps what was drawn (`pickPc` and the pentatonic option still apply after).
+- Draws already in the key are untouched; the redraws use their own dice (`seed|tones-key`, `reroll-key`).
+- `npm run core-key-check` (224 songs, 1,804 sections): core notes out of key with an in-key chord note available went from 6,533 to 2 (a bar with a chord change in the span). The rest, 1.05% of steps, are chords with no note in the key.

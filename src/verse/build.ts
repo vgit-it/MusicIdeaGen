@@ -89,6 +89,8 @@ export function buildVerse(inp: BuildInput): Built {
     const len = end - from;
     const sd0 = { ...seeds.get(leaf.id)!, ...(leaf.source === null ? inp.borrow : undefined) };
     const chordAt = inp.chordAt.slice(from, end);
+    // (rule 4 and 21 keep the core notes in the section's own key)
+    const fit = { key, mode, chordAt };
     const accOf = (rule: Rule) => win(inp.acc, rootFrom(leaf, rule), len, 0.5);
     const write = (sd: Record<Rule, string>, final: boolean) => {
       // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)
@@ -102,8 +104,8 @@ export function buildVerse(inp: BuildInput): Built {
       }
       const runs = randomRuns(len, bar, inp.energy, breaks, sd.runs, accOf('runs'), d);
       // (rule 21: each phrase starts on a freshly drawn core note)
-      const drawn = randomTones(len, bar, sd.tones, accOf('tones'), d, { from, total });
-      const { tones, bars } = rerollTones(drawn.tones, drawn.bars, phrases, bar, sd.tones, d);
+      const drawn = randomTones(len, bar, sd.tones, accOf('tones'), d, { from, total }, fit);
+      const { tones, bars } = rerollTones(drawn.tones, drawn.bars, phrases, bar, sd.tones, d, fit);
       const holds = randomHolds(len, bar, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
       // (rule 22: a climbing section pulls toward a register that rises from just over the bottom of its range by `climb` + 2 semitones)
       // (rule 24: a dwelling section pulls toward one home pitch instead)

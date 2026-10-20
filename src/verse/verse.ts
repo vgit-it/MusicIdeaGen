@@ -101,6 +101,21 @@ function pickPc(key: number, c: Chord, tone: ChordNote, pent?: ReadonlySet<numbe
   return pc;
 }
 
+/** What the core-note draws are checked against: the section's own key and mode, and the chord sounding on each step. */
+export interface KeyFit { key: number; mode: Mode; chordAt: Chord[] }
+
+/** The chord notes (of those asked about) that are in the key's scale on every step from `from` to `to`. */
+function inKeyTones(fit: KeyFit, from: number, to: number, among: readonly ChordNote[]): ChordNote[] {
+  const scale = new Set(SCALES[fit.mode].map((i) => (fit.key + i) % 12));
+  return among.filter((t) => {
+    for (let s = from; s < to; s++) {
+      const c = fit.chordAt[s];
+      if (c && !scale.has(pitchClass(fit.key, c, t))) return false;
+    }
+    return true;
+  });
+}
+
 /** The pitch class nearest to `centre`. */
 function nearest(pc: number, centre: number): number {
   let m = Math.round((centre - pc) / 12) * 12 + pc;
@@ -263,8 +278,10 @@ const NOTES: ChordNote[] = ['root', 'third', 'fifth'];
  * another part way through, at the half bar or the third beat.
  * Returns the chord note for every 16th step, and each bar's choice.
  */
-export function randomTones(totalSteps: number, bar: number, seed: string, acc?: number[], d: Dials = VERSE, whole?: { from: number; total: number }): { tones: ChordNote[]; bars: BarTone[] } {
+export function randomTones(totalSteps: number, bar: number, seed: string, acc?: number[], d: Dials = VERSE, whole?: { from: number; total: number }, fit?: KeyFit): { tones: ChordNote[]; bars: BarTone[] } {
   const rng = new Rng(seed + '|tones');
+  // (the key check draws on its own dice, so a draw that was already in the key stays as it was)
+  const rk = new Rng(seed + '|tones-key');
   const tones: ChordNote[] = [];
   const bars: BarTone[] = [];
   for (let from = 0; from < totalSteps; from += bar) {
@@ -272,13 +289,32 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
     const pr = d.climb ? Math.min(1, ((whole?.from ?? 0) + from) / Math.max(1, (whole?.total ?? totalSteps) - bar)) : 0;
     const toneW: [number, number, number] = d.climb ? [1.6 - pr, 1, 0.6 + pr] : d.toneW;
     const uniform = toneW.every((x) => x === toneW[0]);
-    const first = uniform ? rng.pick(NOTES) : NOTES[cumulative(toneW, rng.next())];
-    const moves = rng.chance(d.moves);
-    const then = moves ? (uniform ? rng.pick(NOTES.filter((n) => n !== first)) : rng.weighted(NOTES.filter((n) => n !== first).map((n) => [n, toneW[NOTES.indexOf(n)]] as const))) : first;
-    bars.push(moves ? `${NAMES[first]}→${NAMES[then]}` : NAMES[first]);
+    const first0 = uniform ? rng.pick(NOTES) : NOTES[cumulative(toneW, rng.next())];
+    let moves = rng.chance(d.moves);
+    let first = first0;
+    let then = moves ? (uniform ? rng.pick(NOTES.filter((n) => n !== first)) : rng.weighted(NOTES.filter((n) => n !== first).map((n) => [n, toneW[NOTES.indexOf(n)]] as const))) : first;
     // (the move comes at the half bar or the third beat: a bit more often where the band hits harder)
     const half = 0.65 * nudge(acc, from + bar / 2), late = 0.35 * nudge(acc, from + (bar * 3) / 4);
     const at = from + Math.round(rng.chance(half / (half + late)) ? bar / 2 : (bar * 3) / 4);
+    if (fit) {
+      // (a core note out of the key is drawn again, from the chord notes that are in it, by the same weights; a chord with
+      // none in the key keeps what was drawn)
+      const end = Math.min(totalSteps, from + bar);
+      const redraw = (among: readonly ChordNote[], a: number, b: number, now: ChordNote): ChordNote => {
+        if (inKeyTones(fit, a, b, [now]).length) return now;
+        const ok = inKeyTones(fit, a, b, among);
+        return ok.length ? rk.weighted(ok.map((n) => [n, uniform ? 1 : toneW[NOTES.indexOf(n)]] as const)) : now;
+      };
+      first = redraw(NOTES, from, moves ? at : end, first);
+      if (moves) {
+        // (the first may have landed on the second's note: that one is drawn again from the others)
+        const nt = redraw(NOTES.filter((n) => n !== first), at, end, then === first ? NOTES.find((n) => n !== first)! : then);
+        // (no other chord note in the key for the second half: the bar stays on the first, if that one is in)
+        if (!inKeyTones(fit, at, end, [nt]).length && inKeyTones(fit, at, end, [first]).length) { moves = false; then = first; }
+        else then = nt;
+      } else then = first;
+    }
+    bars.push(moves ? `${NAMES[first]}→${NAMES[then]}` : NAMES[first]);
     for (let s = from; s < Math.min(totalSteps, from + bar); s++) tones.push(s < at ? first : then);
   }
   return { tones, bars };
@@ -289,14 +325,19 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
  * weights as rule 4), and holds from there to the next change in the bar's picks or the bar's end. The earlier part of the bar
  * (the end of the last phrase, or the break) keeps its pick. The draw is by step, so a leaf that repeats a seed repeats it.
  */
-export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE): { tones: ChordNote[]; bars: BarTone[] } {
+export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE, fit?: KeyFit): { tones: ChordNote[]; bars: BarTone[] } {
   const out = tones.slice();
   const uniform = d.toneW.every((x) => x === d.toneW[0]);
   for (const ph of phrases) {
     const u = roll(seed, 'reroll', ph.step);
-    const pick = uniform ? NOTES[Math.min(2, Math.floor(u * 3))] : NOTES[cumulative(d.toneW, u)];
+    let pick = uniform ? NOTES[Math.min(2, Math.floor(u * 3))] : NOTES[cumulative(d.toneW, u)];
     let end = ph.step + 1;
     while (end < out.length && end % bar !== 0 && tones[end] === tones[ph.step]) end++;
+    // (a pick out of the key is drawn again from the chord notes that are in it, by the same weights; none in the key: it stays)
+    if (fit && !inKeyTones(fit, ph.step, end, [pick]).length) {
+      const ok = inKeyTones(fit, ph.step, end, NOTES);
+      if (ok.length) pick = ok[cumulative(ok.map((n) => (uniform ? 1 : d.toneW[NOTES.indexOf(n)])), roll(seed, 'reroll-key', ph.step))];
+    }
     for (let s = ph.step; s < end && s < out.length; s++) out[s] = pick;
   }
   // (each bar's label again: its picks in order, "1", or "1→3" and so on)
