@@ -10,12 +10,11 @@ import type { Genre } from '../genres';
 import { type Timbre, leadHigh } from '../parts/singers';
 import { FOF_RATE } from './fof';
 import { CHARACTERS, type Character, fofFor, fofHighVoice } from './voices';
-import { polishVoice } from './polish';
 import { polishFor, type TimbreChoice, type VocalChoice } from './singer';
 import { SING_RATE, type SungNote } from './sing';
 import { type RenderJob, singPool } from './singPool';
 import { DOWN } from '../guide/line';
-import { feelFor, feelSung, inhale } from '../guide/feel';
+import { feelFor, feelSung } from '../guide/feel';
 import { lagFor, perform } from './feel';
 import { inContext } from './context';
 
@@ -155,14 +154,14 @@ export class LeadVoice {
     let order = 0;
     for (const p of this.queue.splice(0)) {
       if (this.bufs.has(p.key) || this.pending.has(p.key)) continue;
-      const { job, seed } = this.spec(p);
+      const { job } = this.spec(p);
       const key = p.key;
-      this.pending.set(key, singPool().render(Object.assign(job, { key }), order++).then((d) => { this.bufs.set(key, this.finish(p, d.pcm, job.rate, seed)); })
+      this.pending.set(key, singPool().render(Object.assign(job, { key }), order++).then((d) => { this.bufs.set(key, this.finish(d.pol ?? d.pcm, job.rate)); })
         .finally(() => { this.pending.delete(key); this.pendingOf.delete(key); }));
     }
   }
 
-  /** What the background worker needs to make a line (the voice only: the breath and polish are added here, quickly). */
+  /** What the background worker needs to make a line: the voice, its breath in and its polish. */
   private spec(p: Placed): { job: RenderJob; seed: number } {
     let seed = 0;
     for (let i = 0; i < p.key.length; i += 7) seed = (seed * 31 + p.key.charCodeAt(i)) >>> 0;
@@ -173,18 +172,14 @@ export class LeadVoice {
     const rate = clear ? SING_RATE : FOF_RATE;
     const job: RenderJob = clear ? { kind: 'line', notes: p.notes, pre: PRE, rate, shape: { high: false, slides: 0.5, seed: v } }
       : { kind: 'fof', notes: p.notes, pre: PRE, rate, fof: { ...(p.sung === 'tenor' ? fofHighVoice('tenor', base, v) : isCharacter(p.sung) ? fofFor(base, v, p.sung === 'woman', p.sung) : fofFor(p.sung as Genre, v, false)), energy: p.energy } };
+    // (the breath in before the line, then the polish: made with the line in the background, so the page never does the work)
+    job.polish = polishFor(p.idea, true, p.notes.some((n) => n.vel >= 0.85));
+    if (p.breath) job.breath = { amount: p.breath, seed };
     return { job, seed };
   }
 
-  /** The made line: a breath in before it (human feel), polished like the vocals. */
-  private finish(p: Placed, raw: Float32Array, rate: number, seed: number): AudioBuffer {
-    if (p.breath) {
-      let peak = 0;
-      for (let i = 0; i < raw.length; i++) peak = Math.max(peak, Math.abs(raw[i]));
-      const len = 0.22, br = inhale(rate, len, seed), at = Math.round((PRE - len - 0.06) * rate);
-      for (let i = 0; i < br.length; i++) if (at + i >= 0 && at + i < raw.length) raw[at + i] += br[i] * peak * 0.06 * p.breath;
-    }
-    const pcm = polishVoice(raw, rate, polishFor(p.idea, true, p.notes.some((n) => n.vel >= 0.85)));
+  /** The made line (its breath in and its polish were added with it, in the background) as an audio buffer. */
+  private finish(pcm: Float32Array, rate: number): AudioBuffer {
     const ctx = this.ctx.rawContext as unknown as BaseAudioContext;
     const buf = ctx.createBuffer(1, pcm.length, rate);
     buf.copyToChannel(pcm as Float32Array<ArrayBuffer>, 0);

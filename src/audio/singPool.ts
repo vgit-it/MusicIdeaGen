@@ -4,9 +4,10 @@
 import { renderFof, type FofVoice } from './fof';
 import { renderLine, type SungNote, type VoiceShape } from './sing';
 import { type PolishOpts, polishVoice } from './polish';
+import { addBreath } from '../guide/feel';
 
 /** One line to sing: by the FOF singer (a genre's voice) or the formant synth (the clear voice), polished or not. */
-export type RenderJob = { notes: SungNote[]; pre: number; rate: number; polish?: PolishOpts }
+export type RenderJob = { notes: SungNote[]; pre: number; rate: number; polish?: PolishOpts; /** A breath in before the line (human feel), added before the polish: its strength and noise seed. */ breath?: { amount: number; seed: number } }
   & ({ kind: 'fof'; fof: FofVoice } | { kind: 'line'; shape: VoiceShape });
 export interface RenderDone { pcm: Float32Array; pol: Float32Array | null }
 
@@ -15,6 +16,7 @@ interface Waiting { id: number; job: RenderJob; urgent: number; resolve: (d: Ren
 /** Make a line here and now (no workers, or a worker failed). */
 export function renderNow(job: RenderJob): RenderDone {
   const pcm = job.kind === 'fof' ? renderFof(job.notes, job.fof, job.pre) : renderLine(job.notes, job.shape, job.pre);
+  if (job.breath) addBreath(pcm, job.rate, job.pre, job.breath.amount, job.breath.seed);
   return { pcm, pol: job.polish ? polishVoice(pcm, job.rate, job.polish) : null };
 }
 

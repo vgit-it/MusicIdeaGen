@@ -235,13 +235,22 @@ export class Stage {
     // the band, on a layer of its own: dark against the lights, their edges glowing (a rim light)
     const flash = this.crashFlash(m, playing);
     const b = this.layer(this.bandLayer);
+    // (the box the band covers: the rim light reads and lights only that)
+    let bx0 = W, by0 = H, bx1 = 0, by1 = 0;
+    const grow = (x0: number, y0: number, x1: number, y1: number) => { bx0 = Math.min(bx0, x0); by0 = Math.min(by0, y0); bx1 = Math.max(bx1, x1); by1 = Math.max(by1, y1); };
     for (const { at: [x, y], cmds } of drawn) {
       for (const c of cmds) {
-        if ('line' in c) for (let k = 0; k < (c.w ?? 1); k++) pixelLine(b, x + c.line[0] + k, y + c.line[1], x + c.line[2] + k, y + c.line[3], c.color, c.alpha);
-        else draw(b, c.a, c.f, x + c.x, y + c.y, c.alpha);
+        if ('line' in c) {
+          for (let k = 0; k < (c.w ?? 1); k++) pixelLine(b, x + c.line[0] + k, y + c.line[1], x + c.line[2] + k, y + c.line[3], c.color, c.alpha);
+          grow(x + Math.min(c.line[0], c.line[2]), y + Math.min(c.line[1], c.line[3]), x + Math.max(c.line[0], c.line[2]) + (c.w ?? 1), y + Math.max(c.line[1], c.line[3]) + 1);
+        } else {
+          const f = c.a.frames[c.f];
+          draw(b, c.a, c.f, x + c.x, y + c.y, c.alpha);
+          if (f) grow(x + c.x - f[4], y + c.y - f[5], x + c.x - f[4] + f[2], y + c.y - f[5] + f[3]);
+        }
       }
     }
-    rimLight(b, Math.max(0.1, 0.3 - e * 0.04), playing ? 0.55 + e * 0.08 + flash * 0.4 : 0.4);
+    rimLight(b, Math.max(0.1, 0.3 - e * 0.04), playing ? 0.55 + e * 0.08 + flash * 0.4 : 0.4, [bx0 - 3, by0 - 3, bx1 + 3, by1 + 3]);
     ctx.drawImage(this.bandLayer, 0, 0);
     if (this.cast.front && this.cast.lights.front) ctx.drawImage(this.cast.front, this.cast.lights.front.x, this.cast.lights.front.y);
     // the crowd: nearly black, rim-lit by the stage
@@ -461,12 +470,8 @@ export class Stage {
     l.globalCompositeOperation = 'source-over';
     // step the light into six levels, dithered between them
     const img = l.getImageData(0, 0, L.width, L.height), d = img.data;
-    for (let y = 0; y < L.height; y++) for (let x = 0; x < L.width; x++) {
-      const i = (y * L.width + x) * 4;
-      if (!d[i + 3]) continue;
-      const v = (d[i + 3] / 255) * LEVELS;
-      const lvl = Math.min(LEVELS, Math.floor(v) + (v - Math.floor(v) > (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16 ? 1 : 0));
-      d[i + 3] = (lvl / LEVELS) * 255;
+    for (let y = 0, w = L.width, row = 0; y < L.height; y++, row = (y & 3) * 4) {
+      for (let x = 0, i = y * w * 4 + 3; x < w; x++, i += 4) if (d[i]) d[i] = LIGHT_LUT[(d[i] << 4) | (row + (x & 3))];
     }
     l.putImageData(img, 0, 0);
   }
@@ -481,35 +486,43 @@ const RIM_TOP = [255, 128, 80], RIM_LEFT = [255, 150, 70], RIM_RIGHT = [255, 60,
  * pixel in from it, the sides, a touch from below. The dark outline pixels of the sprites are what take
  * the glow, so it reads as light catching the edge.
  */
-function rimLight(c: CanvasRenderingContext2D, dark: number, rim: number) {
-  const img = c.getImageData(0, 0, W, H), d = img.data;
-  const A = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) A[i] = d[i * 4 + 3] > 0 ? 1 : 0;
-  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : A[y * W + x]);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = y * W + x;
-    if (!A[i]) continue;
-    const o = i * 4;
+export function rimLight(c: CanvasRenderingContext2D, dark: number, rim: number, box?: readonly [number, number, number, number]) {
+  // (`box`: where anything is drawn, so only that is read and lit; the rest of the layer is empty)
+  const x0 = box ? Math.max(0, Math.floor(box[0])) : 0, y0 = box ? Math.max(0, Math.floor(box[1])) : 0;
+  const x1 = box ? Math.min(W, Math.ceil(box[2])) : W, y1 = box ? Math.min(H, Math.ceil(box[3])) : H;
+  const w = x1 - x0, h = y1 - y0;
+  if (w <= 0 || h <= 0) return;
+  const img = c.getImageData(x0, y0, w, h), d = img.data;
+  // (the mask of what's drawn, with two empty pixels all round: the neighbour checks need no bounds tests)
+  const pw = w + 4, size = pw * (h + 4);
+  if (rimMask.length < size) rimMask = new Uint8Array(size);
+  const A = rimMask;
+  A.fill(0, 0, size);
+  for (let y = 0; y < h; y++) for (let x = 0, m = (y + 2) * pw + 2, i = y * w * 4 + 3; x < w; x++, m++, i += 4) if (d[i] > 0) A[m] = 1;
+  for (let y = 0; y < h; y++) for (let x = 0, m = (y + 2) * pw + 2, o = y * w * 4; x < w; x++, m++, o += 4) {
+    if (!A[m]) continue;
     // the body in shadow: toward a deep red-black
     d[o] = d[o] * (1 - dark) + 34 * dark;
     d[o + 1] = d[o + 1] * (1 - dark) + 8 * dark;
     d[o + 2] = d[o + 2] * (1 - dark) + 16 * dark;
     let k = 0, col = RIM_TOP;
-    if (!at(x, y - 1)) k = 1;
-    else if (!at(x - 1, y)) { k = 0.85; col = RIM_LEFT; }
-    else if (!at(x + 1, y)) { k = 0.85; col = RIM_RIGHT; }
-    else if (!at(x, y - 2)) k = 0.38;
-    else if (!at(x - 2, y)) { k = 0.3; col = RIM_LEFT; }
-    else if (!at(x + 2, y)) { k = 0.3; col = RIM_RIGHT; }
-    else if (!at(x, y + 1)) { k = 0.25; col = RIM_RIGHT; }
+    if (!A[m - pw]) k = 1;
+    else if (!A[m - 1]) { k = 0.85; col = RIM_LEFT; }
+    else if (!A[m + 1]) { k = 0.85; col = RIM_RIGHT; }
+    else if (!A[m - 2 * pw]) k = 0.38;
+    else if (!A[m - 2]) { k = 0.3; col = RIM_LEFT; }
+    else if (!A[m + 2]) { k = 0.3; col = RIM_RIGHT; }
+    else if (!A[m + pw]) { k = 0.25; col = RIM_RIGHT; }
     if (!k) continue;
     const a = Math.min(1, k * rim);
     d[o] = d[o] * (1 - a) + col[0] * a;
     d[o + 1] = d[o + 1] * (1 - a) + col[1] * a;
     d[o + 2] = d[o + 2] * (1 - a) + col[2] * a;
   }
-  c.putImageData(img, 0, 0);
+  c.putImageData(img, x0, y0);
 }
+/** The mask rimLight works in (kept between frames). */
+let rimMask = new Uint8Array(0);
 
 /** (the vignette and the grain are the same for every song: made once, not for every new band) */
 let vignetteMade: HTMLCanvasElement | undefined;
@@ -551,6 +564,15 @@ function makeGrain(seed: number) {
 const LEVELS = 6;
 /** 4x4 ordered dither thresholds (0-15). */
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** The stepped, dithered alpha for every alpha (0-255) at each of the 16 dither cells (made once: the light's loop is a lookup). */
+const LIGHT_LUT = (() => {
+  const t = new Uint8ClampedArray(256 * 16);
+  for (let a = 0; a < 256; a++) for (let b = 0; b < 16; b++) {
+    const v = (a / 255) * LEVELS;
+    t[a * 16 + b] = (Math.min(LEVELS, Math.floor(v) + (v - Math.floor(v) > (BAYER[b] + 0.5) / 16 ? 1 : 0)) / LEVELS) * 255;
+  }
+  return t;
+})();
 
 /** A soft oval of light (on the light layer). */
 function glow(l: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, col: string, a: number) {
