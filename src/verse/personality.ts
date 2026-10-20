@@ -38,6 +38,8 @@ export interface Personality {
   verseTone: ChordNote | 'any';
   /** Times the chances of bends, everywhere. */
   bends: number;
+  /** Times the chance of a core note being sung in another octave (rule 25), everywhere. */
+  octaves: number;
   /** The share of every chorus of the song with no vocals: 25-45%, mostly nearer 25. */
   chorusSilence: number;
   /** The pre-chorus: its share of silence (15-30%, mostly nearer 15), how far it climbs (semitones), the chance its last phrase leads into the chorus. */
@@ -126,6 +128,7 @@ export function drawPersonality(seed: string, genre: string, mood: string): Pers
     verseEndChance: [vlo, Math.min(1, vlo + 0.35)],
     verseTone: r('vtone').weighted<ChordNote | 'any'>([['any', 3], ['root', 1], ['third', 1], ['fifth', 1]]),
     bends: r('bends').weighted([[0.5, 1], [0.8, 2], [1, 3], [1.3, 2], [1.7, 1]]),
+    octaves: r('octaves').weighted([[0.5, 1], [0.8, 2], [1, 3], [1.3, 2], [1.5, 1]]),
   };
 }
 
@@ -143,6 +146,11 @@ const HOOK_DIALS: Record<Hook, Partial<Dials>> = {
 
 /** The dials a section kind writes with, in this song's personality. */
 export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'outro' | 'chorus', p: Personality): Dials {
+  const d = sectionDials(kind, p);
+  return { ...d, octave: Math.min(1, d.octave * p.octaves) };
+}
+
+function sectionDials(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'outro' | 'chorus', p: Personality): Dials {
   if (kind === 'prechorus') {
     // (between the verse and the chorus: tighter phrases, a little busier, a few long notes, the line climbing and leading into the chorus)
     return {
@@ -156,7 +164,7 @@ export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 
     return {
       ...VERSE, phraseLen: [0.05, 0.3, 0.3, 0.35], breakBeats: [0.15, 0.35, 0.3, 0.2], runs: 0.5, runLen: [0.9, 0.1, 0], holdBar: 0.6, holdLen: [0.15, 0.2, 0.4, 0.25],
       stretch: 0.3, opener: 0.4, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6, end: [0.6, 0.9], endStyle: { held: 3, open: 2, hang: 2, punch: 0, sync: 0.3, plain: 0.5 },
-      lift: p.bridgeLift, bends: p.bends * 1.2, silence: p.bridgeSilence, silenceTol: 0.07, dwell: p.bridgeDwell, leadIn: p.bridgeLeadIn,
+      lift: p.bridgeLift, octaveUp: 0.5, bends: p.bends * 1.2, silence: p.bridgeSilence, silenceTol: 0.07, dwell: p.bridgeDwell, leadIn: p.bridgeLeadIn,
     };
   }
   if (kind === 'interlude') {
@@ -181,7 +189,7 @@ export function dialsFor(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 
     const h: Partial<Dials> = { ...HOOK_DIALS[p.hook] };
     if (p.hook === 'chant') h.toneW = lean(p.hookTone, 3);
     h.runs = (h.runs ?? 1) * p.chorusRuns;
-    return { ...VERSE, ...h, end: p.chorusEndChance, endStyle: p.chorusEnd, lift: p.chorusLift, bends: p.bends * 3.2, silence: p.chorusSilence };
+    return { ...VERSE, ...h, end: p.chorusEndChance, endStyle: p.chorusEnd, lift: p.chorusLift, octave: 0.3, octaveUp: 0.5, bends: p.bends * 3.2, silence: p.chorusSilence };
   }
   return {
     ...VERSE, phraseLen: BIAS[p.verseBias], runs: p.verseRuns, holdBar: p.verseHold, moves: p.verseMoves, toneW: lean(p.verseTone, 2.2),

@@ -46,6 +46,9 @@ export interface Dials {
   lift: number;
   /** Times the chances of bends. */
   bends: number;
+  /** Rule 25: the chance a core note (a bar's, or a move to another chord note part way through) is sung in another octave of the range than the nearest; and the share of those that go up when both ways are open. */
+  octave: number;
+  octaveUp: number;
   /** The share of the section left silent that the line is fitted to (left out: whatever the rules leave). */
   silence?: number;
   /** How far from that share the fit lets the line be (left out: 3 points; a bridge and an interlude take it as a loose aim). */
@@ -83,6 +86,8 @@ export const VERSE: Dials = {
   endLen: [0.3, 0.2, 0.25, 0.15, 0.1],
   lift: 0,
   bends: 1,
+  octave: 0.25,
+  octaveUp: 0.6,
 };
 
 /** Weighted pick of an index. */
