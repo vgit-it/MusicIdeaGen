@@ -51,6 +51,12 @@
       <label class="chk"><input type="checkbox" id="checkview" checked /> Check view</label>
       <label class="slider">Delay <input type="range" id="delay" min="0" max="400" step="10" value="0" /> <span id="dv">0 ms</span></label>
     </div>
+    <div class="row" id="videorow">
+      <button id="video" disabled>Render video</button>
+      <select id="vsize" title="Video size"><option value="720">720p</option><option value="360">360p</option></select>
+      <label class="chk"><input type="checkbox" id="vlyrics" checked /> Lyrics on video</label>
+      <button id="vcancel" hidden>Cancel</button>
+    </div>
     <div class="row" id="cast"></div>
     <div class="status" id="castwhy"></div>
     <div class="status" id="status">Loading…</div>

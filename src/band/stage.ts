@@ -104,6 +104,8 @@ export class Stage {
   private shade = Object.assign(document.createElement('canvas'), { width: W, height: H });
   /** The light layer, at the stage's own pixel size (the camera is close: half-size light pixels read as a screen door). */
   private light = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  /** Full quality whatever the device (a video render): the light is made for every frame. */
+  full = false;
   /** Frames since the light was last made (lite mode makes it every other frame). */
   private lightTick = 0;
   /** Each walking player's strolls around their spot, planned for the whole song (see `plan`). */
@@ -408,7 +410,7 @@ export class Stage {
   private lights(ctx: CanvasRenderingContext2D, m: Moment, playing: boolean, wall: number) {
     const e = playing ? m.section.energy : 1;
     // (phones: the light is made every other drawn frame; the last one is laid again in between)
-    if (!LITE || (this.lightTick++ & 1) === 0) this.buildLight(m, playing, wall, e);
+    if (!LITE || this.full || (this.lightTick++ & 1) === 0) this.buildLight(m, playing, wall, e);
     ctx.globalCompositeOperation = 'lighter';
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.light, 0, 0, W, H);

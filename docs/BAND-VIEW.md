@@ -8,6 +8,8 @@ in `public/band/` (made by `npm run band-sprites`). The page: a genre, New song,
 Singer on/off, the check view, and a Delay slider (Bluetooth). `band.html?mute` plays silently (tests).
 Not in the built site yet (dev only).
 
+**Render video**: the band playing the song as a video file with the real-amp sound (360p or 720p, MP4). The page's Render video button; how it works in `docs/BAND-VIDEO.md`.
+
 ## How it works (three layers)
 
 1. **The score for the eyes** (`src/band/score.ts`). Before playing, the whole track is turned into one
