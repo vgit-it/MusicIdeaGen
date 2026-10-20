@@ -856,9 +856,8 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
 }
 
 /**
- * Rule 15: bends inside a note. A held note glides to another pitch and holds it: the glide is done by the half of the note, and the
- * end note is held for the second half. Either it glides from the first moment over the first half, or (a note of a beat or more, about
- * half of them) the note holds a quarter, glides in the second quarter, and holds the end note for the last two. Where it can:
+ * Rule 15: bends inside a note. A held note is two pitches: the first for its first half, the second for its second half, with a
+ * quick glide (a 16th at most) across the middle between them. Where it can:
  *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;
  *   - to the next bar's core note, when that is also a note of the chord sounding now;
  * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
@@ -882,11 +881,9 @@ export function addNoteBends(
     let same = 0;
     for (let k = i - 1; k >= 1 && out[k].midi === out[k - 1].midi && n.step - out[k].step <= bar; k--) same++;
     const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.02 * n.len) + (same >= 2 ? 0.3 : 0) + (n.opener && n.len >= 4 ? 0.12 : 0);
-    // (the glide is done by the half of the note and the end note held for the second half: either it glides over the first half,
-    // or the note holds a quarter, glides in the second quarter and holds the end note for the last two. Notes under a beat glide over their first half)
-    const quarter = n.len >= 4 && r('shape') < 0.5;
-    const at = quarter ? n.len / 4 : 0;
-    const glide = quarter ? n.len / 4 : n.len / 2;
+    // (the first note is held for the first half, a quick glide (a 16th at most) across the middle, the new note for the second half)
+    const glide = Math.min(1, n.len / 4);
+    const at = n.len / 2 - glide / 2;
     const end = n.step + n.len;
     const nx = out[i + 1];
     const barLine = Math.abs(end / bar - Math.round(end / bar)) < 1e-6;

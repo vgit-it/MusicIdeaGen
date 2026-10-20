@@ -61,8 +61,9 @@ The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at
 - Words density 0.5; shown as OUTRO on the card.
 - Checked on 168 songs (151 sung, 17 jam/solo outros left silent): none empty, no overlaps, 0 short units, Pentatonic 0 off-scale. Verse, pre-chorus, bridge and chorus notes identical to before (1092 sections by hash).
 
-## Rule 15: bends inside a held note (done by the half)
-- A held note that glides to another pitch finishes the glide by the half of its length and holds the end note for the second half. Two shapes, about 6 in 10 and 4 in 10: glide from the first moment over the first half; or (notes of a beat or more) hold a quarter, glide in the second quarter, hold the end note for the last two quarters. Never a glide longer than half the note, and no phrase ends while moving (a held ending that bends holds its end note, then fades as before).
+## Rule 15: bends inside a held note (first half, quick glide, second half)
+- **Changed 2026-10-20:** a held note that bends is two pitches: the first for its first half, the second for its second half, with one quick glide (a 16th at most) across the middle. The old long glides (up to half the note, a bar on a 2-bar note) are gone. No phrase ends while moving (a held ending that bends holds its end note, then fades as before).
+- Older notes below describe the old shapes (glide over the first half; hold a quarter, glide, hold two).
 - The "next bar" bend (landing as the bar turns) only stays when the next bar's core note is also a note of the chord sounding now, since the end note is held before the bar turns: 450 of them became 76 over 168 songs. The chord-note bends are as before.
 - Checked on 168 songs: every inner bend ends by the half (2,710 of them), every note's step, length and pitch before bending is the same as before.
 
