@@ -12,9 +12,9 @@ import type { Idea } from '../idea';
 import type { Prepared } from '../audio/prep';
 
 /** Seconds after the last bar, so the final chord rings out. */
-const TAIL = 5;
+export const TAIL = 5;
 /** The offline clock starts this far in (see Engine.startOffline). */
-const LEAD = 0.05;
+export const LEAD = 0.05;
 /** Bars of the previous section played before a piece (discarded). */
 const PRE_BARS = 2;
 /** Crossfade between pieces, ending at the section's downbeat. */

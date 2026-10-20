@@ -10,6 +10,7 @@ import { type LayerSettings } from '../audio/engine';
 import { LAYER_PARTS } from '../audio/mixer';
 import type { GenOptions, Idea, Seeds } from '../idea';
 import { HIGH_VOICES, leadHigh } from '../parts/singers';
+import { exportBaseName } from '../export/midi';
 import { type Track, type TrackOptions, buildTrack, defaultTrackOptions } from '../track';
 import { StepClock } from './clock';
 import { LITE } from './lite';
@@ -32,7 +33,7 @@ engine.setBackingVocal('off'); // (backing vocals muted by default; a linked son
 // (band.html?mute: silent, for automated checks)
 if (new URLSearchParams(location.search).has('mute')) Tone.getDestination().mute = true;
 // (for checks from the console)
-Object.assign(window, { bandDebug: () => ({ engine, score, clock, track, renderAt: (t: number, pre?: number) => stage?.render(ctx, t, undefined, pre), stage, newSong, freeze: (t: number | null) => { frozen = t; } }) });
+Object.assign(window, { bandDebug: () => ({ engine, videoModule: () => import('./video'), score, clock, track, renderAt: (t: number, pre?: number) => stage?.render(ctx, t, undefined, pre), stage, newSong, freeze: (t: number | null) => { frozen = t; } }) });
 let cast: Cast | null = null;
 let track: Track | null = null;
 let score: Score | null = null;
@@ -180,6 +181,54 @@ playBtn.onclick = async () => {
 $<HTMLInputElement>('sing').onchange = (e) => { engine.setVocal((e.target as HTMLInputElement).checked ? 'auto' : 'off'); };
 $<HTMLInputElement>('delay').oninput = (e) => { delay = +(e.target as HTMLInputElement).value; $('dv').textContent = `${delay} ms`; };
 
+/* ---- render the band playing as a video file (docs/BAND-VIDEO.md) */
+
+let rendering = false;
+const checkQuery = new URLSearchParams(location.search).get('videocheck');
+const checkPlan = checkQuery === 'mp4' ? { container: 'mp4', video: 'vp9', audio: 'aac', viaExtension: true } as const : checkQuery === 'webm' ? { container: 'webm', video: 'vp9', audio: 'opus', viaExtension: false } as const : undefined;
+const videoBtn = $<HTMLButtonElement>('video'), cancelBtn = $<HTMLButtonElement>('vcancel');
+if (LITE) $<HTMLSelectElement>('vsize').value = '360'; // (phones: the small size first)
+
+videoBtn.onclick = async () => {
+  if (rendering || !stage || !score || !track) return;
+  // rendering takes the computer's full attention: stop playback first
+  cancelWalk();
+  if (engine.playing) engine.stop();
+  playBtn.textContent = 'Play';
+  rendering = true;
+  const controls = [playBtn, videoBtn, $<HTMLButtonElement>('gen')];
+  controls.forEach((b) => { b.disabled = true; });
+  cancelBtn.hidden = false;
+  const ac = new AbortController();
+  cancelBtn.onclick = () => ac.abort();
+  const t0 = performance.now();
+  try {
+    const { renderVideo } = await import('./video');
+    const size = +$<HTMLSelectElement>('vsize').value as 360 | 720;
+    const file = await renderVideo({
+      // (band.html?videocheck=mp4: the codecs the check wants; the rendered audio kept for it)
+      force: checkPlan, onAudio: checkPlan ? (a, t) => { Object.assign(window, { videoCheck: { mix: a.mix, rate: a.sampleRate, times: t } }); } : undefined,
+      stage, score, list: track.sections, engine, size, lyrics: $<HTMLInputElement>('vlyrics').checked, signal: ac.signal,
+      onProgress: (phase, p) => status(`${phase}… ${Math.round(p * 100)}%`),
+      preview: (c) => { ctx.drawImage(c, 0, 0); },
+    });
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(new Blob([file.bytes], { type: file.type }));
+    a.href = url;
+    a.download = `${exportBaseName(track.source, true)}-${size}p.${file.extension}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    const codecs = `${file.plan.video === 'avc' ? 'H.264' : file.plan.video.toUpperCase()} + ${file.plan.audio === 'aac' ? 'AAC' : file.plan.audio}`;
+    status(`Video saved: ${size}p, ${Math.round(file.seconds)} s, ${(file.bytes.byteLength / 1048576).toFixed(1)} MB (${file.extension.toUpperCase()}, ${codecs}), made in ${Math.round((performance.now() - t0) / 1000)} s. ${songInfo}`);
+  } catch (e) {
+    status((e as Error).name === 'AbortError' ? 'Video cancelled.' : `Couldn't make the video: ${(e as Error).message ?? e}`);
+  } finally {
+    rendering = false;
+    cancelBtn.hidden = true;
+    controls.forEach((b) => { b.disabled = false; });
+  }
+};
+
 /** The song position sounding now: the audio clock, less what the output adds (and the delay set for Bluetooth). */
 function songNow(): number {
   if (!clock || !engine.playing) return -1;
@@ -211,6 +260,8 @@ let drawAt = 0;
 
 function frame(now: number) {
   requestAnimationFrame(frame);
+  // (a video is being rendered: it draws the stage itself)
+  if (rendering) return;
   if (now < drawAt - 2) return;
   drawAt = Math.max(drawAt + FRAME_MS, now - FRAME_MS);
   if (!stage || !score) return;
@@ -253,4 +304,4 @@ loadCast().then((c) => {
   newSong();
   requestAnimationFrame(frame);
   return engine.loadCore();
-}).then(() => { playBtn.disabled = false; }).catch((e) => status(`Couldn't load: ${e}`));
+}).then(() => { playBtn.disabled = false; videoBtn.disabled = false; }).catch((e) => status(`Couldn't load: ${e}`));

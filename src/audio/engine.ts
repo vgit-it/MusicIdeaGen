@@ -147,6 +147,8 @@ export class Engine {
 
   /** Offline: play only the guitars (preparing them with real amps), and the bass if `prepBass`. */
   guitarsOnly = false;
+  /** Offline: report each step to `onStep` too (a check of the band video's step times, docs/BAND-VIDEO.md). */
+  reportOffline = false;
   prepBass = false;
   /** Real amps: driven guitars play from prepared buffers (see prepareRealAmps) where they're ready. */
   private realAmps = false;
@@ -993,7 +995,7 @@ export class Engine {
         if (h.twin && this.g2Twin) this.playHit(this.g2Twin, { ...held(h, next), notes: h.twin, touch: undefined }, time + off + (idea.g2Feel ?? 0) / 1000 + 0.012, six, 0.75);
       }
     }
-    if (others && this.onStep && !this.offline) this.onStep(idea, this.idx, g, time, six);
+    if (others && this.onStep && (!this.offline || this.reportOffline)) this.onStep(idea, this.idx, g, time, six);
     // the singer: its lines start a little ahead of their first notes
     if (others && this.singer && this.vocalChoice !== 'off') this.singer.playStep(idea, g, time, six);
     if (others && this.backer && this.backingOn) this.backer.playStep(idea, g, time, six);
