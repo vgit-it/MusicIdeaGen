@@ -3,7 +3,7 @@
 
 import type { Chord, Mode } from '../theory';
 import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from './form';
-import { VERSE, type Dials } from './profile';
+import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
   pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withLeadIn, withOpeners, withRuns, withStretch,
@@ -59,7 +59,8 @@ export function buildVerse(inp: BuildInput): Built {
   const { bar, key, mode } = inp;
   const d0 = inp.dials ?? VERSE;
   const pent = inp.pentatonic ? pentatonic(key, mode) : undefined;
-  const d: Dials = { ...(inp.thirds === false ? { ...d0, third: 0 } : d0), ...(pent ? { pent } : {}) };
+  // (calm sections lean toward longer phrases, driving ones toward shorter)
+  const d: Dials = { ...(inp.thirds === false ? { ...d0, third: 0 } : d0), phraseLen: phraseLenFor(d0.phraseLen, inp.energy), ...(pent ? { pent } : {}) };
   // (a lift moves the band the line lives in, not the extended limits: those are the voice's, and a lift stops at them)
   const width = inp.range.hi - inp.range.lo;
   const lo = Math.max(inp.range.xlo, Math.min(inp.range.xhi - width, inp.range.lo + d.lift));
