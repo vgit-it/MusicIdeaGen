@@ -28,10 +28,12 @@ export const isShared = (idea: Idea) => kindOf(idea) !== 'verse';
 export const chordsOf = (idea: Idea): Chord[] => idea.chords.chordIdx.map((i) => idea.chords.timeline[i].chord);
 /** Steps in a bar. */
 export const barOf = (idea: Idea) => Math.max(4, Math.round(idea.chords.chordIdx.length / idea.song.bars.length));
-/** How hard the band hits on each 16th step (drums, chord changes, strum, bass). */
+/** How much the melody leans on the band's hits (0-1): 1 follows every hit, 0 ignores them. Accents are pulled toward the middle (0.5) by this much. */
+export const BAND_LEAN = 0.5;
+/** How hard the band hits on each 16th step (drums, chord changes, strum, bass), softened by BAND_LEAN. */
 export function accentsOf(idea: Idea): number[] {
   const { kick, snare } = idea.drums;
-  return bandAccents(idea.chords.chordIdx.length, { kick, snare, strum: idea.strum, bass: idea.bass, changes: idea.chords.timeline.map((e) => e.step) });
+  return bandAccents(idea.chords.chordIdx.length, { kick, snare, strum: idea.strum, bass: idea.bass, changes: idea.chords.timeline.map((e) => e.step) }).map((a) => 0.5 + (a - 0.5) * BAND_LEAN);
 }
 /** The song's melodic personality (personality.ts): the same for every section of a song. */
 export const personalityOf = (idea: Idea, salt?: string): Personality => drawPersonality(salt ? `${idea.seeds.song}|${salt}` : idea.seeds.song, idea.song.genre, autoMood(idea.song, idea.seeds.song));
