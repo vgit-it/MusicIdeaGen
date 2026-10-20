@@ -33,6 +33,7 @@ export function buildRoll(root: HTMLElement) {
       </div></div>
     </div>
     <div class="rollstats hint"></div>
+    <label class="rollsync hint">Sync <input type="range" class="rollnudge" min="-200" max="400" step="10" value="0" aria-label="Nudge the needle later or earlier"> <span class="rollms">0 ms</span></label>
     <div class="rollempty hint" hidden>No vocal in this section.</div>`;
   const q = <T extends HTMLElement>(c: string) => root.querySelector<T>('.' + c)!;
   const legend = q('rolllegend'), wrap = q('rollwrap'), stats = q('rollstats'), empty = q('rollempty');
@@ -48,6 +49,15 @@ export function buildRoll(root: HTMLElement) {
   let litIdx = -1;
   let rec: { idea: Idea; g: number; time: number; six: number } | null = null;
   let raf = 0;
+  /** Nudge (ms) for phones that report their output delay wrongly, kept between visits. */
+  let nudge = 0;
+  try { nudge = +(localStorage.getItem('rollNudge') ?? 0) || 0; } catch { /* no storage */ }
+  const nudgeEl = q<HTMLInputElement>('rollnudge'), msEl = q('rollms');
+  nudgeEl.value = String(nudge); msEl.textContent = `${nudge} ms`;
+  nudgeEl.oninput = () => {
+    nudge = +nudgeEl.value; msEl.textContent = `${nudge} ms`;
+    try { localStorage.setItem('rollNudge', String(nudge)); } catch { /* no storage */ }
+  };
 
   function sized(c: HTMLCanvasElement, w: number, h: number) {
     const dpr = window.devicePixelRatio || 1;
@@ -215,8 +225,9 @@ export function buildRoll(root: HTMLElement) {
     raf = 0;
     if (!rec || !lay || !cur || rec.idea !== cur) { ph.style.display = 'none'; clearLit(); raf = rec ? requestAnimationFrame(frame) : 0; return; }
     const ctx = Tone.getContext().rawContext as AudioContext;
-    // (what's coming out of the speakers now: the context's clock less the output delay)
-    const heard = ctx.currentTime - (ctx.outputLatency || 0);
+    // (what's coming out of the speakers now: the context's clock less the output delay; phones often
+    // report no outputLatency, so the base latency stands in, as in the band view)
+    const heard = ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - nudge / 1000;
     const pos = Math.max(0, Math.min(lay.total, rec.g + (heard - rec.time) / rec.six));
     const px = pos * lay.stepPx;
     ph.style.display = 'block';
