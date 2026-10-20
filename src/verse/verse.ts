@@ -122,7 +122,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop into the note from this many semitones below (negative: from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** The held note a section leads into the next on (rule 23): sung strongly, no fall. */ lead?: boolean; /** How the phrase ended on this note. */ style?: EndStyle }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop up into the note from this many semitones below (never from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** The held note a section leads into the next on (rule 23): sung strongly, no fall. */ lead?: boolean; /** How the phrase ended on this note. */ style?: EndStyle }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -684,12 +684,12 @@ export type BendAmount = 'off' | 'some' | 'lots';
 const BLUE: Record<string, number> = { rock: 1, hardrock: 1, grunge: 1, funk: 1, altmetal: 0.8, metal: 0.5, pop: 0.35 };
 
 /**
- * Rule 13: bends. The voice scoops into a note from below or above (`slide`) and falls off a note's end in volume (`fadeBy`).
+ * Rule 13: bends. The voice scoops up into a note from below (`slide`, never down onto it) and falls off a note's end in volume (`fadeBy`).
  * Where the rules above leave a good spot, a bend gets a chance:
  *   - a held phrase ending falls off its end in volume (10, 16 or 24 dB, over its last half; the pitch stays);
  *   - the first note of a phrase is scooped into, more the longer the break before it;
- *   - the note a walk arrives on glides up (or down) from the walk's last note;
- *   - a note that moves 3-5 semitones from the one before glides from it;
+ *   - the note a walk arrives on, if the walk climbed, glides up from the walk's last note;
+ *   - a note that climbs 3-5 semitones from the one before glides up from it;
  *   - a long major 3rd is scooped up from the minor 3rd, by genre (the blue 3rd);
  *   - a long note landing on a chord change is scooped into.
  * Each spot rolls its own chance, raised by the verse's energy and the Bends amount; the ones that win are thinned so no two
@@ -716,18 +716,17 @@ export function addBends(
     const prev = out[i - 1];
     const joined = !!prev && Math.abs(n.step - (prev.step + prev.len)) < 1e-6;
     const at = (tag: string) => new Rng(`${seed}|bsz|${tag}|${Math.round(n.step * 100)}`);
-    const sign = (tag: string) => (at(tag).chance(0.85) ? 1 : -1);
     if (n.end && !n.lead && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fade: at('fall').weighted([[10, 2], [16, 2], [24, 1]]), kind: 'fall' });
-    if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.75, 0.2 + 0.15 * (firsts.get(i)! - 1) + (n.opener ? 0.15 : 0)), slide: sign('ps') * at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
-    if (n.land && prev?.walk && n.len >= 2) cand.push({ i, pri: 3, p: 0.4, slide: Math.max(-3, Math.min(3, n.midi - prev.midi)), kind: 'walk arrival' });
+    if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.75, 0.2 + 0.15 * (firsts.get(i)! - 1) + (n.opener ? 0.15 : 0)), slide: at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
+    if (n.land && prev?.walk && n.len >= 2 && n.midi > prev.midi) cand.push({ i, pri: 3, p: 0.4, slide: Math.min(3, n.midi - prev.midi), kind: 'walk arrival' });
     const step = Math.floor(n.step + 1e-6);
     const c = ctx.chordAt[step];
     if (c && ctx.tones[step] === 'third' && third(c) === 4 && n.len >= 4 && !n.nb) cand.push({ i, pri: 4, p: 0.5 * (BLUE[ctx.genre] ?? 0.7), slide: 1, kind: 'blue 3rd' });
     if (joined && n.len >= 2 && !n.walk && !n.land && !n.nb && !n.third && !prev.walk) {
       const d = n.midi - prev.midi;
-      if (Math.abs(d) >= 3 && Math.abs(d) <= 5) cand.push({ i, pri: 5, p: 0.3, slide: d, kind: 'glide' });
+      if (d >= 3 && d <= 5) cand.push({ i, pri: 5, p: 0.3, slide: d, kind: 'glide' });
     }
-    if (changes.has(step) && n.len >= 4) cand.push({ i, pri: 6, p: 0.35, slide: sign('cc') * at('cc').weighted([[1, 3], [2, 2]]), kind: 'chord change' });
+    if (changes.has(step) && n.len >= 4) cand.push({ i, pri: 6, p: 0.35, slide: at('cc').weighted([[1, 3], [2, 2]]), kind: 'chord change' });
   });
   const won = cand.filter((c) => roll(seed, `bend-${c.kind}`, out[c.i].step) < c.p * lift).sort((a, b) => a.pri - b.pri || out[a.i].step - out[b.i].step);
   const kept: typeof won = [];
