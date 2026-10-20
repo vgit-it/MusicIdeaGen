@@ -61,8 +61,10 @@ The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at
 - Words density 0.5; shown as OUTRO on the card.
 - Checked on 168 songs (151 sung, 17 jam/solo outros left silent): none empty, no overlaps, 0 short units, Pentatonic 0 off-scale. Verse, pre-chorus, bridge and chorus notes identical to before (1092 sections by hash).
 
-## Rule 15: bends inside a held note (done by the half)
-- A held note that glides to another pitch finishes the glide by the half of its length and holds the end note for the second half. Two shapes, about 6 in 10 and 4 in 10: glide from the first moment over the first half; or (notes of a beat or more) hold a quarter, glide in the second quarter, hold the end note for the last two quarters. Never a glide longer than half the note, and no phrase ends while moving (a held ending that bends holds its end note, then fades as before).
+## Rule 15: bends inside a held note (first half, quick glide, second half)
+- **Changed 2026-10-20 (rule 3):** 16th runs are shorter. Run lengths (⅛, ¼, ½ bar) were 62/30/8% in the verse; now 90/10/0%. The chorus push hook 80/20/0 (was 50/35/15) and the chant hook and one other profile 90/10/0 (were 80/20/0). How often runs happen is unchanged.
+- **Changed 2026-10-20:** a held note that bends is two pitches: the first for its first half, the second for its second half, with one quick glide (a 16th at most) across the middle. The old long glides (up to half the note, a bar on a 2-bar note) are gone. No phrase ends while moving (a held ending that bends holds its end note, then fades as before).
+- Older notes below describe the old shapes (glide over the first half; hold a quarter, glide, hold two).
 - The "next bar" bend (landing as the bar turns) only stays when the next bar's core note is also a note of the chord sounding now, since the end note is held before the bar turns: 450 of them became 76 over 168 songs. The chord-note bends are as before.
 - Checked on 168 songs: every inner bend ends by the half (2,710 of them), every note's step, length and pitch before bending is the same as before.
 
@@ -85,3 +87,8 @@ The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at
 
 ## Next
 Verse 2 answering verse 1, a lifted last chorus, breakdown (same recipe as above).
+
+## Rule 25: octave choice (2026-10-20)
+- At every core note (the first note of a bar, or where the chord note or the chord changes part way through) there is a chance it is sung in the other octave of the main range instead of the nearest one (`voiceLead` in `verse.ts`, dials `octave` and `octaveUp`). Never the extended zone. The rest of that core note's notes stay in the new octave; the next core note then takes the nearest octave to it.
+- Chances: verse, pre-chorus, interlude and outro 25% (60% of jumps go up when both ways are open); chorus 30% (50/50); bridge 25% (50/50). Each song scales them 0.5-1.5x (`octaves` in the personality).
+- Measured on 224 songs: the share of core notes in the upper third of the range went verse 19% to 28%, pre-chorus 4% to 22%, chorus 37% to 41%, bridge 31% to 36%.

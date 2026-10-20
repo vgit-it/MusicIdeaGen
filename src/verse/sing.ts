@@ -50,9 +50,7 @@ function vocalOf(notes: BandNote[], w: Words): VocalNote[] {
     const syl = w.syls[i], vel = (!syl.stress ? 0.68 : 0.82) + (n.lead ? 0.12 : 0);
     const head: VocalNote = { step: n.step, len: n.len, midi: n.midi, vel, syl, start: w.starts[i], ...(n.slide ? { slide: n.slide } : {}), ...fadeOf(n, n.len) };
     if (n.bendTo === undefined) return [head];
-    // (an 8th bends from its first moment: one note, scooped into from its own pitch, slowly)
-    if (n.bendAt === 0) return [{ ...head, midi: n.bendTo, slide: n.bendTo - n.midi, slideLen: n.bendLen }];
-    // (a bend inside the note: it holds, then the same word goes on to the new pitch, gliding to it)
+    // (a bend inside the note: the first half holds, then the same word goes on to the new pitch, a quick glide across the middle)
     head.len = n.bendAt!;
     delete head.fade;
     delete head.fadeBy;

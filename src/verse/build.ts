@@ -111,7 +111,7 @@ export function buildVerse(inp: BuildInput): Built {
       const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones, undefined, pent), breaks), runs, key, chordAt, tones, undefined, pent);
       // (a phrase may open on one long note; the short notes after it stay short)
       const held = withOpeners(withHolds(plain, holds), phrases, chordAt, bar, sd.phrases, accOf('phrases'), d);
-      const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, bar, sd.holds, accOf('holds'), d, held.opened), range, climbTo), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
+      const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, bar, sd.holds, accOf('holds'), d, held.opened), range, climbTo, { tones, chordAt, bar, chance: d.octave, up: d.octaveUp, seed: `${sd.tones}|oct` }), key, mode, bar, sd.neighbours, d), phrases, key, mode, bar, sd.walk, d);
       const pushed = pushNotes(limitSame(smallBreaks(foldIntoRange(walked, range), phrases, bar, sd.small, accOf('small'), d)), phrases, bar, sd.small, accOf('small'), d);
       const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt, range }), phrases, bar, sd.thirds, d));
       // (rule 23: the section's last phrase leads into the next section)

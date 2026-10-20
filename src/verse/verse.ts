@@ -391,16 +391,39 @@ export const DEFAULT_RANGE: Range = { lo: 45, hi: 67, xlo: 42, xhi: 86 };
  * Rule 6: smooth steps. Each note takes the octave nearest the one before, so the line moves by the smallest jump.
  * Notes in the extended zone (past the top or bottom, up to the extended limits) cost 4 semitones extra, so the line
  * only strays there when it saves a real leap.
+ * Rule 25: octave choice. At every core note (the first note of a bar, or where the chord note or the chord changes part way
+ * through) there is a chance (`chance`) it is sung in the other octave of the main range instead of the nearest, up or down
+ * (`up`: the share going up when both ways are open). The notes after it, on the same core note, stay there.
  */
-export function voiceLead(notes: BandNote[], r: Range = DEFAULT_RANGE, target?: (step: number) => number): BandNote[] {
+export function voiceLead(
+  notes: BandNote[], r: Range = DEFAULT_RANGE, target?: (step: number) => number,
+  oct?: { tones: ChordNote[]; chordAt: Chord[]; bar: number; chance: number; up: number; seed: string },
+): BandNote[] {
   let prev = Math.round((r.lo + r.hi) / 2);
-  return notes.map((n) => {
+  let lock: number | undefined;
+  return notes.map((n, i) => {
     const pc = ((n.midi % 12) + 12) % 12;
     let best = Math.round((prev - pc) / 12) * 12 + pc, score = Infinity;
     for (let m = pc + 12 * Math.ceil((r.xlo - pc) / 12); m <= r.xhi; m += 12) {
       // (rule 22: a climbing section pulls toward a register that rises across it)
       const sc = (target ? 0.3 : 1) * Math.abs(m - prev) + (m < r.lo || m > r.hi ? 4 : 0) + (target ? 2 * Math.abs(m - target(n.step)) : 0);
       if (sc < score) { best = m; score = sc; }
+    }
+    if (oct && oct.chance > 0) {
+      const at = (s: number) => Math.max(0, Math.min(oct.chordAt.length - 1, Math.floor(s + 1e-6)));
+      const a = at(n.step), b = i ? at(notes[i - 1].step) : -1;
+      const core = i === 0 || Math.floor(a / oct.bar) !== Math.floor(b / oct.bar) || oct.tones[a] !== oct.tones[b] || oct.chordAt[a].root !== oct.chordAt[b].root || oct.chordAt[a].q !== oct.chordAt[b].q;
+      if (core) {
+        lock = undefined;
+        if (roll(oct.seed, 'oct', n.step) < oct.chance) {
+          const others: number[] = [];
+          for (let m = pc + 12 * Math.ceil((r.lo - pc) / 12); m <= r.hi; m += 12) if (m !== best) others.push(m);
+          const ups = others.filter((m) => m > best), downs = others.filter((m) => m < best);
+          const goUp = ups.length && downs.length ? roll(oct.seed, 'octdir', n.step) < oct.up : ups.length > 0;
+          const pick = goUp ? ups[0] : downs[downs.length - 1];
+          if (pick !== undefined) { best = pick; lock = pick; }
+        }
+      } else if (lock !== undefined && lock % 12 === pc) best = lock;
     }
     prev = best;
     return { ...n, midi: best };
@@ -856,9 +879,8 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
 }
 
 /**
- * Rule 15: bends inside a note. A held note glides to another pitch and holds it: the glide is done by the half of the note, and the
- * end note is held for the second half. Either it glides from the first moment over the first half, or (a note of a beat or more, about
- * half of them) the note holds a quarter, glides in the second quarter, and holds the end note for the last two. Where it can:
+ * Rule 15: bends inside a note. A held note is two pitches: the first for its first half, the second for its second half, with a
+ * quick glide (a 16th at most) across the middle between them. Where it can:
  *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;
  *   - to the next bar's core note, when that is also a note of the chord sounding now;
  * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
@@ -882,11 +904,9 @@ export function addNoteBends(
     let same = 0;
     for (let k = i - 1; k >= 1 && out[k].midi === out[k - 1].midi && n.step - out[k].step <= bar; k--) same++;
     const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.02 * n.len) + (same >= 2 ? 0.3 : 0) + (n.opener && n.len >= 4 ? 0.12 : 0);
-    // (the glide is done by the half of the note and the end note held for the second half: either it glides over the first half,
-    // or the note holds a quarter, glides in the second quarter and holds the end note for the last two. Notes under a beat glide over their first half)
-    const quarter = n.len >= 4 && r('shape') < 0.5;
-    const at = quarter ? n.len / 4 : 0;
-    const glide = quarter ? n.len / 4 : n.len / 2;
+    // (the first note is held for the first half, a quick glide (a 16th at most) across the middle, the new note for the second half)
+    const glide = Math.min(1, n.len / 4);
+    const at = n.len / 2 - glide / 2;
     const end = n.step + n.len;
     const nx = out[i + 1];
     const barLine = Math.abs(end / bar - Math.round(end / bar)) < 1e-6;
