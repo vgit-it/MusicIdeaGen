@@ -6,6 +6,7 @@
 import { type Atlas, draw, loadAtlas, loadImage } from './atlas';
 import { type Actor, type Cmd, type Moment, type Pre, type Roam, drummerActor, guitarActor, singerActor } from './actors';
 import { DRESSED, type Wardrobe, dress, loadWardrobe, pickOutfits } from './dress';
+import { LITE } from './lite';
 import { moveSet } from './moves';
 import { PERSONAS, PLAYERS, type Persona, type Player, STYLES } from './persona';
 import { type Score, lastAt } from './score';
@@ -103,6 +104,8 @@ export class Stage {
   private shade = Object.assign(document.createElement('canvas'), { width: W, height: H });
   /** The light layer, at the stage's own pixel size (the camera is close: half-size light pixels read as a screen door). */
   private light = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  /** Frames since the light was last made (lite mode makes it every other frame). */
+  private lightTick = 0;
   /** Each walking player's strolls around their spot, planned for the whole song (see `plan`). */
   private paths = new Map<keyof typeof SPOTS, Stroll[]>();
   /** What each player wears this song (from the wardrobe, src/band/dress.ts), for checks from the console. */
@@ -394,6 +397,23 @@ export class Stage {
    * the players (swinging when it's loud, punching on the bar's downbeat), the string lights twinkle, the neon glows (and flickers now and then), crashes flash.
    */
   private lights(ctx: CanvasRenderingContext2D, m: Moment, playing: boolean, wall: number) {
+    const e = playing ? m.section.energy : 1;
+    // (phones: the light is made every other drawn frame; the last one is laid again in between)
+    if (!LITE || (this.lightTick++ & 1) === 0) this.buildLight(m, playing, wall, e);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.light, 0, 0, W, H);
+    // a crash in a loud part: the whole room flashes (flat: an even wash needs no dither)
+    if (playing) {
+      const crashes = this.score.drums.pieces.crash, ci = lastAt(crashes, m.t);
+      const ago = ci >= 0 ? (m.t - crashes[ci].at) * m.six : Infinity;
+      if (ago < 0.3) { ctx.fillStyle = `rgba(255, 240, 220, ${0.18 * (1 - ago / 0.3) * (e / 5)})`; ctx.fillRect(0, 0, W, H); }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /** The light layer, drawn and stepped into dithered levels. */
+  private buildLight(m: Moment, playing: boolean, wall: number, e: number) {
     const L = this.light;
     const l = L.getContext('2d', { willReadFrequently: true })!;
     l.setTransform(1, 0, 0, 1, 0, 0);
@@ -401,7 +421,6 @@ export class Stage {
     l.setTransform(L.width / W, 0, 0, L.height / H, 0, 0);
     l.globalCompositeOperation = 'lighter';
     const [c1, c2] = LIGHTS[playing && m.section.solo ? 'solo' : m.section.kind] ?? LIGHTS.verse;
-    const e = playing ? m.section.energy : 1;
     const sway = e >= 4 ? Math.sin((m.beatNo + m.beat) * Math.PI * 0.5) * 12 : 0;
     const bi = lastAt(this.barList, m.t);
     const sinceBar = playing && bi >= 0 ? (m.t - this.barList[bi].at) * m.six : Infinity;
@@ -450,16 +469,6 @@ export class Stage {
       d[i + 3] = (lvl / LEVELS) * 255;
     }
     l.putImageData(img, 0, 0);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(L, 0, 0, W, H);
-    // a crash in a loud part: the whole room flashes (flat: an even wash needs no dither)
-    if (playing) {
-      const crashes = this.score.drums.pieces.crash, ci = lastAt(crashes, m.t);
-      const ago = ci >= 0 ? (m.t - crashes[ci].at) * m.six : Infinity;
-      if (ago < 0.3) { ctx.fillStyle = `rgba(255, 240, 220, ${0.18 * (1 - ago / 0.3) * (e / 5)})`; ctx.fillRect(0, 0, W, H); }
-    }
-    ctx.globalCompositeOperation = 'source-over';
   }
 }
 

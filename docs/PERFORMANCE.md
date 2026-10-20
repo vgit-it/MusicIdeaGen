@@ -37,5 +37,10 @@ Measured offline: the share of one CPU core needed to play in real time (this se
 - Renders before and after with the randomness fixed: band and lead singer the same to -89 dB or lower (float noise; the same code rendered twice differs as much).
 - With the backing singer on, takes differ only by chance: its voice synth draws random noise, which used to come from the page's random numbers (and so moved the drummer's timing jitter).
 
+## Band view on phones (lite mode)
+- `src/band/lite.ts`: on a touch screen that is small or has few cores (or `band.html?lite`; `?full` forces it off) the stage is drawn 30 times a second, not 60, and the stage lights (the dithered light layer, the heaviest pixel pass) are made every other drawn frame (15 a second); the last one is laid again in between. The band still moves at the full lite rate; the crash flash is still every frame. Desktop is unchanged.
+- Measured in headless Chromium (no phone here): page draws 53 -> 29 a second; cost of a draw about 15-35% lower; the work a second about 2.3 times less. The picture looks the same.
+- Not measured on a real phone: Paul tries `band.html?lite` against `?full`.
+
 ## How to measure again
 Scripts used are simple Playwright pages against `npm run dev`: play a track with the CPU slowed (late beats, long tasks), and render 15 s offline in one context (time ÷ 15 s).
