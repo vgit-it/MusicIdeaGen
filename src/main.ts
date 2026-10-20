@@ -21,6 +21,7 @@ import {
 import { type PartKey, buildLockPanel } from './ui/locks';
 import { buildPartsPanel } from './ui/parts';
 import { buildChordEditor } from './ui/chordedit';
+import { buildRoll } from './ui/roll';
 import { buildVersePanel } from './verse/panel';
 import { hasPins } from './parts/sheet';
 import { highlightBar, markSection, renderIdea, renderTrack } from './ui/render';
@@ -60,6 +61,10 @@ const realBtn = $<HTMLButtonElement>('realamps');
 const realHint = $('realhint');
 let preparing = false;
 engine.onBar = highlightBar;
+// the melody view: the sung line over the chords, with a playhead
+const roll = buildRoll($('roll'));
+engine.onStep = (i, _idx, g, time, six) => { if (engine.playing) roll.step(i, g, time, six); };
+engine.onStop = () => roll.stopped();
 
 // the new verse melody writer (src/verse/): its own card
 const verse = buildVersePanel($('verse'), {
@@ -95,6 +100,7 @@ function render() {
   }
   showReal();
   verse.update(track ? track.sections : [cur]);
+  roll.show(cur);
 }
 
 function setPlaying(on: boolean) {
