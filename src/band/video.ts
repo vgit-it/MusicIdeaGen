@@ -23,6 +23,8 @@ export type VideoHeight = keyof typeof VIDEO_SIZES;
 export const VIDEO_FPS = 30;
 /** Audio bitrate. */
 const AUDIO_BITRATE = 192e3;
+/** An AAC encoder starts one frame (1024 samples) before its first sound, and a file made here doesn't say so, so players hear everything that much late: the audio is fed that much early. */
+const AAC_DELAY = 1024;
 /** The video starts this long before the first beat, so a note played a hair early isn't cut. */
 const PRE = 0.03;
 
@@ -209,12 +211,14 @@ export async function renderVideo(o: VideoOptions): Promise<VideoFile> {
   output.addVideoTrack(videoSource, { frameRate: VIDEO_FPS });
   output.addAudioTrack(audioSource);
   const first = Math.round((LEAD - PRE) * rate);
+  // (the audio starts a little later in the render, so it plays that much earlier in the file)
+  const early = plan.audio === 'aac' ? AAC_DELAY : 0;
   const seconds = (mix[0].length - first) / rate;
   const frames = Math.floor(seconds * VIDEO_FPS);
-  let audioAt = first;
+  let audioAt = first + early;
   /** Audio goes in a second at a time, a second ahead of the picture, so the two stay interleaved. */
   const feedAudio = async (untilSec: number) => {
-    const end = Math.min(mix[0].length, first + Math.round(untilSec * rate));
+    const end = Math.min(mix[0].length, first + early + Math.round(untilSec * rate));
     while (audioAt < end) {
       const n = Math.min(end - audioAt, rate);
       const buf = new AudioBuffer({ length: n, numberOfChannels: 2, sampleRate: rate });
