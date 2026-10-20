@@ -211,3 +211,19 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .guidewords p { margin: 2px 0; }
 .guidewords b { color: var(--text); font-weight: 600; margin-right: 4px; }
 .guiderow select.gsing { width: auto; padding: 6px 8px; font-size: 13px; }
+
+/* melody view */
+.roll[hidden], .rollwrap[hidden], .rollstats[hidden], .rollempty[hidden], .rolllegend[hidden] { display: none; }
+.rolllegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--mute); margin-bottom: 10px; }
+.rolllegend span { display: inline-flex; align-items: center; gap: 6px; }
+.rolllegend i { width: 12px; height: 8px; border-radius: 2px; display: inline-block; }
+.rolllegend i.band { background: rgba(91,140,255,.45); }
+.rolllegend i.curve { height: 0; border-top: 2px solid #fff; border-radius: 0; }
+.rollwrap { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--field); }
+.rollgut { flex: none; display: block; }
+.rollscroll { flex: 1; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.rollinner { position: relative; }
+.rollinner canvas { display: block; }
+.rollinner .rolllit { position: absolute; left: 0; top: 0; pointer-events: none; }
+.rollph { position: absolute; left: 0; top: 0; width: 2px; background: #fff; box-shadow: 0 0 6px rgba(255,255,255,.7); pointer-events: none; display: none; will-change: transform; }
+.rollstats { margin: 10px 0 0; }
