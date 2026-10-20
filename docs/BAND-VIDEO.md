@@ -139,7 +139,8 @@ What changed after a closer look at the code:
 - Frames looked at: crisp pixels, the band lit as live, lyrics in the syllable-by-syllable style, with the
   dressed band (`?art`) too.
 - Time: a 2.5-3 minute song at 360p took 110-170 s in headless Chromium (about 50 s preparing the real
-  amps, 30-40 s of audio, the rest frames); file 27-38 MB.
+  amps, 30-40 s of audio, the rest frames); file 27-38 MB. 720p (`?art`, 2:18 song): 143 s, 71 MB
+  (WebM; about 4 Mbps).
 
 ### Not checked yet
 
