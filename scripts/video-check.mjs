@@ -48,7 +48,8 @@ const run = (a) => {
 
 // the dev server
 const port = 5198;
-const vite = spawn('npx', ['vite', '--port', String(port), '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+// (vite itself, not npx, so killing it at the end really stops it)
+const vite = spawn(process.execPath, [join(process.cwd(), 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
 await new Promise((ok, no) => {
   vite.stdout.on('data', (d) => { if (String(d).includes('Local:')) ok(); });
   vite.on('exit', () => no(new Error('vite did not start')));
