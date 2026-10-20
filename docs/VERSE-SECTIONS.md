@@ -84,6 +84,7 @@ The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at
 ## Singing
 - A held phrase ending fades out in volume (10, 16 or 24 dB over its last half), never in pitch; half as far if that note bends.
 - The card's **Human feel** switch (on by default) runs the experiment line through the main vocal's human feel (`guide/feel.ts`): glides, scoops, swells, a short fade at every word end, a softer last word, a breath before lines after a rest. The ending fade above stays when it is the longer one.
+- **Scoops only go up (2026-10-20).** Rule 13 no longer starts a note above and bends down onto it: phrase-start and chord-change scoops always come from below; a walk's arrival and a glide only scoop when the melody climbs (a step down is just sung).
 
 ## Next
 Verse 2 answering verse 1, a lifted last chorus, breakdown (same recipe as above).
