@@ -12,6 +12,7 @@ import type { GenOptions, Idea, Seeds } from '../idea';
 import { HIGH_VOICES, leadHigh } from '../parts/singers';
 import { type Track, type TrackOptions, buildTrack, defaultTrackOptions } from '../track';
 import { StepClock } from './clock';
+import { LITE } from './lite';
 import { type Lineup, PERSONAS, PERSONA_LABEL, PLAYERS, PLAYER_LABEL, type Persona, type Player, pickCast } from './persona';
 import { type Score, buildScore, lastAt } from './score';
 import { type Cast, H, Stage, W, loadCast, renderCheck, walkOn } from './stage';
@@ -204,8 +205,8 @@ function setText(id: string, text: string, html = false) {
   if (html) $(id).innerHTML = text; else $(id).textContent = text;
 }
 
-/** The stage is drawn 60 times a second at most (a 120 Hz screen would only draw the same moves twice). */
-const FRAME_MS = 1000 / 60;
+/** The stage is drawn 60 times a second at most (a 120 Hz screen would only draw the same moves twice); 30 on phones (lite mode). */
+const FRAME_MS = 1000 / (LITE ? 30 : 60);
 let drawAt = 0;
 
 function frame(now: number) {

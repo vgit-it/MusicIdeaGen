@@ -144,3 +144,11 @@ export function inhale(rate: number, len: number, seed: number): Float32Array {
   for (let i = 0; i < n; i++) out[i] /= peak;
   return out;
 }
+
+/** A breath in before a sung line (`raw`, changed in place): `pre` seconds of lead-in, `amount` its strength (about 0.06 of the line's peak), `seed` its noise. */
+export function addBreath(raw: Float32Array, rate: number, pre: number, amount: number, seed: number) {
+  let peak = 0;
+  for (let i = 0; i < raw.length; i++) peak = Math.max(peak, Math.abs(raw[i]));
+  const len = 0.22, br = inhale(rate, len, seed), at = Math.round((pre - len - 0.06) * rate);
+  for (let i = 0; i < br.length; i++) if (at + i >= 0 && at + i < raw.length) raw[at + i] += br[i] * peak * 0.06 * amount;
+}
