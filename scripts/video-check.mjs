@@ -122,7 +122,7 @@ try {
     const wh = size === 720 ? '1280x720' : '640x360';
     check(new RegExp(`Video: .*${wh}.* 30 (fps|tbr)`).test(probe), `video ${wh}, 30 fps`);
     check(/Audio: (aac|opus)/.test(probe), `audio: ${/Audio: (\w+)/.exec(probe)?.[1]}`);
-    const counted = [...run(['-hide_banner', '-i', file, '-map', '0:v:0', '-c', 'copy', '-f', 'null', '-']).err.matchAll(/frame=\s*(\d+)/g)];
+    const counted = [...run(['-hide_banner', '-i', file, '-map', '0:v:0', '-f', 'null', '-']).err.matchAll(/frame=\s*(\d+)/g)];
     const frames = +(counted.at(-1)?.[1] ?? 0);
     check(Math.abs(frames - Math.floor(seconds * 30)) <= 2, `${frames} frames`);
 
