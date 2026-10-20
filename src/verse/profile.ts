@@ -64,7 +64,7 @@ export const VERSE: Dials = {
   phraseLen: [0.15, 0.35, 0.25, 0.25],
   breakBeats: [0.5, 0.3, 0.12, 0.08],
   runs: 1,
-  runLen: [0.62, 0.3, 0.08],
+  runLen: [0.9, 0.1, 0],
   holdBar: 0.4,
   holdLen: [0.4, 0.2, 0.3, 0.1],
   holdTwice: 0,

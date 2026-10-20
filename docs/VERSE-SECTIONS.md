@@ -62,6 +62,7 @@ The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at
 - Checked on 168 songs (151 sung, 17 jam/solo outros left silent): none empty, no overlaps, 0 short units, Pentatonic 0 off-scale. Verse, pre-chorus, bridge and chorus notes identical to before (1092 sections by hash).
 
 ## Rule 15: bends inside a held note (first half, quick glide, second half)
+- **Changed 2026-10-20 (rule 3):** 16th runs are shorter. Run lengths (⅛, ¼, ½ bar) were 62/30/8% in the verse; now 90/10/0%. The chorus push hook 80/20/0 (was 50/35/15) and the chant hook and one other profile 90/10/0 (were 80/20/0). How often runs happen is unchanged.
 - **Changed 2026-10-20:** a held note that bends is two pitches: the first for its first half, the second for its second half, with one quick glide (a 16th at most) across the middle. The old long glides (up to half the note, a bar on a 2-bar note) are gone. No phrase ends while moving (a held ending that bends holds its end note, then fades as before).
 - Older notes below describe the old shapes (glide over the first half; hold a quarter, glide, hold two).
 - The "next bar" bend (landing as the bar turns) only stays when the next bar's core note is also a note of the chord sounding now, since the end note is held before the bar turns: 450 of them became 76 over 168 songs. The chord-note bends are as before.
