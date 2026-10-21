@@ -24,10 +24,10 @@ export const isSung = (idea: Idea) => {
 };
 
 /** The writer's options for a song: the default range (a high singer's lift moves it), the vocal seed mixed in. */
-export function songOptions(seed: string, lift = 0, studied = false): SectionOptions {
+export function songOptions(seed: string, lift = 0): SectionOptions {
   const r = DEFAULT_RANGE;
   const range: Range = { lo: r.lo + lift, hi: r.hi + lift, xlo: r.xlo + lift, xhi: r.xhi + lift };
-  return { range, bends: 'some', meta: true, variation: 'some', pentatonic: false, seed, ...(studied ? { studied } : {}) };
+  return { range, bends: 'some', meta: true, variation: 'some', pentatonic: false, seed };
 }
 
 export interface SectionVoice {
@@ -127,8 +127,8 @@ export const linkVoice = (from: Idea, to: Idea) => { const v = written.get(from)
  * Give a track's sections the writer's vocal: `vocal` and `sung` are set on every section (empty where nobody sings). A lone idea is
  * passed as a one-section list whose section is a chorus (it sings its chorus tune and hook, as the old vocal did).
  */
-export function singSong(list: Idea[], seed: string, lift = 0, studied = false): void {
-  const song = writeSong(list, songOptions(seed, lift, studied));
+export function singSong(list: Idea[], seed: string, lift = 0): void {
+  const song = writeSong(list, songOptions(seed, lift));
   list.forEach((idea) => {
     const v = song.get(idea);
     if (v) written.set(idea, v);

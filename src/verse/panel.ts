@@ -14,13 +14,12 @@ export interface VersePanel {
   update(list: Idea[]): void;
 }
 
-export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'classic'; setWriter(w: 'verse' | 'classic'): void; studied(): boolean; setStudied(on: boolean): void }): VersePanel {
+export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'classic'; setWriter(w: 'verse' | 'classic'): void }): VersePanel {
   root.innerHTML = `
     <h2>Vocal melody</h2>
     <p class="hint">The lead vocal is written by the verse melody writer, section by section: phrases with breaks, 16th runs, long notes and bent ones, and rules for the pre-chorus climb, the bridge's dwell, the interlude and outro echoing the chorus. A song's choruses (and pre-choruses, bridges, interludes, outros) are one melody over their own chords, and every song draws its own personality. Below: the words and what was written.</p>
     <div class="guiderow">
       <label title="Who writes the lead vocal: the verse melody writer (new), or the classic writer. Same song, only the lead vocal changes">Writer <select id="v-writer" class="gsing"><option value="verse">New</option><option value="classic">Classic</option></select></label>
-      <label title="Studied: the New writer's melody moved toward what 909 real pop songs do (docs/STUDY-POP909.md): fewer repeated notes, more thirds and steps, turning back after leaps, more 16ths, endings on the key note. Same song, only the lead vocal changes. Off: the writer as before"><input type="checkbox" id="v-studied"> Studied (real pop)</label>
     </div>
     <p class="hint" id="v-lyrics" style="white-space:pre-line"></p>
     <p class="hint" id="v-info" style="white-space:pre-line"></p>`;
@@ -28,9 +27,6 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
   const sel = $('v-writer') as HTMLSelectElement;
   sel.value = ctl.writer();
   sel.addEventListener('change', () => ctl.setWriter(sel.value as 'verse' | 'classic'));
-  const studiedBox = $('v-studied') as HTMLInputElement;
-  studiedBox.checked = ctl.studied();
-  studiedBox.addEventListener('change', () => ctl.setStudied(studiedBox.checked));
   let list: Idea[] = [];
   const noteName = (m: number) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
   const accents = new WeakMap<Idea, number[]>();
@@ -87,8 +83,6 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
     update(l) {
       list = l;
       sel.value = ctl.writer();
-      studiedBox.checked = ctl.studied();
-      studiedBox.disabled = ctl.writer() === 'classic';
       info();
     },
   };

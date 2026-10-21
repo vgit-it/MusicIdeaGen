@@ -645,11 +645,6 @@ export function phraseEndings(
     if (!core) continue;
     let midi = core.midi;
     const c = ctx?.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(from))];
-    // (Studied: a held ending sits on the key's tonic where the chord holds it)
-    if (ctx && c && d.endTonic && style === 'held' && roll(seed, 'endtonic', ph.step) < d.endTonic && [0, third(c), fifth(c)].some((x) => (ctx.key + c.root + x) % 12 === ctx.key % 12)) {
-      const m = nearest(ctx.key % 12, core.midi);
-      if (!ctx.range || (m >= ctx.range.lo && m <= ctx.range.hi)) midi = m;
-    }
     if (ctx && c && (style === 'open' || style === 'hang')) {
       const pcs = [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
       const scale = d.pent ?? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12));
@@ -662,46 +657,6 @@ export function phraseEndings(
       if (found === undefined) { if (style === 'hang') continue; } else midi = core.midi + found;
     }
     put(from, len + (style === 'sync' ? 2 : 0), midi, style);
-  }
-  return out;
-}
-
-/**
- * Rule 29: studied pitches (the Studied option, docs/STUDY-POP909.md). Real melodies repeat a note half as often as the writer does and
- * step or skip a third instead; they turn back after a leap more than half the time. On the off-beats only (the beats keep their chord
- * notes), a note that repeats the one before it moves to a scale step or a chord note a third to a 5th away, and the note after a leap
- * steps back the other way. Pitches only: rhythm, words and silence are untouched.
- */
-export function studiedPitches(
-  notes: BandNote[], phrases: Gap[], bar: number, seed: string,
-  ctx: { key: number; mode: Mode; chordAt: Chord[]; range: Range; pent?: ReadonlySet<number> },
-): BandNote[] {
-  const beat = bar / 4;
-  const scale = ctx.pent ?? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12));
-  const pc = (m: number) => ((m % 12) + 12) % 12;
-  const free = (n: BandNote) => !(n.nb || n.walk || n.land || n.third || n.end || n.opener || n.longHold || n.lead || n.slide || n.fadeBy) && n.len <= 2;
-  const out: BandNote[] = [];
-  for (const n of notes) {
-    const prev = out[out.length - 1], prev2 = out[out.length - 2];
-    const ph = phrases.find((p) => n.step >= p.step - 1e-6 && n.step < p.step + p.len - 1e-6);
-    const inside = !!ph && !!prev && prev.step >= ph.step - 1e-6 && n.step > ph.step + 1e-6 && n.step + n.len < ph.step + ph.len - 1e-6;
-    const off = Math.abs(n.step / beat - Math.round(n.step / beat)) > 1e-6;
-    if (!inside || !off || !free(n) || prev.step + prev.len < n.step - 2 || prev.bendTo !== undefined) { out.push(n); continue; }
-    const c = ctx.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(n.step))];
-    const chordPcs = [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
-    const fits = (m: number) => m >= ctx.range.lo && m <= ctx.range.hi;
-    const leapBack = prev2 && Math.abs(prev.midi - prev2.midi) >= 5 && (prev.midi - prev2.midi) * (n.midi - prev.midi) >= 0 && roll(seed, 'studied-leap', n.step) < 0.9;
-    const repeat = n.midi === prev.midi && roll(seed, 'studied-rep', n.step) < 0.8;
-    if (!leapBack && !repeat) { out.push(n); continue; }
-    // (turning back after a leap: the other way; a repeat: away from the way the line came, or a coin)
-    const came = prev2 ? Math.sign(prev.midi - prev2.midi) : 0;
-    const dir = leapBack ? -Math.sign(prev.midi - prev2.midi) : came ? (roll(seed, 'studied-dir', n.step) < 0.65 ? -came : came) : roll(seed, 'studied-dir', n.step) < 0.5 ? 1 : -1;
-    const kind = leapBack ? 0 : roll(seed, 'studied-kind', n.step);
-    // 40% a step of the scale, 45% a chord note a 3rd away, 15% a chord note a 4th to a 5th away
-    const ks = kind < 0.4 ? [1, 2] : kind < 0.85 ? [3, 4] : [5, 7, 6];
-    const pick = (sgn: number) => ks.map((k) => prev.midi + sgn * k).find((m) => fits(m) && (kind < 0.4 ? scale.has(pc(m)) : chordPcs.includes(pc(m)) && (!ctx.pent || ctx.pent.has(pc(m)))));
-    const m = pick(dir) ?? pick(-dir);
-    out.push(m === undefined ? n : { ...n, midi: m });
   }
   return out;
 }

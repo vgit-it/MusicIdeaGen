@@ -74,12 +74,6 @@ const verse = buildVersePanel($('verse'), {
     // (the same song with the other writer: only the lead vocal changes)
     showIdea(generate({ ...idea.opts, vocalWriter: w === 'verse' ? undefined : w }, idea.seeds), true);
   },
-  studied: () => !!idea?.opts.vocalStudied,
-  setStudied(on) {
-    if (!idea) return;
-    // (the same song with the Studied pitches on or off: only the lead vocal changes)
-    showIdea(generate({ ...idea.opts, vocalStudied: on || undefined }, idea.seeds), true);
-  },
 });
 
 /** The section strip, labelled with the instrument each section's rhythm part plays on. */
@@ -420,7 +414,7 @@ function newIdea() {
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
   // (the vocal's rhythm and the singer's lift carry over to the new idea; the lift then set for its own
   // singer: the new song may sing in the other voice)
-  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns, vocalWriter: idea?.opts.vocalWriter, vocalStudied: idea?.opts.vocalStudied };
+  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns, vocalWriter: idea?.opts.vocalWriter };
   let next = generate(opts, seeds);
   const h = singerFor(next);
   if ((next.opts.vocalLift ?? 0) !== (h ? HIGH_VOICES[h].lift : 0) || next.opts.vocalSinger !== (h ?? undefined)) next = generate({ ...opts, ...singerOpts(h) }, seeds);
