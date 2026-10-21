@@ -128,7 +128,7 @@ export function buildVerse(inp: BuildInput): Built {
       if (!units.ok) return null;
       const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
       const bent = addBends(units.notes, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
-      const notes = addNoteBends(bent, bar, { amount: inp.bends, energy: inp.energy, key, chordAt, range, mult: d.bends, pent }, `${sd.bends}|in`);
+      const notes = addNoteBends(bent, bar, { amount: inp.bends, energy: inp.energy, key, mode, chordAt, range, mult: d.bends, pent }, `${sd.bends}|in`);
       return { notes, phrases, breaks, runs, holds, tones, bars };
     };
     const MAX_TRIES = 40;
