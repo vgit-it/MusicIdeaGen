@@ -755,7 +755,7 @@ export function addBends(
   const out = notes.map((n) => ({ ...n }));
   const lift = (ctx.amount === 'lots' ? 1.6 : 1) * (0.7 + 0.6 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 1 : 2) * bar;
-  const beat = bar / 4;
+  const beat = bar / 4, eighth = bar / 8;
   const cand: { i: number; pri: number; p: number; slide?: number; fade?: number; kind: string }[] = [];
   const firsts = new Map<number, number>(); // note index -> break before its phrase, in beats
   phrases.forEach((ph, k) => {
@@ -768,14 +768,14 @@ export function addBends(
     const joined = !!prev && Math.abs(n.step - (prev.step + prev.len)) < 1e-6;
     const at = (tag: string) => new Rng(`${seed}|bsz|${tag}|${Math.round(n.step * 100)}`);
     if (n.end && !n.lead && n.len >= 4) cand.push({ i, pri: 1, p: n.len >= 8 ? 0.7 : 0.55, fade: at('fall').weighted([[10, 2], [16, 2], [24, 1]]), kind: 'fall' });
-    if (firsts.has(i) && n.len >= 2) cand.push({ i, pri: 2, p: Math.min(0.75, 0.2 + 0.15 * (firsts.get(i)! - 1) + (n.opener ? 0.15 : 0)), slide: at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
-    if (n.land && prev?.walk && n.len >= 2 && n.midi > prev.midi) cand.push({ i, pri: 3, p: 0.4, slide: Math.min(3, n.midi - prev.midi), kind: 'walk arrival' });
+    if (firsts.has(i) && n.len > eighth + 1e-6) cand.push({ i, pri: 2, p: Math.min(0.75, 0.2 + 0.15 * (firsts.get(i)! - 1) + (n.opener ? 0.15 : 0)), slide: at('ps').weighted([[1, 3], [2, 3], [3, 1]]), kind: 'phrase start' });
+    if (n.land && prev?.walk && n.len > eighth + 1e-6 && n.midi > prev.midi) cand.push({ i, pri: 3, p: 0.4, slide: Math.min(3, n.midi - prev.midi), kind: 'walk arrival' });
     const step = Math.floor(n.step + 1e-6);
     const c = ctx.chordAt[step];
     if (c && ctx.tones[step] === 'third' && third(c) === 4 && n.len >= 4 && !n.nb) cand.push({ i, pri: 4, p: 0.5 * (BLUE[ctx.genre] ?? 0.7), slide: 1, kind: 'blue 3rd' });
-    if (joined && n.len >= 2 && !n.walk && !n.land && !n.nb && !n.third && !prev.walk) {
+    if (joined && n.len > eighth + 1e-6 && !n.walk && !n.land && !n.nb && !n.third && !prev.walk) {
       const d = n.midi - prev.midi;
-      if (d >= 3 && d <= 5) cand.push({ i, pri: 5, p: 0.3, slide: d, kind: 'glide' });
+      if (d === 3) cand.push({ i, pri: 5, p: 0.3, slide: d, kind: 'glide' });
     }
     if (changes.has(step) && n.len >= 4) cand.push({ i, pri: 6, p: 0.35, slide: at('cc').weighted([[1, 3], [2, 2]]), kind: 'chord change' });
   });
@@ -1091,6 +1091,8 @@ export function addNoteBends(
     const at = Math.min(n.len / 2 - glide / 2, n.len - glide - (single ? beat : 0));
     if (single && at < eighth - 1e-6) return;
     const end = n.step + n.len;
+    // (an 8th note bends at most 3 semitones)
+    const maxBend = n.len <= eighth + 1e-6 ? 3 : MAX_BEND;
     const nx = out[i + 1];
     const barLine = Math.abs(end / bar - Math.round(end / bar)) < 1e-6;
     const ok = (m: number) => m >= ctx.range.xlo && m <= ctx.range.xhi;
@@ -1099,7 +1101,7 @@ export function addNoteBends(
     // to the next bar's core note: only when it is also a note of the chord sounding now (the end note is held before the bar turns)
     if (barLine && nx && nx.step - end <= bar / 4 && !nx.nb && !nx.third && pcs.includes(((nx.midi % 12) + 12) % 12)) {
       const d = nx.midi - n.midi;
-      if (Math.abs(d) >= 1 && Math.abs(d) <= MAX_BEND && ok(nx.midi)) cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at, glide, kind: 'next bar' });
+      if (Math.abs(d) >= 1 && Math.abs(d) <= maxBend && ok(nx.midi)) cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at, glide, kind: 'next bar' });
     }
     // a single long note: if the scale has a note a semitone above or below it, it bends to that one (from-to), or now and then there
     // and back, slower; else if the nearest scale note is a whole tone away, it mostly bends there and back, in the middle, and less
@@ -1133,7 +1135,7 @@ export function addNoteBends(
     // and back, a 4th, was most of the bends)
     if (c && !scaled) {
       const opts: { d: number; w: number; chord: boolean }[] = [];
-      for (let d = -MAX_BEND; d <= MAX_BEND; d++) {
+      for (let d = -maxBend; d <= maxBend; d++) {
         const m = n.midi + d, pc = ((m % 12) + 12) % 12;
         if (!d || m < ctx.range.lo || m > ctx.range.hi || (ctx.pent && !ctx.pent.has(pc))) continue;
         const dir = d > 0 ? 0.6 : 0.4;
