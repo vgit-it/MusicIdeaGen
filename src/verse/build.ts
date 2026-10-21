@@ -3,9 +3,9 @@
 
 import type { Chord, Mode } from '../theory';
 import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from './form';
-import { VERSE, phraseLenFor, studiedDials, type Dials } from './profile';
+import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
-  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks, studiedPitches,
+  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
   pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withLeadIn, withLongHolds, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
@@ -36,8 +36,6 @@ export interface BuildInput {
   dials?: Dials;
   /** Limit every note to the key's pentatonic scale (chosen so at every step: chord notes, steps, endings, bends). */
   pentatonic?: boolean;
-  /** The Studied option (docs/STUDY-POP909.md): dials and pitches moved toward real pop melodies. */
-  studied?: boolean;
   /** Dice borrowed from another section for some rules (a pre-chorus takes the verse's phrasing). */
   borrow?: Partial<Record<Rule, string>>;
   /** The try each leaf was written on in another build (a chorus built like its master starts there, so they match). */
@@ -59,7 +57,7 @@ export interface Built {
 
 export function buildVerse(inp: BuildInput): Built {
   const { bar, key, mode } = inp;
-  const d0 = inp.studied ? studiedDials(inp.dials ?? VERSE) : inp.dials ?? VERSE;
+  const d0 = inp.dials ?? VERSE;
   const pent = inp.pentatonic ? pentatonic(key, mode) : undefined;
   // (calm sections lean toward longer phrases, driving ones toward shorter)
   const d: Dials = { ...(inp.thirds === false ? { ...d0, third: 0 } : d0), phraseLen: phraseLenFor(d0.phraseLen, inp.energy), ...(pent ? { pent } : {}) };
@@ -125,10 +123,8 @@ export function buildVerse(inp: BuildInput): Built {
       const longed = withLongHolds(led, phrases, chordAt, bar, len, { key, range, moreLeaves: end < total }, sd.holds, accOf('holds'), d);
       // (the chorus: fitted to the song's share of silence)
       const fitted = d.silence === undefined ? longed : fitSilence(longed, phrases, bar, len, d.silence, sd.small, accOf('small'), d.silenceTol);
-      // (rule 29, Studied: off-beat repeats move, turns back after leaps)
-      const studied = inp.studied ? studiedPitches(fitted, phrases, bar, `${sd.tones}|studied`, { key, mode, chordAt, range, pent }) : fitted;
       // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
-      const units = fixUnits(studied, phrases, chordAt, bar, final);
+      const units = fixUnits(fitted, phrases, chordAt, bar, final);
       if (!units.ok) return null;
       const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
       const bent = addBends(units.notes, phrases, bar, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
