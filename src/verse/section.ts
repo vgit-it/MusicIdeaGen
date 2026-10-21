@@ -2,15 +2,16 @@
 // variety check use the same code, so what the check measures is what the card plays.
 
 import type { Idea } from '../idea';
-import { autoMood } from '../tension';
+import { autoMood, type Mood } from '../tension';
 import { buildVerse, type Built } from './build';
 import { leafSeeds, planForm, type Rule, type Variation } from './form';
+import { emoDials, type EmoCtx, type EmoOptions } from './emotion';
 import { dialsFor, drawPersonality, paced, type Personality } from './personality';
 import { bandAccents, type BendAmount, type Range } from './verse';
 import type { Chord } from '../theory';
 
 /** What the user can set on the card. */
-export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string; /** Dials moved to the song's tempo (personality.ts `paced`); the experiment's melodies are written without. */ pace?: boolean }
+export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string; /** Dials moved to the song's tempo (personality.ts `paced`); the experiment's melodies are written without. */ pace?: boolean; /** The song's mood and the mood notes that are on (emotion.ts); left out: the Auto mood and no mood notes, the line as it always was. */ emo?: EmoOptions }
 
 export const isChorus = (idea: Idea) => idea.section?.kind === 'chorus';
 export const isPre = (idea: Idea) => idea.section?.kind === 'prechorus';
@@ -36,7 +37,9 @@ export function accentsOf(idea: Idea): number[] {
   return bandAccents(idea.chords.chordIdx.length, { kick, snare, strum: idea.strum, bass: idea.bass, changes: idea.chords.timeline.map((e) => e.step) }).map((a) => 0.5 + (a - 0.5) * BAND_LEAN);
 }
 /** The song's melodic personality (personality.ts): the same for every section of a song. */
-export const personalityOf = (idea: Idea, salt?: string): Personality => drawPersonality(salt ? `${idea.seeds.song}|${salt}` : idea.seeds.song, idea.song.genre, autoMood(idea.song, idea.seeds.song));
+export const personalityOf = (idea: Idea, salt?: string, mood?: Mood): Personality => drawPersonality(salt ? `${idea.seeds.song}|${salt}` : idea.seeds.song, idea.song.genre, mood ?? autoMood(idea.song, idea.seeds.song));
+/** The mood a song's vocal is written in: the one picked on the track (or Auto's), when the song hands it over. */
+export const moodOf = (idea: Idea, o: SectionOptions): Mood => o.emo?.mood ?? autoMood(idea.song, idea.seeds.song);
 /** The chords of a section as a string (what a chorus's pitches follow). */
 export const chordsKey = (idea: Idea) => idea.chords.timeline.map((e) => `${e.step}${e.chord.root}${e.chord.q}`).join(',');
 /** The choruses of a song (of one length, tuned alike) are one hook: one melody, over each chorus's own chords. Pre-choruses likewise. */
@@ -65,7 +68,7 @@ function borrowedFrom(verse: Idea, o: SectionOptions): Partial<Record<Rule, stri
 const ECHOED: Rule[] = ['phrases', 'tones', 'holds'];
 function echoedFrom(chorus: Idea, o: SectionOptions): Partial<Record<Rule, string>> {
   const seed = hookSig(chorus, o);
-  const leaves = planForm(chorus.song.bars.length, o.meta, personalityOf(chorus, o.seed).chorusVariation, seed);
+  const leaves = planForm(chorus.song.bars.length, o.meta, personalityOf(chorus, o.seed, moodOf(chorus, o)).chorusVariation, seed);
   const seeds = leafSeeds(leaves, seed).get(leaves[0].id)!;
   return Object.fromEntries(ECHOED.map((r) => [r, seeds[r]]));
 }
@@ -75,7 +78,14 @@ function echoedFrom(chorus: Idea, o: SectionOptions): Partial<Record<Rule, strin
  * master's accents) writes with the master's seed, energy and accents, so its rhythm and shape are the master's, over its own chords.
  */
 export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea), like?: Idea, verse?: Idea, chorusIdea?: Idea): Built {
-  const chorus = isShared(idea), p = personalityOf(idea, o.seed), kind = kindOf(idea);
+  const chorus = isShared(idea), p = personalityOf(idea, o.seed, moodOf(idea, o)), kind = kindOf(idea);
+  // (the mood notes: a chorus built like its master takes the master's view of the song, as it takes its energy)
+  const src = chorus && like ? like : idea;
+  const emo: EmoCtx | undefined = o.emo && {
+    mood: o.emo.mood, on: o.emo.on, kind, key: idea.song.key, mode: idea.song.mode, bpm: idea.song.bpm, energy: src.section?.energy ?? 3,
+    tension: src.section?.tension, climax: !!o.emo.climax && src === o.emo.climax, ending: !!src.section?.ending,
+  };
+  const dials0 = o.pace ? paced(dialsFor(kind, p), idea.song.bpm) : dialsFor(kind, p);
   // (the master's tries: each leaf starts on the dice the master's ended on, so the choruses match)
   const tries = chorus && like ? buildSection(like, o, accents, undefined, verse, chorusIdea).tries : undefined;
   return buildVerse({
@@ -83,6 +93,6 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation,
     thirds: idea.song.bars.every((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
-    seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: o.pace ? paced(dialsFor(kind, p), idea.song.bpm) : dialsFor(kind, p), tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
+    seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: emo ? emoDials(dials0, emo) : dials0, emo, tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
   });
 }

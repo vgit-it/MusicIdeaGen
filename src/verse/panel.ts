@@ -7,32 +7,53 @@ import { NOTE_NAMES } from '../theory';
 import { quarterOf, type BandNote, type Gap } from './verse';
 import { accentsOf, barOf, isBridge, isChorus, isInterlude, isOutro, isPre, isShared, personalityOf } from './section';
 import { describe, dialsFor } from './personality';
+import { EMO_IDS, EMO_INFO, emoSummary, type EmoId } from './emotion';
 import { isSung, voiceOf } from './sing';
+import { MOOD_LABEL } from '../tension';
 
 export interface VersePanel {
   /** Show the song's vocal melody again after new music. */
   update(list: Idea[]): void;
 }
 
-export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'classic'; setWriter(w: 'verse' | 'classic'): void }): VersePanel {
+export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'classic'; setWriter(w: 'verse' | 'classic'): void; moodOff(): string[]; setMoodOff(off: string[]): void }): VersePanel {
   root.innerHTML = `
     <h2>Vocal melody</h2>
     <p class="hint">The lead vocal is written by the verse melody writer, section by section: phrases with breaks, 16th runs, long notes and bent ones, and rules for the pre-chorus climb, the bridge's dwell, the interlude and outro echoing the chorus. A song's choruses (and pre-choruses, bridges, interludes, outros) are one melody over their own chords, and every song draws its own personality. Below: the words and what was written.</p>
     <div class="guiderow">
       <label title="Who writes the lead vocal: the verse melody writer (new), or the classic writer. Same song, only the lead vocal changes">Writer <select id="v-writer" class="gsing"><option value="verse">New</option><option value="classic">Classic</option></select></label>
     </div>
+    <p class="hint" style="margin-bottom:6px">Mood notes: what music research says about feeling in the notes, each its own switch (on = used). The song's Mood (Track options) shapes them; off, the line is as it was.</p>
+    <div class="guiderow" id="v-emo"></div>
     <p class="hint" id="v-lyrics" style="white-space:pre-line"></p>
     <p class="hint" id="v-info" style="white-space:pre-line"></p>`;
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
   const sel = $('v-writer') as HTMLSelectElement;
   sel.value = ctl.writer();
   sel.addEventListener('change', () => ctl.setWriter(sel.value as 'verse' | 'classic'));
+  // the mood-note switches: one button each, on by default; a click regenerates the vocal with that rule on or off
+  const emoRow = $('v-emo');
+  const emoBtns = EMO_IDS.map((id) => {
+    const b = document.createElement('button');
+    b.className = 'small secondary';
+    b.textContent = EMO_INFO[id].name;
+    b.title = EMO_INFO[id].hint;
+    b.addEventListener('click', () => {
+      const off = new Set(ctl.moodOff());
+      if (off.has(id)) off.delete(id); else off.add(id);
+      ctl.setMoodOff(EMO_IDS.filter((x) => off.has(x)));
+    });
+    emoRow.appendChild(b);
+    return [id, b] as [EmoId, HTMLButtonElement];
+  });
+  const syncEmo = () => { const off = new Set(ctl.moodOff()); for (const [id, b] of emoBtns) b.classList.toggle('on', !off.has(id)); };
+  syncEmo();
   let list: Idea[] = [];
   const noteName = (m: number) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
   const accents = new WeakMap<Idea, number[]>();
   const accOf = (idea: Idea): number[] => { let a = accents.get(idea); if (!a) { a = accentsOf(idea); accents.set(idea, a); } return a; };
   const wordsFor = (idea: Idea) => voiceOf(idea)!.words;
-  const persFor = (idea: Idea) => personalityOf(idea, voiceOf(idea)!.seed);
+  const persFor = (idea: Idea) => personalityOf(idea, voiceOf(idea)!.seed, voiceOf(idea)!.mood);
   const notesFor = (idea: Idea): BandNote[] => voiceOf(idea)!.built.notes;
   const pos = (step: number, bar: number) => +(step / bar + 1).toFixed(2);
   const at = (g: Gap, bar: number) => `${pos(g.step, bar)} (${bar / g.len > 6 ? '⅛' : bar / g.len > 3 ? '¼' : '½'} bar)`;
@@ -41,6 +62,15 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
     const by = new Map<number, number>();
     for (const n of notes) if (n.walk) by.set(Math.floor(n.step / bar), (by.get(Math.floor(n.step / bar)) ?? 0) + 1);
     return by.size ? `walks into bar ${[...by].map(([b, c]) => `${b + 2} (${c} step${c > 1 ? 's' : ''})`).join(', ')}` : 'no walks';
+  };
+  /** The mood notes a section got (nothing when they are all off). */
+  const moodNotes = (notes: BandNote[], bar: number): string[] => {
+    const m = emoSummary(notes);
+    if (!m.colour.length && !m.ends.length && !m.suspensions && !m.surprises.length) return [];
+    return [
+      `Mood notes: colour ${m.colour.length ? notes.filter((n) => n.colour).map((n) => `${n.colour} (bar ${pos(n.step, bar)})`).join(', ') : 'none'} · delayed resolutions ${m.suspensions ? notes.filter((n) => n.inner?.startsWith('suspension')).map((n) => `${n.inner!.slice(11)} (bar ${pos(n.step, bar)})`).join(', ') : 'none'} · surprises ${m.surprises.length ? notes.filter((n) => n.surprise).map((n) => `${n.surprise} (bar ${pos(n.step, bar)})`).join(', ') : 'none'}`,
+      `Phrase ends by degree: ${m.ends.length ? m.ends.join(', ') : 'unchanged'}`,
+    ];
   };
   /** What the card shows about one section: its form, phrases, notes and the rules' choices. */
   const report = (first: Idea): string[] => {
@@ -60,6 +90,7 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
       `Phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} ${n.style ?? 'held'} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
       `Long holds (1–2 bars): ${notes.filter((n) => n.longHold).map((n) => `${pos(n.step, bar)} ${+(n.len / bar).toFixed(2)} bars${n.bendTo === undefined ? '' : `, moves ${1 + (n.more?.length ?? 0)}`}`).join(', ') || 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
+      ...moodNotes(notes, bar),
     ];
   };
 
@@ -69,7 +100,8 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
     const verse = list.find((i) => isSung(i) && !isShared(i)), pre = list.find(isPre), bridge = list.find(isBridge), inter = list.find(isInterlude), outro = list.find(isOutro), chorus = list.find(isChorus), any = verse ?? pre ?? chorus ?? bridge ?? inter ?? outro;
     if (!any) { $('v-info').textContent = 'No verse in this song.'; $('v-lyrics').textContent = ''; return; }
     $('v-lyrics').textContent = [verse && ['VERSE', verse], pre && ['PRE-CHORUS', pre], chorus && ['CHORUS', chorus], inter && ['INTERLUDE', inter], bridge && ['BRIDGE', bridge], outro && ['OUTRO', outro]].filter((x): x is [string, Idea] => !!x).map(([t, i]) => `${t}\n${wordsFor(i).lines.map((l, k) => `${k + 1}  ${l}`).join('\n')}`).join('\n\n');
-    const lines = [`This song: ${describe(persFor(any))}`];
+    const v0 = voiceOf(any)!;
+    const lines = [`This song: ${describe(persFor(any))}`, `Mood: ${MOOD_LABEL[v0.mood]}${v0.emo ? `; mood notes on: ${EMO_IDS.filter((id) => v0.emo!.on.has(id)).map((id) => EMO_INFO[id].name).join(', ') || 'none'}` : ''}`];
     if (verse) lines.push('', 'VERSE', ...report(verse));
     if (pre) lines.push('', 'PRE-CHORUS', `Pre-chorus climbs ${dialsFor('prechorus', persFor(pre)).climb} semitones`, ...report(pre));
     if (chorus) lines.push('', 'CHORUS', `Chorus range lifted ${dialsFor('chorus', persFor(chorus)).lift} semitones`, ...report(chorus));
@@ -83,6 +115,7 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
     update(l) {
       list = l;
       sel.value = ctl.writer();
+      syncEmo();
       info();
     },
   };

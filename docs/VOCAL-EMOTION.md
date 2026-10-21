@@ -103,3 +103,36 @@ build the missing parts. Study only: nothing built yet.
 - One switch for all, or one per idea (degrees, endings, runs)?
 - Colour notes in all three melody writers, or Shaped / Melody first only?
 - Should the Guide line and the vocal share one mood-degree table?
+
+## 7. Built in the verse writer (2026-10-21)
+The main vocal is now the verse melody writer (`src/verse/`, `docs/VERSE-SECTIONS.md`), so the study above was redone against it. Measured first (448 songs): the writer sang the same degrees, contours, leaps and register in every mood. Its notes are chord notes plus scale-step neighbours, so the feeling of a degree came only from the chords; ♭2, #4, raised 7 and the natural 6 in minor were 0–2% of the notes; phrases ended on the tonic about 20% of the time (real songs, this repo's own data: 31–37%); the tension curve was not read at all; and **the Mood picked on the track never reached the vocal** (the writer worked out the Auto mood again). The last is fixed for good: the track's mood (picked or Auto) now shapes the vocal's personality and words, and with every switch below off the line is note for note what it was (checked by hash over 120 songs).
+
+### The switches (Vocal melody card, "Mood notes": one button each, **all on by default**; stored in the link as `vocalMoodOff`, the list of those switched off)
+| Switch | What it does |
+|---|---|
+| Colour notes | The mood's signature degree as a short neighbour note between two of the same note, so it resolves by step at once: melancholic ♭6 (sigh down to 5), nostalgic ♭6 and the natural 6, tense raised 7 / ♭2 / #4, dreamy #4, dark ♭2 and ♭6, angry ♭2, triumphant raised 7, happy none. No half-step rub against a chord note; about one a bar at most; more when the section builds; not in the pentatonic option |
+| Ending degrees | Every phrase end gets a degree by its job. Last phrase: a chorus comes home (the 1), a pre-chorus or bridge hangs (7th, 2nd, 4th), a verse leans open or hanging, the song's last bar comes home (dreamy and nostalgic stay open). Phrases inside go in pairs: a question (open: 5th, 3rd) then an answer (home). Mood and tension lean it (tense hangs, happy and triumphant come home). A phrase the writer already ended open or hanging keeps that |
+| Delayed resolution | A long note (two beats or more) starts a scale step off the chord note (2nd over the 1, 4th over the 3rd, the leading tone under the tonic) and glides onto it: the expected note arrives late. More on held endings, in tense, melancholic and nostalgic moods, as tension builds |
+| Contour & leaps | Each phrase rises, falls, arches or stays level by mood and section (melancholic and dark fall, tense and triumphant rise, a chorus arches); leaning which chord note a bar sits on and the octave. Angry, tense and triumphant leap more, melancholic and dreamy move by step |
+| Arousal | Register (±2 semitones), 16th runs, long notes, stretched 8ths and pushes from the mood, the tempo (against 110 bpm) and the section's energy. Fast and intense sits higher and busier, slow and calm lower and longer |
+| Tension curve | Reads the song's tension bar by bar (as the band does): more colour notes and delayed resolutions, hanging ends as it builds, home ends as it eases; the register drifts with it |
+| Mood over mode | The mood is compared with the mode (Lydian brightest … Phrygian darkest): when the mood is brighter than the key (a Happy song in minor) the chord notes and colour notes lean bright; darker (Melancholic in major), dark. Off: the mode's own feel only |
+| Surprise | 0 to 2 a section by mood (calm moods fewer, tense and dreamy more, the climax one extra), kept for the second half: a note pushed a 16th early, a note off the scale (a semitone out and straight back), a deceptive ending (the tonic becomes the chord's 6th or 3rd) |
+
+### Under the switches: the four axes (`src/verse/emotion.ts`)
+- Valence = the mood against the mode (`tiltOf`); arousal = the mood, tempo and energy (`arousalOf`); tension = the section's curve per bar; surprise = the mood's budget (`MOOD` table: one row per mood with all its numbers).
+- Each rule rolls its own dice, so a switch changes only its own notes. Rules go in the pipeline at: tone picks (contour, mood over mode), the octave pull (contour, tension), after the phrase endings (ending degrees), after the bends (colour, surprise, then delayed resolution). Choruses are still one melody per song: a chorus built like its master takes the master's mood view (its tension, energy, climax).
+- `scripts/emotion-check.ts` (`npm run emotion-check`; `ONLY=colour`, `OFF=1`, `N=`): writes every song in all 8 moods and prints degrees, ends, contour, leaps, colour notes, suspensions and surprises per mood; and the rules that must hold (no overlaps, colour notes resolved, every delayed resolution onto a chord note). `EMO=1 npm run bend-check | long-hold-check | core-key-check | verse-variety` run those checks with the switches on.
+
+### What it measured (56 songs × 8 moods, same songs, only the mood differs; switches on against all off)
+- Contour (first note of a phrase to the sounding last note): melancholic -0.3 semitones on average (off: +0.4), dark 0.0, angry +0.2, dreamy +0.8, nostalgic +0.9, tense +1.2, triumphant +1.2, happy +1.5 (off: +0.3 to +0.6 everywhere). Leaps of 5+ semitones: angry, happy, triumphant 21-22%, tense 20%, melancholic and dark 18%, dreamy 17% (17-18% with the switches off).
+- Colour notes per 10 sections: tense 4.4, dark 4.6, melancholic 3.0, triumphant 3.0, angry 2.4, dreamy 1.9, nostalgic 1.7, happy none.
+- Chorus last phrases end on the tonic 23-36% (triumphant 36%, dreamy 23%); with the switches off 14-20%. Real songs end phrases on it 31-37%.
+- Delayed resolutions per 10 sections: melancholic 2.1, dreamy 1.8, nostalgic 1.7, tense 1.3, happy 0.5. Surprises: tense 4.3, dreamy 4.2, angry 3.2, dark 3.1, melancholic 2.2, nostalgic 2.0, happy and triumphant 1.5.
+- Held to: no overlaps or notes out of range, every colour note resolves to the note it left, every delayed resolution lands on a chord note; `EMO=1` `bend-check` (224 songs), `long-hold-check`, `core-key-check` and `verse-variety` (no overlaps, no short units; the pre-chorus climb 55%, under the variety cap) pass.
+- Two things found on the way: a home ending was bent away from the tonic by rule 15's bend inside a held note (so home and hanging endings are no longer bent), and colour notes ran before the bends and could lose the note they resolve to (now they run after).
+
+### Not built / for later
+- A mood per section and a custom mood (sliders): the axes are in place; the card has no sliders.
+- Other scales (whole tone, diminished, Phrygian dominant): still out, as in section 4.
+- `paced` (the tempo option for the dials, off since the verse writer came in) is left as it is; Arousal reads the tempo itself.

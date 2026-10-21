@@ -1,6 +1,7 @@
 // Core notes in the key: over many songs, counts the steps whose core note (the chord note a bar sits on) is out of the
 // section's own key, and how many of those had an in-key chord note to use instead (those are bugs; the rest are chords with none).
 //   npm run core-key-check            (N=224 songs)
+import { emoOn } from '../src/verse/emotion';
 import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { MOODS } from '../src/tension';
@@ -21,6 +22,7 @@ let multi = 0, steps = 0, out = 0, avoidable = 0, sections = 0, changed = 0;
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], mood = MOODS[Math.floor(i / 7) % 8], meter = i % 9 === 8 ? '6/8' : '4/4';
   const s = `vv-${i}-${genre}-${mood}`;
+  Object.assign(OPTS, { emo: process.env.EMO ? { mood, on: emoOn() } : undefined }); // (EMO=1: with the mood notes on)
   const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const list = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never).sections;
   if (new Set(list.map((x) => x.song.key)).size > 1) changed++;
