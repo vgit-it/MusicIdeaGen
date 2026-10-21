@@ -1821,7 +1821,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
   singTrack(sections, { seed: vocalSeed, mood, genre: src.song.partGenres.strum, lift: src.opts.vocalLift ?? 0, grid: src.opts.vocalRhythm === 'grid', words: src.opts.vocalRhythm === 'words', shaped: !!src.opts.vocalMelody, first: src.opts.vocalMelody === 'first', learned: src.opts.vocalMelody === 'learned', move: src.opts.vocalMove as MoveId | undefined, high: src.opts.vocalSinger, energy: src.opts.vocalEnergy as EnergyStyle | 'off' | undefined, real: src.opts.vocalReal, patterns: src.opts.vocalPatterns }, arc.climax);
   // the verse melody writer's lead vocal (the default): its notes, words and lines replace the classic tune
   const verseVocal = src.opts.vocalWriter !== 'classic';
-  if (verseVocal) singSong(sections, vocalSeed, src.opts.vocalLift ?? 0);
+  if (verseVocal) singSong(sections, vocalSeed, src.opts.vocalLift ?? 0, !!src.opts.vocalStudied);
   // Room (switch): the lead out from under the singer's lines, by genre
   if (src.opts.leadRoom) makeRoom(sections, src.song.partGenres.strum, `${S.band ?? `${src.seeds.song}-band`}-room`);
   const voice = autoVoice(vocalSeed, src.song.partGenres.strum);

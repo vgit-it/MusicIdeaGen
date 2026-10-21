@@ -61,6 +61,8 @@ export interface Dials {
   dwell?: number;
   /** The chance the section's last phrase leads into the next section: an open or hanging note held to the end, sung strongly (rule 23). */
   leadIn?: number;
+  /** Studied option: the chance a held ending sits on the key's tonic when the chord holds it (phrases end there more in real songs). */
+  endTonic?: number;
   /** The pitch classes the line is limited to (the pentatonic option): every note is chosen from them, steps and endings too. */
   pent?: ReadonlySet<number>;
 }
@@ -92,6 +94,14 @@ export const VERSE: Dials = {
   octave: 0.25,
   octaveUp: 0.6,
 };
+
+/**
+ * The Studied option (docs/STUDY-POP909.md): the dials moved toward what 909 real pop melodies do, measured by `npm run pop909-compare`:
+ * 16th notes a quarter of the spacing (the writer's was a tenth), phrases ending on the tonic more often. Off by default.
+ */
+export function studiedDials(d: Dials): Dials {
+  return { ...d, runs: d.runs * 2.6, push: Math.max(d.push, 0.2), endTonic: 0.5 };
+}
 
 /** How far a section's energy (1-5) is from the middle: 0 at 3, 1 at 1 and 5, between at 2 and 4. */
 export const energyEdge = (energy: number): number => Math.min(1, Math.abs(energy - 3) / 2);
