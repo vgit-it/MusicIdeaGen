@@ -10,7 +10,7 @@ import { bandAccents, type BendAmount, type Range } from './verse';
 import type { Chord } from '../theory';
 
 /** What the user can set on the card. */
-export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string; /** Dials moved to the song's tempo (personality.ts `paced`); the experiment's melodies are written without. */ pace?: boolean }
+export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string; /** Dials moved to the song's tempo (personality.ts `paced`); the experiment's melodies are written without. */ pace?: boolean; /** Studied (docs/STUDY-POP909.md): dials and pitches moved toward what 909 real pop melodies do. */ studied?: boolean }
 
 export const isChorus = (idea: Idea) => idea.section?.kind === 'chorus';
 export const isPre = (idea: Idea) => idea.section?.kind === 'prechorus';
@@ -41,7 +41,7 @@ export const personalityOf = (idea: Idea, salt?: string): Personality => drawPer
 export const chordsKey = (idea: Idea) => idea.chords.timeline.map((e) => `${e.step}${e.chord.root}${e.chord.q}`).join(',');
 /** The choruses of a song (of one length, tuned alike) are one hook: one melody, over each chorus's own chords. Pre-choruses likewise. */
 export const hookSig = (idea: Idea, o: SectionOptions) =>
-  `${idea.seeds.song}|${kindOf(idea)}|${idea.chords.chordIdx.length}|${Object.values(o.range).join(',')}|${o.bends}|${o.meta}|${o.variation}|${o.pentatonic ? 'pent' : ''}${o.seed ? `|${o.seed}` : ''}`;
+  `${idea.seeds.song}|${kindOf(idea)}|${idea.chords.chordIdx.length}|${Object.values(o.range).join(',')}|${o.bends}|${o.meta}|${o.variation}|${o.pentatonic ? 'pent' : ''}${o.studied ? 'studied' : ''}${o.seed ? `|${o.seed}` : ''}`;
 /** The chorus (or pre-chorus) the others are built like: the song's last one of this hook (usually the fullest: the highest energy). */
 export function chorusMaster(list: Idea[], idea: Idea, o: SectionOptions): Idea {
   const sig = hookSig(idea, o);
@@ -82,7 +82,7 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
     key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: (chorus && like ? like : idea).section?.energy ?? 3,
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation,
-    thirds: idea.song.bars.every((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
+    thirds: idea.song.bars.every((b) => b.len % 3 === 0), pentatonic: o.pentatonic, studied: o.studied,
     seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: o.pace ? paced(dialsFor(kind, p), idea.song.bpm) : dialsFor(kind, p), tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
   });
 }
