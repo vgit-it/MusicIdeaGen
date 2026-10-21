@@ -7,6 +7,7 @@
 //   N=500 npm run verse-variety      (more)
 //   PENT=1 npm run verse-variety     (every note from the pentatonic scale)
 
+import { emoOn } from '../src/verse/emotion';
 import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { MOODS } from '../src/tension';
@@ -36,6 +37,7 @@ const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.lengt
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], mood = MOODS[Math.floor(i / 7) % 8], meter = i % 9 === 8 ? '6/8' : '4/4';
   const s = `vv-${i}-${genre}-${mood}`;
+  Object.assign(OPTS, { emo: process.env.EMO ? { mood, on: process.env.EMO === '1' ? emoOn() : new Set(process.env.EMO.split(',') as never[]) } : undefined }); // (EMO=1: with the mood notes on; EMO=colour,endings: just those)
   const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const list = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never).sections;
   const verse = list.find((x) => x.section?.kind === 'verse'), chorus = [...list].reverse().find(isChorus);

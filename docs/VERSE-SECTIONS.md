@@ -125,3 +125,15 @@ Verse 2 answering verse 1, a lifted last chorus, breakdown (same recipe as above
 - **Singing.** A hold with moves is one word sung in pieces (`~`), a glide across each move. A hold that ends a phrase is a held ending (`end`, style held): it falls off in volume like other long endings.
 - Silence fit (rule 18) leaves holds as they are. The card lists them ("Long holds").
 - Checked with `npm run long-hold-check` (224 songs, 1,804 sections, 580 holds): no overlaps, 1-2 bars, on a beat, overrun at most half a bar (142 run past, longest 0.5), a beat before the next phrase, pitch a chord note at every step, 0 or 1 or 2 moves (219 / 276 / 85), 564 sung holds all end to end. Sections without a hold are note for note as before (the 10 changed ones were written again after a hold failed rule 20). `PENT=1` passes too.
+
+## Mood notes: rules 29 to 36 (2026-10-21; `src/verse/emotion.ts`, `docs/VOCAL-EMOTION.md` section 7)
+Eight rules from the music-and-emotion research, each its own switch on the card (all on by default; stored as `vocalMoodOff`, the list switched off). They read the song's mood (the one picked on the track, or Auto's: the writer used to work out Auto's again and ignore the pick), the mode, the tempo, the section's energy and its tension curve. With a switch off its notes are exactly as before; with all off the line is note for note what it was (hash-checked over 120 songs).
+- **29 Colour notes** (`withColour`): the mood's scale degree as a neighbour between two of the same note (♭6, #4, raised 7, ♭2, natural 6), resolving at once; after the bends, on notes no bend moves.
+- **30 Ending degrees** (`withEndDegrees`): home, open or hanging by the phrase's job (last of a chorus home, of a pre-chorus or bridge hanging; inside, question then answer); after rule 11. A home or hanging end is not bent away by rule 15.
+- **31 Delayed resolution** (`withSuspensions`): a long note starts a step off the chord note and glides onto it (reuses rule 15's bend inside a note); after the bends.
+- **32 Contour & leaps** (`toneBias`, `pullTo`, `emoDials`): which chord note a bar sits on and the octave lean along a rising, falling, arching or level phrase; the octave jumps and neighbours by mood. Where the pre-chorus climb or the bridge dwell pulls, they win.
+- **33 Arousal** (`emoDials`): register, runs, long notes, stretch and pushes from mood, tempo and energy.
+- **34 Tension curve**: the section's per-bar tension leans rules 29, 30, 31, 32 (a drift in the register).
+- **35 Mood over mode** (`tiltOf`): chord notes and colour notes lean bright or dark when the mood is brighter or darker than the mode.
+- **36 Surprise** (`withSurprise`): 0 to 2 a section, late in it: a push, a note off the scale, a deceptive ending.
+- Check: `npm run emotion-check` (per mood, per switch), and `EMO=1` on `bend-check`, `long-hold-check`, `core-key-check`, `verse-variety`.

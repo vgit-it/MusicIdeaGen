@@ -6,11 +6,12 @@
 import type { Idea } from '../idea';
 import type { VocalNote } from '../parts/vocal';
 import type { GuideSungLine, GuideSyl } from '../guide/words';
-import { autoMood } from '../tension';
+import type { Mood } from '../tension';
 import type { Built } from './build';
 import { dialsFor } from './personality';
 import { energyVolume } from './profile';
-import { accentsOf, barOf, buildSection, chordsKey, chorusMaster, hookSig, isChorus, isInterlude, isOutro, isShared, kindOf, personalityOf, verseSeed, type SectionOptions, type SungKind } from './section';
+import type { EmoOptions } from './emotion';
+import { accentsOf, barOf, buildSection, chordsKey, chorusMaster, hookSig, isChorus, isInterlude, isOutro, isShared, kindOf, moodOf, personalityOf, verseSeed, type SectionOptions, type SungKind } from './section';
 import { DEFAULT_RANGE, type BandNote, type Range } from './verse';
 import { writeWords, type Words } from './words';
 
@@ -24,16 +25,19 @@ export const isSung = (idea: Idea) => {
 };
 
 /** The writer's options for a song: the default range (a high singer's lift moves it), the vocal seed mixed in. */
-export function songOptions(seed: string, lift = 0): SectionOptions {
+export function songOptions(seed: string, lift = 0, emo?: EmoOptions): SectionOptions {
   const r = DEFAULT_RANGE;
   const range: Range = { lo: r.lo + lift, hi: r.hi + lift, xlo: r.xlo + lift, xhi: r.xhi + lift };
-  return { range, bends: 'some', meta: true, variation: 'some', pentatonic: false, seed };
+  return { range, bends: 'some', meta: true, variation: 'some', pentatonic: false, seed, ...(emo ? { emo } : {}) };
 }
 
 export interface SectionVoice {
   /** The seed and range it was written with (the card's report reads them back). */
   seed: string;
   range: Range;
+  /** The mood it was written in, and the mood notes that were on. */
+  mood: Mood;
+  emo?: EmoOptions;
   built: Built;
   words: Words;
   /** The lead's notes, a syllable on each (a bend inside a held note splits it in two). */
@@ -107,12 +111,12 @@ export function writeSong(list: Idea[], o: SectionOptions): Map<Idea, SectionVoi
     const wsig = shared ? `${hookSig(idea, o)}|${built.notes.map((n) => `${n.step}:${n.len}`).join(',')}` : '';
     let words = wsig ? hookWords.get(wsig) : undefined;
     if (!words) {
-      words = writeWords(built.notes, built.phrases, barOf(idea), { mood: autoMood(idea.song, idea.seeds.song), genre: idea.song.genre, real: true },
-        o.range.hi + dialsFor(kind, personalityOf(idea, o.seed)).lift - 4, shared ? hookSig(idea, o) : verseSeed(idea, o), accOf(idea), DENSITY[kind]);
+      words = writeWords(built.notes, built.phrases, barOf(idea), { mood: moodOf(idea, o), genre: idea.song.genre, real: true },
+        o.range.hi + dialsFor(kind, personalityOf(idea, o.seed, moodOf(idea, o))).lift - 4, shared ? hookSig(idea, o) : verseSeed(idea, o), accOf(idea), DENSITY[kind]);
       if (wsig) hookWords.set(wsig, words);
     }
     const vocal = vocalOf(built.notes, words, idea.section?.energy ?? 3);
-    out.set(idea, { seed: o.seed ?? '', range: o.range, built, words, vocal, lines: linesOf(vocal, words) });
+    out.set(idea, { seed: o.seed ?? '', range: o.range, mood: moodOf(idea, o), emo: o.emo, built, words, vocal, lines: linesOf(vocal, words) });
   }
   return out;
 }
@@ -127,8 +131,8 @@ export const linkVoice = (from: Idea, to: Idea) => { const v = written.get(from)
  * Give a track's sections the writer's vocal: `vocal` and `sung` are set on every section (empty where nobody sings). A lone idea is
  * passed as a one-section list whose section is a chorus (it sings its chorus tune and hook, as the old vocal did).
  */
-export function singSong(list: Idea[], seed: string, lift = 0): void {
-  const song = writeSong(list, songOptions(seed, lift));
+export function singSong(list: Idea[], seed: string, lift = 0, emo?: EmoOptions): void {
+  const song = writeSong(list, songOptions(seed, lift, emo));
   list.forEach((idea) => {
     const v = song.get(idea);
     if (v) written.set(idea, v);

@@ -63,13 +63,13 @@ export function chordsFor(mode: Mode, degrees: number[], barsEach: number): Chor
 }
 
 /** Semitones of the chord's 5th above its root (7, or 6 / 8 for dim / aug). */
-function fifth(c: Chord): number {
+export function fifth(c: Chord): number {
   const iv = QUALITIES[c.q] as readonly number[];
   return iv.find((i) => i === 6 || i === 7 || i === 8) ?? 7;
 }
 
 /** Semitones of the chord's 3rd above its root (3 or 4; the 2nd or 4th of a sus chord; the 5th of a bare power chord). */
-function third(c: Chord): number {
+export function third(c: Chord): number {
   const iv = QUALITIES[c.q] as readonly number[];
   return iv.find((i) => i === 3 || i === 4) ?? iv.find((i) => i === 2 || i === 5) ?? 7;
 }
@@ -137,7 +137,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop up into the note from this many semitones below (never from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** The held note a section leads into the next on (rule 23): sung strongly, no fall. */ lead?: boolean; /** How the phrase ended on this note. */ style?: EndStyle; /** A long hold (rule 28): a note of 1 to 2 bars. */ longHold?: boolean; /** Further pitch moves inside a long hold, after the first (`bendTo`...): each glides (over `len` steps, `at` steps in) to a new pitch. */ more?: { at: number; to: number; len: number }[] }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop up into the note from this many semitones below (never from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** The held note a section leads into the next on (rule 23): sung strongly, no fall. */ lead?: boolean; /** How the phrase ended on this note. */ style?: EndStyle; /** A long hold (rule 28): a note of 1 to 2 bars. */ longHold?: boolean; /** Further pitch moves inside a long hold, after the first (`bendTo`...): each glides (over `len` steps, `at` steps in) to a new pitch. */ more?: { at: number; to: number; len: number }[]; /** Mood notes (docs/VOCAL-EMOTION.md): a colour note (its name: 7, b6, #4, b2, 6)... */ colour?: string; /** ...a phrase end set to a degree by its role (home, open, hang)... */ endRole?: string; endDeg?: string; /** ...a surprise (what). */ surprise?: string }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -187,7 +187,7 @@ const nudge = (acc: number[] | undefined, step: number) => 0.75 + 0.5 * accAt(ac
  * A random number (0-1) for one place in the line, drawn from the seed and the step alone (not from a running stream), so a
  * leaf that repeats another one's seed makes the same choice at the same step even where the notes before it differ.
  */
-const roll = (seed: string, tag: string, step: number) => new Rng(`${seed}|${tag}|${Math.round(step * 100)}`).next();
+export const roll = (seed: string, tag: string, step: number) => new Rng(`${seed}|${tag}|${Math.round(step * 100)}`).next();
 
 /**
  * Rule 2/7: the phrase system. The verse is cut into phrases of 1 to 4 bars; after each there is a break of at least a
@@ -273,12 +273,15 @@ export type BarTone = string;
 const NAMES: Record<ChordNote, string> = { root: '1', third: '3', fifth: '5' };
 const NOTES: ChordNote[] = ['root', 'third', 'fifth'];
 
+/** Times the weight of a chord note at a step: the mood notes' lean on which chord note a bar or a phrase sits on (docs/VOCAL-EMOTION.md). */
+export type ToneBias = (step: number, tone: ChordNote) => number;
+
 /**
  * Rule 4: each bar picks the root, 3rd or 5th to sit on, and now and then (3 bars in 10) moves from one chord note to
  * another part way through, at the half bar or the third beat.
  * Returns the chord note for every 16th step, and each bar's choice.
  */
-export function randomTones(totalSteps: number, bar: number, seed: string, acc?: number[], d: Dials = VERSE, whole?: { from: number; total: number }, fit?: KeyFit): { tones: ChordNote[]; bars: BarTone[] } {
+export function randomTones(totalSteps: number, bar: number, seed: string, acc?: number[], d: Dials = VERSE, whole?: { from: number; total: number }, fit?: KeyFit, bias?: ToneBias): { tones: ChordNote[]; bars: BarTone[] } {
   const rng = new Rng(seed + '|tones');
   // (the key check draws on its own dice, so a draw that was already in the key stays as it was)
   const rk = new Rng(seed + '|tones-key');
@@ -287,8 +290,10 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
   for (let from = 0; from < totalSteps; from += bar) {
     // (rule 22: a climbing section leans from the root toward the 5th, bar by bar)
     const pr = d.climb ? Math.min(1, ((whole?.from ?? 0) + from) / Math.max(1, (whole?.total ?? totalSteps) - bar)) : 0;
-    const toneW: [number, number, number] = d.climb ? [1.6 - pr, 1, 0.6 + pr] : d.toneW;
-    const uniform = toneW.every((x) => x === toneW[0]);
+    const baseW: [number, number, number] = d.climb ? [1.6 - pr, 1, 0.6 + pr] : d.toneW;
+    // (the mood notes lean the pick toward the chord notes that suit the mood, the phrase's contour: `bias` times the weight)
+    const toneW: [number, number, number] = bias ? (baseW.map((w, i) => w * bias(from, NOTES[i])) as [number, number, number]) : baseW;
+    const uniform = !bias && toneW.every((x) => x === toneW[0]);
     const first0 = uniform ? rng.pick(NOTES) : NOTES[cumulative(toneW, rng.next())];
     let moves = rng.chance(d.moves);
     let first = first0;
@@ -326,12 +331,13 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
  * weights as rule 4), and holds from there to the next change in the bar's picks or the bar's end. The earlier part of the bar
  * (the end of the last phrase, or the break) keeps its pick. The draw is by step, so a leaf that repeats a seed repeats it.
  */
-export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE, fit?: KeyFit): { tones: ChordNote[]; bars: BarTone[] } {
+export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE, fit?: KeyFit, bias?: ToneBias): { tones: ChordNote[]; bars: BarTone[] } {
   const out = tones.slice();
-  const uniform = d.toneW.every((x) => x === d.toneW[0]);
+  const uniform = !bias && d.toneW.every((x) => x === d.toneW[0]);
   for (const ph of phrases) {
     const u = roll(seed, 'reroll', ph.step);
-    let pick = uniform ? NOTES[Math.min(2, Math.floor(u * 3))] : NOTES[cumulative(d.toneW, u)];
+    const toneW = bias ? d.toneW.map((w, i) => w * bias(ph.step, NOTES[i])) : d.toneW;
+    let pick = uniform ? NOTES[Math.min(2, Math.floor(u * 3))] : NOTES[cumulative(toneW, u)];
     let end = ph.step + 1;
     while (end < out.length && end % bar !== 0 && tones[end] === tones[ph.step]) end++;
     // (a core note shift has to last at least an 8th of a bar: a phrase starting closer than that to the bar's end or to the next
@@ -340,7 +346,7 @@ export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[],
     // (a pick out of the key is drawn again from the chord notes that are in it, by the same weights; none in the key: it stays)
     if (fit && !inKeyTones(fit, ph.step, end, [pick]).length) {
       const ok = inKeyTones(fit, ph.step, end, NOTES);
-      if (ok.length) pick = ok[cumulative(ok.map((n) => (uniform ? 1 : d.toneW[NOTES.indexOf(n)])), roll(seed, 'reroll-key', ph.step))];
+      if (ok.length) pick = ok[cumulative(ok.map((n) => (uniform ? 1 : toneW[NOTES.indexOf(n)])), roll(seed, 'reroll-key', ph.step))];
     }
     for (let s = ph.step; s < end && s < out.length; s++) out[s] = pick;
   }
@@ -441,17 +447,20 @@ export const DEFAULT_RANGE: Range = { lo: 45, hi: 67, xlo: 42, xhi: 86 };
  * (`up`: the share going up when both ways are open). The notes after it, on the same core note, stay there.
  */
 export function voiceLead(
-  notes: BandNote[], r: Range = DEFAULT_RANGE, target?: (step: number) => number,
+  notes: BandNote[], r: Range = DEFAULT_RANGE, target?: (step: number) => number | undefined,
   oct?: { tones: ChordNote[]; chordAt: Chord[]; bar: number; chance: number; up: number; seed: string },
+  /** How hard a target pulls against the smoothest step (the climb and the dwell pull hard; the mood notes' contour leans). */
+  pull = { leap: 0.3, w: 2 },
 ): BandNote[] {
   let prev = Math.round((r.lo + r.hi) / 2);
   let lock: number | undefined;
   return notes.map((n, i) => {
     const pc = ((n.midi % 12) + 12) % 12;
     let best = Math.round((prev - pc) / 12) * 12 + pc, score = Infinity;
+    const tg = target?.(n.step);
     for (let m = pc + 12 * Math.ceil((r.xlo - pc) / 12); m <= r.xhi; m += 12) {
       // (rule 22: a climbing section pulls toward a register that rises across it)
-      const sc = (target ? 0.3 : 1) * Math.abs(m - prev) + (m < r.lo || m > r.hi ? 4 : 0) + (target ? 2 * Math.abs(m - target(n.step)) : 0);
+      const sc = (tg !== undefined ? pull.leap : 1) * Math.abs(m - prev) + (m < r.lo || m > r.hi ? 4 : 0) + (tg !== undefined ? pull.w * Math.abs(m - tg) : 0);
       if (sc < score) { best = m; score = sc; }
     }
     if (oct && oct.chance > 0) {
@@ -1075,7 +1084,8 @@ export function addNoteBends(
   const beat = bar / 4, eighth = bar / 8;
   const scale = ctx.mode ? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12)) : undefined;
   out.forEach((n, i) => {
-    if (n.len < 2 || n.slide || (n.fadeBy && n.len < 6) || n.walk || n.nb || n.third || n.longHold) return;
+    // (a phrase end set to home or hanging by the mood notes keeps its degree: a bend away would undo it)
+    if (n.len < 2 || n.slide || (n.fadeBy && n.len < 6) || n.walk || n.nb || n.third || n.longHold || n.endRole === 'home' || n.endRole === 'hang') return;
     const r = (tag: string) => roll(seed, `ib-${tag}`, n.step);
     // (how many of the same pitch came just before)
     let same = 0;

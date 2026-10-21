@@ -1,5 +1,6 @@
 // Bends inside notes (rule 15): over many songs, checks the holds around them and counts the kinds.
 //   npm run bend-check            (N=224 songs)
+import { emoOn } from '../src/verse/emotion';
 import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { MOODS } from '../src/tension';
@@ -17,6 +18,7 @@ let shortNotes = 0, capable = 0, capableBent = 0, notes = 0, bends = 0, singles 
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], mood = MOODS[Math.floor(i / 7) % 8], meter = i % 9 === 8 ? '6/8' : '4/4';
   const s = `vv-${i}-${genre}-${mood}`;
+  Object.assign(OPTS, { emo: process.env.EMO ? { mood, on: emoOn() } : undefined }); // (EMO=1: with the mood notes on)
   const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   for (const sec of buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never).sections) {
     if (!sec.section || ['intro', 'solo'].includes(sec.section.kind)) continue;

@@ -1,6 +1,7 @@
 // Long holds (rule 28) and the core-note minimum (rule 21): over many songs, checks that holds of 1-2 bars follow their rules and
 // counts what the writer made. DUMP=file also writes a hash of every section's notes (to compare two versions of the writer).
 //   npm run long-hold-check            (N=224 songs)
+import { emoOn } from '../src/verse/emotion';
 import { writeFileSync } from 'node:fs';
 import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
@@ -28,6 +29,7 @@ let overrun = 0, overrunMax = 0, over0 = 0, crossChange = 0, forced = 0;
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], mood = MOODS[Math.floor(i / 7) % 8], meter = i % 9 === 8 ? '6/8' : '4/4';
   const s = `vv-${i}-${genre}-${mood}`;
+  Object.assign(OPTS, { emo: process.env.EMO ? { mood, on: emoOn() } : undefined }); // (EMO=1: with the mood notes on)
   const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const list = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never).sections;
   // (as the singer's notes: a hold is its pieces end to end, one word)
