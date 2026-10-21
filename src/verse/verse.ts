@@ -725,6 +725,9 @@ export function thirdBars(notes: BandNote[], phrases: Gap[], bar: number, seed: 
 
 export type BendAmount = 'off' | 'some' | 'lots';
 
+/** Times the chance of a bend for a single long note (a beat and a half or more) that has a scale note a semitone or a whole tone away. */
+const SINGLE_BOOST = 2.2;
+
 /** The widest a bend inside a note goes, in semitones (a major 3rd). */
 const MAX_BEND = 4;
 
@@ -1055,7 +1058,7 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
  * quick glide (a 16th at most) across the middle between them. Where it can:
  *   - to the next chord note up (now and then down) from the note, in the chord sounding when the glide starts;
  *   - to the next bar's core note, when that is also a note of the chord sounding now;
- * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
+ * On a single long note a bend is held at least an 8th of a bar before and a quarter bar after (one too short doesn't bend). The longer the note, the better its chance (a single long note, a beat and a half or more, 2.2x, a semitone above or below it in the scale: bends to that, or now and then there and back, slower; only a whole tone: mostly there and back in the middle, less often from-to); a note coming after two or more of the same pitch gets a bigger one (the bend
  * breaks the repeating). Raised at the lowest and highest energies (fewest at 3) and by the Bends amount. Notes scooped into, walks, neighbours and
  * third-bar notes and long holds (rule 28 moves those itself) are left alone (a long held ending that fades out may bend first, and then fades half as far), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
  */
@@ -1068,17 +1071,25 @@ export function addNoteBends(
   const out = notes.map((n) => ({ ...n }));
   const lift = (ctx.amount === 'lots' ? 1 : 0.5) * (0.75 + 0.48 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 0.75 : 1) * bar;
-  const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string }[] = [];
+  const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string; back?: { at: number; len: number }; boost?: number }[] = [];
+  const beat = bar / 4, eighth = bar / 8;
+  const scale = ctx.mode ? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12)) : undefined;
   out.forEach((n, i) => {
     if (n.len < 2 || n.slide || (n.fadeBy && n.len < 6) || n.walk || n.nb || n.third || n.longHold) return;
     const r = (tag: string) => roll(seed, `ib-${tag}`, n.step);
     // (how many of the same pitch came just before)
     let same = 0;
     for (let k = i - 1; k >= 1 && out[k].midi === out[k - 1].midi && n.step - out[k].step <= bar; k--) same++;
-    const p = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.02 * n.len) + (same >= 2 ? 0.3 : 0) + (n.opener && n.len >= 4 ? 0.12 : 0);
-    // (the first note is held for the first half, a quick glide (a 16th at most) across the middle, the new note for the second half)
+    const p0 = (n.len >= 4 ? Math.min(0.7, 0.06 * n.len) : 0.02 * n.len) + (same >= 2 ? 0.3 : 0) + (n.opener && n.len >= 4 ? 0.12 : 0);
+    // (a single long note, a beat and a half or more, bends more often)
+    const single = n.len >= 1.5 * beat - 1e-6;
+    const p = p0;
+    // (the first note is held for the first half, a quick glide (a 16th at most) across the middle, the new note for the second half;
+    // on a single long note the first is held at least an 8th of a bar before the glide and the new note at least a quarter bar after
+    // it: one too short for that doesn't bend)
     const glide = Math.min(1, n.len / 4);
-    const at = n.len / 2 - glide / 2;
+    const at = Math.min(n.len / 2 - glide / 2, n.len - glide - (single ? beat : 0));
+    if (single && at < eighth - 1e-6) return;
     const end = n.step + n.len;
     const nx = out[i + 1];
     const barLine = Math.abs(end / bar - Math.round(end / bar)) < 1e-6;
@@ -1090,10 +1101,37 @@ export function addNoteBends(
       const d = nx.midi - n.midi;
       if (Math.abs(d) >= 1 && Math.abs(d) <= MAX_BEND && ok(nx.midi)) cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at, glide, kind: 'next bar' });
     }
+    // a single long note: if the scale has a note a semitone above or below it, it bends to that one (from-to), or now and then there
+    // and back, slower; else if the nearest scale note is a whole tone away, it mostly bends there and back, in the middle, and less
+    // often from-to
+    let scaled = false;
+    if (single && scale) {
+      const inScale = (d: number) => { const m = n.midi + d, pc = ((m % 12) + 12) % 12; return m >= ctx.range.lo && m <= ctx.range.hi && scale.has(pc) && (!ctx.pent || ctx.pent.has(pc)); };
+      const dist = [1, 2].find((k) => inScale(k) || inScale(-k));
+      if (dist) {
+        const dirs = [1, -1].filter((sg) => inScale(sg * dist));
+        const sg = dirs.length === 2 ? (r('sdir') < 0.6 ? 1 : -1) : dirs[0];
+        const wantBack = r('shape') < (dist === 1 ? 0.3 : 0.7);
+        const g = wantBack && dist === 1 ? 2 : 1;
+        // (and back: the new pitch for an 8th of a bar to a beat, the first and the last held as above)
+        const avail = n.len - eighth - beat - 2 * g;
+        let back: { at: number; len: number } | undefined, a1 = Math.min(n.len / 2 - g / 2, n.len - g - beat);
+        if (wantBack && avail >= eighth - 1e-6) {
+          const dwell = Math.max(eighth, Math.min(beat, avail * 0.6));
+          a1 = Math.max(eighth, Math.min((n.len - 2 * g - dwell) / 2, n.len - 2 * g - dwell - beat));
+          back = { at: a1 + g + dwell, len: g };
+        }
+        a1 = back ? a1 : Math.min(n.len / 2 - 0.5, n.len - 1 - beat);
+        if (back || a1 >= eighth - 1e-6) {
+          // (a whole tone away, from-to is the less likely shape)
+          cand.push({ i, p: dist === 2 && !back ? p * 0.5 : p, boost: SINGLE_BOOST, to: n.midi + sg * dist, at: a1, glide: back ? g : 1, back, kind: `${dist === 1 ? 'half' : 'whole'} step ${sg > 0 ? 'up' : 'down'}${back ? ' and back' : ''}` });
+          scaled = true;
+        }
+      }
+    }
     // to a chord note or a step of the scale, up to a major 3rd either way: any of them, not just the nearest (the 5th to the root
     // and back, a 4th, was most of the bends)
-    if (c) {
-      const scale = ctx.mode ? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12)) : undefined;
+    if (c && !scaled) {
       const opts: { d: number; w: number; chord: boolean }[] = [];
       for (let d = -MAX_BEND; d <= MAX_BEND; d++) {
         const m = n.midi + d, pc = ((m % 12) + 12) % 12;
@@ -1109,7 +1147,7 @@ export function addNoteBends(
       }
     }
   });
-  const won = cand.filter((c) => roll(seed, `ib-${c.kind}`, out[c.i].step) < c.p * lift).sort((a, b) => b.p - a.p || out[a.i].step - out[b.i].step);
+  const won = cand.filter((c) => roll(seed, `ib-${c.kind}`, out[c.i].step) < Math.min(0.9, c.p * lift * (c.boost ?? 1))).sort((a, b) => b.p - a.p || out[a.i].step - out[b.i].step);
   const spots = out.filter((n) => n.bend).map((n) => n.step);
   for (const c of won) {
     const n = out[c.i];
@@ -1119,6 +1157,7 @@ export function addNoteBends(
     n.bendAt = c.at;
     n.bendLen = c.glide;
     n.inner = c.kind;
+    if (c.back) n.more = [{ at: c.back.at, to: n.midi, len: c.back.len }];
     // (an ending that bends and fades out fades half as far: the bend is already doing the work)
     if (n.fadeBy) n.fadeBy = Math.round(n.fadeBy / 2);
   }
