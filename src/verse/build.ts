@@ -6,7 +6,7 @@ import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from
 import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
-  pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withLeadIn, withOpeners, withRuns, withStretch,
+  pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withLeadIn, withLongHolds, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
 
@@ -119,8 +119,10 @@ export function buildVerse(inp: BuildInput): Built {
       const shaped = trimOverlaps(thirdBars(phraseEndings(pushed, phrases, bar, sd.endings, d, { key, mode, chordAt, range }), phrases, bar, sd.thirds, d));
       // (rule 23: the section's last phrase leads into the next section)
       const led = end >= total ? withLeadIn(shaped, phrases, bar, len, sd.endings, d, { key, mode, chordAt, range }) : shaped;
+      // (rule 28: a phrase now and then holds one note for 1 to 2 bars)
+      const longed = withLongHolds(led, phrases, chordAt, bar, len, { key, range, moreLeaves: end < total }, sd.holds, accOf('holds'), d);
       // (the chorus: fitted to the song's share of silence)
-      const fitted = d.silence === undefined ? led : fitSilence(led, phrases, bar, len, d.silence, sd.small, accOf('small'), d.silenceTol);
+      const fitted = d.silence === undefined ? longed : fitSilence(longed, phrases, bar, len, d.silence, sd.small, accOf('small'), d.silenceTol);
       // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
       const units = fixUnits(fitted, phrases, chordAt, bar, final);
       if (!units.ok) return null;

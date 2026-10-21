@@ -58,6 +58,7 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
       `Bends inside notes (${notes.filter((n) => n.inner).length}): ${notes.filter((n) => n.inner).map((n) => `${pos(n.step, bar)} ${n.inner} (${n.bendTo! > n.midi ? '+' : ''}${n.bendTo! - n.midi}, note ${+(n.len / (bar / 4)).toFixed(1)} beats, ${n.bendAt === 0 ? 'bends from its start' : `bends after ${+(n.bendAt! / (bar / 4)).toFixed(2)} beats`})`).join(', ') || 'none'}`,
       `Notes starting in each quarter of the bar: ${[0, 1, 2, 3].map((q) => notes.filter((n) => quarterOf(n.step, bar) === q).length).join(' · ')}`,
       `Phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} ${n.style ?? 'held'} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
+      `Long holds (1–2 bars): ${notes.filter((n) => n.longHold).map((n) => `${pos(n.step, bar)} ${+(n.len / bar).toFixed(2)} bars${n.bendTo === undefined ? '' : `, moves ${1 + (n.more?.length ?? 0)}`}`).join(', ') || 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
     ];
   };

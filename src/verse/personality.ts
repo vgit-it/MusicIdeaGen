@@ -138,10 +138,10 @@ const lean = (tone: ChordNote | 'any', by: number): Dials['toneW'] => (tone === 
 
 /** The hooks, as dials: how a chorus built on each moves. */
 const HOOK_DIALS: Record<Hook, Partial<Dials>> = {
-  chant: { phraseLen: [0.3, 0.4, 0.2, 0.1], breakBeats: [0.5, 0.3, 0.15, 0.05], runs: 0.6, runLen: [0.9, 0.1, 0], holdBar: 0.6, holdLen: [0.2, 0.3, 0.3, 0.2], holdTwice: 0.4, stretch: 0.4, opener: 0.5, moves: 0.1, neighbour: 0.05, walk: 0.3, third: 0.3, small: 0.4, push: 0.1 },
-  anthem: { phraseLen: [0.03, 0.22, 0.3, 0.45], breakBeats: [0.2, 0.35, 0.25, 0.2], runs: 0.1, runLen: [1, 0, 0], holdBar: 0.85, holdLen: [0.05, 0.15, 0.4, 0.4], holdTwice: 0.5, stretch: 0.3, opener: 0.55, moves: 0.25, toneW: [1.4, 0.5, 1.2], neighbour: 0.1, walk: 0.9, third: 0.05, small: 0.3, push: 0 },
-  leap: { phraseLen: [0.1, 0.4, 0.3, 0.2], holdBar: 0.75, holdLen: [0.1, 0.2, 0.4, 0.3], holdTwice: 0.4, stretch: 0.45, opener: 0.55, moves: 0.85, toneW: [0.7, 0.7, 1.4], neighbour: 0.45, walk: 0.9, runs: 0.8, third: 0.1, small: 0.8, push: 0.05 },
-  push: { phraseLen: [0.1, 0.3, 0.3, 0.3], breakBeats: [0.6, 0.3, 0.07, 0.03], runs: 1.2, runLen: [0.8, 0.2, 0], holdBar: 0.6, holdLen: [0.15, 0.25, 0.4, 0.2], holdTwice: 0.4, stretch: 0.3, opener: 0.4, moves: 0.35, neighbour: 0.35, walk: 0.5, third: 0.05, small: 0.9, push: 0.55 },
+  chant: { phraseLen: [0.3, 0.4, 0.2, 0.1], breakBeats: [0.5, 0.3, 0.15, 0.05], runs: 0.6, runLen: [0.9, 0.1, 0], holdBar: 0.6, holdLen: [0.2, 0.3, 0.3, 0.2], holdTwice: 0.4, holdLong: 0.1, stretch: 0.4, opener: 0.5, moves: 0.1, neighbour: 0.05, walk: 0.3, third: 0.3, small: 0.4, push: 0.1 },
+  anthem: { phraseLen: [0.03, 0.22, 0.3, 0.45], breakBeats: [0.2, 0.35, 0.25, 0.2], runs: 0.1, runLen: [1, 0, 0], holdBar: 0.85, holdLen: [0.05, 0.15, 0.4, 0.4], holdTwice: 0.5, holdLong: 0.3, stretch: 0.3, opener: 0.55, moves: 0.25, toneW: [1.4, 0.5, 1.2], neighbour: 0.1, walk: 0.9, third: 0.05, small: 0.3, push: 0 },
+  leap: { phraseLen: [0.1, 0.4, 0.3, 0.2], holdBar: 0.75, holdLen: [0.1, 0.2, 0.4, 0.3], holdTwice: 0.4, holdLong: 0.12, stretch: 0.45, opener: 0.55, moves: 0.85, toneW: [0.7, 0.7, 1.4], neighbour: 0.45, walk: 0.9, runs: 0.8, third: 0.1, small: 0.8, push: 0.05 },
+  push: { phraseLen: [0.1, 0.3, 0.3, 0.3], breakBeats: [0.6, 0.3, 0.07, 0.03], runs: 1.2, runLen: [0.8, 0.2, 0], holdBar: 0.6, holdLen: [0.15, 0.25, 0.4, 0.2], holdTwice: 0.4, holdLong: 0.04, stretch: 0.3, opener: 0.4, moves: 0.35, neighbour: 0.35, walk: 0.5, third: 0.05, small: 0.9, push: 0.55 },
 };
 
 /** The dials a section kind writes with, in this song's personality. */
@@ -154,7 +154,7 @@ function sectionDials(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'ou
   if (kind === 'prechorus') {
     // (between the verse and the chorus: tighter phrases, a little busier, a few long notes, the line climbing and leading into the chorus)
     return {
-      ...VERSE, phraseLen: [0.3, 0.45, 0.2, 0.05], breakBeats: [0.55, 0.3, 0.1, 0.05], runs: Math.max(0.9, p.verseRuns * 1.25), holdBar: 0.35, holdLen: [0.4, 0.25, 0.25, 0.1],
+      ...VERSE, phraseLen: [0.3, 0.45, 0.2, 0.05], breakBeats: [0.55, 0.3, 0.1, 0.05], runs: Math.max(0.9, p.verseRuns * 1.25), holdBar: 0.35, holdLen: [0.4, 0.25, 0.25, 0.1], holdLong: 0.05,
       stretch: 0.15, opener: 0.2, moves: 0.4, neighbour: 0.35, walk: 0.8, end: [0.3, 0.6], endStyle: { held: 2, open: 2, hang: 1, punch: 0, sync: 0.6, plain: 1 },
       lift: 2, bends: p.bends * 1.5, silence: p.preSilence, climb: p.preClimb, leadIn: p.preLeadIn,
     };
@@ -162,7 +162,7 @@ function sectionDials(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'ou
   if (kind === 'bridge') {
     // (the song's contrast: its own register, slower and sparser than the verse, long notes, held endings, circling one home pitch)
     return {
-      ...VERSE, phraseLen: [0.05, 0.3, 0.3, 0.35], breakBeats: [0.15, 0.35, 0.3, 0.2], runs: 0.5, runLen: [0.9, 0.1, 0], holdBar: 0.6, holdLen: [0.15, 0.2, 0.4, 0.25],
+      ...VERSE, phraseLen: [0.05, 0.3, 0.3, 0.35], breakBeats: [0.15, 0.35, 0.3, 0.2], runs: 0.5, runLen: [0.9, 0.1, 0], holdBar: 0.6, holdLen: [0.15, 0.2, 0.4, 0.25], holdLong: 0.2,
       stretch: 0.3, opener: 0.4, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6, end: [0.6, 0.9], endStyle: { held: 3, open: 2, hang: 2, punch: 0, sync: 0.3, plain: 0.5 },
       lift: p.bridgeLift, octaveUp: 0.5, bends: p.bends * 1.2, silence: p.bridgeSilence, silenceTol: 0.07, dwell: p.bridgeDwell, leadIn: p.bridgeLeadIn,
     };
@@ -170,7 +170,7 @@ function sectionDials(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'ou
   if (kind === 'interlude') {
     // (a breath between sections: a short echo of the chorus, 1-2 bar phrases with long gaps, mostly silent, ending open or held)
     return {
-      ...VERSE, phraseLen: [0.5, 0.4, 0.1, 0], breakBeats: [0.05, 0.2, 0.35, 0.4], runs: 0.3, runLen: [1, 0, 0], holdBar: 0.6, holdLen: [0.15, 0.25, 0.35, 0.25],
+      ...VERSE, phraseLen: [0.5, 0.4, 0.1, 0], breakBeats: [0.05, 0.2, 0.35, 0.4], runs: 0.3, runLen: [1, 0, 0], holdBar: 0.6, holdLen: [0.15, 0.25, 0.35, 0.25], holdLong: 0.2,
       stretch: 0.3, opener: 0.4, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6, end: [0.4, 0.85], endStyle: { held: 3, open: 2, hang: 1, punch: 0, sync: 0, plain: 0.5 },
       lift: p.interludeLift, bends: p.bends, silence: p.interludeSilence, silenceTol: 0.1,
     };
@@ -178,7 +178,7 @@ function sectionDials(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'ou
   if (kind === 'outro') {
     // (the chorus's tail: its phrasing again, sparse, a few long notes; a fading song ends nearly every phrase held and open, a holding song stays fuller and finishes with a punch now and then)
     return {
-      ...VERSE, phraseLen: [0.4, 0.45, 0.15, 0], breakBeats: [0.05, 0.25, 0.35, 0.35], runs: 0.3, runLen: [1, 0, 0], holdBar: 0.65, holdLen: [0.1, 0.2, 0.4, 0.3],
+      ...VERSE, phraseLen: [0.4, 0.45, 0.15, 0], breakBeats: [0.05, 0.25, 0.35, 0.35], runs: 0.3, runLen: [1, 0, 0], holdBar: 0.65, holdLen: [0.1, 0.2, 0.4, 0.3], holdLong: 0.2,
       stretch: 0.35, opener: 0.45, moves: 0.2, neighbour: 0.2, walk: 0.8, small: 0.6,
       end: p.outroFade ? [0.7, 1] : [0.5, 0.85],
       endStyle: p.outroFade ? { held: 4, open: 2, hang: 2, punch: 0, sync: 0, plain: 0.3 } : { held: 3, open: 2, hang: 1, punch: 1, sync: 0, plain: 0.5 },
@@ -192,7 +192,7 @@ function sectionDials(kind: 'verse' | 'prechorus' | 'bridge' | 'interlude' | 'ou
     return { ...VERSE, ...h, end: p.chorusEndChance, endStyle: p.chorusEnd, lift: p.chorusLift, octave: 0.3, octaveUp: 0.5, bends: p.bends * 3.2, silence: p.chorusSilence };
   }
   return {
-    ...VERSE, phraseLen: BIAS[p.verseBias], runs: p.verseRuns, holdBar: p.verseHold, moves: p.verseMoves, toneW: lean(p.verseTone, 2.2),
+    ...VERSE, phraseLen: BIAS[p.verseBias], runs: p.verseRuns, holdBar: p.verseHold, holdLong: VERSE.holdLong * (p.verseHold / 0.4), moves: p.verseMoves, toneW: lean(p.verseTone, 2.2),
     end: p.verseEndChance, bends: p.bends,
   };
 }
@@ -210,6 +210,7 @@ export function paced(d: Dials, bpm: number): Dials {
     runs: d.runs * Math.min(3.5, Math.max(0.25, pace ** -1.9)),
     stretch: Math.min(0.85, d.stretch + fast * 0.55),
     holdBar: Math.min(0.95, Math.max(0.1, d.holdBar * (1 + fast * 0.7 - slow * 0.6))),
+    holdLong: Math.min(0.6, d.holdLong * (1 + fast * 0.7 - slow * 0.6)),
   };
 }
 
