@@ -725,6 +725,9 @@ export function thirdBars(notes: BandNote[], phrases: Gap[], bar: number, seed: 
 
 export type BendAmount = 'off' | 'some' | 'lots';
 
+/** The widest a bend inside a note goes, in semitones (a major 3rd). */
+const MAX_BEND = 4;
+
 /** How much each genre leans on the blue 3rd (the major 3rd scooped up from the minor). */
 const BLUE: Record<string, number> = { rock: 1, hardrock: 1, grunge: 1, funk: 1, altmetal: 0.8, metal: 0.5, pop: 0.35 };
 
@@ -837,11 +840,11 @@ export function withLongHolds(
   const isTone = (m: number, c: Chord) => pcsOf(c).includes(((m % 12) + 12) % 12);
   const same = (a: Chord, b: Chord) => a.root === b.root && a.q === b.q;
   /** A chord note of `c` within 5 semitones of `m` (not `m` itself), in the main range and the pentatonic if one is set: the nearest, or (with `dir`) the nearest that way first. */
-  const near = (c: Chord, m: number, dir: 1 | -1 | 0): number | null => {
+  const near = (c: Chord, m: number, dir: 1 | -1 | 0, max = 5): number | null => {
     const pcs = pcsOf(c);
     const ok = (x: number) => x >= ctx.range.lo && x <= ctx.range.hi && pcs.includes(((x % 12) + 12) % 12) && (!pent || pent.has(((x % 12) + 12) % 12));
     if (dir) {
-      for (const sgn of [dir, -dir]) for (let k = 1; k <= 5; k++) if (ok(m + sgn * k)) return m + sgn * k;
+      for (const sgn of [dir, -dir]) for (let k = 1; k <= max; k++) if (ok(m + sgn * k)) return m + sgn * k;
       return null;
     }
     for (let k = 1; k <= 5; k++) for (const sgn of [1, -1]) if (ok(m + sgn * k)) return m + sgn * k;
@@ -900,7 +903,7 @@ export function withLongHolds(
           for (const ev of evs) {
             const ch = at(ev.t);
             let m: number | null;
-            if (ev.free) m = near(ch, cur, rng.chance(0.7) ? 1 : -1);
+            if (ev.free) m = near(ch, cur, rng.chance(0.6) ? 1 : -1, MAX_BEND);
             else if (isTone(cur, ch)) continue;
             else m = near(ch, cur, 0);
             if (m === null) { if (ev.free) continue; return null; }
@@ -1058,7 +1061,7 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
  */
 export function addNoteBends(
   notes: BandNote[], bar: number,
-  ctx: { amount: BendAmount; energy: number; key: number; chordAt: Chord[]; range: Range; mult?: number; pent?: ReadonlySet<number> },
+  ctx: { amount: BendAmount; energy: number; key: number; mode?: Mode; chordAt: Chord[]; range: Range; mult?: number; pent?: ReadonlySet<number> },
   seed: string,
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
@@ -1085,17 +1088,25 @@ export function addNoteBends(
     // to the next bar's core note: only when it is also a note of the chord sounding now (the end note is held before the bar turns)
     if (barLine && nx && nx.step - end <= bar / 4 && !nx.nb && !nx.third && pcs.includes(((nx.midi % 12) + 12) % 12)) {
       const d = nx.midi - n.midi;
-      if (Math.abs(d) >= 1 && Math.abs(d) <= 6 && ok(nx.midi)) cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at, glide, kind: 'next bar' });
+      if (Math.abs(d) >= 1 && Math.abs(d) <= MAX_BEND && ok(nx.midi)) cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at, glide, kind: 'next bar' });
     }
-    // to the next chord note
+    // to a chord note or a step of the scale, up to a major 3rd either way: any of them, not just the nearest (the 5th to the root
+    // and back, a 4th, was most of the bends)
     if (c) {
-      const tones = [];
-      // (a bend to a chord note stays in the main range; the extended zone is for a note that saves a leap)
-      for (let d = -5; d <= 5; d++) if (d && pcs.includes((((n.midi + d) % 12) + 12) % 12) && (!ctx.pent || ctx.pent.has((((n.midi + d) % 12) + 12) % 12)) && n.midi + d >= ctx.range.lo && n.midi + d <= ctx.range.hi) tones.push(d);
-      const ups = tones.filter((d) => d > 0), downs = tones.filter((d) => d < 0);
-      const up = r('dir') < 0.75 ? ups.length > 0 : downs.length === 0;
-      const d = up ? Math.min(...ups) : Math.max(...downs);
-      if (Number.isFinite(d)) cand.push({ i, p, to: n.midi + d, at, glide, kind: up ? 'chord note up' : 'chord note down' });
+      const scale = ctx.mode ? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12)) : undefined;
+      const opts: { d: number; w: number; chord: boolean }[] = [];
+      for (let d = -MAX_BEND; d <= MAX_BEND; d++) {
+        const m = n.midi + d, pc = ((m % 12) + 12) % 12;
+        if (!d || m < ctx.range.lo || m > ctx.range.hi || (ctx.pent && !ctx.pent.has(pc))) continue;
+        const dir = d > 0 ? 0.6 : 0.4;
+        // (a bend to a chord note stays in the main range; the extended zone is for a note that saves a leap)
+        if (pcs.includes(pc)) opts.push({ d, w: (Math.abs(d) >= 3 ? 3 : 1.5) * dir, chord: true });
+        else if (scale?.has(pc) && Math.abs(d) <= 2) opts.push({ d, w: 0.25 * dir, chord: false });
+      }
+      if (opts.length) {
+        const o = opts[cumulative(opts.map((x) => x.w), r('pick'))];
+        cand.push({ i, p, to: n.midi + o.d, at, glide, kind: `${o.chord ? 'chord note' : 'scale step'} ${o.d > 0 ? 'up' : 'down'}` });
+      }
     }
   });
   const won = cand.filter((c) => roll(seed, `ib-${c.kind}`, out[c.i].step) < c.p * lift).sort((a, b) => b.p - a.p || out[a.i].step - out[b.i].step);
