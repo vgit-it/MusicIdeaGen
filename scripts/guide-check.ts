@@ -4,16 +4,21 @@
 // idea switched off, every note, quick note, push, pull and word must be the same as before.
 // Also checks the rules with whatever is on: the words sit exactly on the tune, at most 4 changes heard in any
 // second, the range, the levels, a new note inside a word only ever a bend, never two notes at once, a note held at most a bar.
+// The Vocal tune (tune.ts) checked apart: with its switches off, the vocal's own notes and words exactly; with them on,
+// the same pitches and words, no two notes at once, the words on the tune (each vocal writer taken in turn).
 //   npm run guide-check          compare with the reference
 //   npm run guide-check -- save  save a new reference (only when a change to the line is meant)
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { generate } from '../src/generator';
+import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { type Flicks, type GuideIdeas, type GuideRange, type GuideTonality, writeGuide } from '../src/guide/line';
 import { guideWords } from '../src/guide/words';
+import { writeLine } from '../src/guide/real';
 import { ANCHOR_HOLD_BARS, writeAnchor } from '../src/guide/anchor';
 import { shapeDynamics } from '../src/guide/dynamics';
+import { tuneWords, writeTune } from '../src/guide/tune';
+import { GUIDE_SCALES } from '../src/guide/line';
 import { MOODS } from '../src/tension';
 import type { HighVoice } from '../src/parts/singers';
 
@@ -38,7 +43,7 @@ const TONES: [number | null, GuideTonality['scale'], boolean][] = [[null, 'lydia
 const RUNS: [string, GuideIdeas, GuideRange | null, [number | null, GuideTonality['scale'], boolean] | null][] = [...IDEAS.map(([n, i]): [string, GuideIdeas, null, null] => [n, i, null, null]),
   ...RANGES.flatMap((r): [string, GuideIdeas, GuideRange, null][] => [[`range ${r.join('-')}`, {}, r, null], [`range ${r.join('-')}, all on`, ALL_ON, r, null]]),
   // (Anchor line: a writer of its own; with Hard and soft, a range and a key and scale of its own)
-  ['Anchor line', { anchor: true }, null, null], ['Anchor line, Hard and soft', { anchor: true, dynamics: true }, null, null], ['Anchor line, range 40-52', { anchor: true }, [40, 52], null], ['Anchor line, Slow line', { anchor: true, spine: true }, null, null], ['Anchor line, Breaths', { anchor: true, breath: true }, null, null], ['Anchor line, Lead-ins', { anchor: true, leadIn: true }, null, null], ['Anchor line, all three, Hard and soft, range 40-52', { anchor: true, spine: true, breath: true, leadIn: true, dynamics: true }, [40, 52], null], ['Anchor line, range 24-90', { anchor: true }, [24, 90], null], ['Anchor line, key +6 phrygian', { anchor: true }, null, [6, 'phrygian', false]], ['Anchor line, Rhythm straight', { anchor: true, rhythm: 'straight' }, null, null], ['Anchor line, Rhythm pushed', { anchor: true, rhythm: 'pushed' }, null, null], ['Anchor line, Rhythm busy', { anchor: true, rhythm: 'busy' }, null, null], ['Anchor line, Rhythm sparse', { anchor: true, rhythm: 'sparse' }, null, null], ['Anchor line, Rhythm bouncy', { anchor: true, rhythm: 'bouncy' }, null, null], ['Anchor line, Rhythm mixed', { anchor: true, rhythm: 'mixed' }, null, null], ['Anchor line, Rhythm busy, all three, range 40-52', { anchor: true, rhythm: 'busy', spine: true, breath: true, leadIn: true }, [40, 52], null], ['Anchor line, Hook', { anchor: true, hook: true }, null, null], ['Anchor line, Less one-note', { anchor: true, color: true }, null, null], ['Anchor line, Best of several', { anchor: true, best: true }, null, null], ['Anchor line, Hook, Less one-note, Best, all three, range 40-52', { anchor: true, hook: true, color: true, best: true, spine: true, breath: true, leadIn: true, dynamics: true }, [40, 52], null], ['Anchor line, Hook, Less one-note, key +6 phrygian', { anchor: true, hook: true, color: true }, null, [6, 'phrygian', false]],
+  ['Anchor line', { anchor: true }, null, null], ['Anchor line, Hard and soft', { anchor: true, dynamics: true }, null, null], ['Anchor line, range 40-52', { anchor: true }, [40, 52], null], ['Anchor line, Slow line', { anchor: true, spine: true }, null, null], ['Anchor line, Breaths', { anchor: true, breath: true }, null, null], ['Anchor line, Lead-ins', { anchor: true, leadIn: true }, null, null], ['Anchor line, all three, Hard and soft, range 40-52', { anchor: true, spine: true, breath: true, leadIn: true, dynamics: true }, [40, 52], null], ['Anchor line, range 24-90', { anchor: true }, [24, 90], null], ['Anchor line, key +6 phrygian', { anchor: true }, null, [6, 'phrygian', false]], ['Anchor line, Rhythm straight', { anchor: true, rhythm: 'straight' }, null, null], ['Anchor line, Rhythm pushed', { anchor: true, rhythm: 'pushed' }, null, null], ['Anchor line, Rhythm busy', { anchor: true, rhythm: 'busy' }, null, null], ['Anchor line, Rhythm sparse', { anchor: true, rhythm: 'sparse' }, null, null], ['Anchor line, Rhythm bouncy', { anchor: true, rhythm: 'bouncy' }, null, null], ['Anchor line, Rhythm mixed', { anchor: true, rhythm: 'mixed' }, null, null], ['Anchor line, Rhythm busy, all three, range 40-52', { anchor: true, rhythm: 'busy', spine: true, breath: true, leadIn: true }, [40, 52], null], ['Anchor line, Hook', { anchor: true, hook: true }, null, null], ['Anchor line, Less one-note', { anchor: true, color: true }, null, null], ['Anchor line, Best of several', { anchor: true, best: true }, null, null], ['Anchor line, Hook, Less one-note, Best, all three, range 40-52', { anchor: true, hook: true, color: true, best: true, spine: true, breath: true, leadIn: true, dynamics: true }, [40, 52], null], ['Anchor line, Hook, Less one-note, key +6 phrygian', { anchor: true, hook: true, color: true }, null, [6, 'phrygian', false]], ['Anchor line, Song arc', { anchor: true, arc: true }, null, null], ['Anchor line, Listen to band', { anchor: true, band: true }, null, null], ['Anchor line, arc, band, Best, range 40-52', { anchor: true, arc: true, band: true, best: true }, [40, 52], null], ['Real songs', { real: true }, null, null], ['Patterns', { patterns: true }, null, null], ['Patterns, all on', { ...ALL_ON, patterns: true }, null, null], ['Patterns, Real songs, range 40-52', { patterns: true, real: true }, [40, 52], null], ['Patterns, key +6 phrygian guarded', { patterns: true }, null, [6, 'phrygian', true]], ['Anchor line, Patterns', { anchor: true, patterns: true }, null, null], ['Anchor line, Patterns, Real songs, everything', { anchor: true, patterns: true, real: true, hook: true, color: true, best: true, arc: true, band: true }, null, null], ['Real songs, all on', { ...ALL_ON, real: true }, null, null], ['Real songs, range 40-52', { real: true }, [40, 52], null], ['Anchor line, Real songs', { anchor: true, real: true }, null, null], ['Anchor line, Real songs, everything, range 40-52', { anchor: true, real: true, hook: true, color: true, best: true, arc: true, band: true, spine: true, breath: true, leadIn: true, dynamics: true }, [40, 52], null], ['Anchor line, everything, all three, range 24-90', { anchor: true, hook: true, color: true, best: true, arc: true, band: true, spine: true, breath: true, leadIn: true, dynamics: true }, [24, 90], null],
   ...TONES.flatMap((t): [string, GuideIdeas, null, [number | null, GuideTonality['scale'], boolean]][] => [[`key +${t[0] ?? 0} ${t[1] ?? 'same'}${t[2] ? ' guarded' : ''}`, {}, null, t], [`key +${t[0] ?? 0} ${t[1] ?? 'same'}${t[2] ? ' guarded' : ''}, all on`, ALL_ON, null, t]])];
 
 const out: Record<string, string> = {};
@@ -51,11 +56,11 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   const s = `gc-${genre}-${meter}-${mood}`;
   const flicks = FLICKS[k % 4], lean = k % 3 === 2 ? 'out' : 'in', high = HIGH[k % 4];
   k++;
-  const idea = generate({ genre, meter, weirdness: 0.3 } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
+  const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const tr = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never);
   const list = tr.sections;
   const tone = tn && { key: tn[0] === null ? null : (list[0].song.key + tn[0]) % 12, scale: tn[1], guard: tn[2] };
-  const L = ideas.anchor ? writeAnchor(list, tr.mood, lean, 0, range, tone, ideas) : writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range, tone);
+  const L = ideas.real || ideas.patterns ? writeLine(list, tr.mood, lean, 0, flicks, high, ideas, range, tone) : ideas.anchor ? writeAnchor(list, tr.mood, lean, 0, range, tone, ideas) : writeGuide(list, tr.mood, lean, 0, flicks, high, ideas, range, tone);
   const W = guideWords(list, L);
   if (ideas.dynamics) shapeDynamics(list, L, W);
   const id = `${ideaName === 'all off' ? '' : `[${ideaName}] `}${mood}|${genre}|${meter}|${flicks}|${lean}|${high ?? 'mid'}`;
@@ -106,6 +111,82 @@ for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS
   for (let i = 0; i + 4 < at.length; i++) if ((at[i + 4] - at[i]) * six < 1 - 1e-9) { broken.push(`${id}: over 4 changes in a second`); break; }
 }
 }
+
+// the Vocal tune: the vocal's own tune, its switches only moving starts and ends
+const WRITERS = [{}, { vocalMelody: 'shaped' }, { vocalMelody: 'first' }, { vocalMelody: 'learned', vocalRhythm: 'words' }, { vocalMelody: 'learned', vocalReal: true, vocalPatterns: true }, { vocalRhythm: 'grid' }];
+const TUNE_RUNS: [string, GuideIdeas, GuideRange | null][] = [['Vocal tune', { tune: true }, null], ['Vocal tune, Breaths, Lead-ins, Carry over, Hard and soft', { tune: true, breath: true, leadIn: true, carry: true, dynamics: true }, null], ['Vocal tune, range 40-60', { tune: true }, [40, 60]], ['Vocal tune, all three, range 60-84', { tune: true, breath: true, leadIn: true, carry: true }, [60, 84]],
+  ['Vocal tune, Bends some', { tune: true, bends: 'some' }, null], ['Vocal tune, Bends more, all three, Hard and soft', { tune: true, bends: 'more', breath: true, leadIn: true, carry: true, dynamics: true }, null]];
+let tuneSongs = 0;
+for (const [name, ideas, range] of TUNE_RUNS) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) continue;
+  let k = 0;
+  for (const mood of MOODS) for (const genre of GENRES) for (const meter of METERS) {
+    const s = `gc-${genre}-${meter}-${mood}`;
+    const w = WRITERS[k++ % WRITERS.length];
+    const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS, ...w } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
+    const list = buildTrack(idea, { ...defaultTrackOptions(idea), mood } as never).sections;
+    const L = writeTune(list, mood, 0, ideas, range);
+    const W = tuneWords(L);
+    if (ideas.dynamics) shapeDynamics(list, L, W);
+    const id = `[${name}] ${mood}|${genre}|${meter}|${JSON.stringify(w)}`;
+    tuneSongs++;
+    const lead = list.map((i) => (i.vocal ?? []).filter((n) => !n.role));
+    const plain = !ideas.breath && !ideas.leadIn && !ideas.carry;
+    // (the same pitches and words in order, the Range moving them by whole octaves)
+    // (a carry over's bent note, past its section's end, isn't the vocal's)
+    // (and an off-key note's bent-out half isn't either: the note is the vocal's, its length the two halves')
+    const merged = L.parts.map((p) => p.flatMap((n, j) => (n.split ? [] : [{ ...n, len: n.len + (p[j + 1]?.split ? p[j + 1].len : 0) }])));
+    const flat = merged.flatMap((p, si) => p.filter((n) => n.step < list[si].song.total - 1e-9)), want = lead.flat();
+    const shift = flat.length ? flat[0].midi - want[0].midi : 0;
+    if (shift % 12) broken.push(`${id}: moved by ${shift}, not octaves`);
+    if (flat.length !== want.length || flat.some((n, j) => n.midi - shift !== want[j].midi || n.syl.text !== want[j].syl.text)) broken.push(`${id}: not the vocal's notes and words`);
+    if (plain && merged.some((p, si) => p.length !== lead[si].length || p.some((n, j) => n.step !== lead[si][j].step || Math.abs(n.len - lead[si][j].len) > 1e-9))) broken.push(`${id}: switches off, but not the vocal's rhythm`);
+    // (every off-key note long enough bent out to the key, a half or whole step)
+    list.forEach((sec, si) => {
+      const sc = GUIDE_SCALES[sec.song.mode] as readonly number[], inKey = (m: number) => sc.includes((((m - sec.song.key) % 12) + 12) % 12);
+      L.parts[si].forEach((n, j) => {
+        const nx = L.parts[si][j + 1];
+        if (n.split) { if (!inKey(n.midi)) broken.push(`${id} ${sec.section?.label}: bent out to a note off the key`); return; }
+        if (!inKey(n.midi) && n.step < sec.song.total && (n.len + (nx?.split ? nx.len : 0)) >= 0.75 && !nx?.split) broken.push(`${id} ${sec.section?.label}: an off-key note not bent out`);
+      });
+    });
+    if (range && flat.length) {
+      const out = (x: number) => flat.filter((n) => n.midi + x < range[0] || n.midi + x > range[1]).length;
+      if (out(12) < out(0) || out(-12) < out(0)) broken.push(`${id}: an octave would sit better in the range`);
+    }
+    // (never two notes at once, nothing too short, the words exactly on the tune)
+    let tot = 0, lastEnd = -1;
+    list.forEach((i, si) => {
+      for (const n of L.parts[si]) {
+        if (tot + n.step < lastEnd - 1e-6) broken.push(`${id} ${i.section?.label}: two notes at once`);
+        if (n.len <= 0) broken.push(`${id} ${i.section?.label}: an empty note`);
+        lastEnd = tot + n.step + n.len;
+      }
+      const ws = W[si].flatMap((l) => l.notes);
+      if (ws.length !== L.parts[si].length || ws.some((x, j) => x.step !== L.parts[si][j].step || x.len !== L.parts[si][j].len || x.midi !== L.parts[si][j].midi)) broken.push(`${id} ${i.section?.label}: the words are off the tune`);
+      if (ws.some((x) => !(x.vel >= 0 && x.vel <= 1))) broken.push(`${id} ${i.section?.label}: a level out of range`);
+      // (Bends: from the note just before, a step or two; slides into a new word at most one every two bars)
+      const bar = i.song.bars[0].len;
+      let lastSlide = -Infinity;
+      L.parts[si].forEach((n, k) => {
+        const q = L.parts[si][k - 1];
+        if (!n.bend) return;
+        if (!q || Math.abs(q.step + q.len - n.step) > 0.01 || Math.abs(n.midi - q.midi) > 2) broken.push(`${id} ${i.section?.label}: a bend not from the note just before, or over a whole step`);
+        if (n.newWord) { if (n.step - lastSlide < 2 * bar) broken.push(`${id} ${i.section?.label}: slides closer than two bars`); lastSlide = n.step; }
+        if (!ideas.bends && !n.split && n.step < i.song.total) broken.push(`${id} ${i.section?.label}: a bend with Bends off`);
+      });
+      // (new words on the same tune: on its notes, a new note inside a word only ever a bend)
+      if (ideas.bends) {
+        const nw = guideWords(list, L)[si].flatMap((l) => l.notes);
+        const cover = (xs: { step: number; len: number; midi: number }[]) => xs.map((x) => `${x.step.toFixed(3)}/${x.len.toFixed(3)}/${x.midi}`).join(' ');
+        if (cover(nw) !== cover(L.parts[si])) broken.push(`${id} ${i.section?.label}: new words off the tune`);
+        nw.forEach((x, k) => { const q = nw[k - 1]; if (q && x.midi !== q.midi && !x.syl.wordStart && !(x.syl.text === '~' && x.bend)) broken.push(`${id} ${i.section?.label}: new words: a new note inside a word, not bent`); });
+      }
+      tot += i.song.total;
+    });
+  }
+}
+if (tuneSongs) console.log(`Vocal tune: ${tuneSongs} songs checked.`);
 
 if (save) {
   writeFileSync(REF, JSON.stringify(out, null, 1) + '\n');

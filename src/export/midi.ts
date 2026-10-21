@@ -10,6 +10,7 @@ import { GENRE_LABEL } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
 import type { Layer } from '../parts/layers';
 import { backingVoice } from '../parts/vocal';
+import { DOWN } from '../guide/line';
 import { cymbalAccent, groupStarts, stepAt } from '../rhythm';
 import { HIGH_VOICES, leadHigh } from '../parts/singers';
 import { NOTE_NAMES, pianoVoicing } from '../theory';
@@ -76,6 +77,8 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
   const rhythm = mk('Rhythm guitar', 0, PROGRAM[most(list.map(o.chordIdFor))]);
   const withG2 = list.filter((i) => i.guitar2.length);
   const g2 = mk('Guitar 2', 1, PROGRAM[most((withG2.length ? withG2 : list).map(o.guitar2IdFor))]);
+  // (Twin: the second lead guitar, on its own track)
+  const g2twin = mk('Guitar 2 twin', 8, PROGRAM[most((withG2.length ? withG2 : list).map(o.guitar2IdFor))]);
   const bass = mk('Bass', 2, 33);
   const drums = mk('Drums', 9, 0); // channel 10 (index 9): the GM drum kit
   const piano = mk('Piano', 3, 0);
@@ -135,7 +138,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
     song.bars.forEach((b, bi) => {
       if (bi > 0 && !idea.section?.db) return;
       const expression = Math.round(127 * 10 ** (levelAt(idea.section, bi) / 20));
-      for (const t of [vocal, backing, rhythm, g2, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
+      for (const t of [vocal, backing, rhythm, g2, g2twin, bass, drums, piano, pad, strings, perc]) t.addCC({ number: 11, value: expression / 127, ticks: offset + b.start * SIX });
     });
 
     const isGuitar = (id: ChordInstrumentId) => id !== 'piano';
@@ -158,7 +161,7 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
       if (h.mute === 'palm') { dur = Math.min(dur, 0.2); hv *= 0.9; }
       if (h.mute === 'dead') { dur = 0.05; hv *= 0.6; }
       if (h.swell) hv *= 0.8;
-      h.notes.forEach((m, i) => note(t, m, Math.max(0, at(h.step) + secToTicks(late / 1000)) + i * 6, secToTicks(dur), hv));
+      h.notes.forEach((m, i) => note(t, m, Math.max(0, at(h.step + (h.shift ?? 0)) + secToTicks(late / 1000)) + i * 6, secToTicks(dur), hv));
     };
 
     for (let g = 0; g < total; g++) {
@@ -183,9 +186,23 @@ export function toMidi(list: Idea[], o: MidiOptions): Uint8Array {
         else (st === 'U' ? [...notes].reverse() : notes).forEach((m, i) => note(rhythm, m, t0 + i * 10, secToTicks(ring), v));
       }
 
-      for (const h of idea.guitar2) if (h.step === g) hit(g2, h, h.vel, false, idea.g2Feel ?? 0);
+      for (const h of idea.guitar2) if (h.step === g) {
+        hit(g2, h, h.vel, false, idea.g2Feel ?? 0);
+        if (h.twin) hit(g2twin, { ...h, notes: h.twin }, h.vel * 0.75, false, (idea.g2Feel ?? 0) + 12);
+      }
+      if (o.vocal !== 'off' && idea.sung) {
+        // the lead vocal as it's sung (leadVoice.ts): its new words, bends and carried-over notes; the woman's voice an octave up when the song's line allows
+        const h = leadHigh(idea, o.vocal ?? 'auto', o.timbre ?? 'auto');
+        const up = (o.timbre === 'woman' || ((o.timbre ?? 'auto') === 'auto' && h === 'woman')) && (idea.sungTop ?? 0) + DOWN <= 79 ? DOWN : 0;
+        const firstNote = idea.sung[0]?.notes[0];
+        for (const L of idea.sung) for (const n of L.notes) {
+          if (Math.floor(n.step) !== g) continue;
+          note(vocal, n.midi + up, at(n.step), Math.max(10, at(n.step + n.len) - at(n.step) - 10), n.vel);
+          midi.header.meta.push({ type: 'lyrics', text: n.syl.wordStart || n === firstNote ? n.syl.text : `-${n.syl.text}`, ticks: Math.round(at(n.step)) });
+        }
+      }
       if (o.vocal !== 'off') {
-        for (const n of idea.vocal ?? []) {
+        for (const n of idea.sung ? [] : idea.vocal ?? []) {
           // (a run's quick notes fall between the 16ths: written in the 16th they start in)
           if (Math.floor(n.step) !== g) continue;
           const voice = o.vocal === 'low' || o.vocal === 'high' ? o.vocal : idea.vocalVoice ?? 'low';

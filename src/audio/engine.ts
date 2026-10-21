@@ -1,6 +1,7 @@
 // Plays a list of ideas back to back: one idea on a loop, a whole track once, or one section on a loop.
 
 import { Singer, type TimbreChoice, type VocalChoice } from './singer';
+import { LeadVoice } from './leadVoice';
 import * as Tone from 'tone';
 import type { Genre } from '../genres';
 import type { GuitarHit, Idea } from '../idea';
@@ -73,9 +74,10 @@ const TAIL_STEPS = 32;
 const PREP_XFADE = 0.03;
 /**
  * How far ahead notes are scheduled (s): the usual, and if guitars are being prepared during playback
- * (building each render holds up the page for a moment, which made live notes late).
+ * (building each render holds up the page for a moment, which made live notes late). The usual is a quarter
+ * second (was a tenth): on a phone, a busy moment on the page made notes late and the playback stutter.
  */
-const LOOKAHEAD = 0.1;
+const LOOKAHEAD = 0.25;
 const LOOKAHEAD_PREP = 0.6;
 
 export const INSTRUMENT_NAMES: Record<string, string> = {
@@ -112,6 +114,9 @@ export class Engine {
   private g2Insts = new Map<ChordInstrumentId, ChordInstrument>();
   private g2Choice: ChordChoice = 'auto';
   private g2Inst: ChordInstrument | null = null;
+  /** Twin: the second lead guitar (its own take, left of centre), made only when a list has twin notes. */
+  private g2TwinInsts = new Map<ChordInstrumentId, ChordInstrument>();
+  private g2Twin: ChordInstrument | null = null;
   private g2Id: ChordInstrumentId = 'electric-clean';
   // added layers: built when first added
   private layers: LayerSettings = {};
@@ -142,6 +147,8 @@ export class Engine {
 
   /** Offline: play only the guitars (preparing them with real amps), and the bass if `prepBass`. */
   guitarsOnly = false;
+  /** Offline: report each step to `onStep` too (a check of the band video's step times, docs/BAND-VIDEO.md). */
+  reportOffline = false;
   prepBass = false;
   /** Real amps: driven guitars play from prepared buffers (see prepareRealAmps) where they're ready. */
   private realAmps = false;
@@ -189,9 +196,10 @@ export class Engine {
 
   /* ---- the demo singer */
 
-  private singer: Singer | null = null;
-  // (off until you turn it on: Paul)
-  private vocalChoice: VocalChoice = 'off';
+  /** The lead singer: the lead vocal as it's sung (leadVoice.ts; the backing singer below keeps the demo singer). */
+  private singer: LeadVoice | null = null;
+  // (on by default now: the main vocal, Paul)
+  private vocalChoice: VocalChoice = 'auto';
   get vocal(): VocalChoice {
     return this.vocalChoice;
   }
@@ -234,7 +242,7 @@ export class Engine {
     const six = () => 15 / this.transport.bpm.value;
     if (this.vocalChoice === 'off') { this.singer?.releaseAll(); if (this.singer) this.singer.choice = 'off'; }
     else {
-      this.singer ??= inContext(this.ctx, () => new Singer(this.mixer.input('vocal')));
+      this.singer ??= inContext(this.ctx, () => new LeadVoice(this.mixer.input('vocal')));
       this.singer.choice = this.vocalChoice;
       this.singer.timbre = this.timbreChoice;
       this.singer.polish = this.realVoice;
@@ -290,8 +298,22 @@ export class Engine {
     }
   }
 
+  /** Guitar plan: the layers that cover for the guitar in this list's sections (the piano, strings or a pad, even if none was added). */
+  private ensureCover() {
+    for (const i of this.list) {
+      if (!i.cover || !i.guitarOut) continue;
+      if (i.cover === 'keys') {
+        this.keysInst ??= inContext(this.ctx, () => new Piano(this.mixer.input('keys')));
+        if (!this.offline) void this.ensureLoaded(this.keysInst, 'piano');
+      } else if (i.cover === 'strings') {
+        this.stringsInst ??= inContext(this.ctx, () => new Strings(this.mixer.input('strings')));
+        if (!this.offline) void this.ensureLoaded(this.stringsInst, 'strings');
+      } else this.padInst ??= inContext(this.ctx, () => new Pad(this.mixer.input('pad')));
+    }
+  }
+
   private applyPadTone() {
-    const p = this.layers.pad;
+    const p = this.layers.pad ?? (this.list.some((i) => i.cover === 'pad' && i.guitarOut) ? 'auto' : undefined);
     if (!p || !this.padInst) return;
     this.padInst.setTone(p === 'auto' ? AUTO_PAD[this.idea?.song.genre ?? 'pop'] : p);
     this.padInst.setEnergy(this.idea?.section?.energy ?? 4, this.ctx.now());
@@ -303,16 +325,20 @@ export class Engine {
   }
 
   private layerAt(idea: Idea, part: LayerPart) {
-    const choice = this.layers[part];
+    const own = this.layers[part];
+    // (Guitar plan: where the guitar sits out, a layer covers its chords even if none was added)
+    const covers = idea.cover === part && !!idea.guitarOut;
+    const choice = own ?? (covers ? 'auto' : null);
     if (!choice) return null;
+    const coverOnly = !own;
     let m = this.layerCache.get(idea);
     if (!m) this.layerCache.set(idea, (m = new Map()));
     const all = !!this.layers.throughout?.includes(part);
-    const k = `${part}:${part === 'pad' ? '' : choice}:${all}`;
+    const k = `${part}:${part === 'pad' ? '' : choice}:${all}:${coverOnly}`;
     let v = m.get(k);
     if (!v) {
       const seed = idea.seeds[part] ?? `${idea.seeds.chords}-${part}`;
-      const layer = writeLayer(part, idea, choice, seed, all);
+      const layer = writeLayer(part, idea, choice, seed, all, coverOnly);
       m.set(k, (v = { layer, at: byStep(layer.notes, idea.song.total) }));
     }
     return v;
@@ -322,7 +348,8 @@ export class Engine {
   private instsNeeded() {
     const chords = new Map(this.list.map((i) => [this.instFor(this.chordIdFor(i)), this.chordIdFor(i)]));
     const g2 = new Map(this.list.filter((i) => i.guitar2.length).map((i) => [this.g2InstFor(this.guitar2IdFor(i)), this.guitar2IdFor(i)]));
-    return [...chords, ...g2];
+    const twin = new Map(this.list.filter((i) => i.guitar2.some((h) => h.twin)).map((i) => [this.g2TwinFor(this.guitar2IdFor(i)), this.guitar2IdFor(i)]));
+    return [...chords, ...g2, ...twin];
   }
 
   /** Offline: wait until every instrument the list needs has its samples. */
@@ -427,6 +454,7 @@ export class Engine {
     this.hitsAt2 = list.map((i) => index(i.guitar2, i.song.total));
     this.applyChordInstrument();
     this.applyGuitar2();
+    this.ensureCover();
     this.applyPadTone();
     // the singer renders its lines ahead
     if (this.vocalChoice !== 'off') this.syncSingers();
@@ -474,6 +502,11 @@ export class Engine {
     return getOrMake(this.g2Insts, id, () => inContext(this.ctx, () => makeInst(id, this.mixer.input('guitar2'), false, 0.15, true)));
   }
 
+  /** Twin: the second lead guitar's instrument for a sound (left of centre, across from Guitar 2). */
+  private g2TwinFor(id: ChordInstrumentId): ChordInstrument {
+    return getOrMake(this.g2TwinInsts, id, () => inContext(this.ctx, () => makeInst(id, this.mixer.input('guitar2'), false, -0.3, true)));
+  }
+
   /** `release`: stop what the old instrument is playing (not at a section change, where it rings on). */
   private applyGuitar2(release = true) {
     const id = this.guitar2InstrumentId;
@@ -482,6 +515,10 @@ export class Engine {
     this.g2Inst = inst;
     this.g2Id = id;
     void this.ensureLoaded(inst, kindOf(id));
+    const twin = this.list.some((i) => i.guitar2.some((h) => h.twin)) ? this.g2TwinFor(id) : null;
+    if (release && this.g2Twin && this.g2Twin !== twin) this.g2Twin.releaseAll();
+    this.g2Twin = twin;
+    if (twin) void this.ensureLoaded(twin, kindOf(id));
   }
 
   setChordInstrument(choice: ChordChoice) {
@@ -675,7 +712,7 @@ export class Engine {
       if (!buf) continue;
       // what the live part is still ringing is in the prepared lead-in too
       if (part === 'bass') this.bass.releaseAll(time);
-      else for (const inst of (part === 'chords' ? this.rhythmInsts : this.g2Insts).values()) inst.releaseAll(time);
+      else for (const inst of (part === 'chords' ? [...this.rhythmInsts.values()] : [...this.g2Insts.values(), ...this.g2TwinInsts.values()])) inst.releaseAll(time);
       const src = raw.createBufferSource();
       src.buffer = buf;
       const gain = raw.createGain();
@@ -792,9 +829,20 @@ export class Engine {
     return v;
   }
 
+  private starting = false;
+
   async start() {
     await Tone.start();
-    if (this.playing) return;
+    if (this.playing || this.starting) return;
+    // the singers' first lines made before the band starts (they're made in the background from the
+    // moment the music is written; this waits only for the ones still on their way)
+    const idea = this.list[this.idx];
+    if (idea && (this.singer || this.backer) && this.vocalChoice !== 'off') {
+      this.starting = true;
+      this.onStatus('Getting the singer ready…');
+      try { await Promise.all([this.singer?.readyFor(idea), this.backingOn ? this.backer?.readyFor(idea) : undefined]); } finally { this.starting = false; this.onStatus(''); }
+      if (this.playing) return;
+    }
     this.step = 0;
     this.tail = -1;
     if (this.chordIdFor() !== this.chordId) this.applyChordInstrument();
@@ -815,7 +863,7 @@ export class Engine {
     this.endPrepared(this.ctx.now() + 0.03);
     this.applyLookAhead();
     // every instrument: the last notes of an earlier section can still be ringing
-    for (const inst of [...this.rhythmInsts.values(), ...this.g2Insts.values()]) inst.releaseAll();
+    for (const inst of [...this.rhythmInsts.values(), ...this.g2Insts.values(), ...this.g2TwinInsts.values()]) inst.releaseAll();
     this.singer?.releaseAll();
     this.backer?.releaseAll();
     this.bass.releaseAll();
@@ -844,7 +892,7 @@ export class Engine {
       slide: h.slide,
       swell: h.swell,
       touch: h.touch,
-      bend: h.bend, unbend: h.unbend, trill: h.trill, tremolo: h.tremolo, rake: h.rake,
+      bend: h.bend, unbend: h.unbend, lateBend: h.lateBend, trill: h.trill, tremolo: h.tremolo, rake: h.rake,
     });
   }
 
@@ -939,9 +987,15 @@ export class Engine {
     if (this.g2Inst && !this.realNow.guitar2) {
       const hits = this.hitsAt2[this.idx][g] ?? [];
       const next = hits.length ? toNext(this.hitsAt2) : 0;
-      for (const h of hits) this.playHit(this.g2Inst, held(h, next), time + (idea.g2Feel ?? 0) / 1000, six);
+      for (const h of hits) {
+        // (a triplet sounds between the steps)
+        const off = (h.shift ?? 0) * six;
+        this.playHit(this.g2Inst, held(h, next), time + off + (idea.g2Feel ?? 0) / 1000, six);
+        // Twin: the second guitar, a hair late, its own hands (no hand moves of Guitar 2's)
+        if (h.twin && this.g2Twin) this.playHit(this.g2Twin, { ...held(h, next), notes: h.twin, touch: undefined }, time + off + (idea.g2Feel ?? 0) / 1000 + 0.012, six, 0.75);
+      }
     }
-    if (others && this.onStep && !this.offline) this.onStep(idea, this.idx, g, time, six);
+    if (others && this.onStep && (!this.offline || this.reportOffline)) this.onStep(idea, this.idx, g, time, six);
     // the singer: its lines start a little ahead of their first notes
     if (others && this.singer && this.vocalChoice !== 'off') this.singer.playStep(idea, g, time, six);
     if (others && this.backer && this.backingOn) this.backer.playStep(idea, g, time, six);

@@ -15,7 +15,11 @@ import { type Cons, type Rhyme, type Syllable, lyricLine, openUp, rhymeOf, spell
 import { type Flick, type GuideLine, WORD_STARTS } from './line';
 
 /** One sung sound: a syllable (or the one before carried on, text '~') on a stretch of the line. */
-export interface GuideSyl { step: number; len: number; midi: number; vel: number; syl: Syllable; bend?: number }
+export interface GuideSyl {
+  step: number; len: number; midi: number; vel: number; syl: Syllable; bend?: number; slide?: number; fall?: number;
+  /** The verse melody writer's: the scoop into the note lasts so many steps; a held ending dies away over its last `fade` steps by `fadeBy` dB. */
+  slideLen?: number; fade?: number; fadeBy?: number;
+}
 export interface GuideSungLine { notes: GuideSyl[]; text: string }
 
 /**
@@ -28,7 +32,7 @@ const STARTS = WORD_STARTS;
 
 /** What starts a stretch of sound: a note, a push, the note back after a pull or a quick note's pause, a quick note, a bend. */
 type Role = 'note' | 'bent' | 'push' | 'resume' | 'back' | 'after' | 'flick' | 'flickGap' | 'flickBend';
-interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; starts?: boolean; stress?: boolean; ws?: boolean; bend?: number }
+interface Seg { step: number; len: number; midi: number; role: Role; silenceAfter: boolean; sung?: boolean; starts?: boolean; stress?: boolean; ws?: boolean; bend?: number; slide?: number; fall?: number }
 
 const SOFT = new Set<Cons>(['N', 'M', 'L', 'S', 'Z', 'NG', 'R']);
 
@@ -52,8 +56,10 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
     const emit = (step: number, len: number, midi: number, role: Role, silenceAfter = false, bend?: number) => { if (len > 0) segs.push({ step, len, midi, role, silenceAfter, ...(bend ? { bend } : {}) }); };
     notes.forEach((n, k) => {
       const next = notes[k + 1];
+      const i0 = segs.length;
       const evs = [...(n.flicks ?? []).map((f) => ({ at: f.at, f })), ...(n.marks ?? []).map((m) => ({ at: m.at, m }))].sort((a, b) => a.at - b.at);
-      let cur = 0, role: Role = n.bend ? 'bent' : 'note';
+      // (the Vocal tune's slides into the next word: bent into, but a new word)
+      let cur = 0, role: Role = n.bend && !n.newWord ? 'bent' : 'note';
       // (a bent note glides there over its bend, as the line plays it)
       let bend = n.bend;
       for (const e of evs) {
@@ -81,6 +87,9 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
       const on = line.parts[si + 1]?.[0];
       const into = !next && n.step + n.len > idea.song.total && on && on.step === n.step + n.len - idea.song.total;
       emit(n.step + cur, n.len - cur, n.midi, role, !into && (!next || next.step > n.step + n.len), bend);
+      // (the Vocal tune's Bends: the vocal's own scoop into the note and fall off its end)
+      if (n.slide && segs[i0]) segs[i0].slide = n.slide;
+      if (n.fall && segs.length > i0) segs[segs.length - 1].fall = n.fall;
     });
     // each stretch a syllable (a bend carries on the one before, its word going on), its stress; every
     // other stretch starts a word (a new note inside a word only ever a bend, Paul)
@@ -131,10 +140,12 @@ export function guideWords(list: Idea[], line: GuideLine, salt = 0): GuideSungLi
       let k = 0;
       for (const s of L) {
         const vel = s.role === 'push' ? 0.95 : s.role === 'note' ? 0.82 : s.role.startsWith('flick') ? 0.68 : 0.75;
-        if (s.sung || !sung.length) sung.push({ step: s.step, len: s.len, midi: s.midi, vel, syl: { ...words[Math.min(k++, words.length - 1)] } });
+        const extra = { ...(s.slide ? { slide: s.slide } : {}), ...(s.fall ? { fall: s.fall } : {}) };
+        // (a sung stretch bent into: the Vocal tune's slide into a new word)
+        if (s.sung || !sung.length) sung.push({ step: s.step, len: s.len, midi: s.midi, vel, syl: { ...words[Math.min(k++, words.length - 1)] }, ...(s.bend ? { bend: s.bend } : {}), ...extra });
         else {
           const before = sung[sung.length - 1].syl;
-          sung.push({ step: s.step, len: s.len, midi: s.midi, vel, syl: { onset: [], vowel: before.vowel, coda: before.coda, stress: false, text: '~', wordStart: false }, ...(s.bend ? { bend: s.bend } : {}) });
+          sung.push({ step: s.step, len: s.len, midi: s.midi, vel, syl: { onset: [], vowel: before.vowel, coda: before.coda, stress: false, text: '~', wordStart: false }, ...(s.bend ? { bend: s.bend } : {}), ...extra });
           before.coda = [];
         }
         // (into a silence: the word ends softly)

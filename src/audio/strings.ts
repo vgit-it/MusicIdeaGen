@@ -15,14 +15,14 @@ export class Strings {
   private ctx = Tone.getContext();
   private sampler: MultiSampler | null = null;
   private input!: Tone.Gain;
-  private lp!: Tone.Filter;
+  private lp!: Tone.BiquadFilter;
   private loading?: Promise<void>;
 
   constructor(out: Tone.InputNode) {
     inContext(this.ctx, () => {
       const vol = new Tone.Volume(0).connect(out);
-      this.lp = new Tone.Filter({ type: 'lowpass', frequency: ENERGY_CUTOFF[4], rolloff: -12 });
-      const hp = new Tone.Filter({ type: 'highpass', frequency: 70, rolloff: -12 });
+      this.lp = new Tone.BiquadFilter({ type: 'lowpass', frequency: ENERGY_CUTOFF[4] });
+      const hp = new Tone.BiquadFilter({ type: 'highpass', frequency: 70 });
       this.input = new Tone.Gain(1);
       this.input.chain(hp, this.lp);
       // width: the section left, and a few milliseconds later on the right

@@ -1,3 +1,4 @@
+import type { GuideSungLine } from './guide/words';
 import type { EnergyStyle } from './parts/energy';
 import type { VocalNote, VoiceType } from './parts/vocal';
 // Shared types for a generated idea.
@@ -45,12 +46,34 @@ export interface GenOptions {
   vocalSinger?: HighVoice;
   /** How the vocal's rhythm is written: classic (speech rhythm, the default) or on the metronome grid (docs/VOCAL-RHYTHM.md). */
   vocalRhythm?: 'grid' | 'words';
-  /** How the vocal's pitches are written: classic (the default), shaped (docs/VOCAL-MELODY.md) or melody first (docs/VOCAL-FIRST.md). */
-  vocalMelody?: 'shaped' | 'first';
+  /** How the vocal's pitches are written: classic (the default), shaped (docs/VOCAL-MELODY.md), melody first (docs/VOCAL-FIRST.md) or learned (docs/VOCAL-LEARNED.md). */
+  vocalMelody?: 'shaped' | 'first' | 'learned';
   /** Shaped: one signature move chosen (src/parts/moves.ts); left out: each song its own, by genre. */
   vocalMove?: string;
   /** How the singer carries the energy (src/parts/energy.ts): a style chosen, 'off' (as before), or left out: Auto. */
   vocalEnergy?: string;
+  /** Real songs (docs/REALISM.md): the melody writers lean toward real vocal lines of the genre. */
+  vocalReal?: boolean;
+  /** Patterns (docs/PATTERNS.md): the vocal's rhythms and short shapes drawn from a library of common real ones. */
+  vocalPatterns?: boolean;
+  /** Who writes the lead vocal: the verse melody writer (src/verse/, the default) or the classic one (Rhythm Words, Melody Learned...). */
+  vocalWriter?: 'verse' | 'classic';
+  /** Real strum mix (docs/STUDY-RHYTHM.md): strumming patterns from a library widened to what real guitarists play: held chords, quarters, 8ths in many shapes, 16ths, stabs. */
+  strumMix?: boolean;
+  /** Guitar 2 (the lead player) plays whole lines, mostly by step, as well as short licks (docs/LEAD-LINES.md). Off: as before. */
+  leadLines?: boolean;
+  /** Guitar 2 plays a picked figure, the same each bar (some songs' verses), and its lines come back (docs/LEAD-FIGURES.md). Off: as before. */
+  leadFigures?: boolean;
+  /** Guitar 2 keeps out from under the singer's lines, by genre (metal and hard rock most), and plays a line over a band intro (docs/LEAD-ROOM.md). Off: as before. */
+  leadRoom?: boolean;
+  /** Songs without a solo: now and then no lead guitar at all (pop most), else a short lead break after a chorus (docs/LEAD-BREAKS.md). Off: as before. */
+  leadBreaks?: boolean;
+  /** A second lead guitar on the hook and the solo's peak: a harmony, an octave or a double (hard rock and metal most; docs/LEAD-TWIN.md). Off: as before. */
+  leadTwin?: boolean;
+  /** Real licks: solos and verse fills also play licks written from real lead guitar parts (shared rhythms, real note-to-note odds; docs/LEAD-LICKS.md). Off: as before. */
+  leadLicks?: boolean;
+  /** Solo New: the new solo writer, built from real solos (docs/SOLO-NEW.md). Off: the classic writer. */
+  leadSolo?: boolean;
 }
 
 /** One half-bar of a chord sheet: a chord [root above the key, quality], '-' (the chord before carries on), or null (left to the generator). */
@@ -196,12 +219,19 @@ export interface GuitarHit {
   /** A bend let down again partway through the note, this many semitones (with `bend`: bent up and
    * released; without: picked already bent, then released). The note is the bent-up pitch. */
   unbend?: number;
+  /** Held, then bent up partway through: picked this many semitones below and pushed up to the note later on
+   * (a bend after a hold). The note is the bent-up pitch. */
+  lateBend?: number;
   /** Trilled: hammered on and pulled off this many semitones above, fast, for the whole note. */
   trill?: number;
   /** Tremolo picked: the note picked again and again, as fast as the hand goes (32nds). */
   tremolo?: boolean;
   /** Raked into: the pick drags across this many muted strings just before the note. */
   rake?: number;
+  /** Sounds this much of a step after its step (a triplet: 1/3, 2/3); Guitar 2 only. */
+  shift?: number;
+  /** A second lead guitar plays this with it (Twin, docs/LEAD-TWIN.md): a harmony, an octave or the same notes, panned the other way. */
+  twin?: number[];
   /** Fade the note in (volume swell). */
   swell?: boolean;
   /** The low pedal note of a pedal riff (a harmony part skips it). */
@@ -233,6 +263,10 @@ export interface Idea {
   guitar2: GuitarHit[];
   /** The singer: a melody with a syllable on each note (tracks and ideas; missing in older ones). */
   vocal?: VocalNote[];
+  /** The lead vocal as it's sung (src/parts/leadvocal.ts): the vocal's tune with new words, more bends, carried over now and then; its lines. */
+  sung?: GuideSungLine[];
+  /** The song's highest sung note (the woman's voice sings an octave up when the whole song's line allows). */
+  sungTop?: number;
   /** Which voice sings it on Auto (the melody is written for the low one; the high one sings it an octave up). */
   vocalVoice?: VoiceType;
   /** Who sings it when it's sung high (one of the three high singers; missing in older ones: the rock tenor). */
@@ -261,6 +295,9 @@ export interface Idea {
   rhythmPick?: GuitarHit[];
   /** Rhythm guitar (strummed genres): how the player shapes its chords: a capo, higher up the neck, a smooth top line. */
   shapes?: { capo?: number; near?: number; smooth?: boolean };
+  /** Tracks, Guitar plan (src/players/presence.ts): the steps the rhythm guitar sits out (from, until), and the layer that covers its chords there (a piano, strings or pad, even if none was added). */
+  guitarOut?: { from: number; until: number };
+  cover?: 'keys' | 'strings' | 'pad';
   /** Rhythm guitar: a dotted-8th echo on it (ringing arpeggios). */
   rhythmEcho?: boolean;
   /** An idea on its own: its rhythm guitar as written, before the player played it (tracks start from this). */
@@ -294,6 +331,8 @@ export interface SectionInfo {
   bandFrom?: number;
   /** Guitar 2 plays a solo here (the mix lifts it). */
   solo?: boolean;
+  /** Guitar 2 takes the whole section (a lead break, a jam or solo outro): nobody sings. */
+  lead?: boolean;
   /** How the section ends into the next one, so added layers stop or hit with the band. */
   tail?: { stop: number } | { hits: number[] } | { build: number } | { push: number } | { ring: number };
   /** A reversed cymbal swells up into the next section (a big lift). */

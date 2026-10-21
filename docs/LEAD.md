@@ -133,6 +133,31 @@ cut down (the first notes left off) to fit a gap.
 - Still made up: the sung lines, the motif and its variations, the climbs, so the vocabulary adds to
   what's new rather than replacing it.
 
-## 5. Later
+## 5. More licks from lessons (2026-10-16)
+Paul: learn licks from what's online (no tab collections: their terms and copyright rule them out).
+From lesson summaries (guitarworld, guitarplayer, premierguitar, licklibrary, musicradar, truefire,
+jazz-guitar-licks, londonguitaracademy) plus well-known teaching material. Licks are written in the
+players' style, not copied from songs. All checked to fit minor, Dorian, major and Mixolydian keys.
+- What the lessons agree on [P]:
+  - Aim at chord notes on strong beats; approach them from a step above and a semitone below
+    (an enclosure).
+  - Shift a phrase off the beat, or a 3-note group across 4/4, to make it move.
+  - Page and Angus switch minor and major pentatonic in the same lick (same shape, 3 frets down).
+  - Texas blues (SRV): double-stops a 3rd or 4th apart, raked into, bent together.
+  - Mayer: slides and hammer-ons into phrases, short notes, a little behind the beat.
+  - Country / pedal steel: a note bent up under a held one (useful for pop).
+- Added (`LIBRARY` in `src/parts/licks.ts`), by player:
+  | Player | New licks |
+  |---|---|
+  | Bluesy | Clapton (the b3 bent to the 4th, home), SRV (raked double-stops), Freddie King (a bend picked again, let down), Page (minor to major), Angus (a bent note against the next string), Gary Moore (a crying bend let down), Slash (one bend, again and again) |
+  | Melodic | enclosures onto the 3rd (major, minor), a pedal-steel bend, Santana (a sung Dorian line), Mayer (short notes, laid back), The Edge (ringing eighths), Page, Gary Moore, Slash |
+  | Shredder | Van Halen (a tapped arpeggio), Malmsteen (a harmonic-minor six), Hammett (a Phrygian trill), Wylde (the pentatonic in sixes), Angus, the enclosures |
+  | Raw | up one string slid, Mascis (a fuzzed bend let down), The Edge, Hammett's trill |
+  | Funky | a muted octave line, Frusciante (a sparse Dorian line) |
+- Not yet: a real tapping sound (played as legato for now), quarter-tone curls, triplet licks
+  (the lick grid is 16ths), country chicken pickin' (no country genre).
+
+## 6. Later
 - Pinch harmonics, whammy dives, feedback (need their own sounds).
 - A tab view; locking a solo.
+- Lead guitar vs real songs: `docs/STUDY-LEAD.md` (1,967 real lead guitar parts measured against Guitar 2: longer lines, more steps, picked figures, heavy leads out of the singer's way).

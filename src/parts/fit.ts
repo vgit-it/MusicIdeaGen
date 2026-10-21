@@ -141,7 +141,8 @@ export function fitToBand(idea: Idea, lo: number, hi: number): { moved: number; 
     const n = v[i];
     // (a sigh or a turn's first note leans on purpose: left as written)
     const leaning = (v[i + 1]?.syl.text === '~' && v[i + 1].midi !== n.midi && n.len <= 4) || !!n.colour;
-    const firm = n.len >= 4 || n.syl.stress;
+    // (a real shape's note, Patterns: a short one moved only off a real clash, the bass or a borrowed chord, as passing notes are)
+    const firm = n.len >= 4 || (n.syl.stress && !n.pat);
     if (!leaning && grinds(n.midi, n.step, firm, H, bass)) {
       const m = nearestFit(n.midi, [n.step], firm, H, bass, lo, hi) ?? nearestFit(n.midi, [n.step], false, H, bass, lo, hi);
       if (m !== null && m !== n.midi) { n.midi = m; out.moved++; }

@@ -1,8 +1,6 @@
 // Per-part strip: instrument, volume, mute, solo. Layers (piano, pad) can be added and removed.
 
 import type { ChordChoice, Engine } from '../audio/engine';
-import { MOVES, MOVE_IDS } from '../parts/moves';
-import { ENERGY, ENERGY_IDS } from '../parts/energy';
 import { BASS_INSTRUMENTS, type BassId, CHORD_INSTRUMENTS, DRUM_KITS, type DrumKitId } from '../audio/instruments';
 import type { LayerPart, MixPart } from '../audio/mixer';
 import { PAD_TONES } from '../audio/pad';
@@ -25,11 +23,8 @@ export interface PartsPanel {
 }
 
 /** `onChange`: something changed what plays or what's shown (instrument, a layer added or removed). */
-/** How the tune is written, kept with the idea: its rhythm (Classic / Grid) and its pitches (Classic / Shaped). */
-type VocalWriteKey = 'rhythm' | 'melody' | 'move' | 'energy';
-export interface VocalWriteControl { get(k: VocalWriteKey): string; set(k: VocalWriteKey, v: string): void }
 
-export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () => void, write?: VocalWriteControl): PartsPanel {
+export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () => void): PartsPanel {
   const defs: PartDef[] = [
     {
       part: 'vocal', label: 'Vocal (demo)', volume: 75, options: VOCAL_CHOICES,
@@ -89,7 +84,7 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
       <span class="name">${d.label}</span>
       <span class="picks">
         <select aria-label="${d.label} ${d.layer ? 'style' : 'instrument'}">${d.options.map((o) => `<option value="${o.id}">${o.label}</option>`).join('')}</select>
-        ${d.part === 'vocal' ? `<select class="timbre" aria-label="Vocal voice" title="The singer's voice: each genre has its own (made by ear: a warm rock voice that blends from low to high and changes gear past its break, grittier the harder it sings), or the clear first voice. Auto: the song's genre's voice.">${TIMBRE_CHOICES.map((o) => `<option value="${o.id}">${o.id === 'auto' ? 'Voice: Auto' : o.label}</option>`).join('')}</select><select class="vrhythm" aria-label="Vocal rhythm" title="How the vocal's rhythm is written. Classic: like speech. Grid: on the metronome's beats and 8ths (a word's syllables on 8ths; 16ths in slow songs), lines in pairs, verses busier than choruses. Words: the words first, then their rhythm: word groups as English is said, stresses on the beats, quick light words, soft line endings, triplets now and then."><option value="classic">Rhythm: Classic</option><option value="grid">Rhythm: Grid</option><option value="words">Rhythm: Words</option></select><select class="vmelody" aria-label="Vocal melody" title="How the vocal's notes are chosen. Classic: the first way. Shaped: a path of the chords' own notes with a short idea repeated and varied on it, low verses and choruses that lift, each genre's own moves. Melody first: the tune's own line and idea first, fitted to the chords after: notes that lean against the chord and resolve (by mood), rock tunes now and then looping over the chords."><option value="classic">Melody: Classic</option><option value="shaped">Melody: Shaped</option><option value="first">Melody: Melody first</option></select><select class="vmove" aria-label="Melody moves" title="Shaped melodies: signature moves from real songs (docs/VOCAL-MOVES.md). Auto: each song picks its own few, by genre. Or choose one to hear it (switches a Classic melody to Shaped)."><option value="auto">Moves: Auto</option>${MOVE_IDS.map((m) => `<option value="${m}">${MOVES[m].label}</option>`).join('')}</select><select class="venergy" aria-label="Vocal energy" title="How the singer carries the song's energy (not just faster or higher). Auto: each song its own style, by genre and mood. Climber: higher and held as it builds. Puncher: short punchy words in the riff's gaps. Driver: a steady stream of words, doubled when loud. Brooder: low, long, laid back, a dark harmony. Drifter: few words, lots of space, falling lines. Switcher: quiet verses, choruses leaping way up. Off: as before."><option value="auto">Energy: Auto</option>${ENERGY_IDS.map((e) => `<option value="${e}">${ENERGY[e].label} (${ENERGY[e].like})</option>`).join('')}<option value="off">Energy: Off</option></select>` : ''}
+        ${d.part === 'vocal' ? `<select class="timbre" aria-label="Vocal voice" title="The singer's voice: each genre has its own (made by ear: a warm rock voice that blends from low to high and changes gear past its break, grittier the harder it sings), or the clear first voice. Auto: the song's genre's voice.">${TIMBRE_CHOICES.map((o) => `<option value="${o.id}">${o.id === 'auto' ? 'Voice: Auto' : o.label}</option>`).join('')}</select>` : ''}
         ${d.layer ? `<select class="use" aria-label="Where the ${d.label.toLowerCase()} plays" title="Comes and goes: the ${d.label.toLowerCase()} plays some sections and moments, not others, to suit the song. Throughout: every bar."><option value="auto">Comes and goes</option><option value="all">Throughout</option></select>` : ''}
       </span>
       <input type="range" min="0" max="100" value="${d.volume}" aria-label="${d.label} volume">
@@ -142,15 +137,7 @@ export function buildPartsPanel(root: HTMLElement, engine: Engine, onChange: () 
     if (d.part === 'vocal') {
       const timbre = row.querySelector<HTMLSelectElement>('.timbre')!;
       timbre.onchange = () => { engine.setVocalTimbre(timbre.value as TimbreChoice); onChange(); };
-      const vr = row.querySelector<HTMLSelectElement>('.vrhythm')!;
-      const vm = row.querySelector<HTMLSelectElement>('.vmelody')!;
-      vr.onchange = () => write?.set('rhythm', vr.value);
-      vm.onchange = () => write?.set('melody', vm.value);
-      const mv = row.querySelector<HTMLSelectElement>('.vmove')!;
-      mv.onchange = () => write?.set('move', mv.value);
-      const ve = row.querySelector<HTMLSelectElement>('.venergy')!;
-      ve.onchange = () => write?.set('energy', ve.value);
-      const sync = () => { select.value = engine.vocal; timbre.value = engine.vocalTimbre; vr.value = write?.get('rhythm') ?? 'classic'; vm.value = write?.get('melody') ?? 'classic'; mv.value = write?.get('move') ?? 'auto'; ve.value = write?.get('energy') ?? 'auto'; };
+      const sync = () => { select.value = engine.vocal; timbre.value = engine.vocalTimbre; };
       sync();
       syncs.push(sync);
     }

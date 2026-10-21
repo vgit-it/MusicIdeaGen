@@ -26,6 +26,10 @@ import { type Band, bandScore, bassAt, harmonyOf } from './fit';
 import { type LyricStyle, type Syllable, type WordSyl, wordLine } from './lyrics';
 import type { MoveId } from './moves';
 import { type FirstStyle, spineAt } from './first';
+import { type LearnedStyle, degOf, learnedLine, midiOf } from './learned';
+import type { RealLean } from './realism';
+import { RHYTHMS, SHAPES, type Row, leanOf, weightIn } from '../realism/patterns';
+import { cellOdds } from '../realism/learned';
 import { type RunKind, type Singer, type Timbre, VOICE_DOWN, phrasePlan, pickSinger, pickTimbre } from './singers';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -95,6 +99,8 @@ export interface MelodyStyle {
   shaped?: boolean;
   /** Melody first (docs/VOCAL-FIRST.md, src/parts/first.ts): the tune's own spine and idea, fitted to the chords last (on shaped's range and moves). */
   first?: FirstStyle;
+  /** Learned (docs/VOCAL-LEARNED.md, src/parts/learned.ts): each next pitch by the odds of real vocal lines (on shaped's range and moves). */
+  learned?: LearnedStyle;
   /** How far the chorus jumps above the verse, shaped: subtle, clear or dramatic (the song's pick). */
   contrast?: 'subtle' | 'clear' | 'dramatic';
   /** Shaped: the song's signature moves (src/parts/moves.ts, docs/VOCAL-MOVES.md). */
@@ -111,7 +117,11 @@ export interface MelodyStyle {
    * syllables is sung as a triplet; `fem`: the chance a line ends softly (BA-by); `ask`: the chance a pair of
    * lines is sung as a question (rising) and its answer (falling), by mood; the lyric's style; the chorus hook.
    */
-  words?: { rate: number; trip: number; fem: number; ask: number; lyric: LyricStyle; hook: Syllable[] | null };
+  words?: { rate: number; trip: number; fem: number; ask: number; lyric: LyricStyle; hook: Syllable[] | null; chorus?: number };
+  /** Real songs (docs/REALISM.md): the genre's lean toward real vocal lines (src/parts/realism.ts). */
+  real?: RealLean;
+  /** Patterns (docs/PATTERNS.md): rhythms and short shapes drawn from the library of common real ones. */
+  patterns?: boolean;
 }
 
 type W<T> = [T, number][];
@@ -302,6 +312,8 @@ const PLANS: Partial<Record<SectionKind, Plan>> = {
   bridge: { busy: 0.9, span: 9, toneStrong: 0.75 },
   outro: { busy: 0.8, span: 10, toneStrong: 0.82 },
 };
+/** How busy a kind of block sings by its plan (Real songs: the chorus's pace against the verse's set from real songs instead, docs/ARC.md). */
+export const planBusy = (k: SectionKind) => (PLANS[k] ?? PLANS.verse!).busy;
 
 /** Genres lean the plan: grunge low, narrow and drawled; funk busy and short; metal long notes; pop wide. */
 const GENRE_LEAN: Record<Genre, { busy: number; span: number; center: number }> = {
@@ -366,7 +378,7 @@ export const gridUnit = (bpm: number) => (bpm < 90 ? 1 : 2);
  * or just after the downbeat now and then, choruses on 1; the last syllable lands on beat 1 or the
  * middle beat of the last bar and holds to a beat before the next line (the breath).
  */
-function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: SectionKind): LineRhythm {
+function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: SectionKind, learned?: { genre: Genre; bpm: number }): LineRhythm {
   const verse = kind === 'verse' || kind === 'prechorus';
   const dens = o.busy * (verse ? 1.2 : 0.75);
   // the beats: the bar's groups, by strength (3: the downbeat, 2: the middle beat, 1: the others)
@@ -388,7 +400,8 @@ function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: Secti
   // where the line starts, by section: verses a pickup or just after the downbeat now and then, choruses on 1
   const start: Start = verse ? rng.weighted<Start>([['pickup', 2], ['after', 1.5], ['down', 1.5]]) : kind === 'chorus' || kind === 'outro' ? 'down' : o.start;
   const onsets: { g: number; stress: boolean; quick?: boolean }[] = [];
-  if (start === 'pickup') { onsets.push({ g: b1.start - u, stress: false }); if (rng.chance(0.35)) onsets.push({ g: b1.start - 2 * u, stress: false }); }
+  const pu = learned ? 2 : u;
+  if (start === 'pickup') { onsets.push({ g: b1.start - pu, stress: false }); if (rng.chance(0.35)) onsets.push({ g: b1.start - 2 * pu, stress: false }); }
   // a slot's weight inside its beat: its first (the beat's own), a quarter inside a long group, an 8th, a 16th
   const slotSt = (off: number, st: number) => (off === 0 ? st : off % 4 === 0 ? 1 : off % 2 === 0 ? 0.5 : 0.2);
   // a beat's pattern: a cell real vocal lines use, by its size in grid steps (Paul: the grid gave "a bunch
@@ -408,14 +421,27 @@ function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: Secti
     const ws = CELLS[slots].map(([c, w]): [string, number] => [c, c[0] === '.' ? w * (st >= 3 ? 0.08 : st >= 2 ? 0.2 : 1) : w]);
     return [...rng.weighted(ws)].map((c) => c === 'x');
   };
-  const pattern = (bt: { len: number; st: number }) => cell(Math.max(1, Math.ceil(bt.len / u)), bt.st);
+  // (Learned, docs/VOCAL-LEARNED.md: a quarter-note beat of a 4/4 bar sung as real singers sing it, by the learnt
+  // odds of which of its 16ths are sung: by genre, the beat in the bar, a push into it, the tempo; busier sections
+  // leaning a little to the fuller cells)
+  let pushed = false;
+  const learntCell = (bt: { g: number; len: number }, bar: Bar): boolean[] | null => {
+    if (!learned || bt.len !== 4 || bar.len !== 16 || bar.groups.length !== 4) return null;
+    const odds = cellOdds(learned.genre, (bt.g - bar.start) / 4, pushed, learned.bpm);
+    if (!odds) return null;
+    const bits = (c: number) => [0, 1, 2, 3].filter((k) => c & (1 << k)).length;
+    const c = rng.weighted(odds.map((w, c): [number, number] => [c, w * dens ** (0.3 * (bits(c) - 1.5))]).filter(([, w]) => w > 0));
+    return [0, 1, 2, 3].map((k) => !!(c & (1 << k)));
+  };
+  const barOf = (g: number) => bars.find((b) => g >= b.start && g < b.start + b.len) ?? bl;
+  const pattern = (bt: { g: number; len: number; st: number }) => learntCell(bt, barOf(bt.g)) ?? cell(Math.max(1, Math.ceil(bt.len / (learned ? 2 : u))), bt.st);
   const before = beats.filter((x) => x.g < hold);
   const half = Math.max(1, before.filter((x) => x.g < b1.start + b1.len / 2).length);
   const motif: boolean[][] = [];
   let tiedIn = false;
   before.forEach((bt, i) => {
     const m = motif[i % half];
-    let p = i >= half && m && m.length === Math.floor(bt.len / u) + (bt.len % u ? 1 : 0) && rng.chance(0.65) ? [...m] : pattern(bt);
+    let p = i >= half && m && m.length === (learned ? (bt.len === 4 && barOf(bt.g).len === 16 ? 4 : Math.ceil(bt.len / 2)) : Math.floor(bt.len / u) + (bt.len % u ? 1 : 0)) && rng.chance(0.65) ? [...m] : pattern(bt);
     if (i < half) motif.push([...p]);
     // (a beat pushed into: its stress came early, nothing on the beat itself)
     if (tiedIn) p[0] = false;
@@ -425,11 +451,14 @@ function gridRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, u: number, kind: Secti
     const next = before[i + 1] ?? { g: hold, st: 3, len: 0 };
     // (a push: the last 8th before a strong beat, now and then)
     const lastSlot = p.length - 1;
-    if (lastSlot > 0 && next.st >= 2 && next.g === bt.g + bt.len && !p[lastSlot] && i > 0 && rng.chance(o.syncop * 0.25)) p[lastSlot] = true;
+    if (!learned && lastSlot > 0 && next.st >= 2 && next.g === bt.g + bt.len && !p[lastSlot] && i > 0 && rng.chance(o.syncop * 0.25)) p[lastSlot] = true;
+    // (Learned: the learnt cells hold real singers' pushes already, the next beat's odds knowing a push came into it)
+    const step = learned ? Math.max(1, Math.round(bt.len / p.length)) : u;
+    if (learned) pushed = !!p[lastSlot] && bt.g + (lastSlot + 1) * step === bt.g + bt.len && step === 1;
     p.forEach((on, j) => {
       if (!on) return;
-      const off = j * u;
-      const push = j === lastSlot && j > 0 && next.st >= 2 && next.g === bt.g + bt.len && rng.chance(0.5);
+      const off = j * step;
+      const push = !learned && j === lastSlot && j > 0 && next.st >= 2 && next.g === bt.g + bt.len && rng.chance(0.5);
       onsets.push({ g: bt.g + off, stress: push || slotSt(off, bt.st) >= 1 });
       if (push) tiedIn = true;
     });
@@ -730,12 +759,42 @@ function phraseRhythm(rng: Rng, bars: Bar[], o: PhraseOpts): LineRhythm {
   return { onsets: os, end: Math.max(hold + 2, end) };
 }
 
+/** Patterns: the library's rhythms, by bar: [the onsets (16ths), held into the bar, a phrase ends in it, weight row]. */
+const PATTERN_BARS = RHYTHMS.map((r) => { const k = r[0]; return { r, held: k.startsWith('t'), end: k.endsWith('e'), pos: k.replace(/^t|e$/g, '').split('.').map(Number) }; });
+/** Patterns: the library's note shapes: where the first note starts in the bar, what it is against the chord, the scale steps after it. */
+const PATTERN_SHAPES = SHAPES.map((r) => { const [h, st] = r[0].split(':'); return { r, cls: h[0], rel: h[1], steps: st.split(',').map(Number) }; });
+/** Patterns: the chance a shape is laid on, at each note of a line. */
+const SHAPE_P = 0.5;
+/** Patterns only on plain 4/4 bars (four beats of four 16ths), as they were found. */
+const patternFits = (bars: Bar[]) => bars.every((b) => b.len === 16 && b.groups.length === 4 && b.groups.every((x) => x === 4));
+
+/**
+ * A line's rhythm from the pattern library (docs/PATTERNS.md): a common real 1-bar rhythm for each bar, by the
+ * genre (the song counts, thin genres borrowing from all), leaning busier or sparser with the line's busy-ness;
+ * the last bar one a phrase ends in, the first one that starts fresh. Words on the beats (and an 8th pushed ahead of
+ * an empty beat) are stressed; the last note held to the bar's last 8th.
+ */
+function patternRhythm(rng: Rng, bars: Bar[], o: PhraseOpts, genre: Genre): LineRhythm {
+  const onsets: LineRhythm['onsets'] = [];
+  bars.forEach((b, bi) => {
+    const last = bi === bars.length - 1;
+    const opts = PATTERN_BARS.filter((x) => x.end === last && (bi > 0 || !x.held) && (!last || x.pos[x.pos.length - 1] <= 12));
+    const pick = rng.weighted(opts.map((x) => [x, weightIn(x.r as Row, genre) * leanOf('rhythm', x.r[0]) * Math.max(0.3, o.busy) ** ((x.pos.length - 4) / 2)] as [typeof x, number]));
+    for (const p of pick.pos) {
+      const pushed = p % 4 === 2 && !pick.pos.includes(p + 2) && p + 2 < 16;
+      onsets.push({ g: b.start + p, stress: p % 4 === 0 || pushed, ...(p % 2 ? { quick: true } : {}) });
+    }
+  });
+  const lastG = onsets[onsets.length - 1].g, bl = bars[bars.length - 1];
+  return { onsets, end: Math.max(lastG + 2, bl.start + bl.len - 2) };
+}
+
 /**
  * One note of a tune; `tie`: sung on the last note's vowel (a sigh, a turn, a run), no new syllable;
  * `slide`: scooped up into from so many semitones below; `fall`: falls off its end by so many; `belt`: a wail;
  * `peak`: a high note held (a belt, or a jump up to the line's top: held half a bar, never falling off).
  */
-export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean; colour?: boolean; peak?: boolean; syl?: WordSyl; trip?: number }
+export interface TuneNote { step: number; len: number; midi: number; stress: boolean; start: boolean; line: number; tie?: boolean; slide?: number; fall?: number; belt?: boolean; quick?: boolean; run?: boolean; colour?: boolean; pat?: boolean; peak?: boolean; syl?: WordSyl; trip?: number }
 /** A melody block (one section's worth), before its words. */
 export interface Tune { notes: TuneNote[]; lines: number }
 
@@ -776,7 +835,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   // (shaped: a genre's voice, written lower, has its floor and ceiling lower too: its range not squeezed
   // against the clear voice's floor, which left a low voice's verse two notes wide)
   const off = style.up - (style.shaped ? Math.min(3, floorDown(style)) : 0);
-  const spanX = !style.shaped ? 1 : kind === 'verse' ? 0.75 : big ? (style.contrast === 'dramatic' ? 1.5 : style.contrast === 'subtle' ? 1.1 : 1.3) : 1;
+  // (real songs: a chorus's lines no wider than a verse's, docs/ARC.md)
+  const spanX = !style.shaped || style.real ? 1 : kind === 'verse' ? 0.75 : big ? (style.contrast === 'dramatic' ? 1.5 : style.contrast === 'subtle' ? 1.1 : 1.3) : 1;
   // (at least about a 6th: narrower, a low voice's lines circled two or three notes)
   const span = Math.max(style.shaped ? (big ? 10 : 8) : 8, Math.round(P.span * G.span * style.span * spanX));
   // (shaped: the centre high enough off the floor for the whole range to fit above it)
@@ -840,6 +900,12 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   const start: Start = kind === 'verse' ? style.verseStart : big ? style.chorusStart : rng.pick<Start>(['down', 'pickup']);
   const height0 = (kind === 'verse' ? (contour === 'recite' ? 1 : 2.5) : kind === 'prechorus' ? 3 : rng.pick([3, 4, 4, 5])) * Math.min(1.35, style.span);
   const peak = rng.pick([0.35, 0.5, 0.6]);
+  // (real songs, docs/REALISM.md: most lines peak early and fall from there; a recited line stays as it is)
+  const lineShape = (rng: Rng): [Contour, number] => (style.real && contour !== 'recite' && rng.chance(style.real.early) ? [rng.chance(0.5) ? 'fall' : 'arch', rng.pick([0.1, 0.2, 0.3])] : [contour, peak]);
+  // (real songs: an open line now and then comes home to the root after all)
+  const homeAnyway = (rng: Rng) => !!style.real && rng.chance(style.real.home);
+  // (real songs: an open line now and then ends hanging on a scale note off the chord, a 2nd, 4th or 6th, if it doesn't rub)
+  const hangs = (rng: Rng, m: number, g: number, closed: boolean) => !!style.real && !closed && !rubs(m, g) && rng.chance(1 - style.real.onChord);
   const minorish = MINORISH.includes(mode);
   const singer = style.singer;
 
@@ -898,7 +964,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       if (fs >= 0) d0 = [0, 1, -1, 2, -2].find((d) => isTone(pool[clampIdx(anchor + prevM.shape[fs] + d)], rh.onsets[fs].g)) ?? 0;
       for (let oi = 0; oi < Math.min(keep, prevM.shape.length, n); oi++) { idxs[oi] = clampIdx(anchor + d0 + prevM.shape[oi]); alts[oi] = prevM.alt[oi]; }
     }
-    const closed = li === last || (style.ends === 'fall' && li % 2 === 1);
+    const closed = li === last || (style.ends === 'fall' && li % 2 === 1) || homeAnyway(rng);
+    const [lc, lp] = lineShape(rng);
     const heavy = genre === 'metal' || genre === 'hardrock' || genre === 'altmetal';
     // a drone (grunge; alt metal's verses): the strong notes held on one note as the chords move under it
     // (short lines only: a long one on one note wears thin)
@@ -912,18 +979,20 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       if (!(o.stress || isLast || oi === 0 || lens[oi] >= 4)) continue;
       if (drone >= 0 && !isLast) { idxs[oi] = drone; prevStrong = drone; continue; }
       const x = n > 1 ? oi / (n - 1) : 1;
-      const target = anchor + contourAt(contour, x, height0 * (big ? 1.3 : 1), peak);
+      const target = anchor + contourAt(lc, x, height0 * (big ? 1.3 : 1), lp);
       const tones = tonesAt(o.g);
+      // (real songs: some strong notes on any scale note that doesn't rub, not only the chord's)
+      const loose = !!style.real && (!isLast || !closed) && rng.chance(1 - style.real.onChord);
       let best = -1, bestC = Infinity;
       for (let j = 0; j < pool.length; j++) {
         const pc = mod(pool[j], 12), deg = mod(pool[j] - key, 12);
-        if (!tones.includes(pc)) continue;
+        if (!tones.includes(pc) && !(loose && !rubs(pool[j], o.g))) continue;
         // (moving a step or two is the norm, a leap costs more by its size (less in a heavy chorus); the same note
         // again only pays off as a common tone over a new chord, or in grunge's drones: a line that moves, not one note)
         const dist = Math.abs(j - prevStrong);
         const newChord = tonesAt(prevG).join() !== tones.join();
         let c = Math.abs(j - target) * 0.6 + Math.max(0, dist - 2) * (heavy && big ? 0.22 : 0.45);
-        if (dist === 0) c += (genre === 'grunge' ? -0.4 : newChord ? 0.15 : 0.9) + sameRun * 0.8;
+        if (dist === 0) c += (genre === 'grunge' ? -0.4 : newChord ? 0.15 : 0.9) + sameRun * 0.8 - 3 * (style.real?.repeat ?? 0);
         if (heavy && (deg === 0 || deg === 7)) c -= 0.35;
         if (isLast) c += closed ? (deg === 0 ? -2 : 1) : deg === 0 ? 0.8 : genre === 'pop' && (deg === 4 || deg === 7) ? -0.6 : 0;
         c += rng.next() * 0.5;
@@ -958,7 +1027,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       let j = before;
       if (d) j = before + d;
       else {
-        const opts = ([['same', 0.35], ['up', 0.4], ['down', 0.25]] as [string, number][]).filter(([k]) => k !== lastTurn);
+        const opts = ([['same', 0.35 + 2 * (style.real?.repeat ?? 0)], ['up', 0.4], ['down', 0.25]] as [string, number][]).filter(([k]) => k !== lastTurn);
         const t = rng.weighted(opts);
         lastTurn = t;
         j = t === 'up' ? before + 1 : t === 'down' ? before - 1 : before;
@@ -1050,7 +1119,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     // (a closed section's last line comes home: its spine's end, the root nearest it)
     let goal = spineIdx((li + 1) / nl);
     const pos = sPos(li);
-    const closed = li === last || pos === 3 || (pos < 0 && style.ends === 'fall' && li % 2 === 1);
+    const closed = li === last || pos === 3 || (pos < 0 && style.ends === 'fall' && li % 2 === 1) || homeAnyway(rng);
     const prevM = lineMotif.get(form[li].toUpperCase());
     if (looping) {
       // the loop: the cell from the bar's first note, the same pitches every bar
@@ -1106,12 +1175,14 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
         const left = n - 1 - oi;
         const dist = goal - cur;
         let move: number;
-        if (leapBack) { move = leapBack; leapBack = 0; }
+        if (leapBack) { move = style.real && rng.chance(style.real.leapRepeat) ? 0 : leapBack; leapBack = 0; }
+        // (real songs: the same note again more often)
+        else if (style.real && same < 2 && oi < n - 1 && rng.chance(style.real.repeat)) move = 0;
         else if (Math.abs(dist) > left + 1) move = Math.sign(dist) * 2;
-        else if (dist && (left === 0 || rng.chance(0.75))) move = Math.sign(dist);
+        else if (dist && (left === 0 || rng.chance(0.75 - (style.real?.repeat ?? 0)))) move = Math.sign(dist);
         else if (!dist && left > 0) {
           // (there already: a neighbour above or below and back, never the same turn twice, no long one-note runs)
-          const t = same < 1 && rng.chance(0.35) ? 0 : lastTurn > 0 ? -1 : lastTurn < 0 ? 1 : rng.pick([1, -1]);
+          const t = same < (style.real ? 2 : 1) && rng.chance(0.35 + 2 * (style.real?.repeat ?? 0)) ? 0 : lastTurn > 0 ? -1 : lastTurn < 0 ? 1 : rng.pick([1, -1]);
           move = t; if (t) lastTurn = t;
         } else move = same >= 1 ? (rng.pick([1, -1])) : 0;
         if (oi === n - 1) move = goal - cur;
@@ -1139,6 +1210,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       }
       if (!strong) { if (lens[oi] >= 4 && rubs(m, o.g)) idxs[oi] = clampIdx(idxs[oi] - 1); continue; }
       if (isLast) {
+        if (hangs(rng, m, o.g, closed)) continue;
         // the ending: closed on the root (the key's, if the chord has it), open on another chord note
         const tones = tonesAt(o.g);
         const homePc = tones.includes(mod(key, 12)) ? mod(key, 12) : tones[0];
@@ -1153,6 +1225,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       }
       // (over a power chord, two notes only, any scale note that doesn't grind will do: snapped to its two, the line sat on one)
       if (isTone(m, o.g) || (tonesAt(o.g).length < 3 && !grindsAt(m, o.g))) continue;
+      // (real songs: some strong notes left on the scale note the line reached, if it doesn't grind)
+      if (style.real && !grindsAt(m, o.g) && rng.chance((1 - style.real.onChord) / 2)) continue;
       const deg = mod(m - chordPc(key, chordAt(o.g)), 12);
       if (fs!.colour && [2, 5].includes(deg) && lens[oi] <= 6 && !grindsAt(m, o.g) && rng.chance(fs!.colour)) { colour[oi] = true; continue; }
       const up = oi > 0 && idxs[oi] >= idxs[oi - 1];
@@ -1161,7 +1235,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       const cands = [...order, 3, -3].map((d) => idxs[oi] + d).filter((j) => j >= 0 && j < pool.length && isTone(pool[j], o.g));
       // (the chord note that isn't the last note again; only that one near: a passing note that doesn't grind stays, the line moving on)
       const fresh = cands.find((j) => j !== prev && Math.abs(j - idxs[oi]) <= 2);
-      if (fresh !== undefined) idxs[oi] = fresh;
+      // (real songs: now and then the note before again, when it is the chord's)
+      if (style.real && prev >= 0 && isTone(pool[prev], o.g) && Math.abs(prev - idxs[oi]) <= 2 && rng.chance(style.real.repeat * 2)) idxs[oi] = prev;
+      else if (fresh !== undefined) idxs[oi] = fresh;
       else if (grindsAt(m, o.g) || !o.stress) idxs[oi] = cands[0] ?? idxs[oi];
     }
     // against the bass (counterpoint): strong notes moving the same way as the bass into a 5th or an octave
@@ -1197,6 +1273,42 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   };
 
   /**
+   * A line's pitches, learned (docs/VOCAL-LEARNED.md, src/parts/learned.ts): note by note by the odds of real vocal
+   * lines, pulled softly toward the section's contour around its anchor; a repeated letter sings its notes again
+   * (moved by whole scale steps so its first strong note sits on the new chord); the line before's last note the
+   * context across the break; the end on a chord note, closed or open, as the other writers.
+   */
+  const learnedTuneLine = (rng: Rng, rh: LineRhythm, anchor: number, keep: number, li: number) => {
+    const n = rh.onsets.length;
+    const lens = rh.onsets.map((o, oi) => (oi === n - 1 ? rh.end : rh.onsets[oi + 1].g) - o.g);
+    const full = SCALES[mode].length === 7 ? [...SCALES[mode]] : minorish ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+    const relAt = (m: number, g: number) => { const iv = mod(m - chordPc(key, chordAt(g)), 12); return iv === 0 ? 'R' as const : iv === 3 || iv === 4 ? '3' as const : iv === 7 ? '5' as const : isTone(m, g) ? 'c' as const : 'n' as const; };
+    const c = { key, scale: full, lo, hi, relAt, isTone, rubs, tonesAt };
+    const dA = degOf(c, pool[anchor]);
+    // a repeated letter: its notes again, moved so its first strong note is the chord's
+    const copied: (number | undefined)[] = new Array(n).fill(undefined);
+    const prevM = lineMotif.get(form[li].toUpperCase());
+    if (prevM && keep) {
+      const k = Math.min(keep, prevM.shape.length, n);
+      const fs0 = rh.onsets.findIndex((o, oi) => oi < k && o.stress);
+      const d0 = fs0 < 0 ? 0 : [0, 1, -1, 2, -2].find((d) => isTone(midiOf(c, dA + d + prevM.shape[fs0]), rh.onsets[fs0].g)) ?? 0;
+      for (let oi = 0; oi < k; oi++) { const m = midiOf(c, dA + d0 + prevM.shape[oi]); if (m >= lo - 1 && m <= hi + 1) copied[oi] = m; }
+    }
+    const closed = li === last || (style.ends === 'fall' && li % 2 === 1) || homeAnyway(rng);
+    const hang = !!style.real && !closed && rng.chance(1 - style.real.onChord);
+    // (as real lines: most peak early and fall from there, docs/REALISM.md; a recited line stays as it is)
+    const [lc, lp] = contour !== 'recite' && rng.chance(0.55) ? [rng.chance(0.5) ? 'fall' as const : 'arch' as const, rng.pick([0.1, 0.2, 0.3])] : lineShape(rng);
+    const h = height0 * (big ? 1.3 : 1);
+    const target = (oi: number) => pool[clampIdx(Math.round(anchor + contourAt(lc, n > 1 ? oi / (n - 1) : 1, h, lp)))];
+    // (the line before's last note, and the step into it)
+    const pl = notes.length ? notes[notes.length - 1] : null, pp = notes.length > 1 ? notes[notes.length - 2] : null;
+    const before = pl ? { midi: pl.midi, g: pl.step, step: pp && pp.line === pl.line ? degOf(c, pl.midi) - degOf(c, pp.midi) : null } : null;
+    const ms = learnedLine(rng, c, style.learned!, rh.onsets, lens, target, copied, before, closed, hang);
+    const lineNotes: TuneNote[] = rh.onsets.map((o, oi) => ({ step: o.g, len: Math.max(1, lens[oi]), midi: ms[oi], stress: o.stress, start: oi === 0, line: li, ...(o.quick ? { quick: true } : {}), ...(o.syl ? { syl: o.syl } : {}), ...(o.trip !== undefined ? { trip: o.trip } : {}) }));
+    return { rh, shape: ms.map((m) => degOf(c, m) - dA), alt: new Array(n).fill(0), lineNotes, goalM: undefined as number | undefined };
+  };
+
+  /**
    * How musical a line is, melody first (docs/VOCAL-FIRST.md, step 4): it reaches its spine note; a leap
    * turns back (gap-fill); one high point; no long runs on one note; a few different intervals, not too
    * many leaps (mostly expected, a few surprises: Pearce, Huron). Added to the band's score for each try.
@@ -1211,7 +1323,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const top = Math.max(...sy.map((x) => x.midi));
     sc -= 0.8 * Math.max(0, sy.filter((x, k) => x.midi === top && (k === 0 || sy[k - 1].midi !== top)).length - 1);
     let run = 0;
-    for (const d of ints) { run = d ? 0 : run + 1; if (run >= 2) sc -= 0.7; }
+    for (const d of ints) { run = d ? 0 : run + 1; if (run >= (style.real ? 3 : 2)) sc -= 0.7; }
     if (ints.length >= 5) {
       const kinds = new Set(ints.filter(Boolean).map(Math.abs)).size;
       sc -= 0.4 * Math.abs(kinds - 4);
@@ -1290,11 +1402,12 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const fem = tpl ? (tpl.tail > 0 ? rng.chance(0.85) : rng.chance(0.1)) : rng.chance(W.fem);
     const H = tpl ? L[0].start + tpl.hold : wordHold(rng, L, po.holdLen, po.sync, fem);
     const verse = kind === 'verse' || kind === 'prechorus';
-    const sb = Math.max(0.6, Math.min(1.6, (verse ? style.busyVerse : style.busyChorus) / GENRE_MELODY[genre].busy)) ** 0.6;
+    // (a chorus's own rate from real songs: its words as busy as the verse's, that rate doing the rest)
+    const sb = Math.max(0.6, Math.min(1.6, (verse || W.chorus ? style.busyVerse : style.busyChorus) / GENRE_MELODY[genre].busy)) ** 0.6;
     const more = (kind === 'prechorus' && li === last ? 1.2 : 1) * (sPos(li) === 2 ? 1.2 : 1);
     const secs = ((H - L[0].start) * 15) / song.bpm;
     let n = tpl ? tpl.levels.length - tpl.tail + (rng.chance(0.35) ? rng.pick([-1, 1]) : 0)
-      : Math.round(W.rate * WORD_RATE[genre] * (SECTION_RATE[kind] ?? 1) * sb * more * secs * (0.85 + 0.3 * rng.next())) + 1;
+      : Math.round(W.rate * WORD_RATE[genre] * ((kind === 'chorus' || kind === 'outro') && W.chorus ? W.chorus : SECTION_RATE[kind] ?? 1) * sb * more * secs * (0.85 + 0.3 * rng.next())) + 1;
     // (no more than the grid holds: 8ths, or 16ths for some of the light ones)
     const room = H - Math.max(0, L[0].start - (po.start === 'pickup' ? 6 : 2));
     n = Math.max(2, Math.min(n, Math.floor(room / (quick ? 1.5 : u === 1 ? 1.3 : 2)) + 1));
@@ -1305,6 +1418,16 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       tpl: tpl ? { ...tpl, until: same ? Infinity : split - L[0].start, exact: same && rng.chance(0.6) } : undefined,
     });
   };
+
+  const ownBeat = style.learned && !style.grid && !style.words ? rng.next() : 0;
+  /** A line's rhythm: from the pattern library (Patterns on, 4/4), on the grid, real singers' beats (Learned), or as spoken. */
+  const lineRhythm = (rng: Rng, L: Bar[], o: PhraseOpts) => (style.patterns && patternFits(L) ? patternRhythm(rng, L, o, genre)
+    : style.grid ? gridRhythm(rng, L, o, gridUnit(song.bpm), kind)
+    // (Learned with the Classic rhythm: its own rhythm, real singers' beats on the grid; docs/VOCAL-LEARNED.md)
+    // (the line's tries share it, only their notes differ: scored with the band, the tries on the beat won, and
+    // the real singers' beats were lost)
+    : style.learned ? gridRhythm(new Rng(`${ownBeat}-${L[0].start}-${o.start}-${o.busy}`), L, o, gridUnit(song.bpm), kind, { genre, bpm: song.bpm })
+    : phraseRhythm(rng, L, o));
 
   lines.forEach((L, li) => {
     const letter = form[li];
@@ -1341,7 +1464,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           keep = rh.onsets.length;
         } else {
           const head = headOf(prev.rh, prev.split).map((o) => ({ ...o, g: o.g + off }));
-          const fresh = style.grid ? gridRhythm(rng, L, opts('down', busy), gridUnit(song.bpm), kind) : phraseRhythm(rng, L, opts('down', busy));
+          const fresh = lineRhythm(rng, L, opts('down', busy));
           const tail = fresh.onsets.filter((o) => o.g >= split);
           rh = tail.length ? { onsets: [...head, ...tail], end: fresh.end } : { onsets: prev.rh.onsets.map((o) => ({ ...o, g: o.g + off })), end: prev.rh.end + off };
           keep = head.length;
@@ -1349,7 +1472,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       } else {
         // (the sentence's continuation: quicker, the idea broken up)
         const o = opts(li === 0 && start === 'pickup' ? 'down' : start, busy * (kind === 'prechorus' && li === last ? 1.25 : 1) * (sPos(li) === 2 ? 1.2 : 1));
-        rh = style.grid ? gridRhythm(rng, L, o, gridUnit(song.bpm), kind) : phraseRhythm(rng, L, o);
+        rh = lineRhythm(rng, L, o);
         rh = holdInside(rng, rh, L, 0.3 + singer.hold);
       }
 
@@ -1358,6 +1481,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       const call = style.twist === 'call' && big && li % 2 === 1 ? -4 : 0;
       const anchor = clampIdx(nearestIdx(center + (kind === 'verse' && li % 2 === 1 ? -1 : 0)) + seq * li + call);
       if (style.first) return firstLine(rng, rh, keep, li);
+      if (style.learned) return learnedTuneLine(rng, rh, anchor, keep, li);
       if (style.shaped) return shapedLine(rng, rh, anchor, keep, li);
       const n = rh.onsets.length;
       const shape: number[] = [];
@@ -1368,8 +1492,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
       // one note most of the time"; about half the syllables were repeats, a third now; a recited line
       // may stay a little longer)
       let same = 0;
-      const sameMax = contour === 'recite' ? 3 : 2;
-      const closed = li === last || (style.ends === 'fall' && li % 2 === 1);
+      const sameMax = contour === 'recite' || style.real ? 3 : 2;
+      const closed = li === last || (style.ends === 'fall' && li % 2 === 1) || homeAnyway(rng);
+      const [lc, lp] = lineShape(rng);
       rh.onsets.forEach((o, oi) => {
         const isLast = oi === n - 1;
         const len = (isLast ? rh.end : rh.onsets[oi + 1].g) - o.g;
@@ -1383,7 +1508,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           a = prev.alt[oi];
         } else {
           const x = n > 1 ? oi / (n - 1) : 1;
-          const target = anchor + contourAt(contour, x, height, peak);
+          const target = anchor + contourAt(lc, x, height, lp);
           hookNote = big && li === 0 && oi === 1 && style.hookLeap > 0;
           if (oi === 0 && !prev) {
             idx = Math.round(target);
@@ -1393,8 +1518,9 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           else {
             let move: number;
             const dir = Math.sign(target - prevIdx) || (rng.chance(0.5) ? 1 : -1);
-            if (leapDir) { move = -leapDir; leapDir = 0; } // after a leap, a step back (gap-fill)
-            else if (same < sameMax && rng.chance(style.repeat * 0.55)) move = 0;
+            // after a leap, a step back (gap-fill); real songs: now and then the note again
+            if (leapDir) { move = style.real && rng.chance(style.real.leapRepeat) ? 0 : -leapDir; leapDir = 0; }
+            else if (same < sameMax && rng.chance((style.repeat + (style.real?.repeat ?? 0)) * 0.55)) move = 0;
             else if (rng.chance(style.leap * (contour === 'recite' ? 0.4 : 1))) { move = leapTo(prevIdx, dir * rng.pick(style.leaps)) - prevIdx; leapDir = Math.sign(move); }
             else move = (rng.chance(0.8) ? dir : -dir) * (Math.abs(target - prevIdx) >= 3 && rng.chance(0.4) ? 2 : 1);
             idx = prevIdx + move;
@@ -1410,7 +1536,8 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
         }
         idx = clampIdx(idx);
         // strong beats on chord notes (by the style: tense songs leave more of them rubbing)
-        const want = isLast || len >= 6 || (!copied && o.stress && rng.chance((P.toneStrong + style.stable) / 2));
+        const hang = isLast && hangs(rng, pool[idx], g, closed);
+        const want = (isLast && !hang) || (len >= 6 && !(style.real && !rubs(pool[idx], g) && rng.chance(1 - style.real.onChord))) || (!copied && o.stress && rng.chance(((P.toneStrong + style.stable) / 2) * (style.real?.onChord ?? 1)));
         // (snapping back toward the last note: no bigger jump than written; but a note that moved isn't
         // snapped back onto the note before: that left a third of the stressed notes singing the last note
         // again, the line stuck on one pitch (Paul: "notes are almost always just repeating"); the chord
@@ -1424,7 +1551,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
           }
         }
         // the line's ending: closed on the root (the key's, if the chord has it), open on the 3rd or 5th
-        if (isLast) {
+        if (isLast && !hang) {
           const tones = tonesAt(g);
           const home = tones.includes(key) ? key : tones[0];
           const fallIn = style.ends === 'fall' || contour === 'fall';
@@ -1448,7 +1575,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const plodding = (ns: TuneNote[]) => { let r = 0, p = 0; for (let k = 1; k < ns.length; k++) { r = ns[k].step - ns[k - 1].step === 4 && ns[k].line === ns[k - 1].line ? r + 1 : 0; if (r >= 3) p++; } return p; };
     const score = (ns: TuneNote[]) => bandScore(ns, H, band!, total, style.grip) - (style.grid ? 1.5 * plodding(ns) : 0);
     // (melody first: how musical the try is counts too)
-    const music = (t: ReturnType<typeof attempt>) => (style.first ? musicScore(t.lineNotes, 'goalM' in t ? t.goalM : undefined) : 0);
+    const music = (t: ReturnType<typeof attempt>) => (style.first || style.learned ? musicScore(t.lineNotes, 'goalM' in t ? t.goalM : undefined) : 0);
     let best = attempt(tries > 1 ? new Rng(`${seed}-0`) : rng);
     let bestScore = band ? score(best.lineNotes) + music(best) : 0;
     for (let c = 1; c < tries; c++) {
@@ -1584,6 +1711,75 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     ns.sort((a, b) => a.step - b.step || (a.tie ? 1 : 0) - (b.tie ? 1 : 0));
   };
 
+  /**
+   * Real songs (docs/REALISM.md): now and then a strong note off the chord, as real singers sing them: the
+   * note before kept over the new chord (held over), or the scale note next to it; never one that rubs
+   * against the chord or grinds with the bass, never a line's last note, a high note or a colour already
+   * there. Marked `colour`, so following the tension and fitting to the band leave it be. Learned: never a line's
+   * first note or landing (its first note on a beat), which sit on the chord.
+   */
+  const realLean = (ns: TuneNote[]) => {
+    const R = style.real!;
+    // (melody first already leaves more strong notes off the chord: less often)
+    const hold = fs ? R.hold * 0.4 : R.hold;
+    const grindsBass = (m: number, g: number) => { const b = band ? bassAt(band.bass, g) : 0; return !!b && [1, 6, 11].includes(mod(m - b, 12)); };
+    const ok = (m: number, g: number) => pool.includes(m) && !rubs(m, g) && !grindsBass(m, g);
+    const sung = ns.filter((n) => !n.tie);
+    const landing = new Set<TuneNote>();
+    if (style.learned) sung.forEach((n, k) => { if (sung[k - 1]?.line !== n.line || (n.step % 4 === 0 && ![...landing].some((x) => x.line === n.line && x.step % 4 === 0))) landing.add(n); });
+    sung.forEach((n, k) => {
+      const p = sung[k - 1], nx = sung[k + 1];
+      if (!nx || nx.line !== n.line || landing.has(n) || !(n.stress || n.len >= 4) || n.colour || n.peak || n.belt || !isTone(n.midi, n.step) || !rng.chance(hold)) return;
+      if (p && p.line === n.line && p.midi !== n.midi && Math.abs(p.midi - n.midi) <= 4 && ok(p.midi, n.step)) { n.midi = p.midi; n.colour = true; return; }
+      const i = pool.indexOf(n.midi), dir = p && p.midi > n.midi ? 1 : -1;
+      const to = [pool[i + dir], pool[i - dir]].find((m) => m !== undefined && Math.abs(m - n.midi) <= 2 && ok(m, n.step));
+      if (i >= 0 && to !== undefined) { n.midi = to; n.colour = true; }
+    });
+  };
+
+  /**
+   * Patterns (docs/PATTERNS.md): common real note shapes laid on the tune: at a note, now and then, a shape that
+   * starts where it does in the bar (on beat 1 or 3, on 2 or 4, an offbeat 8th, a 16th between) on the same kind of
+   * note against the chord (its root, 3rd, 5th, another chord note, none), by the genre; the notes after it follow
+   * its scale steps. Never a line's last note, a wail or a colour note; a line that comes back gets the same shapes;
+   * fitting to the band (fit.ts) settles any clash after.
+   */
+  const applyShapes = (ns: TuneNote[]) => {
+    const base = rng.next();
+    const sc = minorish ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+    const degOf = (m: number) => { const i = sc.indexOf(mod(m - key, 12)); return i < 0 ? null : 7 * Math.floor((m - key) / 12) + i; };
+    const midiOfDeg = (d: number) => key + 12 * Math.floor(d / 7) + sc[mod(d, 7)];
+    const cls = (g: number) => { const p = mod(g, 16); return p % 8 === 0 ? 'S' : p % 4 === 0 ? 'B' : p % 2 === 0 ? '&' : 'x'; };
+    const rel = (m: number, g: number) => { const iv = mod(m - chordPc(key, chordAt(g)), 12); return iv === 0 ? 'R' : iv === 3 || iv === 4 ? '3' : iv === 7 ? '5' : isTone(m, g) ? 'c' : 'n'; };
+    const byLine: TuneNote[][] = [];
+    for (const n of ns) if (!n.tie) (byLine[n.line] ??= []).push(n);
+    byLine.forEach((L, li) => {
+      if (!L) return;
+      const r = new Rng(`${base}-shape-${form[li]?.toUpperCase() ?? li}`);
+      for (let i = 0; i < L.length - 1;) {
+        const n0 = L[i], d0 = degOf(n0.midi), room = L.length - 1 - i;
+        if (d0 === null || !r.chance(SHAPE_P)) { i++; continue; }
+        const c = cls(n0.step), e = rel(n0.midi, n0.step);
+        let cands = PATTERN_SHAPES.filter((x) => x.cls === c && x.rel === e && x.steps.length < room);
+        if (!cands.length) cands = PATTERN_SHAPES.filter((x) => x.cls === c && x.steps.length < room);
+        if (!cands.length) { i++; continue; }
+        // (landing near where the line was going anyway: the note after the shape's end, as written; leaning to the
+        // shapes the writers sing less than real songs do, lean.json)
+        const to = (len: number) => degOf(L[Math.min(L.length - 1, i + len + 1)].midi);
+        const near = (x: (typeof cands)[number]) => { const t = to(x.steps.length); const e = d0 + x.steps.reduce((a, b) => a + b, 0); return t === null ? 0.5 : Math.exp(-Math.abs(e - t) / 1.2); };
+        const pick = r.weighted(cands.map((x) => [x, weightIn(x.r, genre) * leanOf('shape', x.r[0]) * near(x)] as [typeof x, number]));
+        let d = d0;
+        const ms = pick.steps.map((st) => midiOfDeg((d += st)));
+        const span = L.slice(i + 1, i + 1 + ms.length);
+        if (ms.some((m) => m < lo - 1 || m > hi + 1) || span.some((n) => n.peak || n.belt || n.colour)) { i++; continue; }
+        // (marked: the steps kept through what comes after, fitting to the band moving them only off a real clash)
+        n0.pat = true;
+        span.forEach((n, k) => { n.midi = ms[k]; n.pat = true; });
+        i += ms.length;
+      }
+    });
+  };
+
   // nothing before the block or past it, nothing overlapping
   let out = notes.filter((n) => n.step >= 0 && n.step < total).sort((a, b) => a.step - b.step);
   out = out.filter((n, i) => i === 0 || n.step !== out[i - 1].step);
@@ -1593,6 +1789,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
     const nx = out[i + 1];
     if (nx && nx.line === n.line && n.len >= 2 && n.len < 6) n.len = Math.max(1, Math.round(n.len * style.legato));
   });
+  if (style.patterns && patternFits(bars)) applyShapes(out);
   if (fs) planClashes(out);
   if (style.shaped) applyMoves(out);
   wail(rng, out, form, kind, style, tonesAt);
@@ -1606,6 +1803,7 @@ export function writeTune(rng: Rng, song: Song, chords: ChordPart, kind: Section
   out = holdHighs(out, bars, total, pool);
   // (words first: again after the high notes are held, which can move a line's top)
   if (style.words) speechPitch(out, pool, tonesAt, asks);
+  if (style.real) realLean(out);
   const sung = ornament(rng, out, style, pool, tonesAt, { key, minorish, kind, step: 60 / song.bpm / 4 });
   deliver(rng, sung, style);
   // (a held high note never falls off its end: it fades, as held notes do; Paul)
@@ -1776,7 +1974,9 @@ function wail(rng: Rng, notes: TuneNote[], form: string, kind: SectionKind, styl
     if (!byLetter.has(name)) byLetter.set(name, rng.chance(Math.min(0.9, chance * (li === form.length - 1 ? 1.4 : 0.7))));
     if (!byLetter.get(name)) continue;
     const L = notes.filter((n) => n.line === li);
-    const hi = L.findIndex((n, k) => k === L.length - 1 || (n.len >= 6 && !L.slice(k + 1).some((x) => x.len >= 6)));
+    // (real songs: most lines peak early, so the wail is now and then the line's first held note, not its last)
+    const early = style.real && rng.chance(style.real.early) ? L.findIndex((n, k) => n.len >= 6 && k < L.length - 1) : -1;
+    const hi = early >= 0 ? early : L.findIndex((n, k) => k === L.length - 1 || (n.len >= 6 && !L.slice(k + 1).some((x) => x.len >= 6)));
     const held = L[hi];
     if (!held || held.len < 6) continue;
     const tones = tonesAt(held.step);

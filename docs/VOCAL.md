@@ -200,7 +200,7 @@ rhythm cells, runs of at most three notes, the top note around E4. Measured over
   sung full out (brighter, louder), no more than an octave over the note before it; the climax's last
   held note can go higher still (up to C5 for a wailer). The lead guitar no longer cuts them short. ✓
 - [P] Delivery: scoops up into held notes (a semitone to a fourth below; more on wails: Staley and
-  Vedder), falls off line ends (2-7 semitones, fading). In the voice: per-note slides and falls, quicker
+  Vedder), falls off line ends (a fall of 2-7 "semitones" is now a fade in volume, 18-26 dB, the pitch staying level: Paul). In the voice: per-note slides and falls, quicker
   glides between the quick notes of a run, diphthongs gliding only on a run's last note. ✓
 
 | Singer | Lines | Words | Held notes | Runs | Wails | Delivery | Mostly in |
@@ -402,9 +402,37 @@ throughout the song and not jump around wildly".
 | Notes, 10th to 95th percentile (as played) | 10.4 dB | 4.7 dB |
 | The same, prepared (polished) | 1.7 / 4.2 dB | 1.0 / 2.2 dB |
 
+## 9b. No lone spikes (Paul: big jumps "not very good sounding")
+- The problem: a line jumping up an octave to a held high note and straight back down (Paul's example: F#3, up to F#4, back to F#3). A jump up that keeps going sounded fine, so it stays.
+- Mostly the wails (a held note lifted near the top of the range, the notes around it left low); also the climax's lift, following the tension and the energy styles.
+- Now, on every section's finished line (`smoothSpikes` in `src/parts/vocal.ts`, all writers; the Vocal tune follows):
+  - A note a 6th or more over the note before and the note after (half a bar's rest or less between them) comes down to a 5th at most over the note before (a chord note, else a note of the key).
+  - A drop of a 6th or more off a high note that was jumped to steps down: the next note (and the one after, if still a big drop) moves to a chord note a 3rd or so under it. Never a line's last note.
+- 784 songs (7 writers × 7 genres × 8 moods × 2): spikes 905 → 1; big drops off a jump 1,219 → 139; jumps of an octave or more 1.3% → 0.65% of moves; the songs' top notes the same (0.2 of a semitone lower on average).
+- `npm run guide-check` still passes (Guide and Anchor lines unchanged).
+
 ## 10. Later
 - · A recorded voice (Paul's own syllables) or an AI singing voice, if the demo singer earns it.
 - · More voices (breathy, raspy and deep together, a nasal one), falsetto flips; singing behind the
   beat (the drawl's lag).
 - · Fillers in the gaps of the lead line itself;
   screamed or growled delivery for metal; harmonies in two parts (a third above and a fifth below).
+
+
+## The main vocal (2026-10-17)
+Paul made the Guide card's **Vocal tune** the vocal, and fixed the vocal row's writers:
+- **Written by:** Rhythm Words, Melody Learned, Real songs on, Patterns on (moves and energy by the song). The writer menus are gone; the singer (Auto / low / high / off) and voice (Auto, or any voice) menus stay. `MAIN_VOCAL` in `src/generator.ts`, applied by the app (`main.ts`); the research scripts can still choose.
+- **Sung as:** the Vocal tune (`docs/GUIDE-TUNE.md`) with New words, More bends, Carry over and Human feel, voice Auto, heard with the band. `src/parts/leadvocal.ts` (`singLead`) works it out once for the whole song (a track's sections together) and keeps it on each section (`idea.sung`); `src/audio/leadVoice.ts` sings it (was the Guide card's singer: rendered in the background, polished, on the vocal channel), live, in Prepare real sound and in MP3, WAV and stems. The backing vocals keep the demo singer.
+- **MIDI export and the drawn words:** the sung line (its new words as lyrics).
+- **On by default:** the singer (it was off until turned on), and the piano and strings layers (Auto).
+- **The Guide card is gone** (its writers and checks stay in `src/guide/`, `npm run guide-check`).
+
+## The main vocal is the verse melody writer (2026-10-19)
+Paul brought the Verse melody experiment (`docs/VERSE-SECTIONS.md`, `src/verse/`) in as the lead vocal.
+- **Written by:** `src/verse/sing.ts` (`singSong`): every singing section (verse, pre-chorus, chorus, bridge, the 4-bar interlude, the chorus-based outro) in song order, then the words (`src/verse/words.ts`). A lone 8-bar idea sings as a chorus. Intro, solo, breakdown, lead breaks and jam / solo outros stay silent.
+- **Where it plugs in:** right after `singTrack` in `buildTrack` (and in `generate()` for a lone idea). It replaces each section's `vocal` (so Guitar 2's room, backing vocals and ad-libs follow it) and sets `sung` (the lines the lead voice sings, MIDI and the roll read). Human feel stays the lead voice's own (`src/audio/leadVoice.ts`); held-ending fades and scoop lengths pass through.
+- **Seeds:** the song's vocal seed is mixed into the personality, the melody and the words, so rerolling the vocal gives a new melody. A high singer's lift (`vocalLift`) moves the range up.
+- **Tempo:** `paced` (`personality.ts`, `SectionOptions.pace`) moves the dials to the song's tempo (slow: more 16th runs, fast: fewer runs, more stretched and long notes). Built, but off: the experiment's melodies are written without it.
+- **Sung as the experiment sang it** (`src/audio/leadVoice.ts`, for the verse writer only): laid back behind the beat (`perform`: lag, long-short, slowing at line ends), a middling energy in every section, the song's own high voice (tenor, Chester's scream, the woman).
+- **Writer menu** on the Vocal melody card: New (default) or Classic (`vocalWriter: 'classic'`, the old Words / Learned / Real songs / Patterns tune with `singLead`; unchanged). Same song, only the lead vocal changes.
+- **Not in the new writer yet:** verse 2 answering verse 1, a lifted last chorus, the last note carried into a solo, the vocal Energy styles.

@@ -7,4 +7,5 @@ dist/
 !.vscode/extensions.json
 .claude/settings.local.json
 voice-lab/
+experiments/MidiCollection/
 study-data/

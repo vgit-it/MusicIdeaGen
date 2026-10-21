@@ -9,12 +9,28 @@
 // glides between legato notes, F1 kept above the pitch, brighter and sharper-edged when louder.
 
 import { ride } from './level';
+import type { Vowel } from '../parts/lyrics';
 import { type ConsSpec, EDGE_VOWEL, type F3, type Seg, type SungNote, joinNotes, layout } from './sing';
 
 export const FOF_RATE = 44100;
 
+/**
+ * A voice print: a real voice's own vowels, measured (experiments/kokoro-singer: Kokoro's voices),
+ * in place of the textbook's. F1-F3 by vowel (a diphthong's start and end), F4-F5 and the formant
+ * widths over the voice.
+ */
+export interface VoicePrint {
+  vowels: Partial<Record<Vowel, [F3, F3?]>>; high: [number, number]; bws: number[];
+  /** The rest of the voice's tone, matched by ear-free measurement to the real voice: [centre Hz, dB] peaking bands (an octave wide). */
+  eq?: [number, number][];
+  /** How much of a diphthong glides (0-1 of the vowel, at most a quarter second; left out: its last 90 ms or so): a speaker's "go" glides all through. */
+  glide?: number;
+}
+
 export interface FofVoice {
   seed: number;
+  /** A measured voice's vowels (left out: the textbook's, as before). */
+  print?: VoicePrint;
   high?: boolean;
   /** Vocal tract length (x formant frequencies; under 1: a bigger, darker voice). */
   tract?: number;
@@ -122,6 +138,23 @@ export interface FofVoice {
    * there uneven, every other one weak (a creak an octave under the note), the low hump thinned.
    */
   fry?: number;
+  /**
+   * Low buzz 0-1 (left out: 0): the deep notes keep their harmonics (a flatter tilt, a smaller fundamental hump, the
+   * formants up a little), so they carry on small speakers instead of being one low hum; fully from `lowTop`
+   * (MIDI, default 58: the sounding note) down about an octave, easing out above it.
+   */
+  lowBuzz?: number;
+  lowTop?: number;
+  /**
+   * Close-vowel fill 0-1 (left out: 0): "ee" and "oo" (a low F1) kept from collapsing into one sine at a low or middle
+   * pitch (nearly all the energy in the fundamental, a whistle): a wider F1, a smaller fundamental hump, the upper formants up.
+   */
+  closeFill?: number;
+  /**
+   * Falsetto fill 0-1 (left out: 0): a falsetto (the way up of a voice that goes into one) kept from being one bare, hissy tone:
+   * F1 let up toward the 2nd harmonic, a gentler tilt, a smaller fundamental hump and less breath, the loss won back.
+   */
+  falFill?: number;
   /** Their break (MIDI, about E4) and their way up past it. */
   brk?: number;
   up?: 'belt' | 'falsetto' | 'scream' | 'squeal';
@@ -137,9 +170,10 @@ export interface FofVoice {
   /**
    * The stops (p t k, b d g; left out: as before): their burst (dB, added), a voiced stop's burst on top
    * (dB, added), the breath after p/t/k (dB, added), the burst's length (share of the stop, default
-   * 0.12), and the voice kept through a p/t/k's closure (dB under the vowel; left out: silent).
+   * 0.12), the voice kept through a p/t/k's closure (dB under the vowel; left out: silent), and the bite of the stop that starts
+   * a stressed word (dB added to its burst, more for a b, d or g, and a little to the breath after a p, t or k; left out: 0: as the others).
    */
-  stops?: { burst?: number; voiced?: number; asp?: number; len?: number; hold?: number };
+  stops?: { burst?: number; voiced?: number; asp?: number; len?: number; hold?: number; initial?: number; final?: number };
   /**
    * The noisy consonants (s, f, sh, th, t, k, p...; left out: as before): blend (s: the vowel fading out
    * as the hiss fades in, instead of the voice stopping at once), short (x: a word's starting noisy
@@ -155,8 +189,10 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const smooth01 = (x: number) => { const k = clamp01(x); return k * k * (3 - 2 * k); };
 const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
 const db = (x: number) => 10 ** (x / 20);
-/** How long a fall off a line's end takes: up to 0.3 s, at most half the note. */
-const fallLen = (n: { t: number; end: number }) => Math.max(0.06, Math.min(0.3, (n.end - n.t) * 0.5));
+/** A fall off a line's end is in volume, not pitch (Paul): it dies away over up to 0.6 s, at most 60% of the note... */
+const fallLen = (n: { t: number; end: number }) => Math.max(0.08, Math.min(0.6, (n.end - n.t) * 0.6));
+/** ...by 14 dB for a fall of 1 (what the writers call 1 semitone), 18 for 2, up to 26 for 4 and over; half as far on a note that bends (glides in, or is scooped into). */
+const fallDb = (n: { fall?: number; bend?: number; slide?: number }) => Math.min(26, 10 + 4 * (n.fall ?? 0)) * (n.bend || n.slide ? 0.5 : 1);
 
 function rng(seed: number) {
   let a = (seed * 2654435761 + 1) >>> 0;
@@ -185,10 +221,24 @@ class Band {
   }
 }
 
+/** A voice print's tone match: peaking bands an octave wide (RBJ), in place. */
+function toneMatch(x: Float32Array, fs: number, eq: [number, number][]) {
+  for (const [f, db] of eq) {
+    if (Math.abs(db) < 0.1 || f >= fs * 0.45) continue;
+    const A = 10 ** (db / 40), w = (2 * Math.PI * f) / fs, al = Math.sin(w) * Math.sinh((Math.LN2 / 2) * 1 * (w / Math.sin(w)));
+    const a0 = 1 + al / A, b0 = (1 + al * A) / a0, b1 = (-2 * Math.cos(w)) / a0, b2 = (1 - al * A) / a0, a1 = b1, a2 = (1 - al / A) / a0;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < x.length; i++) {
+      const y = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = x[i]; y2 = y1; y1 = y; x[i] = y;
+    }
+  }
+}
+
 /** The noise colours of the consonants: [band centre, width] pairs, summed (each scaled to the same loudness). */
 const NOISE: Record<'s' | 'sh' | 'flat' | 'alv' | 'lab' | 'vel', [number, number][]> = {
   s: [[6200, 3000], [8500, 3000]],
-  sh: [[2900, 1200], [4200, 1800]],
+  sh: [[3000, 2200], [4600, 3200]],
   flat: [[2500, 4000], [6500, 5000]],
   alv: [[3800, 2500], [5500, 3000]],
   lab: [[900, 1400], [2200, 2500]],
@@ -211,7 +261,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   const notes = joinNotes(notes0, 'phrases').map((n) => ({ ...n, t: n.t + pre, end: n.end + pre }));
   // (each note's own vibrato: rate within about 8%, depth within about 30%; a start a little under the note)
   const noteVib = notes.map(() => ({ hz: 1 + hu * 0.08 * (nr() * 2 - 1), depth: 1 + hu * 0.3 * (nr() * 2 - 1), under: hu * (0.05 + 0.1 * nr()) }));
-  const segs = layout(notes, 0.7);
+  const segs = layout(notes, 1, v.print?.vowels);
   const cv = v.cons ?? {};
   const noisy = (c?: ConsSpec) => !!c && !c.voiced && (c.kind === 'fric' || c.kind === 'affric' || c.kind === 'stop');
   // (a word's starting noisy consonants shortened toward the beat: the run before each vowel squeezed to its end, the note before held on)
@@ -236,9 +286,10 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   const tract = lerp(v.tract ?? 1, Math.max(v.tract ?? 1, 0.97), spread);
   const shift = v.shift ?? (v.high ? 12 : 0), size = v.size ?? (v.high ? 1.04 : 1);
   const fscale = size * tract;
-  const high = [3250, 3700, 4950].map((f) => f * fscale);
+  const high = (v.print ? [v.print.high[0], v.print.high[1], 4950] : [3250, 3700, 4950]).map((f) => f * fscale);
   const plain = v.plain ?? 0;
-  const bws = [90, 110, 160, 200, 230, 500].map((b, k) => b * (v.bw ?? 1) * (k >= 3 ? 1 + 0.6 * plain : 1));
+  // (a print's widths as measured, within reason: speech's measured widths run wide)
+  const bws = [90, 110, 160, 200, 230, 500].map((b, k) => b * (v.print?.bws[k] ? Math.max(0.7, Math.min(1.6, v.print.bws[k] / b)) : 1) * (v.bw ?? 1) * (k >= 3 ? 1 + 0.6 * plain : 1));
   const vibC = v.vib ?? 30, driftC = (v.drift ?? 4) + 3 * hu, grit = v.grit ?? 0, breath = v.breath ?? -24;
   const vibHz = v.vibHz ?? 5.4 + (v.seed % 5) * 0.12;
   const cover0 = v.cover ?? 0, nasal = v.nasal ?? 0, scoop = v.scoop ?? 0, sag = v.sag ?? 0;
@@ -299,14 +350,17 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     if (s.cons) {
       const glide = s.cons.kind === 'liquid';
       const near = segs.slice(i + 1).find((x) => x.vowel)?.vowel?.[0] ?? segs.slice(0, i).reverse().find((x) => x.vowel)?.vowel?.[0] ?? s.cons.f;
-      const lean = glide ? 1 : 0.5;
+      // (the place cue: how far the vowel's resonances lean to the consonant's: m, n, ng most, since the murmur is theirs)
+      const lean = glide ? 1 : s.cons.kind === 'nasal' ? 0.8 : 0.65;
       const f: F3 = [lerp(near[0], s.cons.f[0], glide ? 1 : 0.8), lerp(near[1], s.cons.f[1], lean), lerp(near[2], s.cons.f[2], lean)];
-      keys.push({ t: (s.t0 + s.t1) / 2, f: sc(f) });
+      // (a held liquid, the dark l: its place reached early and kept to near its end, so it is heard as an l and not only passed through)
+      if (s.cons.hold) { keys.push({ t: s.t0 + 0.3 * (s.t1 - s.t0), f: sc(f) }); keys.push({ t: s.t1 - 0.15 * (s.t1 - s.t0), f: sc(f) }); }
+      else keys.push({ t: (s.t0 + s.t1) / 2, f: sc(f) });
     } else if (s.vowel) {
       const [a, b] = s.vowel, len = s.t1 - s.t0;
       const afterGlide = segs[i - 1]?.cons?.kind === 'liquid';
       keys.push({ t: s.t0 + Math.min(afterGlide ? 0.05 : 0.035, len * 0.3), f: sc(a) });
-      if (b) { const turn = Math.min(0.09, len * 0.3); keys.push({ t: s.t1 - turn, f: sc(a) }); keys.push({ t: s.t1, f: sc(lerp3(a, b, 0.75)) }); }
+      if (b) { const turn = v.print?.glide ? Math.min(0.25, len * v.print.glide) : Math.min(0.09, len * 0.3); keys.push({ t: s.t1 - turn, f: sc(a) }); keys.push({ t: s.t1, f: sc(lerp3(a, b, 0.75)) }); }
       else keys.push({ t: s.t1 - Math.min(0.025, len * 0.15), f: sc(a) });
     }
   });
@@ -355,8 +409,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   {
     let ni = 0;
     // (bends in the line itself, so the spring smooths them too (Paul: "voice bends should be smooth"):
-    // a scoop up into a note eased in and out over up to a quarter second; a fall off the line's end
-    // easing away over its last part)
+    // a scoop up into a note eased in and out over up to a quarter second)
     for (let j = 0; j < nT; j++) {
       const t = j * dt;
       while (ni + 1 < notes.length && notes[ni + 1].t <= t) ni++;
@@ -364,8 +417,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       let m = n.midi;
       // (a bend from the note before, over `bend` seconds: the guide line's bends)
       if (n.bend && ni > 0) m = notes[ni - 1].midi + (n.midi - notes[ni - 1].midi) * smooth01((t - n.t) / n.bend);
-      if (n.slide) m -= n.slide * (1 - smooth01((t - n.t + 0.03) / Math.min(0.25, Math.max(0.08, (n.end - n.t) * 0.4))));
-      if (ni === notes.length - 1 && n.fall) { const fd = fallLen(n); m -= n.fall * smooth01((t - (n.end - fd)) / fd); }
+      if (n.slide) m -= n.slide * (1 - smooth01((t - n.t + 0.03) / (n.slideLen ?? Math.min(0.25, Math.max(0.08, (n.end - n.t) * 0.4)))));
       pitchLine[j] = m;
     }
     const spring = (from: number, to: number, w: number, z: number, back: boolean) => {
@@ -429,7 +481,8 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
   // the control values (per CT samples)
   let f0 = 110, vT = 0, nasalT = 0, barT = 0, aspT = 0, effort = 0.5;
   // (the register: how far up past the break, 0-1; how deep below it, 0-1)
-  let upW = 0, lowW = 0, edgeW = 0;
+  let upW = 0, lowW = 0, edgeW = 0, lowK = 0, closeW = 0, closeV = 0, erW = 0, latW = 0;
+  const lowBuzz = v.lowBuzz ?? 0, lowTop = v.lowTop ?? 58 + shift, closeFill = v.closeFill ?? 0, falFill = fal ? v.falFill ?? 0 : 0;
   // (heft: a baritone's weight kept up high; fry: the creak at the line's ends and on the deepest notes, 0-1 now)
   const heft = v.heft ?? 0, fry = v.fry ?? 0;
   let fryW = 0;
@@ -487,9 +540,13 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       if (sc) midi -= sc.by * (1 - smooth01((into + 0.01) / sc.len));
       // (a sag: a held note let droop at its end, up to about half a semitone)
       if (note.sharp) midi += (note.sharp / 100) * smooth01(into / 0.15);
-      if (sag && held > 0.45 && !note.fall) midi -= sag * 0.55 * smooth01((into - held * 0.65) / (held * 0.35));
+      if (sag && held > 0.45 && !note.fall && !note.fadeBy) midi -= sag * 0.55 * smooth01((into - held * 0.65) / (held * 0.35));
       // (the slow wanders)
       const dtC = CT / fs;
+      // (the r-coloured vowel: its F3 and F4 brought up and F2 down a little while the vowel itself sounds, so the r-colour is heard, not just measured)
+      // (an l: its upper formants kept up and its F1 down a touch, the bright, unrounded side of it; low and dark alone it sounds rounded, like a w)
+      latW += ((inside && s.cons?.hold ? 1 : 0) - latW) * Math.min(1, dtC / 0.03);
+      erW += ((note.syl.vowel === 'ER' && inside && !s.cons ? 1 : 0) - erW) * Math.min(1, dtC / 0.04);
       if (rnd() < dtC / 0.08) tremTo = hu * 2.5 * gauss();
       trem += (tremTo - trem) * (dtC / 0.06);
       midi += trem / 100;
@@ -505,7 +562,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       const place = note.midi + shift - brk;
       upW = smooth01((place + 1) / 4);
       lowW = smooth01((-place - 14 + 6 * heft) / 6);
-      fryW = fry ? fry * Math.max(1 - smooth01((t - lineT0 + 0.02) / 0.16), 0.8 * smooth01((t - (lineT1 - 0.28)) / 0.28), 0.5 * smooth01((-place - 16) / 4)) : 0;
+      fryW = fry ? fry * Math.max(1 - smooth01((t - lineT0 + 0.02) / 0.16), 0.8 * smooth01((t - (lineT1 - 0.28)) / 0.28), 0.5 * (1 - 0.7 * lowBuzz) * smooth01((-place - 16) / 4)) : 0;
       // (expression: the section, the line, the note's start and end, a key word, the reach up high)
       let exAmp = 0, exBreath = 0, exBright = 0, exEdge = 0, exEffort = 0;
       roughAdd = 0;
@@ -538,12 +595,15 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // (down low: rounder, more relaxed)
       const cover = (1 - spread) * Math.min(1, cover0 + expr * 0.15 * smooth01((-place - 6) / 6)) * (1 - rise);
       for (let k = 0; k < 3; k++) B[k] = bws[k] * (1 + 0.5 * rise);
+      lowK = lowBuzz * smooth01((lowTop - (note.midi + shift)) / 12);
       // (a held note swells a little in and eases at its end)
       const sw = swells[ni], xs = clamp01(into / Math.max(0.1, held));
       const swell = life ? (sw.kind === 1 ? sw.by * lerp(-1, 0.6, xs) : sw.kind === 2 ? sw.by * lerp(0.4, -1, xs) : sw.kind === 3 ? sw.by * (Math.sin(Math.PI * xs) - 0.6) : 0) : held > 0.35 ? hu * (1 - plain) * (lerp(-2, 0, into / (held * 0.4)) + lerp(0, -1.5, (into - held * 0.75) / (held * 0.25))) : 0;
-      const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? 12 * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0)
+      const amp = exAmp + levelLine[Math.floor(i / CT)] + (fal ? 5 * upW : 0) + swell + loud - (note.fall && ni === notes.length - 1 ? fallDb(note) * smooth01((t - (note.end - fallLen(note))) / fallLen(note)) : 0)
         // (human feel: rising into the word, fading at its end)
-        - (note.swell ? 10 * (1 - smooth01((into + 0.01) / note.swell)) : 0) - (note.fade ? 18 * smooth01((t - (note.end - note.fade)) / note.fade) : 0);
+        - (note.swell ? 10 * (1 - smooth01((into + 0.01) / note.swell)) : 0) - (note.fade ? (note.fadeBy ?? 18) * smooth01((t - (note.end - note.fade)) / note.fade) : 0)
+        // (human feel: a quieter note in a series)
+        + (note.gain ? 20 * Math.log10(note.gain) : 0);
       // (a word starting on a vowel: a small dip so the words don't slur together)
       const dip = ni > 0 && note.syl.wordStart && !note.syl.onset.length && note.syl.text !== '~' ? 5 * Math.max(0, 1 - Math.abs(t - note.t) / 0.05) : 0;
 
@@ -557,25 +617,31 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         const x = (t - s.t0) / Math.max(0.005, s.t1 - s.t0);
         const shapeI = (sh: Shape) => SHAPES.indexOf(sh);
         switch (c.kind) {
-          case 'liquid': voice = amp - (c.f[2] < 2000 ? 3 : 5); break;
-          case 'nasal': voice = amp - 5; nas = 1; break;
+          case 'liquid': voice = amp - (c.lvl !== undefined ? -c.lvl : c.f[2] < 2000 ? 3 : 5); break;
+          case 'nasal': voice = amp - 3; nas = 1; break;
           case 'h': aspir = amp - 6; lastVoiceless = true; break;
           case 'fric': case 'affric': {
-            const closure = c.kind === 'affric' ? 0.3 : 0;
+            const closure = c.kind === 'affric' ? 0.35 : 0;
             if (x < closure) { lastVoiceless = !c.voiced; if (c.voiced) { voice = amp - 22; bar = 1; } break; }
             // (a fricative swells in and tapers out: s about 12 dB under the vowel, sh 14, f and th 22)
-            const lvl = c.shape === 's' ? -12 : c.shape === 'sh' ? -14 : -22;
-            const env = lerp(-14, 0, (x - closure) / 0.35) + lerp(0, -10, (x - 0.75) / 0.25);
-            fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -5 : 0));
-            if (c.voiced) voice = amp - 10; else lastVoiceless = true;
+            const lvl = c.shape === 's' ? -12 : c.shape === 'sh' ? -7 : -19;
+            const env = (c.kind === 'affric' ? lerp(4, -2, (x - closure) / 0.5) : lerp(-14, 0, (x - closure) / 0.35)) + lerp(0, -10, (x - 0.75) / 0.25);
+            fricT[shapeI(c.shape as Shape)] = db(amp + lvl + env + (c.voiced ? -13 : 0));
+            if (c.voiced) voice = amp - 4; else lastVoiceless = true;
             break;
           }
           case 'stop': {
             const st = v.stops ?? {};
-            const closeEnd = c.voiced ? 0.7 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12);
-            if (x < closeEnd) { if (c.voiced) { voice = amp - 22; bar = 1; } else if (st.hold !== undefined) voice = amp - st.hold; else lastVoiceless = true; break; }
-            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : -6) + (st.burst ?? 0) + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && st.hold === undefined; if (c.voiced) { voice = amp - 14; bar = 1; } break; }
-            if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0); lastVoiceless = st.hold === undefined; } else voice = amp - 3;
+            // (the p, t or k that starts a stressed word: a shorter closure, a louder, longer burst and the breath after it, as English aspirates it)
+            const ini = s.init ? st.initial ?? 0 : 0;
+            // (a word-final p, t, k, b, d, g released: a burst you can hear, as it is what tells cap from cat from cab)
+            const fin = !s.next && !s.init ? st.final ?? 0 : 0;
+            // (up past the break the vowel is brighter (a belt's ring, edge), so a burst of the same level is lost under it: it comes up there; not in a falsetto, which is not bright)
+            const hiUp = s.init && !fal ? 18 * smooth01((s.midi + shift - brk + 2) / 8) * Math.min(1, ini / 8) : 0;
+            const closeEnd = c.voiced ? (ini ? 0.6 : 0.7) : ini ? 0.4 : 0.5, burstEnd = closeEnd + (st.len ?? 0.12) + (ini ? 0.04 : 0);
+            if (x < closeEnd) { if (c.voiced) { voice = amp - (ini ? 16 : fin ? 9 : 22); bar = 1; } else if (st.hold !== undefined && !ini) voice = amp - st.hold; else lastVoiceless = true; break; }
+            if (x < burstEnd) { fricT[shapeI(c.shape as Shape)] = db(amp + (c.shape === 'vel' ? -10 : c.shape === 'lab' ? -2 : -6) + (st.burst ?? 0) + hiUp + (c.voiced ? ini * 1.6 - 0.4 * fin : ini + fin) + (c.voiced ? st.voiced ?? 0 : 0)); lastVoiceless = !c.voiced && (st.hold === undefined || ini > 0); if (c.voiced) { voice = amp - 14; bar = 1; } break; }
+            if (!c.voiced) { aspir = amp - 10 + (st.asp ?? 0) + 0.4 * ini + 0.8 * hiUp + 0.5 * fin; lastVoiceless = st.hold === undefined || ini > 0; } else voice = amp - 3;
             break;
           }
         }
@@ -585,6 +651,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       aspT = aspir === -Infinity ? 0 : db(aspir);
       // the formants: F1 kept above the pitch, a little up on loud notes (the mouth opens)
       const f3 = formantsAt(t).slice() as F3;
+      // (close vowels: a wider F1 and a smaller hump while the pitch is low or middling)
+      // (close vowels at any pitch: F1 a little fuller and F2 a little less, so the vowel is warm and not thin and nasal)
+      closeV = closeFill ? clamp01((520 - f3[0] / fscale) / 150) : 0;
+      closeW = closeFill * clamp01((520 - f3[0] / fscale) / 150) * smooth01((lowTop + 4 - (note.midi + shift)) / 8);
+      B[0] *= 1 + 0.6 * closeW;
       // (life: up high the vowels drift toward a neutral "uh", from a few semitones under the break)
       if (life) {
         const nw = life * 0.35 * smooth01((place + 3) / 8);
@@ -607,6 +678,9 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       // falsetto keeps F1 clear above the pitch)
       if (!fal && f3[0] > 450) f1 = lerp(f1, Math.min(Math.max(2.04 * f0, f1), f1 * 1.5), upW);
       if (fal) f1 = Math.max(f1, f0 * 1.3);
+      if (falFill) f1 = lerp(f1, Math.min(Math.max(f1, 2 * f0), f1 * 1.8), Math.min(1, 0.6 * falFill * upW));
+      // (close vowels: F1 let up toward the 2nd harmonic, so the pitch isn't alone on the resonance)
+      if (closeW) f1 = lerp(f1, Math.min(Math.max(f1, 2 * f0), f1 * 1.8), Math.min(1, 0.25 * closeW));
       const lx = fal ? 1 : 1 + 0.04 * upW;
       // (formants kept apart: F1 riding up into F2 pushes it up, as the tongue does)
       const f2 = Math.max(f3[1] * lx, f1 + 250), f3b = Math.max(f3[2] * lx, f2 + 350);
@@ -629,13 +703,15 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
       phase -= 1;
       // the next period: a little jitter; on rasp, every other period a touch longer and weaker
       alt = -alt;
-      const rough = Math.min(1, roughAdd + 0.25 * scr + grit * effort * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8)));
-      periodK = 1 + (0.003 + 0.004 * hu) * gauss() + 0.015 * rough * alt + fryW * (0.1 * alt + 0.06 * gauss());
+      // (a lifted low note keeps steadier: its added overtones would smear with any jitter and sound rough, not full)
+      const steady = 1 - 0.7 * lowK;
+      const rough = Math.min(1, roughAdd + 0.25 * scr + grit * effort * (fal ? 1 - upW : 1 + upW * (way === 'scream' ? 2.5 : way === 'squeal' ? 0.4 : 0.8))) * steady;
+      periodK = 1 + (0.003 + 0.004 * hu) * steady * gauss() + 0.015 * rough * alt + fryW * (0.1 * alt + 0.06 * gauss());
       if (vA > 1e-4) {
-        const shimmer = (1 + (0.04 + 0.03 * hu) * gauss() + 0.2 * rough * gauss()) * (1 - 0.18 * rough * (alt > 0 ? 1 : 0)) * (1 - 0.65 * fryW * (alt > 0 ? 1 : 0));
+        const shimmer = (1 + (0.04 + 0.03 * hu) * (1 - 0.6 * lowK) * gauss() + 0.2 * rough * gauss()) * (1 - 0.18 * rough * (alt > 0 ? 1 : 0)) * (1 - 0.65 * fryW * (alt > 0 ? 1 : 0));
         // the source: about -6 dB an octave (the folds and the lips together), brighter when louder
         // (falsetto: soft-edged pulses, a steep tilt; belt and scream: sharp ones, flat; the deep notes a touch darker)
-        const tiltX = (lerp(1.5, -2.5, effort) + (fal ? 6 : -1.5) * upW + 1.5 * lowW - bright - 4 * edgeW) / 6.02;
+        const tiltX = (lerp(1.5, -2.5, effort) + (fal ? 6 - 1 * falFill : -1.5) * upW + 1.5 * lowW * (1 - 0.8 * lowBuzz) - bright - 4 * edgeW - 0.5 * lowK - 0.5 * closeW) / 6.02;
         const tex = Math.round(lerp(lerp(0.0035, 0.0016, effort), fal ? 0.005 : way === 'scream' ? 0.0012 : 0.0014, upW) * (1 - 0.35 * edgeW) * (1 + 0.8 * softK) * fs);
         // (a twang up past the break: the 3-4 kHz ring of a belt)
         const twang = db(upW * (fal ? 0 : way === 'squeal' ? 7 : way === 'scream' ? 4 : 3));
@@ -644,7 +720,11 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
           let a = formantLevel(F, B, k, tiltX);
           if (k > 0) a *= db(-16 * vNasal) * db(-28 * vBar);
           if (k === 2 || k === 3) a *= twang * db(4 * edgeW + 7 * (v.twang ?? 0));
-          if (k === 0) a *= db(-3 * (v.twang ?? 0));
+          if (k === 0) a *= db(-3 * (v.twang ?? 0) + 6 * closeW + 5 * closeV);
+          if (k === 1) a *= db(-3 * closeV);
+          if (latW) a *= db(k === 0 ? -3 * latW : k === 2 ? 5 * latW : k === 3 ? 4 * latW : 0);
+          if (erW) a *= db(k === 1 ? -3 * erW : k === 2 ? 5 * erW : k === 3 ? 8 * erW : 0);
+          if (k >= 2) a *= db(0 * closeW);
           if (k >= 3) a *= db(-3 * plain);
           if (k === 1) a *= db(2 * edgeW);
           return a;
@@ -653,13 +733,16 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         // correction, partial (vowels still differ a little) and easing over about 80 ms)
         let pw = 0;
         for (let k = 0; k < F.length; k++) pw += (amps[k] * amps[k]) / B[k];
+        // (low buzz and close-vowel fill: the fundamental's loss won back in the voiced sound only, so those notes keep their level
+        // and carry; the breath and rasp stay as they were, not lifted with it)
+        const lowG = db(6 * lowK + 10 * closeW + 1 * falFill * upW);
         const want = ((pw * f0) / pRef + 1e-9) ** -0.35;
         comp += (want - comp) * Math.min(1, 1 / (0.08 * f0));
         for (let k = 0; k < F.length; k++) {
-          const a = amps[k] * comp * vA * shimmer;
+          const a = amps[k] * comp * lowG * vA * shimmer;
           // (each pulse's formants a touch different: no two periods alike)
-          const bw = B[k] * (k === 0 ? 1 + 1.5 * vNasal : 1) * (1 + hu * 0.05 * gauss());
-          const alpha = (Math.PI * bw) / fs, w = (2 * Math.PI * F[k] * (1 + hu * 0.003 * gauss())) / fs;
+          const bw = B[k] * (k === 0 ? 1 + 1.5 * vNasal : 1) * (1 + hu * 0.05 * (1 - 0.6 * lowK) * gauss());
+          const alpha = (Math.PI * bw) / fs, w = (2 * Math.PI * F[k] * (1 + hu * 0.003 * (1 - 0.6 * lowK) * gauss())) / fs;
           const cr = Math.exp(-alpha) * Math.cos(w), ci = Math.exp(-alpha) * Math.sin(w);
           const m = Math.exp(-alpha * d);
           const durS = Math.min(0.035 * fs, (5.3 / (Math.PI * bw)) * fs) + tex;
@@ -669,7 +752,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
         // tract's formants leave out: the voice's low end and its 2nd harmonic (weaker when pressed)
         {
           const fg = Math.min(f0 * 1.15, F[0] * 0.7), bg = 0.8 * f0;
-          const a = 2.5 * (bg / 1000) * (fg / 1000) ** (-1 - tiltX) * db((v.body ?? 5) - 6 * effort * (1 - 0.6 * heft) + (fal ? 6 : -3 + 9 * heft) * upW + 4 * lowW - 3 * edgeW - 6 * fryW) * comp * vA * shimmer;
+          const a = 2.5 * (bg / 1000) * (fg / 1000) ** (-1 - tiltX) * db((v.body ?? 5) - 6 * effort * (1 - 0.6 * heft) + (fal ? 6 - 2 * falFill : -3 + 9 * heft) * upW + 4 * lowW * (1 - 0.8 * lowBuzz) - 3 * edgeW - 6 * fryW - 8 * lowK - 8 * closeW) * comp * lowG * vA * shimmer;
           const alpha = (Math.PI * bg) / fs, w = (2 * Math.PI * fg) / fs, m = Math.exp(-alpha * d);
           const durS = Math.min(0.035 * fs, (5.3 / (Math.PI * bg)) * fs) + tex;
           grains.push({ re: a * m * Math.cos(w * d), im: a * m * Math.sin(w * d), cr: Math.exp(-alpha) * Math.cos(w), ci: Math.exp(-alpha) * Math.sin(w), n: d, tex, dur: durS, rel: durS * 0.25 });
@@ -696,10 +779,12 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     const nz = gauss() * 1.9;
     const open = 0.35 + 0.65 * Math.sin(Math.PI * phase) ** 2;
     raspEnv *= 0.9985;
-    const aIn = nz * (vA * comp * db(breathNow + 3 * softK + (fal ? 9 : 2) * upW) * 4 * open + aspA * 1.2 + raspEnv * comp * (0.3 + open));
+    // (the deep notes' breath and rasp kept down with the lifted voice: no hiss under a low note)
+    const nG = comp * db(-7 * lowK);
+    const aIn = nz * (vA * nG * db(breathNow + 3 * softK + (fal ? 9 - 5 * falFill : 2) * upW) * 4 * open + aspA * 1.2 + raspEnv * nG * (0.3 + open));
     let an = 0;
     for (let k = 0; k < 4; k++) an += aspG[k] * asp[k].run(aIn);
-    an += air.run(nz) * vA * comp * db(breathNow - 16) * open * hu * 2.5;
+    an += air.run(nz) * vA * nG * db(breathNow - 16) * open * hu * 2.5;
     y += an;
     // the scream: driven into a soft clip against its own level, darkened; the folds' turbulence in time with the pulses
     if (distort) {
@@ -725,6 +810,7 @@ export function renderFof(notes0: SungNote[], v: FofVoice, pre: number): Float32
     dc += (y - dc) * 0.002;
     out[i] = y - dc;
   }
+  if (v.print?.eq) toneMatch(out, fs, v.print.eq);
   // (the level ridden, so the line's notes sit at about one level: level.ts)
   ride(out, fs);
   normalize(out);

@@ -96,7 +96,7 @@ export class Mixer {
     this.ready = Promise.resolve();
     const fx = new Tone.Volume(-6).chain(reverb, this.master);
     // echoes are darker than the dry signal, and get a little reverb too
-    const echo = new Tone.Filter({ type: 'lowpass', frequency: 3500 });
+    const echo = new Tone.BiquadFilter({ type: 'lowpass', frequency: 3500 });
     this.delay.chain(echo, this.master);
     echo.connect(fx);
 

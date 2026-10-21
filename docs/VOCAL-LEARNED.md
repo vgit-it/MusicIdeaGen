@@ -1,0 +1,97 @@
+# Melody: Learned
+
+Option 5 from `docs/STUDY-LAKH.md`. A fourth melody writer in the vocal row: **Melody: Learned**. An experiment. Off unless chosen; with any other choice, everything is exactly as before.
+
+## What it is
+- It picks each next note by the **odds of real singers**. They were counted from about 1,200 real vocal lines in the Lakh MIDI collection (372,000 note-to-note steps).
+- For each note it asks: "In real songs, after a note like this, how far do singers move?" It looks at:
+  - the step just before (up a step, a leap down, the same note...)
+  - where the new note starts in the bar (on 1 or 3, on 2 or 4, an offbeat 8th, a 16th)
+  - what the note before was against the chord (root, 3rd, 5th, another chord note, none)
+  - where it is in the line (first note, middle, last)
+  - the genre (rock and pop have enough songs of their own; the other genres use all songs)
+- It also learnt which kinds of notes real singers put on beats 1 and 3, and where real lines end (which scale note).
+- **Its own rhythm too** (with Rhythm: Classic; Grid and Words as before, to compare). See *Rhythm* below.
+
+## The app's forms on top (so lines don't wander)
+- A line that comes back sings its notes again (moved to fit the new chord).
+- Each line leans softly toward the section's shape. Most peak early and fall, as real lines do.
+- Range and the chorus lift are the same as Shaped.
+- Lines end on a chord note: closed on the root, or open.
+- Several tries per line; the one that fits the band and sounds most musical is kept.
+- Fitting to the band, Real songs, Patterns and the Moves apply as for the other writers.
+
+## Numbers (`npm run realism-lab`, 8 songs per genre, 4/4)
+Realism: 100 means the same spreads as real songs of the genre.
+
+| Rhythm | Classic | Shaped | Melody first | **Learned** |
+|---|---|---|---|---|
+| Classic | 82 | 82 | 81 | **85** |
+| Grid | 80 | 80 | 81 | **83** |
+| Words | 83 | 83 | 85 | **87** |
+
+- Highest in every column. Closest to real songs on: the same note again (28%, real 30%), strong beats on the chord (69%, real 67%).
+- Still off: range (14 semitones; real about 12, the same for all writers) and lines peaking early (45-49%; real 59%).
+- Copy guard: with Patterns on, **0** finished lines copy a real 2-bar stretch (405 sections each for Learned, Grid + Learned, Words + Learned). With Patterns off, Grid + Learned had 1 (as Grid and Words alone do).
+
+## Copyright
+- `src/realism/learned.json` (45 KB) holds only counts of steps in contexts that **25+ songs by 15+ artists** share. Rare counts are dropped. No melodies, no lyrics, nothing that can be played back as a song.
+- Rebuild: `npm run realism-learned` (needs `experiments/MidiCollection`, kept out of git).
+
+## Lines start somewhere strong
+Paul: make sure the starting note is a strong one (options 2 + 3).
+- **The first note** of every line: the root, 3rd or 5th of the chord under it, whatever beat it falls on.
+- **The landing** (the line's first note on a beat): a chord note. Pickups between the two sing free.
+- The writer picks them so, leaning to what real singers sing on beat 1 or 3.
+- **Kept to the end:** later steps (rhythm, tension, fitting, Real songs' notes off the chord) could move them off. A last pass moves them back to the nearest note that fits, 2 semitones at most (4 if none nearer). Real songs' "off the chord on purpose" notes skip them.
+- Signature moves' colour notes stay (a 9th held on purpose).
+- **Option 1, done:** `npm run realism-learned` was run on the MIDI collection. It counted how real lines land and which scale note they start on. Real lines start on the key's root about a quarter of the time (metal 41%), then its 5th and 3rd. The first note now leans to those, within the chord rule above.
+
+| Setting | Line starts on the key's root: before | after (real songs: 26%) | Start notes off real songs' |
+|---|---|---|---|
+| Learned | 23% | 26% | 16% (same) |
+| Grid + Learned | 23% | 26% | 16% (same) |
+| Words + Learned | 28% | 31% | 17% (same) |
+
+- Realism scores: the same, within a point. A stronger lean put too many starts on the root and helped nothing else, so it stays gentle. Most of the rest is the chord rule (the first note must be the chord's root, 3rd or 5th) and few songs per genre.
+- Check it: `STARTS_DETAIL=1 MODE=learned npm run realism-lab` (the lab's "line starts" line, per genre with the switch).
+
+| Setting | First note root/3rd/5th: before | after | First note on a beat a chord note: before | after |
+|---|---|---|---|---|
+| Learned | 70% | 99% | 77% | 98% |
+| + Real songs | 63% | 97% | 67% | 97% |
+| + Patterns | 70% | 99% | 78% | 98% |
+| + Real songs + Patterns | 59% | 98% | 64% | 96% |
+| Grid + Learned | 72% | 98% | 83% | 99% |
+| Words + Learned | 61% | 99% | 74% | 99% |
+
+(42 songs each, all genres. The rest: colour notes kept on purpose, or no fitting note within reach. Octave-or-more jumps: no more than before.)
+
+## What to listen for
+- Choose **Melody: Learned** and compare with Shaped and Melody first on the same idea (the band stays the same).
+- It should sound **more like a real singer, less like a pattern**: more repeated notes, small steps, notes now and then just off the chord on a strong beat, lines that fall at the end.
+- The risk: it may sound **aimless** (no clear idea or hook). If so, tell me: the forms on top can be made stronger (a hook to come back to, as Melody first does).
+- Try it with **Rhythm: Words**: the best score of all.
+
+## Files
+`scripts/study/lakh-learned.ts` (counts), `src/realism/learned.ts` + `learned.json` (the odds), `src/parts/learned.ts` (the writer), `src/parts/melody.ts` (`learnedTuneLine`), `src/parts/vocal.ts`, `scripts/realism-lab.ts` (the learned rows).
+
+## Rhythm (Paul: learn the rhythm of real vocals too, without copying any song)
+- The study also counts, inside real sung lines, **which 16ths of each beat are sung** (16 possible cells: on the beat, the "&", a 16th before the beat...), by the genre, the beat in the bar, whether the 16th before the beat was sung (a push into it), and the tempo (under 95 bpm, 95-130, faster). About 490,000 beats from 2,551 songs.
+- **Not copying:** a beat's cell is kept only when 25+ songs by 15+ artists sing it in that context. A one-beat cell is too small to be anyone's rhythm. Genres with too few songs lean on all songs.
+- **The writer:** with Rhythm: Classic, Learned writes each line on the grid, each 4/4 beat sung by those odds (busier sections a little fuller); the app's line shape stays (where it starts, its held last note, a breath, the first half-bar's rhythm coming back now and then). Other meters: the Grid writer's beats.
+- **One rhythm per line:** its tries only change the notes. With the rhythm in the tries too, the band-fit score kept picking the tries on the beat and the real singers' rhythm was lost (61-67% of notes on the beat; real songs 40-45%).
+- No speech-rhythm pushes on top (the learnt beats have real pushes already).
+
+| Genre | 16ths ("e" + "a"): Learned before | now | real songs | On the beat: before | now | real |
+|---|---|---|---|---|---|---|
+| rock | 1% | 2% | 17% | 61% | 61% | 45% |
+| pop | 2% | 5% | 21% | 58% | 56% | 41% |
+| funk | 1% | 9% | 24% | 53% | 50% | 40% |
+| hard rock | 2% | 11% | 24% | 61% | 51% | 40% |
+| metal | 1% | 6% | 13% | | 58% | 47% |
+| grunge | 1% | 22% | 21% | | 48% | 40% |
+| alt metal | 1% | 10% | 22% | | 50% | 39% |
+
+- Realism score: about the same overall (85-86; grunge 85 to 89). The copy check: no finished line copies a real 2-bar stretch. The other writers are unchanged.
+- Rock and pop still sing on the beat more than real singers: most of their real 16ths are in hand-played files the on-grid study leaves out.

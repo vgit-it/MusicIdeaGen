@@ -21,8 +21,20 @@ import type { Mood } from '../tension';
 import { chordTones } from './guitar2';
 import { HIGH_VOICES, type HighVoice, type Timbre } from './singers';
 import { bandOf, clearForSinger, fitToBand, pushWithBand } from './fit';
+import { REAL_LEAN } from './realism';
+import { SCALES, chordPc } from '../theory';
+import { copiesReal, copyAt } from '../realism/patterns';
+import { type RealArc, realArc } from '../realism/arc';
+import { realWords } from '../realism/words';
+import targets from '../realism/targets.json';
+
+/** Patterns: tunes written again at most this many times to get clear of a real song's 2-bar stretch. */
+const GUARD_TRIES = 6;
+/** How many tunes the copy guard had written again (the realism lab reads it). */
+export let guardRewrites = 0;
 import { firstDesc, firstStyle } from './first';
-import { FLOOR, PEAK, type Tune, type TuneNote, WORD_RATE, followTension, gridUnit, melodyDesc, melodyStyle, writeTune } from './melody';
+import { learnedDesc, learnedStyle } from './learned';
+import { FLOOR, PEAK, type Tune, type TuneNote, WORD_RATE, followTension, gridUnit, melodyDesc, melodyStyle, planBusy, writeTune } from './melody';
 import { type LyricSlot, type LyricStyle, type Rhyme, type Syllable, lyricLine, makeHook, openUp, rhymeOf, rhymeWith, spell } from './lyrics';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -41,8 +53,17 @@ export interface VocalNote {
   /** Scooped up into from so many semitones below; falling off its end by so many; a wail (sung full out). */
   slide?: number;
   fall?: number;
+  /** Glides to this note from the one before over so many steps (a bend inside a held note: the note is split in two). */
+  bend?: number;
+  /** The scoop into this note lasts so many steps (left out: the voice's own, about 40% of the note). */
+  slideLen?: number;
+  /** The note dies away in volume over its last `fade` steps, by `fadeBy` dB (the pitch stays; the verse melody's fall). */
+  fade?: number;
+  fadeBy?: number;
   /** A colour note against the chord on purpose (a signature move: a 9th, a sigh, a sour ending): fitting to the band leaves it be. */
   colour?: boolean;
+  /** A note of a real shape (Patterns, docs/PATTERNS.md): fitting to the band moves it only off a real clash. */
+  pat?: boolean;
   belt?: boolean;
   /** A high note held (a belt, or a jump up to the line's top): held half a bar, never falling off, left room by Guitar 2. */
   peak?: boolean;
@@ -155,11 +176,69 @@ function onEighths(tune: Tune): Tune {
   return { ...tune, notes: out };
 }
 
+/** The share of a genre's real sung syllables on each off-8th 16th: the 16th before a beat or an 8th ('a'), the one after a beat ('e'). */
+type Sixteenths = { a: number; e: number };
+const realSixteenthsOf = (g: Genre): Sixteenths => { const h = (targets as unknown as Record<string, { hist: { onset16: Record<string, number> } }>)[g]?.hist.onset16 ?? { a: 0.128, e: 0.073 }; return { a: h.a ?? 0, e: h.e ?? 0 }; };
+
+/**
+ * Real songs with the Classic rhythm (Paul: "some constraints that stop it from placing vocal notes at
+ * 1/16ths?"): the 8th rule (onEighths) leaves about 1% of syllables on a 16th; real singers about 17%
+ * (src/realism/targets.json, by genre). Light syllables on an 8th's offbeat are moved a 16th, as real
+ * singers phrase it, until the tune has its genre's share (or nothing else can move):
+ * - a dotted pickup (the 'a'): an 8th pair into a beat sung dotted 8th + 16th, the light one a 16th later, just before the beat;
+ *   or a push (a stressed word on the & ahead of an empty beat) a 16th later, just ahead of the beat;
+ * - a snap (the 'e'): the light one after a beat a 16th sooner, the beat's syllable a quick 16th, the light one longer.
+ * Never two 16ths in a row, never a held high note or a real shape's note, and only inside a line.
+ */
+function realSixteenths(tune: Tune, rng: Rng, want: Sixteenths): Tune {
+  const ns = tune.notes;
+  const syl = ns.filter((n) => !n.tie && Number.isInteger(n.step));
+  if (!syl.length) return tune;
+  const at = (p: number) => syl.filter((n) => mod(n.step, 4) === p).length;
+  let needA = Math.round(want.a * syl.length) - at(3), needE = Math.round(want.e * syl.length) - at(1);
+  const moved = new Set<TuneNote>();
+  const free = (n: TuneNote | undefined) => n && !n.tie && !n.trip && !moved.has(n) && !n.quick;
+  // (a candidate: a light syllable on the & with its own syllables either side in the line, an 8th or more away)
+  const cands = ns.map((_, i) => i).filter((i) => {
+    const n = ns[i];
+    return i > 0 && !n.tie && !n.start && !n.peak && !n.belt && !n.pat && n.trip === undefined && mod(n.step, 4) === 2;
+  });
+  for (let k = cands.length - 1; k > 0; k--) { const j = rng.int(0, k); [cands[k], cands[j]] = [cands[j], cands[k]]; }
+  for (const i of cands) {
+    if (needA <= 0 && needE <= 0) break;
+    const n = ns[i], prev = ns[i - 1], next = ns[i + 1];
+    if (!free(n) || !free(prev) || prev.line !== n.line || n.step - prev.step < 2) continue;
+    const pp = ns[i - 2], nn = ns[i + 2];
+    const onBeat = next && !next.tie && next.line === n.line && next.step === n.step + 2;
+    // the dotted pickup: into the next syllable on the beat; or a push (a stressed word ahead of an empty beat) a 16th later, just ahead of it
+    const canA = needA > 0 && (onBeat ? !n.stress && free(next) && !(nn && nn.step - next.step < 2) : !next || next.line !== n.line || next.step >= n.step + 3);
+    // the snap: off the syllable on the beat just before
+    const canE = needE > 0 && !n.stress && prev.step === n.step - 2 && mod(prev.step, 4) === 0 && !(pp && !pp.tie && prev.step - pp.step < 2) && (!next || next.step - n.step >= 2);
+    const pick = canA && canE ? (rng.chance(needA / (needA + needE)) ? 'a' : 'e') : canA ? 'a' : canE ? 'e' : null;
+    if (!pick) continue;
+    const end = n.step + n.len;
+    if (pick === 'a') {
+      if (prev.step + prev.len >= n.step) prev.len = n.step + 1 - prev.step;
+      n.step += 1; n.len = Math.max(1, (onBeat ? Math.min(end, next!.step) : end) - n.step);
+      needA--;
+    } else {
+      n.step -= 1; n.len = end - n.step;
+      prev.len = 1;
+      needE--;
+    }
+    n.quick = true;
+    moved.add(n); moved.add(prev); if (next) moved.add(next);
+  }
+  return tune;
+}
+
 /** A tune as sung: settled (no quick turns), spoken (speech rhythm), with room to breathe. */
-function shape(tune: Tune, rng: Rng, syncop: number, grid = false, words = false): Tune {
+function shape(tune: Tune, rng: Rng, syncop: number, grid = false, words = false, real16?: Sixteenths): Tune {
   // (the grid's rhythm has its own pushes, on the grid: no speech-rhythm pushes on top; words first:
   // its quick light syllables kept on their 16ths, docs/VOCAL-WORDS.md)
-  const t = words ? settle(tune) : onEighths(grid ? settle(tune) : speak(settle(tune), rng, syncop));
+  let t = words ? settle(tune) : onEighths(grid ? settle(tune) : speak(settle(tune), rng, syncop));
+  // (Real songs, Classic rhythm: 16ths as often as real singers of the genre sing them)
+  if (real16) t = realSixteenths(t, rng, real16);
   breathe(t.notes);
   return t;
 }
@@ -227,7 +306,7 @@ function writeWords(rng: Rng, tune: Tune, style: LyricStyle, hook: Syllable[] | 
     if (mine) {
       // (long and high notes open their closed vowels, now the pitches are known)
       line = ns.map((n) => { const s: Syllable = n.syl ? { ...n.syl } : { onset: [], vowel: 'AX', coda: [], stress: false, text: 'a', wordStart: true }; return n.len >= 4 || n.midi >= hi - 3 ? openUp(s) : s; });
-      if (li % 2 === 1 && rhyme) rhymeWith(line, rhyme);
+      if (li % 2 === 1 && rhyme) rhymeWith(line, rhyme, rng);
       if (li % 2 === 0) rhyme = rhymeOf(line);
       sung.push(...line);
       continue;
@@ -276,8 +355,14 @@ export interface SingContext {
   shaped?: boolean;
   /** Melody first (docs/VOCAL-FIRST.md; on top of shaped's range and moves): the tune's own spine and idea, fitted to the chords last. */
   first?: boolean;
+  /** Learned (docs/VOCAL-LEARNED.md; on top of shaped's range and moves): each next pitch by the odds of real vocal lines. */
+  learned?: boolean;
   /** Shaped: the one signature move chosen in the menu (left out: the song's own, by genre). */
   move?: MoveId;
+  /** Real songs (docs/REALISM.md, src/parts/realism.ts): the writers lean toward real vocal lines of the genre. */
+  real?: boolean;
+  /** Patterns (docs/PATTERNS.md, src/realism/patterns.ts): rhythms and short shapes from the library; no line copying a real 2-bar stretch. */
+  patterns?: boolean;
   /** How the singer carries the energy (src/parts/energy.ts): a style chosen, 'off', or left out: Auto. */
   energy?: EnergyStyle | 'off';
 }
@@ -290,7 +375,7 @@ export interface SingContext {
  */
 export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   const rng = new Rng(`${ctx.seed}-vocal`);
-  const style: LyricStyle = { mood: ctx.mood, genre: ctx.genre };
+  const style: LyricStyle = { mood: ctx.mood, genre: ctx.genre, real: true };
   // the song's melody style: its mood's and genre's ways, with a little chance (docs/VOCAL.md, section 6)
   const melody = melodyStyle(ctx.seed, ctx.mood, ctx.genre, ctx.lift ?? 0);
   if (ctx.grid) melody.grid = true;
@@ -299,14 +384,29 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
     const cr = new Rng(`${ctx.seed}-contrast`);
     melody.shaped = true;
     if (ctx.first) melody.first = firstStyle(ctx.seed, ctx.mood, ctx.genre);
+    if (ctx.learned) melody.learned = learnedStyle(ctx.genre);
     melody.contrast = cr.pick(['subtle', 'clear', 'dramatic'] as const);
     melody.lift = melody.contrast === 'subtle' ? cr.int(2, 3) : melody.contrast === 'clear' ? cr.int(4, 5) : cr.int(7, 9);
     // the song's signature moves (docs/VOCAL-MOVES.md); two of them set its whole shape
     melody.moves = pickMoves(ctx.seed, ctx.genre, ctx.move);
     // (melody first: Auto keeps the moves that colour the tune, not the ones that reshape it, so the tune keeps its own line)
-    if (ctx.first && !ctx.move) melody.moves = melody.moves.filter((m) => !['pedal', 'monotone', 'sequence', 'upupdown', 'flip'].includes(m));
+    if ((ctx.first || ctx.learned) && !ctx.move) melody.moves = melody.moves.filter((m) => !['pedal', 'monotone', 'sequence', 'upupdown', 'flip'].includes(m));
     if (melody.moves.includes('flip')) { const up = cr.chance(0.7); melody.verse = up ? 'fall' : 'climb'; melody.chorus = up ? 'rise' : 'tumble'; }
     if (melody.moves.includes('belt')) { melody.contrast = 'dramatic'; melody.lift = cr.int(7, 9); }
+  }
+  // (real songs: the genre's lean toward real vocal lines; the range and the chorus's lift narrowed here, the rest in the writers)
+  if (ctx.patterns) melody.patterns = true;
+  let realArcV: RealArc | null = null;
+  if (ctx.real) {
+    melody.real = REAL_LEAN[ctx.genre];
+    melody.span *= melody.real.span;
+    // (the chorus against the verse as real songs have it, drawn per song from their spread (docs/ARC.md): most
+    // only a little higher, a quarter 2 or more, some lower; a little sparser; the top note saved for the last
+    // chorus only now and then)
+    realArcV = realArc(ctx.genre, new Rng(`${ctx.seed}-real-arc`));
+    melody.lift = Math.max(0, Math.round(realArcV.height));
+    // (the plan's own chorus slowdown undone: the real pace is the whole of it)
+    melody.busyChorus = melody.busyVerse * realArcV.pace * (planBusy('verse') / planBusy('chorus'));
   }
   // how the singer carries the song's energy: its energy style (docs/VOCAL-ENERGY.md), or off (as before)
   const es = ctx.energy === 'off' ? null : pickEnergy(ctx.seed, ctx.mood, ctx.genre, ctx.energy);
@@ -321,9 +421,20 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
   const hookStress = rng.pick([[true, false, true], [true, true], [true, false, true, false], [true, false]]);
   const hook = makeHook(new Rng(`${ctx.seed}-hook-words`), hookStress, style);
   // words first (docs/VOCAL-WORDS.md): how wordy the song is (its genre's rate, its own lean), its triplets, its soft endings
+  /** Words first: the song's own lean (wordier or sparer than its genre). */
+  let wordLean = 1;
   if (ctx.words) {
     const wr = new Rng(`${ctx.seed}-words-rate`);
     melody.words = { rate: 0.75 + 0.55 * wr.next(), trip: WORD_TRIP[ctx.genre], fem: WORD_FEM[ctx.genre], ask: WORD_ASK[ctx.mood], lyric: style, hook };
+    wordLean = melody.words.rate;
+    // (real songs, docs/WORDS-REAL.md: syllables a second as real singers sing them (the song's own lean kept), a
+    // chorus's lines only a little slower, soft line endings as often)
+    if (ctx.real) {
+      const rw = realWords(ctx.genre);
+      melody.words.rate *= rw.rate / (WORD_RATE[ctx.genre] * WORD_SUNG);
+      melody.words.chorus = rw.chorus;
+      melody.words.fem = rw.fem;
+    }
   }
   const seen: Partial<Record<SectionKind, number>> = {};
   let told = false;
@@ -341,7 +452,12 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const src = kind === 'outro' ? (sections.find((s) => s.section?.kind === 'chorus') ?? idea) : idea;
       // (written at its section's energy, by the energy style's dials)
       const st = es ? energize(melody, dialsFor(es, levelOf(src.section?.energy ?? 3, eLo, eHi)), as, bandBusy(src), es) : melody;
-      const tune = spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}`), st.singer.syncop, melody.grid, !!melody.words), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}`));
+      // (Learned with the Classic rhythm: its own rhythm, real singers' beats; on the grid, no speech pushes on top)
+      const ownBeat = !!melody.learned && !melody.grid && !melody.words;
+      const write = (salt: string) => spaceOut(shape(writeTune(new Rng(`${ctx.seed}-tune-${as}${salt}`), src.song, src.chords, as, base, ctx.genre, st, bandOf(src)), new Rng(`${ctx.seed}-speak-${as}${salt}`), st.singer.syncop, melody.grid || ownBeat, !!melody.words, melody.real && !melody.grid && !melody.words && !ownBeat ? realSixteenthsOf(ctx.genre) : undefined), st.space ?? 0, new Rng(`${ctx.seed}-space-${as}${salt}`));
+      let tune = write('');
+      // (patterns: the copy guard: a tune with a 2-bar stretch a real song sings is written again, a few times at most)
+      for (let k = 1; melody.patterns && k <= GUARD_TRIES && copiesReal(tune.notes, src.song.bars[0]?.len ?? 16); k++) { tune = write(`-guard${k}`); guardRewrites++; }
       const words = writeWords(new Rng(`${ctx.seed}-words-${as}`), tune, style, as === 'chorus' ? hook : null, base + 6);
       const t = idea.section?.tension ?? [];
       b = { tune, key: src.song.key, bars: src.song.bars.length, words, tag: as, ref: t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0.5 };
@@ -362,13 +478,13 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
         if (g >= total || blockSteps <= 0) return;
         // (an outro sings only its first half, then lets the band play out)
         if (kind === 'outro' && g >= Math.max(blockLen / 2, total / 2)) return;
-        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt, ...(t.colour ? { colour: true } : {}), ...(t.peak ? { peak: true } : {}), ...(t.trip !== undefined ? { trip: t.trip } : {}) });
+        idea.vocal!.push({ step: g, len: Math.min(t.len, total - g), midi: t.midi + shift, vel: t.belt ? 0.95 : t.stress ? 0.85 : 0.75, syl: { ...words[i] }, start: t.start, slide: t.slide, fall: t.fall, belt: t.belt, ...(t.colour ? { colour: true } : {}), ...(t.pat ? { pat: true } : {}), ...(t.peak ? { peak: true } : {}), ...(t.trip !== undefined ? { trip: t.trip } : {}) });
       });
     }
     // the tune follows the tension curve, line by line: reaching up as the song builds, settling as it lets go
     const moved = followTension(idea, b.ref, ctx.mood, melody, new Rng(`${ctx.seed}-follow-${si}`), es ? FOLLOW_BY[es] : 1);
     // the climax: its last held note lifted to the song's top
-    if (si === climax && idea.vocal.length) {
+    if (si === climax && (!realArcV || realArcV.climax) && idea.vocal.length) {
       const v = idea.vocal;
       const held = [...v].reverse().find((x, k) => x.len >= 4 && x.syl.text !== '~' && v[v.length - k]?.syl.text !== '~');
       if (held) {
@@ -397,15 +513,22 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       against = deliverEnergy(idea, es, sections.length > 1 ? againstFor(new Rng(`${ctx.seed}-against-${si}`), info.energy, si === firstSung) : null, FLOOR + melody.up, PEAK + melody.up + 1 + melody.top);
     }
     if (ctx.high) fitHigh(idea, ctx.high);
+    // (no lone spikes: a jump up of a 6th or more coming straight back down is a 5th at most, and a big drop off a high note steps down)
+    const spikes = smoothSpikes(idea);
     const trips = tripletize(idea.vocal);
     const quick = quicken(idea.vocal, 15 / idea.song.bpm, new Rng(`${ctx.seed}-quick-${si}`));
+    // (learned: every line starts somewhere strong, its first note the chord's root, 3rd or 5th, its first on a beat a chord note, whatever moved them since)
+    const landed = melody.learned ? landStrong(idea, FLOOR + melody.up, PEAK + melody.up + 1 + melody.top) : 0;
+    // (patterns: the copy guard once more, on the line as finally sung)
+    const unCopied = melody.patterns ? breakCopies(idea) : 0;
     if (idea.vocal.length) {
       const words = lyricText(idea.vocal);
       if (!told) {
         idea.notes.push(`Singer: ${melody.singer.desc}; ${TIMBRE_DESC(melody.timbre)}`, `Melody: ${melodyDesc(melody)}`);
         if (es) idea.notes.push(`Energy (${ctx.energy ? 'chosen' : 'this song\'s'}): ${ENERGY[es].label}, like ${ENERGY[es].like}: ${ENERGY[es].desc}`);
         if (melody.first) idea.notes.push(`Melody: ${firstDesc(melody.first)}`);
-        if (melody.words) idea.notes.push(`Rhythm: words first, the words written before the rhythm: word groups set to the grid, quick light words, soft line endings; about ${(melody.words.rate * WORD_RATE[ctx.genre]).toFixed(1)} syllables a second in verses (${GENRE_LABEL[ctx.genre].toLowerCase()}, this song ${melody.words.rate >= 1.1 ? 'wordier' : melody.words.rate <= 0.9 ? 'sparer' : 'about usual'})`);
+        if (melody.learned) idea.notes.push(`Melody: ${learnedDesc(melody.learned)}`);
+        if (melody.words) idea.notes.push(`Rhythm: words first, the words written before the rhythm: word groups set to the grid, quick light words, soft line endings; about ${(melody.words.rate * WORD_RATE[ctx.genre] * WORD_SUNG).toFixed(1)} syllables a second in verses (${GENRE_LABEL[ctx.genre].toLowerCase()}${ctx.real ? ', as real singers' : ''}, this song ${wordLean >= 1.1 ? 'wordier' : wordLean <= 0.9 ? 'sparer' : 'about usual'})`);
         if (melody.moves?.length) idea.notes.push(`Melody moves (${ctx.move ? 'chosen' : 'this song\'s signature'}): ${movesDesc(melody.moves)}`);
         told = true;
       }
@@ -413,6 +536,9 @@ export function singTrack(sections: Idea[], ctx: SingContext, climax: number) {
       const bits = [moved.up && `${moved.up} up`, moved.down && `${moved.down} down`, moved.turns && `${moved.turns === 1 ? 'a turn' : `${moved.turns} turns`}`].filter(Boolean);
       const fitBits = [fit.moved && `${fit.moved === 1 ? 'a note' : `${fit.moved} notes`} moved off clashes`, fit.slides && `${fit.slides === 1 ? 'a held note slides' : `${fit.slides} held notes slide`} with the chord`, pushed && `pushes with the band ${pushed === 1 ? 'once' : `${pushed} times`}`, cleared && (idea.guitar2.length ? `Guitar 2 leaves out ${cleared === 1 ? 'a note' : `${cleared} notes`} over the words` : 'Guitar 2 lays out under the singer')].filter(Boolean);
       if (quick) fitBits.push(`${quick === 1 ? 'a run' : `${quick} runs`} sung quicker than the beat`);
+      if (unCopied) fitBits.push(`${unCopied === 1 ? 'a note' : `${unCopied} notes`} moved a step so no 2 bars copy a real song`);
+      if (landed) fitBits.push(`${landed === 1 ? 'a note' : `${landed} notes`} starting a line moved onto the chord (its first note, its first on a beat)`);
+      if (spikes) fitBits.push(`${spikes === 1 ? 'a high note' : `${spikes} high notes`} brought nearer the line (no octave up and straight back)`);
       if (trips) fitBits.push(`${trips === 1 ? 'a triplet' : `${trips} triplets`}`);
       if (fitBits.length) idea.notes.push(`Vocal fits the band: ${fitBits.join(', ')}`);
       if (against) idea.notes.push(`Vocal against the band: ${against}`);
@@ -443,6 +569,8 @@ const WORD_TRIP: Record<Genre, number> = { pop: 0.35, funk: 0.45, rock: 0.3, har
 /** How often a pair of lines is a question and its answer (the first rising, the second falling home), by mood: open, hopeful moods ask most; angry and dark ones state. */
 const WORD_ASK: Record<Mood, number> = { happy: 0.6, dreamy: 0.6, nostalgic: 0.5, triumphant: 0.45, tense: 0.5, melancholic: 0.4, dark: 0.3, angry: 0.25 };
 const WORD_FEM: Record<Genre, number> = { pop: 0.5, funk: 0.4, rock: 0.45, hardrock: 0.4, metal: 0.3, grunge: 0.45, altmetal: 0.4 };
+/** Rhythm Words: how much of its nominal syllables a second (WORD_RATE) a line ends up singing (rests, held notes; measured by npm run realism-lab), so Real songs can aim at real singers' rate. */
+const WORD_SUNG = 0.89;
 
 /**
  * Runs aren't locked to the band's grid (Paul: in a slow song the vocal is "super slow and draggy";
@@ -497,6 +625,102 @@ function fitHigh(idea: Idea, h: HighVoice) {
   }
 }
 
+/**
+ * Spikes (Paul: a line jumping up an octave to a held high note and straight back down "is not very good
+ * sounding"; a jump up that keeps going is fine). Inside a line, a note (with its vowel carried on at the
+ * same pitch) a 6th or more over the note before and the note after (half a bar's rest or less between them) is brought down to a 5th at most over
+ * the one before (a chord note, else a note of the key). And a drop of a 6th or more off a high note that was
+ * jumped to steps down: the next note (and, if still a big drop, the one after) moved up to a chord note a
+ * 3rd or so under it; never a line's last note (its ending stays). Returns the notes changed.
+ */
+function smoothSpikes(idea: Idea): number {
+  const v = idea.vocal;
+  if (!v?.length) return 0;
+  const { key, total } = idea.song;
+  const scale = (SCALES[idea.song.mode] as readonly number[]).map((x) => (key + x) % 12);
+  const tonesAt = (g: number) => chordTones(key, idea.chords.timeline[idea.chords.chordIdx[Math.min(total - 1, Math.max(0, Math.floor(g)))]].chord);
+  const lead = v.filter((n) => !n.role).sort((a, b) => a.step - b.step);
+  const lines: VocalNote[][] = [];
+  for (const n of lead) { if (n.start || !lines.length) lines.push([]); lines[lines.length - 1].push(n); }
+  let changed = 0;
+  for (const line of lines) {
+    // (runs of notes at one pitch: a syllable and its vowel held on)
+    const G: VocalNote[][] = [];
+    for (const n of line) { const last = G[G.length - 1]; if (last && last[0].midi === n.midi) last.push(n); else G.push([n]); }
+    const pitch = (g: VocalNote[]) => g[0].midi;
+    const set = (g: VocalNote[], m: number) => { for (const n of g) n.midi = m; changed++; };
+    const close = (a: VocalNote[], b: VocalNote[]) => b[0].step - (a[a.length - 1].step + a[a.length - 1].len) <= 8;
+    // (the nearest chord note to a pitch in a span, else a note of the key)
+    const best = (g: number, lo: number, hi: number, near: number) => {
+      const t = tonesAt(g), ms = Array.from({ length: hi - lo + 1 }, (_, k) => lo + k);
+      const by = (ok: (m: number) => boolean) => ms.filter(ok).sort((x, y) => Math.abs(x - near) - Math.abs(y - near))[0];
+      return by((m) => t.includes(mod(m, 12))) ?? by((m) => scale.includes(mod(m, 12)));
+    };
+    for (let i = 1; i + 1 < G.length; i++) {
+      const A = G[i - 1], B = G[i], C = G[i + 1];
+      if (!close(A, B) || !close(B, C)) continue;
+      const up = pitch(B) - pitch(A);
+      // a spike: up a 6th or more and straight back down: a 5th at most
+      if (up >= 8 && pitch(B) - pitch(C) >= 7) {
+        const m = best(B[0].step, pitch(A) + 3, pitch(A) + 7, pitch(A) + 7);
+        if (m !== undefined) set(B, m);
+      }
+      // the way down off a high note that was jumped to: a step or two at a time
+      if (pitch(B) - pitch(A) < 5) continue;
+      for (let j = i + 1, k = 0; k < 2 && j + 1 < G.length; j++, k++) {
+        const hi = G[j - 1], X = G[j];
+        if (!close(hi, X) || pitch(hi) - pitch(X) < 8) break;
+        const m = best(X[0].step, pitch(hi) - 7, pitch(hi) - 2, pitch(hi) - 4);
+        if (m === undefined) break;
+        set(X, m);
+      }
+    }
+  }
+  return changed;
+}
+
+/**
+ * A line starts somewhere strong (Learned, docs/VOCAL-LEARNED.md): its first note the chord's root, 3rd or 5th,
+ * and its first note on a beat (its landing) a chord note; a pickup between them sings free. The writer picks them
+ * so; the steps after it (the rhythm settling, the tension curve, fitting to the band) can move them off, so one
+ * off moves to the nearest that fits, 2 semitones away at most (4 if none), with the notes held on at its pitch.
+ * A colour note stays. Returns the notes changed.
+ */
+function landStrong(idea: Idea, lo: number, hi: number): number {
+  const v = idea.vocal;
+  if (!v?.length) return 0;
+  const { key, total } = idea.song;
+  const chordAt = (g: number) => idea.chords.timeline[idea.chords.chordIdx[Math.min(total - 1, Math.max(0, Math.floor(g)))]].chord;
+  const all = v.filter((n) => !n.role).sort((a, b) => a.step - b.step);
+  const lines: VocalNote[][] = [];
+  for (const n of all) { if (n.syl.text === '~') continue; if (n.start || !lines.length) lines.push([]); lines[lines.length - 1].push(n); }
+  let changed = 0;
+  // (a note moved to the nearest pitch that fits, the root, 3rd or 5th first when as near)
+  const fix = (n: VocalNote, mainOnly: boolean) => {
+    const tones = chordTones(key, chordAt(n.step)), root = chordPc(key, chordAt(n.step));
+    const main = (m: number) => [0, 3, 4, 7].includes(mod(m - root, 12));
+    const fits = (m: number) => (mainOnly ? main(m) : tones.includes(mod(m, 12)));
+    if (n.colour || fits(n.midi)) return;
+    let to: number | undefined;
+    for (const far of [2, 4]) {
+      const ms = Array.from({ length: 2 * far + 1 }, (_, k) => n.midi - far + k).filter((m) => m >= lo && m <= hi && fits(m));
+      ms.sort((x, y) => Math.abs(x - n.midi) - Math.abs(y - n.midi) || Number(main(y)) - Number(main(x)));
+      if ((to = ms[0]) !== undefined) break;
+    }
+    if (to === undefined) return;
+    // (with the notes held on at its pitch: a word's vowel carried on, the held note's other half)
+    const old = n.midi;
+    for (let k = all.indexOf(n), end = n.step; k < all.length && all[k].midi === old && all[k].step <= end; k++) { end = all[k].step + all[k].len; all[k].midi = to; }
+    changed++;
+  };
+  for (const line of lines) {
+    fix(line[0], true);
+    const landing = line.find((n) => n.step % 4 === 0);
+    if (landing && landing !== line[0]) fix(landing, false);
+  }
+  return changed;
+}
+
 /** A held note stops where Guitar 2's answer starts (the singer breathes, the lead answers; a full beat's room, breathe()); a wail holds on. */
 function leaveRoom(idea: Idea) {
   const lead = idea.guitar2.filter((h) => !h.letRing && !h.swell).map((h) => h.step);
@@ -507,11 +731,44 @@ function leaveRoom(idea: Idea) {
   }
 }
 
+/**
+ * Patterns: the copy guard on a section's finished line (fitting to the band and the energy can change notes after
+ * the tune was checked): in a 2-bar stretch that matches a real song's, a light syllable inside it moves a step to
+ * another chord note (or a note of the key), until nothing matches. Returns the notes moved.
+ */
+function breakCopies(idea: Idea): number {
+  const v = idea.vocal;
+  if (!v?.length) return 0;
+  const bar = idea.song.bars[0]?.len ?? 16;
+  const lead = () => v.filter((n) => !n.role);
+  const scale = (SCALES[idea.song.mode] as readonly number[]).map((x) => (idea.song.key + x) % 12);
+  let moved = 0;
+  for (let k = 0; k < 8; k++) {
+    // (the first stretch that matches)
+    const ns = lead(), st = copyAt(ns, bar);
+    if (st < 0) break;
+    const w = ns.filter((n) => n.step >= st && n.step < st + 2 * bar && n.syl.text !== '~');
+    const n = w.filter((x) => !x.syl.stress).at(Math.floor(w.length / 2) % Math.max(1, w.filter((x) => !x.syl.stress).length)) ?? w[Math.floor(w.length / 2)];
+    const tones = chordTones(idea.song.key, idea.chords.timeline[idea.chords.chordIdx[Math.min(idea.song.total - 1, n.step)]].chord);
+    const to = [1, -1, 2, -2, 3, -3].map((d) => n.midi + d).find((m) => tones.includes(mod(m, 12))) ?? [1, -1, 2, -2].map((d) => n.midi + d).find((m) => scale.includes(mod(m, 12)));
+    if (to === undefined) break;
+    // (its vowel carried on at the same pitch moves with it)
+    const was = n.midi;
+    for (let j = v.indexOf(n) + 1; j < v.length && v[j].syl.text === '~' && v[j].midi === was; j++) v[j].midi = to;
+    n.midi = to;
+    moved++;
+  }
+  return moved;
+}
+
 /** The vocal of a lone idea: the chorus tune and its hook. */
-export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, rhythm?: 'grid' | 'words', melody?: 'shaped' | 'first', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off') {
+export function singIdea(idea: Idea, seed: string, mood: Mood, lift = 0, rhythm?: 'grid' | 'words', melody?: 'shaped' | 'first' | 'learned', move?: MoveId, high?: HighVoice, energy?: EnergyStyle | 'off', real?: boolean, patterns?: boolean, rewrite?: (fake: Idea) => void) {
   const fake = { ...idea, section: { kind: 'chorus' as SectionKind, label: 'Chorus', energy: 4 } };
-  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid: rhythm === 'grid', words: rhythm === 'words', shaped: !!melody, first: melody === 'first', move, high, energy }, 0);
+  singTrack([fake], { seed, mood, genre: idea.song.partGenres.strum, lift, grid: rhythm === 'grid', words: rhythm === 'words', shaped: !!melody, first: melody === 'first', learned: melody === 'learned', move, high, energy, real, patterns }, 0);
+  // (another writer's lead tune, if any: the backing follows it)
+  rewrite?.(fake);
   arrangeBacking([fake], { seed, backing: pickBacking(seed, mood, idea.song.partGenres.strum, fake.vocalEnergy), mood, energy: fake.vocalEnergy }, -1);
+  if (rewrite) { idea.sung = fake.sung; idea.sungTop = fake.sungTop; }
   idea.vocal = fake.vocal;
   idea.vocalTimbre = fake.vocalTimbre;
   idea.backing = fake.backing;

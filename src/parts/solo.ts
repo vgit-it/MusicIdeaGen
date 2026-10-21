@@ -17,9 +17,10 @@ import type { LickKind } from '../players/lead';
 import type { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
 import { SCALES, chordPc } from '../theory';
-import { TUNINGS } from '../theory/fretboard';
+import { TUNINGS, type Tuning } from '../theory/fretboard';
 import { type Guitar2Part, MINORISH, chordTones, leadScale } from './guitar2';
 import { type PlacedNote, licksFor, lickFit, placeLibLick, placedHit } from './licks';
+import { REAL_SOLO, realCell, realLick } from './reallicks';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
@@ -88,16 +89,17 @@ const HANDS_OF: Record<LickKind, { legato: number; slide: number; vib: number; s
 };
 
 type Art = 'pick' | 'legato' | 'slide';
-interface Ev extends Omit<PlacedNote, 'bend'> { bend?: number; slide?: number; art?: Art; peak?: boolean }
+export interface Ev extends Omit<PlacedNote, 'bend'> { bend?: number; slide?: number; art?: Art; peak?: boolean; shift?: number }
 interface Motif { rhythm: number[]; moves: number[] }
 
 /**
  * A guitar solo over a section (usually 8 or 16 bars). `lick`: the lead player's kind. `hook`: the
  * track's hook over the same chords (the solo can start by quoting it), or null. `intensity` (0-1):
  * where the solo sits on the song's tension curve: the song's climax goes higher, busier and louder;
- * a solo in a calm song or a release stays lower and sings.
+ * a solo in a calm song or a release stays lower and sings. `realLicks`: Real licks (docs/LEAD-LICKS.md), with
+ * the rhythms the song has used so far.
  */
-export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null, intensity = 0.7): Guitar2Part {
+export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null, intensity = 0.7, realLicks?: Set<string>): Guitar2Part {
   const { key, mode, bars, total } = song;
   const t = song.tuning ?? TUNINGS.standard;
   const minor = MINORISH.includes(mode);
@@ -237,6 +239,8 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     // the player's own licks (licks.ts: bends, double-stops, trills...) alongside the box licks
     const lib = rng.shuffle(licksFor(lick, speed, chordAt(start), end - start));
     const options = rng.shuffle(LICKS.filter((l) => l.speed === speed && l.who.includes(lick)));
+    // Real licks: most lick slots get one written from real lead parts
+    if (realLicks && rng.chance(REAL_SOLO.lick) && placeReal(start, end, speed, lo, hi, close, vel)) return true;
     if (lib.length && rng.chance(0.55)) {
       for (const l of lib) {
         const placed = placeLibLick(rng, fit, key, l, end, Math.max(lo - 3, 48), Math.min(83, hi + 2, top - 1), prevM, close === 'home' ? 'home' : 'open', lick, vel);
@@ -268,6 +272,15 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     }
     return false;
   };
+  /** Real licks (docs/LEAD-LICKS.md): a lick written from real lead parts in the slot; false if none fits. */
+  const placeReal = (start: number, end: number, speed: Speed, lo: number, hi: number, close: 'home' | 'open', vel: number) => {
+    const real = realLick(rng, {
+      key, minor, genre: song.partGenres.strum, who: lick, speed, start, end, lo: Math.max(lo - 3, 48), hi: Math.min(83, hi + 2, top - 1),
+      prev: evs.length ? evs[evs.length - 1].midi : R, close, vel, fit, changes, used: realLicks!,
+    });
+    if (real) evs.push(...real);
+    return !!real;
+  };
   /** A fast burst between two long notes: a held note, a quick run, a held note on a strong beat. */
   const burst = (start: number, finalAt: number, end: number, lo: number, hi: number, close: 'home' | 'open', vel: number) => {
     const prevM = evs.length ? evs[evs.length - 1].midi : R;
@@ -284,6 +297,9 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
       if (placeLick(start, end, k === 'lickSlow' ? 'slow' : k === 'lickMid' ? 'mid' : 'fast', lo, hi, close, vel)) return;
       k = k === 'lickFast' ? 'burst' : 'sing';
     }
+    // Real licks: a sung phrase or a burst now and then a real lick instead (slower ones for a sung phrase)
+    if (realLicks && (k === 'sing' || k === 'burst') && rng.chance(REAL_SOLO[k])
+      && placeReal(start, end, k === 'burst' ? 'fast' : rng.chance(0.5) ? 'slow' : 'mid', lo, hi, close, vel)) return;
     if (k === 'burst') return burst(start, finalAt, end, lo, hi, close, vel);
     phrase(start, finalAt, end, k === 'sing' ? 0 : level(1), lo, hi, contour, close, vel, k === 'motif' && !!motif);
   };
@@ -319,7 +335,8 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
         const run = P.slice(-Math.min(P.length, a.len - 2));
         run.forEach((m, i) => evs.push({ step: a.start + 2 + i, midi: m, len: 1, vel: 0.84 + (0.1 * i) / run.length }));
       } else {
-        const cell = rng.pick([[0, 2, 4], [0, 2, 3, 4], [0, 3, 4]]);
+        // (Real licks: a short real lick rhythm climbing instead)
+        const cell = realLicks ? realCell(rng, song.partGenres.strum) : rng.pick([[0, 2, 4], [0, 2, 3, 4], [0, 3, 4]]);
         const reps = a.len >= 16 ? 3 : 2;
         const span = Math.floor(a.len / reps);
         let base = Math.max(0, P.length - 2 - reps * 2);
@@ -408,10 +425,25 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
     }
   });
 
-  // how each note is played, from where it sits in the solo: quick notes in a run legato (a pick on each
-  // beat, hammered up or pulled off down between), slower connected notes picked or slid, a phrase
-  // started picked or slid into, held chord notes bent now and then, vibrato on held notes (wider on the
-  // peak); what a lick says, it keeps
+  const hits = playSolo(rng, evs, { lick, key, minor, isTone, inScale, total, t });
+  return {
+    hits,
+    notes: [`Guitar 2: a solo: ${quoted ? 'starts by quoting the hook' : 'starts low and sparse'}, phrases in call and answer (slow sung lines against fast licks), builds to its highest note about two-thirds of the way (${st.peak}), lands on the root`],
+  };
+}
+
+/** What the solo writers' notes need to be played: the player, the key, the chord and scale tests, the length, the tuning. */
+export interface SoloHands { lick: LickKind; key: number; minor: boolean; isTone: (m: number, g: number) => boolean; inScale: (m: number) => boolean; total: number; t: Tuning }
+
+/**
+ * How each note is played, from where it sits in the solo: quick notes in a run legato (a pick on each
+ * beat, hammered up or pulled off down between), slower connected notes picked or slid, a phrase
+ * started picked or slid into, held chord notes bent now and then, vibrato on held notes (wider on the
+ * peak); what a lick says, it keeps.
+ */
+export function playSolo(rng: Rng, evs: Ev[], o: SoloHands): GuitarHit[] {
+  const { lick, key, minor, isTone, inScale, total, t } = o;
+  const st = STYLE[lick];
   evs.sort((x, y) => x.step - y.step);
   const all = evs.filter((e, i) => i === 0 || e.step > evs[i - 1].step);
   const hd = HANDS_OF[lick];
@@ -438,10 +470,8 @@ export function generateSolo(rng: Rng, song: Song, chords: ChordPart, riff: Guit
   const hits: GuitarHit[] = all.map((e, i) => {
     const next = all[i + 1]?.step ?? total;
     const h = placedHit({ ...e, bend: e.bend ?? 0, len: Math.max(1, Math.min(e.len, next - e.step)), vel: Math.min(1, e.vel) }, t, pos);
-    return e.slide ? { ...h, slide: e.slide } : h;
+    const h2 = e.slide ? { ...h, slide: e.slide } : h;
+    return e.shift ? { ...h2, shift: e.shift } : h2;
   });
-  return {
-    hits,
-    notes: [`Guitar 2: a solo: ${quoted ? 'starts by quoting the hook' : 'starts low and sparse'}, phrases in call and answer (slow sung lines against fast licks), builds to its highest note about two-thirds of the way (${st.peak}), lands on the root`],
-  };
+  return hits;
 }

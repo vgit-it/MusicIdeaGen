@@ -19,10 +19,12 @@ import { Rng } from '../rng';
 export interface Feel {
   glide: number; scoopP: number; scoopBy: number; scoopLen: number; swell: number; fade: number;
   fallP: number; fallBy: number; vib: number; sharp: number; breath: number; late: number;
+  /** An 8th note, in seconds (at the song's tempo). */
+  eighth: number;
 }
 
 /** The middle of the road (the clear voice, the synth when the genre has nothing of its own). */
-const BASE: Feel = { glide: 0.08, scoopP: 0.3, scoopBy: 0.6, scoopLen: 0.07, swell: 0.06, fade: 0.09, fallP: 0.25, fallBy: 1.5, vib: 25, sharp: 10, breath: 0.6, late: 0.02 };
+const BASE: Feel = { glide: 0.08, scoopP: 0.3, scoopBy: 0.6, scoopLen: 0.07, swell: 0.06, fade: 0.09, fallP: 0.25, fallBy: 1.5, vib: 25, sharp: 10, breath: 0.6, late: 0.02, eighth: 0.25 };
 
 /**
  * Each singer their own (the genre voices and the characters): pop clean and quick; rock scooping; hard rock
@@ -44,6 +46,10 @@ const SINGERS: Record<string, Partial<Feel>> = {
   nasal: { glide: 0.09, scoopP: 0.45, scoopBy: 0.9, swell: 0.05, fade: 0.09, fallP: 0.35 },
 };
 
+/** A quieter note's level (times the normal amplitude), and how far a long word's end fades (dB). */
+export const LOW_GAIN = 0.8;
+const WORD_FADE_DB = 9;
+
 const lerp = (a: number, b: number, x: number) => a + (b - a) * Math.max(0, Math.min(1, x));
 
 /**
@@ -64,6 +70,7 @@ export function feelFor(singer: string, energy: number, bpm: number): Feel {
     fallP: f.fallP * lerp(1.3, 0.7, e),
     sharp: f.sharp * lerp(0.3, 1, e),
     breath: f.breath * lerp(1, 0.7, e),
+    eighth: 30 / bpm,
   };
 }
 
@@ -86,9 +93,25 @@ export function feelSung(notes: SungNote[], f: Feel, seed: number): SungNote[] {
       o.slide = f.scoopBy * (0.6 + 0.6 * rng.next());
     if (sung && (fresh || n.syl.wordStart)) o.swell = f.swell * (fresh ? 1 : 0.6) * (0.8 + 0.4 * rng.next());
     // (a word's end: the next note a new word, or none; not before a bend, which carries the word on)
-    if (!next || (next.syl.wordStart && !next.bend)) o.fade = Math.min(f.fade * (0.8 + 0.4 * rng.next()), held * 0.45);
+    if (!next || (next.syl.wordStart && !next.bend)) {
+      o.fade = Math.min(f.fade * (0.8 + 0.4 * rng.next()), held * 0.45);
+      // (a word an 8th long or longer: it dies away over the last 40% of the note, up to 0.45 s, by 9 dB)
+      if (sung && held >= f.eighth * 0.95) { o.fade = Math.min(0.45, held * 0.4); o.fadeBy = WORD_FADE_DB; }
+    }
     if (n.vel >= 0.85 || (n.midi === top && held > 0.3 && f.sharp >= 6)) o.sharp = f.sharp * (0.6 + 0.4 * rng.next());
     return o;
+  });
+  // (a quieter note now and then in a series of notes that touch: more often the shorter the note, never two in a row; its own dice)
+  const low = new Rng(`feel-low-${seed}`);
+  let lastLow = -2;
+  out.forEach((o, i) => {
+    const n = notes[i], prev = notes[i - 1], next = notes[i + 1];
+    const touching = (a: SungNote | undefined, b: SungNote | undefined) => !!a && !!b && b.t - a.end < 0.06;
+    const roll = low.next();
+    if (n.bend || n.syl.text === '~' || lastLow === i - 1 || !(touching(prev, n) || touching(n, next))) return;
+    const r = (n.end - n.t) / f.eighth;
+    const p = r < 0.75 ? 0.3 : r < 1.5 ? 0.2 : r < 3 ? 0.1 : 0.04;
+    if (roll < p) { o.gain = LOW_GAIN; lastLow = i; }
   });
   const last = out[out.length - 1];
   const lastHeld = last.end - last.t;
@@ -120,4 +143,12 @@ export function inhale(rate: number, len: number, seed: number): Float32Array {
   }
   for (let i = 0; i < n; i++) out[i] /= peak;
   return out;
+}
+
+/** A breath in before a sung line (`raw`, changed in place): `pre` seconds of lead-in, `amount` its strength (about 0.06 of the line's peak), `seed` its noise. */
+export function addBreath(raw: Float32Array, rate: number, pre: number, amount: number, seed: number) {
+  let peak = 0;
+  for (let i = 0; i < raw.length; i++) peak = Math.max(peak, Math.abs(raw[i]));
+  const len = 0.22, br = inhale(rate, len, seed), at = Math.round((pre - len - 0.06) * rate);
+  for (let i = 0; i < br.length; i++) if (at + i >= 0 && at + i < raw.length) raw[at + i] += br[i] * peak * 0.06 * amount;
 }

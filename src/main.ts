@@ -1,3 +1,4 @@
+import './audio/live';
 import './style.css';
 import { TIMBRE_CHOICES, type TimbreChoice, type VocalChoice } from './audio/singer';
 import { HIGH_VOICES, type HighVoice, leadHigh } from './parts/singers';
@@ -9,7 +10,7 @@ import type { GenreSel } from './genres';
 import { LAYER_PARTS, type LayerPart, type MixPart } from './audio/mixer';
 import { type Rendered, encodeMp3, encodeWav, isSilent, renderAudio, zipFiles } from './export/audio';
 import { exportBaseName, toMidi } from './export/midi';
-import { generate, randomSeeds } from './generator';
+import { generate as generateIdea, MAIN_METHOD, randomSeeds } from './generator';
 import type { ChordSheet, GenOptions, Idea, Seeds, SectionKind } from './idea';
 import { METER_CHOICES } from './rhythm';
 import { newSeed } from './rng';
@@ -20,9 +21,13 @@ import {
 import { type PartKey, buildLockPanel } from './ui/locks';
 import { buildPartsPanel } from './ui/parts';
 import { buildChordEditor } from './ui/chordedit';
-import { buildGuidePanel } from './guide/panel';
+import { buildRoll } from './ui/roll';
+import { buildVersePanel } from './verse/panel';
 import { hasPins } from './parts/sheet';
 import { highlightBar, markSection, renderIdea, renderTrack } from './ui/render';
+
+// every idea made the main way (the lead and rhythm guitar's ways of playing, the vocal's writers: MAIN_METHOD)
+const generate = (o: GenOptions, s?: Seeds) => generateIdea({ ...o, ...MAIN_METHOD }, s);
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -56,14 +61,19 @@ const realBtn = $<HTMLButtonElement>('realamps');
 const realHint = $('realhint');
 let preparing = false;
 engine.onBar = highlightBar;
-// the Guide line experiment (src/guide/): its own section, listening to the engine's steps
-const guide = buildGuidePanel($('guide'), engine, {
-  async generateAndPlay() {
-    await Tone.start();
-    newIdea();
-    await playIfStopped();
+// the melody view: the sung line over the chords, with a playhead
+const roll = buildRoll($('roll'));
+engine.onStep = (i, _idx, g, time, six) => { if (engine.playing) roll.step(i, g, time, six); };
+engine.onStop = () => roll.stopped();
+
+// the new verse melody writer (src/verse/): its own card
+const verse = buildVersePanel($('verse'), {
+  writer: () => idea?.opts.vocalWriter ?? 'verse',
+  setWriter(w) {
+    if (!idea) return;
+    // (the same song with the other writer: only the lead vocal changes)
+    showIdea(generate({ ...idea.opts, vocalWriter: w === 'verse' ? undefined : w }, idea.seeds), true);
   },
-  async togglePlay() { playBtn.click(); },
 });
 
 /** The section strip, labelled with the instrument each section's rhythm part plays on. */
@@ -78,7 +88,7 @@ function render() {
   const sound = `Sound: ${SOUND_NAME[engine.chordIdFor(cur)]}${cur.guitar2.length ? `, Guitar 2 on ${SOUND_NAME[engine.guitar2IdFor(cur)]}` : ''}`;
   // (the singer's lanes and words only while it sings)
   const sings = engine.vocal !== 'off';
-  const shownIdea = { ...cur, vocal: sings ? cur.vocal : undefined, backing: sings ? cur.backing?.filter((n) => n.role === 'adlib' || engine.backingVocal !== 'off') : undefined, notes: cur.notes.filter((n) => sings || !n.startsWith('Vocal')).map((n) => (n.startsWith('Sound: ') ? sound : n)) };
+  const shownIdea = { ...cur, vocal: sings ? cur.vocal : undefined, sung: sings ? cur.sung : undefined, backing: sings ? cur.backing?.filter((n) => n.role === 'adlib' || engine.backingVocal !== 'off') : undefined, notes: cur.notes.filter((n) => sings || !n.startsWith('Vocal')).map((n) => (n.startsWith('Sound: ') ? sound : n)) };
   renderIdea(shownIdea, engine.shapesFor(cur), label(engine.chordIdFor(cur)), label(engine.guitar2IdFor(cur)),
     Object.fromEntries(LAYER_PARTS.map((p) => [p, engine.layerFor(cur, p)])),
     target ? { sheet: target.idea.opts.chords, from: target.from, n: target.n, selected: chordEditor.bar } : null);
@@ -89,13 +99,13 @@ function render() {
     renderSectionTools();
   }
   showReal();
-  guide.update(track ? track.sections : [cur], track?.mood, singerFor(cur));
+  verse.update(track ? track.sections : [cur]);
+  roll.show(cur);
 }
 
 function setPlaying(on: boolean) {
   playBtn.textContent = on ? 'Stop' : 'Play';
   playBtn.classList.toggle('on', on);
-  guide.setPlaying(on);
 }
 
 /* ---- chords you set: tap a bar to open the editor; the band is rewritten around them */
@@ -200,6 +210,15 @@ $('copylink').onclick = async () => {
     setStatus('Copy the address from the address bar to share this idea.');
   }
   setTimeout(() => setStatus(''), 3000);
+};
+
+// the band view plays this same song (idea, track, parts and singer travel in the link)
+$('openband').onclick = () => {
+  updateLink();
+  const url = new URL('band.html', location.href);
+  url.searchParams.set('art', '');
+  url.hash = location.hash;
+  window.open(url, '_blank');
 };
 
 /* ---- export: the idea, or the whole track in track mode */
@@ -395,7 +414,7 @@ function newIdea() {
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
   // (the vocal's rhythm and the singer's lift carry over to the new idea; the lift then set for its own
   // singer: the new song may sing in the other voice)
-  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy };
+  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns, vocalWriter: idea?.opts.vocalWriter };
   let next = generate(opts, seeds);
   const h = singerFor(next);
   if ((next.opts.vocalLift ?? 0) !== (h ? HIGH_VOICES[h].lift : 0) || next.opts.vocalSinger !== (h ?? undefined)) next = generate({ ...opts, ...singerOpts(h) }, seeds);
@@ -617,20 +636,6 @@ const partsPanel = buildPartsPanel($('parts'), engine, () => {
   render();
   lockPanel.update(idea);
   updateLink();
-}, {
-  // how the vocal is written: its rhythm (Classic / Grid, docs/VOCAL-RHYTHM.md) and its pitches (Classic /
-  // Shaped, docs/VOCAL-MELODY.md / Melody first, docs/VOCAL-FIRST.md); rewrites the vocal, same seeds, the band unchanged
-  get: (k) => (k === 'rhythm' ? (idea?.opts.vocalRhythm ?? 'classic') : k === 'melody' ? (idea?.opts.vocalMelody ?? 'classic') : k === 'energy' ? (idea?.opts.vocalEnergy ?? 'auto') : (idea?.opts.vocalMove ?? 'auto')),
-  set: (k, v) => {
-    if (!idea) return;
-    // (a move chosen: the melody goes Shaped, where the moves live)
-    const opts = k === 'rhythm' ? { ...idea.opts, vocalRhythm: v === 'grid' || v === 'words' ? (v as 'grid' | 'words') : undefined }
-      : k === 'melody' ? { ...idea.opts, vocalMelody: v === 'shaped' || v === 'first' ? (v as 'shaped' | 'first') : undefined }
-      : k === 'energy' ? { ...idea.opts, vocalEnergy: v === 'auto' ? undefined : v }
-      : { ...idea.opts, vocalMove: v === 'auto' ? undefined : v, ...(v !== 'auto' && !idea.opts.vocalMelody ? { vocalMelody: 'shaped' as const } : {}) };
-    showIdea(generate(opts, idea.seeds), true);
-    partsPanel.sync();
-  },
 });
 
 // dev-only handle for debugging in the browser console
@@ -704,6 +709,9 @@ playBtn.onclick = async () => {
 };
 
 // boot: open a shared link, or show a new idea right away; enable Play once drums + bass are in
+// piano and strings on by default (Paul), each by section (Auto); a shared link can add more
+engine.setLayer('keys', 'auto');
+engine.setLayer('strings', 'auto');
 const shared = readLink();
 if (shared) {
   genreSel.value = shared.o.genre;
@@ -720,7 +728,11 @@ if (shared) {
   partsPanel.sync();
   showIdea(generate(shared.o, shared.s));
   if (shared.t) enterTrack(shared.t);
+  // (again, now the idea is there: the switches it carries show as they are)
+  partsPanel.sync();
 } else newIdea();
+// (the strips show the layers on by default)
+partsPanel.sync();
 engine.loadCore().then((failed) => {
   baseStatus = failed.length
     ? `Ready — synth fallback for ${failed.join(', ')} (samples didn't load).`

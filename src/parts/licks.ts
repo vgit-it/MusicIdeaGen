@@ -140,6 +140,37 @@ export const LIBRARY: LibLick[] = [
   lick(['blues'], 'mid', 'maj', "B.B. King's box", '0:16:2:b2 2:12:4:v 6:9:2 8:12:8:v'),
   lick(['blues'], 'mid', 'any', 'Chuck Berry double-stops', '0:12:1:d-5 3:12:1:d-5 6:12:2:d-5 8:12:1:d-5 11:12:1:d-5 14:12:2:d-5'),
   lick(['blues', 'simple'], 'mid', 'any', 'a double-stop bend', '0:12:4:d-5,b2 4:12:4:d-5'),
+
+  // more from lessons (2026-10-16, docs/LEAD.md section 5): blues and classic rock players
+  lick(['blues', 'sung'], 'mid', 'min', 'Clapton: the minor third bent to the fourth, home', '0:17:4:b2,v 4:15:2 6:12:2:h 8:10:2 10:12:6:v'),
+  lick(['blues'], 'mid', 'min', 'SRV: raked double-stops, down to the root', '0:7:2:d-4,rk 2:7:2:d-4 4:5:2 6:3:2:h 8:0:8:v'),
+  lick(['blues'], 'mid', 'min', 'Freddie King: a bend picked again, let down', '0:7:2:b2 2:7:2:b2 4:7:4:b2,r2 8:3:2 10:0:6:v'),
+  lick(['blues', 'sung'], 'mid', 'maj', 'Page: minor to major in one lick', '0:3:2:c 2:4:2:h 4:7:2 6:9:2:h 8:12:8:v'),
+  lick(['blues', 'run'], 'fast', 'min', 'Angus: a bent note against the next string', '0:7:1:b2 1:10:1 2:7:1:b2 3:10:1 4:7:1:b2 5:10:1 6:7:1:b2 7:10:1 8:12:8:v'),
+  lick(['blues', 'sung'], 'slow', 'min', 'Gary Moore: a crying bend let down', '0:17:6:b2,r2,v 6:15:2 8:12:8:v'),
+  lick(['sung', 'blues'], 'mid', 'min', 'Slash: one bend, again and again', '0:19:2:b2 2:19:2:b2 4:19:2:b2 6:17:2 8:15:2 10:12:6:v'),
+
+  // melodic players: target notes and enclosures, a pedal-steel bend, Santana, Mayer, The Edge
+  lick(['sung', 'run'], 'mid', 'maj', 'an enclosure onto the third', '0:5:2 2:3:2:c 4:4:8:v'),
+  lick(['sung', 'run'], 'mid', 'min', 'an enclosure onto the third', '0:5:2 2:2:2 4:3:8:v'),
+  lick(['sung'], 'slow', 'maj', 'a pedal-steel bend under a held note', '0:7:8:d-3,b2,v 8:4:8:v'),
+  lick(['sung'], 'mid', 'min', 'Santana: a sung Dorian line', '0:7:2 2:9:2:h,c 4:10:4 8:12:2:s 10:14:2 12:15:8:v'),
+  lick(['sung', 'blues'], 'mid', 'min', 'Mayer: short notes, laid back', '1:12:1 3:10:1 5:7:2:s 8:10:2:h 10:12:6:v'),
+  lick(['sung', 'simple'], 'mid', 'any', 'The Edge: ringing eighths', '0:7:2 2:12:2 4:7:2 6:12:2 8:7:2 10:12:6'),
+
+  // shredders: tapping, neoclassical, Phrygian, sixes
+  lick(['run'], 'fast', 'min', 'Van Halen: a tapped arpeggio', '0:19:1 1:12:1:h 2:15:1:h 3:19:1:h 4:12:1:h 5:15:1:h 6:22:1:h 7:15:1:h 8:19:1:h 9:22:1:h 10:15:1:h 11:19:1:h 12:24:4:v'),
+  lick(['run'], 'fast', 'min', 'Malmsteen: a harmonic-minor six', '0:15:1 1:14:1 2:12:1 3:11:1:c 4:12:1 5:14:1 6:12:1 7:10:1 8:8:1 9:7:1 10:8:1 11:10:1 12:7:4:v'),
+  lick(['run', 'simple'], 'mid', 'min', 'Hammett: a Phrygian trill', '0:12:4:tr1 4:13:2:c 6:12:2 8:7:8:v'),
+  lick(['run'], 'fast', 'min', 'Wylde: the pentatonic in sixes', '0:15:1 1:12:1:h 2:10:1:h 3:12:1:h 4:15:1 5:12:1:h 6:12:1 7:10:1:h 8:7:1:h 9:10:1:h 10:12:1 11:10:1:h 12:7:4:b2,v'),
+
+  // the raw player: one string, a fuzzed bend
+  lick(['simple'], 'mid', 'min', 'up one string, slid', '0:0:2:s 2:3:2:s 4:5:2:s 6:7:4:s 10:5:2 12:3:4:v'),
+  lick(['simple'], 'slow', 'min', 'Mascis: a fuzzed bend, let down', '0:12:8:b2,r2,v 8:10:2 10:7:6:v'),
+
+  // the funk player: octaves, a sparse Dorian line
+  lick(['muted'], 'mid', 'any', 'a muted octave line', '0:12:1:d-12 1:12:1:x 2:10:1:d-12,c 3:12:2:d-12 6:7:2:d-12'),
+  lick(['muted', 'sung'], 'mid', 'min', 'Frusciante: a sparse Dorian line', '0:7:1 1:9:1:c 2:10:2 4:12:1:x 5:12:3:s'),
 ];
 
 /** The chances, by player, of a rake into a lick's first bent note, and of using a lick from the library at all. */
@@ -159,6 +190,7 @@ export interface PlacedNote {
   vel: number;
   bend: number;
   unbend?: number;
+  lateBend?: number;
   art?: 'pick' | 'legato' | 'slide';
   dyad?: number;
   trill?: number;
@@ -263,7 +295,7 @@ export function placeLibLick(
 export function placedHit(e: PlacedNote, t: Tuning, pos: number, clean?: boolean): GuitarHit {
   const f = leadFret(e.midi, t, pos);
   const extra = {
-    bend: e.bend, unbend: e.unbend, art: e.art, trill: e.trill, tremolo: e.tremolo, rake: e.rake, vib: e.vib,
+    bend: e.bend, unbend: e.unbend, lateBend: e.lateBend, art: e.art, trill: e.trill, tremolo: e.tremolo, rake: e.rake, vib: e.vib,
     mute: e.dead ? ('dead' as const) : undefined, clean,
   };
   if (e.dyad === undefined) return { step: e.step, ...f, len: e.len, vel: e.vel, ...extra };
