@@ -70,6 +70,7 @@ The verse melody writer (`src/verse/`) writes the song's lead vocal, one rule at
 
 ## Rule 21: a fresh core note at every phrase start
 - `rerollTones` (`verse.ts`), right after rule 4's bar picks and before holds and notes. At each phrase start the chord note to sit on (1, 3 or 5) is drawn again with the same weights as rule 4 (the hook's, in a chorus), and holds to the next change in the bar's picks or the bar's end. The part of the bar before it (the last phrase's end, or the break) keeps its pick.
+- **Minimum (2026-10-21):** a shift has to last at least an 8th of a bar (until the bar's end or the next change in the picks). A phrase starting closer than that to the bar's end keeps the note it is on. Over 224 songs no melody changed because of it (it is a guard).
 - Drawn by step, so a leaf repeating a seed repeats it. Pentatonic still applies when the note is chosen. Bar labels on the card ("1→3") show the result.
 - Checked on 168 songs: 67% of phrases starting part-way through a bar sit on a different core note than before the break (a fresh draw out of 3); no overlaps.
 
@@ -108,3 +109,12 @@ Verse 2 answering verse 1, a lifted last chorus, breakdown (same recipe as above
 - A chord with no note in the key keeps what was drawn (`pickPc` and the pentatonic option still apply after).
 - Draws already in the key are untouched; the redraws use their own dice (`seed|tones-key`, `reroll-key`).
 - `npm run core-key-check` (224 songs, 1,804 sections): core notes out of key with an in-key chord note available went from 6,533 to 2 (a bar with a chord change in the span). The rest, 1.05% of steps, are chords with no note in the key.
+
+## Rule 28: long holds, 1 to 2 bars (2026-10-21)
+- `withLongHolds` (`verse.ts`), after the phrase endings and lead-in, before the silence fit. A phrase now and then (`holdLong`) holds one note for 1 to 2 bars, in half-beat steps (1, 1⅛, 1¼... 2 bars), rarer the longer: weight e^(-0.4) per half beat over a bar, so a 1-bar note is about a third of the draws and a 2-bar one under 1 in 100 (measured: 190 of 580 are a bar, 4 are two bars).
+- **Where.** On a beat; it opens the phrase, ends it, or sits in the middle (nothing, or at least a beat of phrase, either side). It takes the notes under it. It may run past the phrase end by up to half a bar, but never into the beat before the next phrase starts (a 1-beat break leaves no overrun). Not in a phrase a lead-in ends, not in two phrases running within a leaf. If a length doesn't fit, a shorter one is tried.
+- **How often (`holdLong`).** Verse 8% of phrases (times the song's `verseHold` / 0.4), pre-chorus 5%, bridge, interlude and outro 20%, chorus by hook: anthem 30%, leap 12%, chant 10%, push 4%. Faster songs more, slower songs fewer (`paced`). Measured: 10.9% of phrases overall.
+- **Pitch.** A chord note of the chord it starts on. Where the chord changes under it and the pitch isn't in the new chord, it moves to the nearest chord note there (a 16th glide across the change); where it fits, it stays. It may also move on its own at a beat, to the next chord note up (70%) or down; a longer note moves more often. At most 2 moves (the first is rule 15's bend inside the note, the second `more`); a hold that can't fit is left out. Rule 15 leaves long holds alone.
+- **Singing.** A hold with moves is one word sung in pieces (`~`), a glide across each move. A hold that ends a phrase is a held ending (`end`, style held): it falls off in volume like other long endings.
+- Silence fit (rule 18) leaves holds as they are. The card lists them ("Long holds").
+- Checked with `npm run long-hold-check` (224 songs, 1,804 sections, 580 holds): no overlaps, 1-2 bars, on a beat, overrun at most half a bar (142 run past, longest 0.5), a beat before the next phrase, pitch a chord note at every step, 0 or 1 or 2 moves (219 / 276 / 85), 564 sung holds all end to end. Sections without a hold are note for note as before (the 10 changed ones were written again after a hold failed rule 20). `PENT=1` passes too.

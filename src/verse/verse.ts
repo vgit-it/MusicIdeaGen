@@ -137,7 +137,7 @@ export function writeVerse(input: VerseInput): Verse {
 }
 
 /** A verse note on the band's own grid: `step` in 16ths from the start of the idea, `len` in 16ths. */
-export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop up into the note from this many semitones below (never from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** The held note a section leads into the next on (rule 23): sung strongly, no fall. */ lead?: boolean; /** How the phrase ended on this note. */ style?: EndStyle }
+export interface BandNote { step: number; len: number; midi: number; /** A neighbour note, one scale step off the bar's core note. */ nb?: boolean; /** One of the stepping notes that walk into the next bar's core note. */ walk?: boolean; /** The core note a walk arrives on. */ land?: boolean; /** One of the three notes of a third-bar shape (fractional step and length). */ third?: boolean; /** A phrase's held ending. */ end?: boolean; /** Sung with a bend: a scoop up into the note from this many semitones below (never from above)... */ slide?: number; /** ...or a fall off its end in volume: it dies away over its last half, by this many dB (the pitch stays). */ fadeBy?: number; /** Why it bends (for the card). */ bend?: string; /** A bend inside the note: it holds, then glides to this pitch (`bendAt` steps in, over `bendLen` steps) and holds that. */ bendTo?: number; bendAt?: number; bendLen?: number; /** Why it bends inside (for the card). */ inner?: string; /** The long note a phrase opens on (rule 19). */ opener?: boolean; /** The held note a section leads into the next on (rule 23): sung strongly, no fall. */ lead?: boolean; /** How the phrase ended on this note. */ style?: EndStyle; /** A long hold (rule 28): a note of 1 to 2 bars. */ longHold?: boolean; /** Further pitch moves inside a long hold, after the first (`bendTo`...): each glides (over `len` steps, `at` steps in) to a new pitch. */ more?: { at: number; to: number; len: number }[] }
 
 /**
  * Rule 1 over a generated song: an 8th note on the 5th (or, by rule 4, the 3rd) of whatever chord the band is playing.
@@ -321,7 +321,8 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
 }
 
 /**
- * Rule 21: a new phrase starts on a fresh core note. At every phrase start the chord note to sit on is drawn again (the same
+ * Rule 21: a new phrase starts on a fresh core note, if the shift would last at least an 8th of a bar (it holds to the bar's end
+ * or the next change). At every such phrase start the chord note to sit on is drawn again (the same
  * weights as rule 4), and holds from there to the next change in the bar's picks or the bar's end. The earlier part of the bar
  * (the end of the last phrase, or the break) keeps its pick. The draw is by step, so a leaf that repeats a seed repeats it.
  */
@@ -333,6 +334,9 @@ export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[],
     let pick = uniform ? NOTES[Math.min(2, Math.floor(u * 3))] : NOTES[cumulative(d.toneW, u)];
     let end = ph.step + 1;
     while (end < out.length && end % bar !== 0 && tones[end] === tones[ph.step]) end++;
+    // (a core note shift has to last at least an 8th of a bar: a phrase starting closer than that to the bar's end or to the next
+    // change keeps the note it is on)
+    if (end - ph.step < bar / 8 - 1e-9) continue;
     // (a pick out of the key is drawn again from the chord notes that are in it, by the same weights; none in the key: it stays)
     if (fit && !inKeyTones(fit, ph.step, end, [pick]).length) {
       const ok = inKeyTones(fit, ph.step, end, NOTES);
@@ -810,6 +814,131 @@ export function withOpeners(notes: BandNote[], phrases: Gap[], chordAt: Chord[],
 }
 
 /**
+ * Rule 28: long holds. A phrase now and then (`d.holdLong`) holds one note for 1 to 2 bars, in half-beat steps, rarer the longer
+ * (weight e^(-0.4 per half beat over a bar): a 2-bar note is about 1 in 75 of the draws, a 1-bar one a third). It starts on a beat
+ * where the phrase opens, ends it, or sits in the middle (leaving 0 or at least a beat of phrase either side), takes the notes under
+ * it, and may run past the phrase's end by up to half a bar, never into the beat before the next phrase. Not in the phrase a
+ * lead-in ends, and not in two phrases running.
+ * Its pitch is a chord note of the chord it starts on. Where the chord changes under it and the pitch isn't in the new chord, it
+ * moves to the nearest chord note there (a quick glide across the change); where the pitch fits, it stays. It may also move on its
+ * own now and then, to the next chord note up (mostly) or down, at a beat. At most 2 moves (the first as a bend inside the note,
+ * rule 15's; the second in `more`). A hold that can't be made to fit is left out and a shorter one drawn.
+ * Run before the silence fit, which leaves it as it is. `total`: steps in the leaf; `moreLeaves`: a leaf follows (a beat of silence at the end).
+ */
+export function withLongHolds(
+  notes: BandNote[], phrases: Gap[], chordAt: Chord[], bar: number, total: number,
+  ctx: { key: number; range: Range; moreLeaves: boolean }, seed: string, acc?: number[], d: Dials = VERSE,
+): BandNote[] {
+  if (d.holdLong <= 0 || !chordAt.length) return notes;
+  const beat = bar / 4;
+  const pent = d.pent;
+  const at = (g: number) => chordAt[Math.max(0, Math.min(chordAt.length - 1, Math.floor(g + 1e-6)))];
+  const pcsOf = (c: Chord) => [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
+  const isTone = (m: number, c: Chord) => pcsOf(c).includes(((m % 12) + 12) % 12);
+  const same = (a: Chord, b: Chord) => a.root === b.root && a.q === b.q;
+  /** A chord note of `c` within 5 semitones of `m` (not `m` itself), in the main range and the pentatonic if one is set: the nearest, or (with `dir`) the nearest that way first. */
+  const near = (c: Chord, m: number, dir: 1 | -1 | 0): number | null => {
+    const pcs = pcsOf(c);
+    const ok = (x: number) => x >= ctx.range.lo && x <= ctx.range.hi && pcs.includes(((x % 12) + 12) % 12) && (!pent || pent.has(((x % 12) + 12) % 12));
+    if (dir) {
+      for (const sgn of [dir, -dir]) for (let k = 1; k <= 5; k++) if (ok(m + sgn * k)) return m + sgn * k;
+      return null;
+    }
+    for (let k = 1; k <= 5; k++) for (const sgn of [1, -1]) if (ok(m + sgn * k)) return m + sgn * k;
+    return null;
+  };
+  let out = notes;
+  let prevHeld = false;
+  phrases.forEach((ph, pi) => {
+    const phEnd = ph.step + ph.len;
+    const inside = out.filter((n) => n.step >= ph.step - 1e-6 && n.step < phEnd - 1e-6);
+    if (!inside.length || inside.some((n) => n.lead)) { prevHeld = false; return; }
+    if (prevHeld || roll(seed, 'longhold', ph.step) >= d.holdLong) { prevHeld = false; return; }
+    prevHeld = false;
+    const rng = new Rng(`${seed}|long|${Math.round(ph.step * 100)}`);
+    const next = phrases[pi + 1];
+    const limit = Math.min(phEnd + bar / 2, next ? next.step - beat : total - (ctx.moreLeaves ? beat : 1));
+    for (let k = cumulative(Array.from({ length: 9 }, (_, i) => Math.exp(-0.4 * i)), rng.next()); k >= 0; k--) {
+      const L = Math.round(bar * (1 + k / 8));
+      const cands: { s: number; e: number; w: number }[] = [];
+      for (let q = Math.ceil(ph.step / beat - 1e-9); q * beat < phEnd - 1e-6; q++) {
+        const s = Math.round(q * beat), e = s + L;
+        if (s < ph.step || e > limit + 1e-6) continue;
+        // (nothing between a beat and nothing is left either side of it inside the phrase)
+        if (s > ph.step + 1e-6 && s - ph.step < beat - 1e-6) continue;
+        if (e < phEnd - 1e-6 && phEnd - e < beat - 1e-6) continue;
+        if (inside.some((n) => n.third && n.step < e && n.step + n.len > s)) continue;
+        const edge = s <= ph.step + 1e-6 || e >= phEnd - 1e-6;
+        cands.push({ s, e, w: (edge ? 3 : 1) * nudge(acc, s) * Math.exp(-Math.max(0, e - phEnd) / beat) });
+      }
+      while (cands.length) {
+        const c = cands.splice(cumulative(cands.map((x) => x.w), rng.next()), 1)[0];
+        const { s, e } = c;
+        const base = inside.find((n) => n.step >= s - 1e-6 && n.step < s + beat - 1e-6) ?? inside.find((n) => n.step < s && n.step + n.len > s + 1e-6) ?? inside.find((n) => n.step >= s - 1e-6 && n.step < e - 1e-6);
+        if (!base) continue;
+        let p0 = base.midi;
+        if (!isTone(p0, at(s))) { const m = near(at(s), p0, 0); if (m === null) continue; p0 = m; }
+        // (the changes under the hold, and on its own now and then a move at a beat, each to a note of the chord then sounding)
+        const xFree = k / 8 <= 0.25 ? [0.55, 0.45, 0] : k / 8 <= 0.75 ? [0.4, 0.45, 0.15] : [0.3, 0.45, 0.25];
+        const nFree = cumulative(xFree, rng.next());
+        const changes: number[] = [];
+        for (let g = Math.ceil(s + 1e-6); g < e - 1e-6; g++) if (!same(at(g), at(g - 1))) changes.push(g);
+        const slots: number[] = [];
+        for (let q = Math.ceil((s + beat) / beat - 1e-9); q * beat <= e - beat + 1e-6; q++) {
+          const t = Math.round(q * beat);
+          if (!changes.some((g) => Math.abs(g - t) < beat / 2)) slots.push(t);
+        }
+        const free: number[] = [];
+        for (let f = 0; f < nFree && slots.length; f++) {
+          const t = slots.splice(Math.floor(rng.next() * slots.length), 1)[0];
+          if (!free.some((x) => Math.abs(x - t) < beat)) free.push(t);
+        }
+        const run = (withFree: boolean) => {
+          const evs = [...changes.map((t) => ({ t, free: false })), ...(withFree ? free.map((t) => ({ t, free: true })) : [])].sort((a, b) => a.t - b.t);
+          let cur = p0;
+          const moves: { t: number; to: number; kind: string }[] = [];
+          for (const ev of evs) {
+            const ch = at(ev.t);
+            let m: number | null;
+            if (ev.free) m = near(ch, cur, rng.chance(0.7) ? 1 : -1);
+            else if (isTone(cur, ch)) continue;
+            else m = near(ch, cur, 0);
+            if (m === null) { if (ev.free) continue; return null; }
+            if (moves.length && ev.t - moves[moves.length - 1].t < 2) { if (ev.free) continue; return null; }
+            moves.push({ t: ev.t, to: m, kind: ev.free ? 'bend' : 'chord change' });
+            cur = m;
+          }
+          return moves.length > 2 ? null : moves;
+        };
+        const moves = run(true) ?? run(false);
+        if (!moves) continue;
+        const note: BandNote = {
+          step: s, len: e - s, midi: p0, longHold: true,
+          ...(s <= ph.step + 1e-6 ? { opener: true } : {}),
+          ...(e >= phEnd - 1e-6 ? { end: true, style: 'held' as EndStyle } : {}),
+        };
+        moves.forEach((m, i) => {
+          const mv = { at: m.t - s - 0.5, to: m.to, len: 1 };
+          if (i === 0) { note.bendTo = mv.to; note.bendAt = mv.at; note.bendLen = mv.len; note.inner = `long hold: ${m.kind}`; } else (note.more ??= []).push(mv);
+        });
+        out = [
+          ...out.filter((n) => n.step < s - 1e-6 || n.step >= e - 1e-6).map((n) => {
+            if (!(n.step < s && n.step + n.len > s + 1e-6)) return n;
+            const t = { ...n, len: s - n.step };
+            if (t.bendTo !== undefined && t.bendAt! + t.bendLen! > t.len) { delete t.bendTo; delete t.bendAt; delete t.bendLen; delete t.inner; delete t.more; }
+            return t;
+          }),
+          note,
+        ].sort((a, b) => a.step - b.step);
+        prevHeld = true;
+        return;
+      }
+    }
+  });
+  return out;
+}
+
+/**
  * Rule 18: the share of silence (the chorus: about a third to a half of it without vocals, drawn for the song). The line is
  * fitted to `target` (within `tol`, 3 points unless a section takes it looser): too full, the weakest notes drop out (short, off the band's hits, off the beat; never a
  * phrase's first or last note, a walk, a long note or a third-bar note); too empty, notes are held into the gaps inside their phrase.
@@ -838,7 +967,7 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total
     const kept = out.filter((n) => !drop.has(n));
     // (still too full: the long notes let go of their last 8th, the longest first)
     if (sil() < target - tol) {
-      const longs = kept.filter((n) => n.len >= 4 && !n.third && !n.opener).sort((x, y) => y.len - x.len || roll(seed, 'fit', x.step) - roll(seed, 'fit', y.step));
+      const longs = kept.filter((n) => n.len >= 4 && !n.third && !n.opener && !n.longHold).sort((x, y) => y.len - x.len || roll(seed, 'fit', x.step) - roll(seed, 'fit', y.step));
       for (let pass = 0; pass < 3 && sil() < target - tol; pass++) {
         for (const n of longs) {
           if (sil() >= target - tol) break;
@@ -872,7 +1001,7 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total
     for (const i of lasts.sort((a, b) => roll(seed, 'fit', out[a].step) - roll(seed, 'fit', out[b].step))) {
       if (sil() <= target + tol) break;
       const n = out[i];
-      if (n.third) continue;
+      if (n.third || n.longHold) continue;
       const room = (out[i + 1] ? out[i + 1].step : total) - (n.step + n.len) - beat;
       const by = Math.min(Math.floor(room), bar / 2, Math.ceil((sil() - target) * total));
       if (by < 1) continue;
@@ -925,7 +1054,7 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
  *   - to the next bar's core note, when that is also a note of the chord sounding now;
  * The longer the note, the better its chance; a note coming after two or more of the same pitch gets a bigger one (the bend
  * breaks the repeating). Raised at the lowest and highest energies (fewest at 3) and by the Bends amount. Notes scooped into, walks, neighbours and
- * third-bar notes are left alone (a long held ending that fades out may bend first, and then fades half as far), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
+ * third-bar notes and long holds (rule 28 moves those itself) are left alone (a long held ending that fades out may bend first, and then fades half as far), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
  */
 export function addNoteBends(
   notes: BandNote[], bar: number,
@@ -938,7 +1067,7 @@ export function addNoteBends(
   const gap = (ctx.amount === 'lots' ? 0.75 : 1) * bar;
   const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string }[] = [];
   out.forEach((n, i) => {
-    if (n.len < 2 || n.slide || (n.fadeBy && n.len < 6) || n.walk || n.nb || n.third) return;
+    if (n.len < 2 || n.slide || (n.fadeBy && n.len < 6) || n.walk || n.nb || n.third || n.longHold) return;
     const r = (tag: string) => roll(seed, `ib-${tag}`, n.step);
     // (how many of the same pitch came just before)
     let same = 0;
@@ -995,7 +1124,8 @@ export function trimOverlaps(notes: BandNote[]): BandNote[] {
     const n = out[i], room = out[i + 1].step - n.step;
     if (n.len <= room + 1e-6) continue;
     n.len = room;
-    if (n.bendTo !== undefined && n.bendAt! + n.bendLen! > n.len) { delete n.bendTo; delete n.bendAt; delete n.bendLen; delete n.inner; }
+    if (n.more) { n.more = n.more.filter((m) => m.at + m.len <= n.len); if (!n.more.length) delete n.more; }
+    if (n.bendTo !== undefined && n.bendAt! + n.bendLen! > n.len) { delete n.bendTo; delete n.bendAt; delete n.bendLen; delete n.inner; delete n.more; }
   }
   return out.filter((n) => n.len > 1e-6);
 }

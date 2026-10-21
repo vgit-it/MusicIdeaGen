@@ -51,13 +51,18 @@ function vocalOf(notes: BandNote[], w: Words, energy: number): VocalNote[] {
     const syl = w.syls[i], vel = Math.min(1, ((!syl.stress ? 0.68 : 0.82) + (n.lead ? 0.12 : 0)) * energyVolume(energy));
     const head: VocalNote = { step: n.step, len: n.len, midi: n.midi, vel, syl, start: w.starts[i], ...(n.slide ? { slide: n.slide } : {}), ...fadeOf(n, n.len) };
     if (n.bendTo === undefined) return [head];
-    // (a bend inside the note: the first half holds, then the same word goes on to the new pitch, a quick glide across the middle)
+    // (a bend inside the note: the first half holds, then the same word goes on to the new pitch, a quick glide across the middle;
+    // a long hold may move again: one more piece of the same word for each move)
+    const moves = [{ at: n.bendAt!, to: n.bendTo, len: n.bendLen! }, ...(n.more ?? [])];
     head.len = n.bendAt!;
     delete head.fade;
     delete head.fadeBy;
     head.syl = { ...syl, coda: [] };
-    const tail: VocalNote = { step: n.step + n.bendAt!, len: n.len - n.bendAt!, midi: n.bendTo, vel, syl: { onset: [], vowel: syl.vowel, coda: syl.coda, stress: false, text: '~', wordStart: false }, start: false, bend: n.bendLen, ...fadeOf(n, n.len - n.bendAt!) };
-    return [head, tail];
+    const tails = moves.map((m, k): VocalNote => {
+      const last = k === moves.length - 1, to = last ? n.len : moves[k + 1].at;
+      return { step: n.step + m.at, len: to - m.at, midi: m.to, vel, syl: { onset: [], vowel: syl.vowel, coda: last ? syl.coda : [], stress: false, text: '~', wordStart: false }, start: false, bend: m.len, ...(last ? fadeOf(n, to - m.at) : {}) };
+    });
+    return [head, ...tails];
   });
 }
 

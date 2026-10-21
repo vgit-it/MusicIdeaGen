@@ -20,6 +20,8 @@ export interface Dials {
   holdLen: [number, number, number, number];
   /** The chance a bar that holds one long note holds a second in the quarters left. */
   holdTwice: number;
+  /** Rule 28: the chance a phrase holds one note of 1 to 2 bars (rarer the longer), with or without pitch moves inside it. */
+  holdLong: number;
   /** The chance a plain 8th is stretched over the next one (two 8ths on one chord note become one note), and once more (a beat and a half). */
   stretch: number;
   /** The chance a phrase opens on one long note (then the shorter notes follow); weights for it lasting 1, 1½, 2 and 3 beats. */
@@ -71,6 +73,7 @@ export const VERSE: Dials = {
   holdBar: 0.4,
   holdLen: [0.4, 0.2, 0.3, 0.1],
   holdTwice: 0,
+  holdLong: 0.08,
   stretch: 0,
   opener: 0,
   openLen: [0.25, 0.25, 0.35, 0.15],

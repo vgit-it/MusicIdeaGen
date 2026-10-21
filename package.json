@@ -41,6 +41,7 @@
     "realism-words": "rolldown scripts/study/lakh-words.ts --platform node --format esm -o node_modules/.cache/lakh-words.mjs && node node_modules/.cache/lakh-words.mjs",
     "lick-mine": "rolldown scripts/study/lick-mine.ts --platform node --format esm -o node_modules/.cache/lick-mine.mjs && node --max-old-space-size=8000 node_modules/.cache/lick-mine.mjs",
     "verse-variety": "rolldown scripts/verse-variety.ts --platform node --format esm -o node_modules/.cache/verse-variety.mjs && node node_modules/.cache/verse-variety.mjs",
+    "long-hold-check": "rolldown scripts/long-hold-check.ts --platform node --format esm -o node_modules/.cache/long-hold-check.mjs && node node_modules/.cache/long-hold-check.mjs",
     "core-key-check": "rolldown scripts/core-key-check.ts --platform node --format esm -o node_modules/.cache/core-key-check.mjs && node node_modules/.cache/core-key-check.mjs",
     "realism-learned": "rolldown scripts/study/lakh-learned.ts --platform node --format esm -o node_modules/.cache/lakh-learned.mjs && node node_modules/.cache/lakh-learned.mjs",
     "band-sprites": "rolldown scripts/band-sprites.ts --platform node --format esm -o node_modules/.cache/band-sprites.mjs && node node_modules/.cache/band-sprites.mjs",
