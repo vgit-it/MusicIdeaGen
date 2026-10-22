@@ -195,3 +195,9 @@ The writer used to read "a bar" as one number: equal bars, a beat a quarter of i
 - **Shapes**: the copies of each rule 39 shape (the last one, changed, in orange with how: ending, lift, hold); "no shape" where none.
 - **Compare**: an answering leaf's notes matched to its source's by position in the leaf: same, other pitch, other length, new; source notes with no match shown dashed in red. A pitch change can come from the answer's own chords.
 - Seen on 80 songs (variants-check): an answer's notes are the same as its source's in about 22%. Even with no rule written again an answer differs: it has no closing beat of silence when last, rule 38 treats a repeat differently, and its dice include the leaf's id.
+
+## Rule 40: the called form (2026-10-22; `src/verse/form.ts`, `npm run form-check`)
+- A verse, chorus or bridge of exactly 8 or 16 bars always splits into 4-bar leaves (before: 8 bars split 85% of the time, 16 bars into 4 leaves ~77%). 8 bars: A A'. 16 bars: (A A')(A A')', named A A' A'' A''', the third leaf answering the first, the fourth the second. The second 8 varies a little more than the 4-bar pair.
+- Question and answer: the end of every leaf but the last asks (open or hanging, never home; `ASK` in `emotion.ts`, needs the Ending degrees mood note, on by default). The section's last leaf keeps the section-end rule (chorus home, verse and bridge lean on). Every answering leaf always writes its ending again (before: 75%).
+- Other lengths (12 bars...) and the pre-chorus, interlude and outro split by chance as before. The dice are still rolled when the split is forced, so the other rules keep their seeds.
+- Side effects: nearly every verse, chorus and bridge writes differently for the same seed (old share links sound different); songs lose the unsplit 8-bar tune; a beat of silence now sits mid-section in every one; `verse-variety` marks "chorus phrases ending in a treatment" (most 52%, none 16% to 9%): tune later if wanted.
