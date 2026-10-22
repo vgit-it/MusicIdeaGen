@@ -43,6 +43,7 @@
     "verse-variety": "rolldown scripts/verse-variety.ts --platform node --format esm -o node_modules/.cache/verse-variety.mjs && node node_modules/.cache/verse-variety.mjs",
     "emotion-check": "rolldown scripts/emotion-check.ts --platform node --format esm -o node_modules/.cache/emotion-check.mjs && node node_modules/.cache/emotion-check.mjs",
     "meter-check": "rolldown scripts/meter-check.ts --platform node --format esm -o node_modules/.cache/meter-check.mjs && node node_modules/.cache/meter-check.mjs",
+    "variants-check": "rolldown scripts/variants-check.ts --platform node --format esm -o node_modules/.cache/variants-check.mjs && node node_modules/.cache/variants-check.mjs",
     "shape-check": "rolldown scripts/shape-check.ts --platform node --format esm -o node_modules/.cache/shape-check.mjs && node node_modules/.cache/shape-check.mjs",
     "space-check": "rolldown scripts/space-check.ts --platform node --format esm -o node_modules/.cache/space-check.mjs && node node_modules/.cache/space-check.mjs",
     "long-hold-check": "rolldown scripts/long-hold-check.ts --platform node --format esm -o node_modules/.cache/long-hold-check.mjs && node node_modules/.cache/long-hold-check.mjs",
