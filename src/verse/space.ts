@@ -12,7 +12,7 @@ import { fifth, third, type BandNote } from './verse';
 const EPS = 1e-6;
 
 /** How a leaf is written: how many times it repeats an earlier one (0: written fresh), and whether it is the section's last. */
-export interface SpaceCtx { repeat: number; final: boolean }
+export interface SpaceCtx { repeat: number; final: boolean; /** The least share of short notes a note may be grown at (left out: rule 37's 35%; a bridge or an interlude keep less). */ shortMin?: number }
 
 /**
  * A note followed by a gap of 3/4 bar or more (to the next note, or the end of the leaf) takes more of it, up to a beat before
@@ -40,7 +40,7 @@ export function withSpace(notes: BandNote[], barArg: BarArg, len: number, key: n
     const rng = new Rng(`${seed}|space|${Math.round(a.step * 100)}`);
     const p = short ? (ctx.repeat ? 0.9 : 0.75) : ctx.repeat ? Math.min(0.9, 0.6 + 0.1 * ctx.repeat) : 0.3;
     if (!rng.chance(p)) continue;
-    if (short && (nShort - 1) / out.length < SHORT_MIN) continue;
+    if (short && (nShort - 1) / out.length < (ctx.shortMin ?? SHORT_MIN)) continue;
     // (the beats and half beats it may end on)
     const beats = G.beatSteps(Math.max(0, Math.floor(aEnd) - 1), Math.ceil(limit) + 1);
     const ends = beats.flatMap((b, k) => (k + 1 < beats.length ? [b, Math.round((b + beats[k + 1]) / 2)] : [b]));

@@ -154,7 +154,7 @@ export function verseOverBand(key: number, chordAt: Chord[], tones: ChordNote[] 
 }
 
 /** A stretch of the verse: `step` and `len` in 16ths. */
-export interface Gap { step: number; len: number }
+export interface Gap { step: number; len: number; /** Call and response (planCall): the first or the second phrase of a 4-bar leaf. */ role?: 'call' | 'response' }
 
 const overlaps = (a: Gap, b: Gap) => a.step < b.step + b.len && b.step < a.step + a.len;
 
@@ -225,6 +225,22 @@ export function planPhrases(totalSteps: number, barArg: BarArg, seed: string, ac
     pos += gap;
   }
   return { phrases, breaks };
+}
+
+/**
+ * Call and response: 4 bars as two phrases. The call is bars 1-2 (it stops a beat or two before bar 3: the breath), the response
+ * starts on bar 3 and runs to the end. `totalSteps` is the leaf less its closing beat. Bars come from the real grid.
+ */
+export function planCall(totalSteps: number, barArg: BarArg, seed: string, d: Dials = VERSE): { phrases: Gap[]; breaks: Gap[] } {
+  const rng = new Rng(seed + '|call');
+  const G = gridOf(barArg);
+  const mid = G.start(2);
+  // (the call stops one or two real beats before bar 3, so it ends on a beat whatever the bar)
+  const at = mid - G.backLen(mid, cumulative(d.breakBeats, rng.next()) < 2 ? 1 : 2);
+  return {
+    phrases: [{ step: 0, len: at, role: 'call' }, { step: mid, len: totalSteps - mid, role: 'response' }],
+    breaks: [{ step: at, len: mid - at }],
+  };
 }
 
 /** The line without the notes that start inside a gap. */

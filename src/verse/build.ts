@@ -6,12 +6,12 @@ import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from
 import { EMO_PULL, pullTo, toneBias, withColour, withEndDegrees, withSuspensions, withSurprise, type EmoBuild, type EmoCtx } from './emotion';
 import type { Genre } from '../genres';
 import { BarGrid, gridOf } from './grid';
-import { shortTarget, withLonger } from './longer';
+import { isCalm, shortRange, shortTarget, withLonger } from './longer';
 import { withSpace } from './space';
 import { withShapes, type ShapeInfo, type Skips } from './shapes';
 import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
-  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
+  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planCall, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
   pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withLeadIn, withLongHolds, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
@@ -119,7 +119,8 @@ export function buildVerse(inp: BuildInput): Built {
       // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)
       // (a beat of the leaf's last bar: its last beat group, so the phrases stop on a beat)
       const tail = end < total ? Math.max(1, G.backLen(len, 1)) : 0;
-      const planned = planPhrases(len - tail, G, sd.phrases, accOf('phrases'), d);
+      // (call and response: a 4-bar leaf of a called section is two phrases, bars 1-2 and bars 3-4)
+      const planned = inp.emo?.on.has('call') && inp.call && leaf.bars === 4 && (inp.bars === 8 || inp.bars === 16) ? planCall(len - tail, G, sd.phrases, d) : planPhrases(len - tail, G, sd.phrases, accOf('phrases'), d);
       const phrases = planned.phrases, breaks = planned.breaks;
       if (tail) {
         const last = breaks[breaks.length - 1];
@@ -154,12 +155,13 @@ export function buildVerse(inp: BuildInput): Built {
       // (use the space: a short note or a held ending with a big gap after it is held on into it, a repeat most; the silence fit below
       // has the last word on a chorus's rests)
       const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
-      const spaced = X?.E.on.has('space') ? withSpace(longed, G, len, key, chordAt, `${sd.holds}|space|${leaf.id}`, { repeat: repeatsOf(leaf), final: end >= total }) : longed;
+      const spaced = X?.E.on.has('space') ? withSpace(longed, G, len, key, chordAt, `${sd.holds}|space|${leaf.id}`, { repeat: repeatsOf(leaf), final: end >= total, shortMin: X.E.on.has('longer') ? shortRange(X.E.kind)[0] : undefined }) : longed;
       // (the chorus: fitted to the song's share of silence)
       const fitted = d.silence === undefined ? spaced : fitSilence(spaced, phrases, G, len, d.silence, sd.small, accOf('small'), d.silenceTol);
       // (longer notes: neighbouring 8ths joined until the share of short notes is the genre's and the section's; a section fitted to a
       // share of silence keeps its rests)
-      const stretched = X?.E.on.has('longer') ? withLonger(fitted, phrases, G, shortTarget(inp.genre as Genre, X.E.kind), changes, `${sd.holds}|longer`, d.silence === undefined) : fitted;
+      const stretched = X?.E.on.has('longer') ? withLonger(fitted, phrases, G, shortTarget(inp.genre as Genre, X.E.kind), changes, `${sd.holds}|longer`, d.silence === undefined || isCalm(X.E.kind),
+        isCalm(X.E.kind) ? { coverCap: fitted.reduce((a2, n) => a2 + n.len, 0) + 0.04 * len } : undefined) : fitted;
       // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
       const units = fixUnits(stretched, phrases, chordAt, G, final);
       if (!units.ok) return null;
@@ -171,7 +173,7 @@ export function buildVerse(inp: BuildInput): Built {
       const moods = X ? withSuspensions(flavoured, X, `${sd.bends}|emo`) : flavoured;
       // (repeat shapes: last, on the line as it will sound, so nothing after it can pull a repeat apart)
       const rep = X?.E.on.has('shape')
-        ? withShapes(moods, phrases, G, len, sd.phrases, { key, scale: pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12)), chordAt, range, silence: d.silence, silenceTol: d.silenceTol, short: X.E.on.has('longer') })
+        ? withShapes(moods, phrases, G, len, sd.phrases, { key, scale: pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12)), chordAt, range, silence: d.silence, silenceTol: d.silenceTol, short: X.E.on.has('longer'), shortRange: shortRange(X.E.kind) })
         : undefined;
       const notes = rep ? rep.notes : moods;
       return { notes, phrases, breaks, runs, holds, tones, bars, shapes: rep?.shapes ?? [], skips: rep?.skips ?? {} };
@@ -185,7 +187,7 @@ export function buildVerse(inp: BuildInput): Built {
       if (w) { tryOf.set(leaf.id, t); out.tries.push(t); }
     }
     const { notes, phrases, breaks, runs, holds, tones, bars, shapes, skips } = w;
-    const shift = (g: Gap): Gap => ({ step: g.step + from, len: g.len });
+    const shift = (g: Gap): Gap => ({ ...g, step: g.step + from });
     out.notes.push(...notes.map((n) => ({ ...n, step: n.step + from })));
     out.phrases.push(...phrases.map(shift));
     out.breaks.push(...breaks.map(shift));
