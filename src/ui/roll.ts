@@ -8,6 +8,9 @@
 import * as Tone from 'tone';
 import type { Idea } from '../idea';
 import { NOTE_NAMES, QUALITIES, SCALES, chordName } from '../theory';
+import { voiceOf } from '../verse/sing';
+import type { Rule } from '../verse/form';
+import { compareLeaf, endingOf, leafSpans, type Diff, type LeafCompare, type LeafSpan } from '../verse/variants';
 
 interface N { step: number; len: number; midi: number; bend?: number; slide?: number; fall?: number; slideLen?: number }
 
@@ -20,11 +23,32 @@ const DEG = ['1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7
 const LEAP = 5;
 const TOP = 30, GUT = 52, MIN_STEP_PX = 5.5;
 
+/** The layers that show how the line is built (the writer's form, phrasing, repeated shapes and the variants). */
+const LAYERS = [
+  { id: 'form', name: 'Form', hint: 'The leaves (A, A′, B…), which one answers which, and the rules each answer wrote again' },
+  { id: 'phrases', name: 'Phrases', hint: 'Each phrase with its length and how it ends; the breaks shaded' },
+  { id: 'shapes', name: 'Shapes', hint: 'Rule 39: the small shape sung again inside a phrase, the last time changed' },
+  { id: 'compare', name: 'Compare', hint: 'An answering leaf against its source: ghosts of the source under it, the notes that differ outlined' },
+] as const;
+type LayerId = (typeof LAYERS)[number]['id'];
+const FORM_H = 34, PHRASE_H = 20, SHAPE_H = 18;
+/** A leaf's colour by its letter (A, B, C...). */
+const LEAF_COL = ['#5b8cff', '#c07bff', '#4ad6c8', '#ffa94d', '#ff7aa8', '#9bd65a', '#e0d35b', '#8b93a7'];
+const RULE_NAME: Record<Rule, string> = {
+  phrases: 'phrasing', runs: '16th runs', tones: 'chord notes', holds: 'long notes', small: 'small breaks', neighbours: 'neighbours',
+  walk: 'walks', endings: 'endings', thirds: 'third-bars', bends: 'bends',
+};
+const DIFF_COL: Record<Exclude<Diff, 'same'>, string> = { pitch: '#ff9d3c', rhythm: '#c07bff', new: '#4ad6ff' };
+const DIFF_LABEL: Record<Exclude<Diff, 'same'>, string> = { pitch: 'Other pitch', rhythm: 'Other length', new: 'New note' };
+
+/** A leaf's name as written (A') with a proper prime. */
+const prime = (n: string) => n.replace("'", '′');
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 const noteName = (m: number) => `${NOTE_NAMES[mod(m, 12)]}${Math.floor(m / 12) - 1}`;
 
 export function buildRoll(root: HTMLElement) {
   root.innerHTML = `<h2>Melody view</h2>
+    <div class="rolllayers"></div>
     <div class="rolllegend"></div>
     <div class="rollwrap">
       <canvas class="rollgut"></canvas>
@@ -36,14 +60,25 @@ export function buildRoll(root: HTMLElement) {
     <label class="rollsync hint">Sync <input type="range" class="rollnudge" min="-200" max="400" step="10" value="0" aria-label="Nudge the needle later or earlier"> <span class="rollms">0 ms</span></label>
     <div class="rollempty hint" hidden>No vocal in this section.</div>`;
   const q = <T extends HTMLElement>(c: string) => root.querySelector<T>('.' + c)!;
-  const legend = q('rolllegend'), wrap = q('rollwrap'), stats = q('rollstats'), empty = q('rollempty');
+  const legend = q('rolllegend'), layersEl = q('rolllayers'), wrap = q('rollwrap'), stats = q('rollstats'), empty = q('rollempty');
   const gut = q<HTMLCanvasElement>('rollgut'), scroll = q('rollscroll'), inner = q('rollinner');
   const base = q<HTMLCanvasElement>('rollbase'), lit = q<HTMLCanvasElement>('rolllit'), ph = q('rollph');
 
-  legend.innerHTML = (Object.keys(COL) as Role[]).map((r) => `<span><i style="background:${COL[r]}"></i>${ROLE_LABEL[r]}</span>`).join('') +
+  const legendBase = (Object.keys(COL) as Role[]).map((r) => `<span><i style="background:${COL[r]}"></i>${ROLE_LABEL[r]}</span>`).join('') +
     `<span><i class="band"></i>Chord notes (every octave)</span><span><i class="curve"></i>Pitch curve</span>`;
+  legend.innerHTML = legendBase;
 
   let cur: Idea | null = null;
+  const on = new Set<LayerId>(['form', 'phrases']);
+  try { const v = localStorage.getItem('rollLayers'); if (v !== null) { on.clear(); for (const id of v.split(',')) if (LAYERS.some((l) => l.id === id)) on.add(id as LayerId); } } catch { /* no storage */ }
+  layersEl.innerHTML = LAYERS.map((l) => `<label title="${l.hint}"><input type="checkbox" data-layer="${l.id}"${on.has(l.id) ? ' checked' : ''}> ${l.name}</label>`).join('');
+  layersEl.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement, id = t.dataset.layer as LayerId | undefined;
+    if (!id) return;
+    if (t.checked) on.add(id); else on.delete(id);
+    try { localStorage.setItem('rollLayers', [...on].join(',')); } catch { /* no storage */ }
+    if (cur) show(cur);
+  });
   /** The picture's layout, for the lit note and the playhead. */
   let lay: { stepPx: number; rects: { n: N; x: number; y: number; w: number; h: number }[]; total: number; height: number } | null = null;
   let litIdx = -1;
@@ -80,6 +115,18 @@ export function buildRoll(root: HTMLElement) {
 
     const { song, chords } = idea;
     const total = song.total;
+    // (how it was built: only where the writer's own record of it exists)
+    const built = voiceOf(idea)?.built;
+    layersEl.hidden = !built;
+    const lay_ = (id: LayerId) => !!built && on.has(id);
+    const showForm = lay_('form'), showPh = lay_('phrases'), showSh = lay_('shapes'), showCmp = lay_('compare') && built!.leaves.some((l) => l.source !== null);
+    const yForm = 0, yPh = showForm ? FORM_H : 0, ySh = yPh + (showPh ? PHRASE_H : 0);
+    const T0 = ySh + (showSh ? SHAPE_H : 0);
+    const top = T0 + TOP;
+    const spans: LeafSpan[] = built ? leafSpans(built.leaves, (b) => song.bars[b].start, song.bars.length, total) : [];
+    const spanOf = (id: number | null) => spans.find((x) => x.leaf.id === id);
+    const cmps = new Map<number, LeafCompare>();
+    if (showCmp) for (const sp of spans) { const src = spanOf(sp.leaf.source); if (src) cmps.set(sp.leaf.id, compareLeaf(built!.notes, src, sp)); }
     const key = song.key;
     const scale = SCALES[song.mode] as readonly number[];
     const inKey = (m: number) => scale.includes(mod(m - key, 12));
@@ -93,12 +140,12 @@ export function buildRoll(root: HTMLElement) {
     if (hi - lo < 14) { const m = Math.ceil((14 - (hi - lo)) / 2); lo -= m; hi += m; }
     const rows = hi - lo + 1;
     const rowH = Math.max(9, Math.min(18, Math.floor(260 / rows)));
-    const H = TOP + rows * rowH + 4;
+    const H = TOP + T0 + rows * rowH + 4;
     const avail = scroll.clientWidth || 600;
     const W = Math.max(avail, Math.ceil(total * MIN_STEP_PX));
     const stepPx = W / total;
     const X = (s: number) => s * stepPx;
-    const Y = (m: number) => TOP + (hi - m) * rowH;           // top of a pitch's row
+    const Y = (m: number) => top + (hi - m) * rowH;           // top of a pitch's row
     const YC = (m: number) => Y(m) + rowH / 2;                // its middle
 
     // the gutter: scale degree and note name per row
@@ -106,6 +153,10 @@ export function buildRoll(root: HTMLElement) {
     gx.fillStyle = '#11141a'; gx.fillRect(0, 0, GUT, H);
     gx.font = `${rowH >= 12 ? 10 : 9}px ui-monospace, Consolas, monospace`;
     gx.textBaseline = 'middle';
+    gx.fillStyle = '#8b93a7'; gx.textAlign = 'left';
+    if (showForm) gx.fillText('Form', 4, yForm + 12);
+    if (showPh) gx.fillText('Phrases', 4, yPh + PHRASE_H / 2);
+    if (showSh) gx.fillText('Shapes', 4, ySh + SHAPE_H / 2);
     for (let m = lo; m <= hi; m++) {
       const k = inKey(m), tonic = mod(m - key, 12) === 0;
       gx.fillStyle = k ? (tonic ? '#ff7a45' : '#e8eaf0') : '#4b5263';
@@ -124,9 +175,9 @@ export function buildRoll(root: HTMLElement) {
     // beats and bars
     x.font = '9px system-ui, sans-serif'; x.textAlign = 'left'; x.textBaseline = 'top';
     song.bars.forEach((b, i) => {
-      for (let s = 4; s < b.len; s += 4) { x.fillStyle = 'rgba(255,255,255,.06)'; x.fillRect(X(b.start + s), TOP, 1, H - TOP); }
-      x.fillStyle = 'rgba(255,255,255,.28)'; x.fillRect(X(b.start), 0, 1, H);
-      x.fillStyle = '#8b93a7'; x.fillText(String(i + 1), X(b.start) + 3, 2);
+      for (let s = 4; s < b.len; s += 4) { x.fillStyle = 'rgba(255,255,255,.06)'; x.fillRect(X(b.start + s), top, 1, H - top); }
+      x.fillStyle = 'rgba(255,255,255,.28)'; x.fillRect(X(b.start), T0, 1, H - T0);
+      x.fillStyle = '#8b93a7'; x.fillText(String(i + 1), X(b.start) + 3, T0 + 2);
     });
     // chord tones, every octave in range, held for as long as the chord lasts; the chord's name above
     const tl = chords.timeline;
@@ -136,8 +187,94 @@ export function buildRoll(root: HTMLElement) {
       x.fillStyle = 'rgba(91,140,255,.24)';
       for (let m = lo; m <= hi; m++) if (tones.has(mod(m, 12))) x.fillRect(x0 + 1, Y(m) + 1, x1 - x0 - 2, rowH - 2);
       x.fillStyle = '#e8eaf0'; x.font = '600 11px system-ui, sans-serif';
-      x.fillText(chordName(key, e.chord), x0 + 3, 14);
+      x.fillText(chordName(key, e.chord), x0 + 3, T0 + 14);
     });
+
+
+    // how it was built: washes under the notes, strips above
+    const fit = (t: string, w: number) => { while (t.length > 1 && x.measureText(t).width > w) t = t.slice(0, -1); return t; };
+    const letterCol = (name: string) => LEAF_COL[Math.max(0, 'ABCDEFGH'.indexOf(name[0]))] ?? LEAF_COL[7];
+    if (built && (showForm || showPh || showSh)) {
+      x.fillStyle = '#0d1016'; x.fillRect(0, 0, W, T0);
+      x.textBaseline = 'middle'; x.textAlign = 'left';
+    }
+    if (showForm) {
+      // (a wash of each leaf's colour down the roll, and a band for it above)
+      for (const sp of spans) {
+        const c = letterCol(sp.leaf.name), x0 = X(sp.from), x1 = X(sp.to);
+        x.globalAlpha = 0.07; x.fillStyle = c; x.fillRect(x0, top, x1 - x0, H - top); x.globalAlpha = 1;
+        x.fillStyle = c; x.globalAlpha = sp.leaf.source === null ? 0.9 : 0.55;
+        x.beginPath(); x.roundRect(x0 + 1, yForm + 1, x1 - x0 - 2, 17, 4); x.fill(); x.globalAlpha = 1;
+        x.fillStyle = '#10131a'; x.font = '700 11px system-ui, sans-serif';
+        const tries = built!.tries[built!.leaves.indexOf(sp.leaf)] ?? 0;
+        x.fillText(fit(`${prime(sp.leaf.name)}${sp.leaf.source !== null ? ' answers ' + prime(built!.leaves.find((l) => l.id === sp.leaf.source)?.name ?? '') : ''}${tries ? ` · try ${tries + 1}` : ''}`, x1 - x0 - 10), x0 + 5, yForm + 10);
+        if (sp.leaf.source !== null) {
+          const all = sp.leaf.varied.length;
+          x.fillStyle = '#c3c9d8'; x.font = '9px system-ui, sans-serif';
+          x.fillText(fit(all ? 'again: ' + sp.leaf.varied.map((r) => RULE_NAME[r]).join(', ') : 'nothing written again', x1 - x0 - 8), x0 + 4, yForm + 26);
+        }
+      }
+      // (an arrow from each source to its answer)
+      x.lineWidth = 1.2; x.setLineDash([]);
+      for (const sp of spans) {
+        const src = spanOf(sp.leaf.source);
+        if (!src) continue;
+        const ax = X(src.from) + 12, bx = X(sp.from) + 12;
+        x.strokeStyle = letterCol(sp.leaf.name); x.globalAlpha = 0.9;
+        x.beginPath(); x.moveTo(ax, yForm + 18); x.quadraticCurveTo((ax + bx) / 2, yForm + 36, bx - 2, yForm + 19); x.stroke();
+        x.beginPath(); x.moveTo(bx - 2, yForm + 19); x.lineTo(bx - 7, yForm + 21); x.lineTo(bx - 5, yForm + 26); x.closePath(); x.fillStyle = letterCol(sp.leaf.name); x.fill();
+        x.globalAlpha = 1;
+      }
+    }
+    if (showPh) {
+      for (const b of built!.breaks) { x.fillStyle = 'rgba(139,147,167,.12)'; x.fillRect(X(b.step), top, X(b.len), H - top); }
+      const meanBar = total / song.bars.length;
+      x.font = '600 10px system-ui, sans-serif';
+      built!.phrases.forEach((ph, i) => {
+        const x0 = X(ph.step), w = X(ph.len);
+        x.fillStyle = 'rgba(139,147,167,.5)'; x.fillRect(x0, top, 1, H - top);
+        x.strokeStyle = '#8b93a7'; x.lineWidth = 1;
+        x.beginPath(); x.roundRect(x0 + 0.5, yPh + 1.5, w - 1, PHRASE_H - 3, 4); x.stroke();
+        const e = endingOf(built!.notes, ph), bars = Math.round((ph.len / meanBar) * 2) / 2;
+        x.fillStyle = '#e8eaf0';
+        x.fillText(fit(`${i + 1} · ${bars} bar${bars === 1 ? '' : 's'} · ${e.style}${e.role ? ' ' + e.role : ''}`, w - 8), x0 + 4, yPh + PHRASE_H / 2);
+      });
+    }
+    if (showSh) {
+      x.font = '600 9px system-ui, sans-serif';
+      const has = new Set(built!.shapes.map((sh) => sh.phrase));
+      for (const ph of built!.phrases) if (!has.has(ph.step)) {
+        x.fillStyle = '#4b5263'; x.fillText(fit('no shape', X(ph.len) - 6), X(ph.step) + 4, ySh + SHAPE_H / 2);
+      }
+      for (const sh of built!.shapes) {
+        for (let i = 0; i < sh.n; i++) {
+          const last = i === sh.n - 1, x0 = X(sh.step + i * sh.len), w = X(sh.len);
+          const c = last ? '#ff9d3c' : '#5b8cff';
+          x.globalAlpha = 0.08; x.fillStyle = c; x.fillRect(x0, top, w, H - top); x.globalAlpha = 1;
+          x.fillStyle = c; x.globalAlpha = last ? 0.9 : 0.6;
+          x.beginPath(); x.roundRect(x0 + 1, ySh + 1, w - 2, SHAPE_H - 3, 3); x.fill(); x.globalAlpha = 1;
+          x.fillStyle = '#10131a';
+          x.fillText(fit(last ? `A′ ${sh.mod}` : 'A', w - 6), x0 + 4, ySh + SHAPE_H / 2);
+        }
+      }
+    }
+    // the source's notes under an answering leaf, and which of the answer's notes differ
+    const diffOfStep: { step: number; end: number; d: Diff }[] = [];
+    if (showCmp) {
+      x.save(); x.setLineDash([3, 2]); x.lineWidth = 1;
+      for (const sp of spans) {
+        const c = cmps.get(sp.leaf.id), src = spanOf(sp.leaf.source);
+        if (!c || !src) continue;
+        for (const [n, d] of c.diffs) diffOfStep.push({ step: n.step, end: n.step + n.len, d });
+        for (const n of built!.notes) {
+          if (n.step < src.from - 1e-6 || n.step >= src.to - 1e-6 || n.step - src.from >= sp.to - sp.from) continue;
+          const gone = c.dropped.some((g) => Math.abs(g.step - (n.step - src.from + sp.from)) < 1e-6 && g.midi === n.midi);
+          x.strokeStyle = gone ? '#ff5b6e' : 'rgba(255,255,255,.4)';
+          x.beginPath(); x.roundRect(X(n.step - src.from + sp.from) + 0.5, Y(n.midi) + 1.5, Math.max(3, X(n.len) - 2), rowH - 3, 3); x.stroke();
+        }
+      }
+      x.restore();
+    }
 
     // leaps between neighbours in a line: a dashed link, and the size for the big ones
     const rects: NonNullable<typeof lay>['rects'] = [];
@@ -160,6 +297,10 @@ export function buildRoll(root: HTMLElement) {
       rects.push({ n, ...r });
       x.fillStyle = COL[roleOf(n)];
       x.beginPath(); x.roundRect(r.x, r.y, r.w, r.h, 3); x.fill();
+      if (showCmp) {
+        const f = diffOfStep.find((q) => n.step >= q.step - 1e-6 && n.step < q.end - 1e-6);
+        if (f && f.d !== 'same') { x.strokeStyle = DIFF_COL[f.d]; x.lineWidth = 2; x.stroke(); }
+      }
       if (r.w >= 15) { x.fillStyle = '#10131a'; x.fillText(DEG[mod(n.midi - key, 12)], r.x + 3, r.y + r.h / 2 + 0.5); }
     }
     // the pitch curve: scoops up into a note, bends from the last note, falls off the end
@@ -200,9 +341,35 @@ export function buildRoll(root: HTMLElement) {
       if (!a) rep++; else if (a <= 2) stp++; else if (a < LEAP) skip++; else { leap++; if (a > Math.abs(big)) big = d; }
     }
     const pct = Math.round((100 * c.chord) / notes.length);
-    stats.textContent = `${notes.length} notes · ${c.chord} chord tones (${pct}%) · ${c.key} in key · ${c.out} out of key · ` +
+    const extra: string[] = [];
+    if (showForm) {
+      extra.push('Form: ' + spans.map((sp) => prime(sp.leaf.name)).join(' ') + spans.filter((sp) => sp.leaf.source !== null).map((sp) => {
+        const src = spanOf(sp.leaf.source)!;
+        return ` · ${prime(sp.leaf.name)} answers ${prime(src.leaf.name)}, writes again: ${sp.leaf.varied.length ? sp.leaf.varied.map((r) => RULE_NAME[r]).join(', ') : 'nothing'}`;
+      }).join(''));
+    }
+    if (showPh) {
+      const kinds = new Map<string, number>();
+      for (const ph of built!.phrases) { const k = endingOf(built!.notes, ph).style; kinds.set(k, (kinds.get(k) ?? 0) + 1); }
+      extra.push(`Phrases: ${built!.phrases.length} · ends: ${[...kinds].map(([k, n]) => `${n} ${k}`).join(', ')}`);
+    }
+    if (showSh) {
+      const n3 = built!.shapes.filter((sh) => sh.n === 3).length;
+      extra.push(`Shapes: ${built!.shapes.length} of ${built!.phrases.length} phrases (${n3} × A A A′, ${built!.shapes.length - n3} × A A A A′)`);
+    }
+    if (showCmp) {
+      for (const sp of spans) {
+        const c = cmps.get(sp.leaf.id);
+        if (c) extra.push(`${prime(sp.leaf.name)} against ${prime(spanOf(sp.leaf.source)!.leaf.name)}: ${c.count.same} same · ${c.count.pitch} other pitch · ${c.count.rhythm} other length · ${c.count.new} new · ${c.count.dropped} dropped`);
+      }
+    }
+    legend.innerHTML = legendBase + (showCmp
+      ? (Object.keys(DIFF_COL) as (keyof typeof DIFF_COL)[]).map((d) => `<span><i class="out" style="border-color:${DIFF_COL[d]}"></i>${DIFF_LABEL[d]}</span>`).join('') +
+        `<span><i class="out" style="border-color:rgba(255,255,255,.5);border-style:dashed"></i>Source note</span><span><i class="out" style="border-color:#ff5b6e;border-style:dashed"></i>Dropped</span>`
+      : '');
+    stats.textContent = [`${notes.length} notes · ${c.chord} chord tones (${pct}%) · ${c.key} in key · ${c.out} out of key · ` +
       `${stp} steps · ${rep} repeats · ${skip} thirds · ${leap} leaps${leap ? ` (biggest ${big > 0 ? '+' : ''}${big})` : ''} · ` +
-      `${noteName(Math.min(...notes.map((n) => n.midi)))}–${noteName(Math.max(...notes.map((n) => n.midi)))}`;
+      `${noteName(Math.min(...notes.map((n) => n.midi)))}–${noteName(Math.max(...notes.map((n) => n.midi)))}`, ...extra].join('\n');
     scroll.scrollLeft = 0;
   }
 
