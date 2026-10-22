@@ -4,7 +4,9 @@
 import type { Chord, Mode } from '../theory';
 import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from './form';
 import { EMO_PULL, pullTo, toneBias, withColour, withEndDegrees, withSuspensions, withSurprise, type EmoBuild, type EmoCtx } from './emotion';
+import type { Genre } from '../genres';
 import { BarGrid, gridOf } from './grid';
+import { shortTarget, withLonger } from './longer';
 import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
@@ -141,10 +143,13 @@ export function buildVerse(inp: BuildInput): Built {
       const longed = withLongHolds(led, phrases, chordAt, G, len, { key, range, moreLeaves: end < total }, sd.holds, accOf('holds'), d);
       // (the chorus: fitted to the song's share of silence)
       const fitted = d.silence === undefined ? longed : fitSilence(longed, phrases, G, len, d.silence, sd.small, accOf('small'), d.silenceTol);
-      // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
-      const units = fixUnits(fitted, phrases, chordAt, G, final);
-      if (!units.ok) return null;
+      // (longer notes: neighbouring 8ths joined until the share of short notes is the genre's and the section's; a section fitted to a
+      // share of silence keeps its rests)
       const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
+      const stretched = X?.E.on.has('longer') ? withLonger(fitted, phrases, G, shortTarget(inp.genre as Genre, X.E.kind), changes, `${sd.holds}|longer`, d.silence === undefined) : fitted;
+      // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
+      const units = fixUnits(stretched, phrases, chordAt, G, final);
+      if (!units.ok) return null;
       const bent = addBends(units.notes, phrases, G, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
       const noted = addNoteBends(bent, G, { amount: inp.bends, energy: inp.energy, key, mode, chordAt, range, mult: d.bends, pent }, `${sd.bends}|in`);
       // (mood notes, on the line as it will sound, after the bends: colour notes and surprises, then a long note that starts one step off

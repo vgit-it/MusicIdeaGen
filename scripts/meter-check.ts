@@ -18,13 +18,14 @@ import { writeSong, songOptions } from '../src/verse/sing';
 import { barOf, songGrid } from '../src/verse/section';
 import { fifth, third } from '../src/verse/verse';
 import { groupStarts } from '../src/rhythm';
+import { shortLen } from '../src/verse/longer';
 
 const N = Number(process.env.N ?? 28);
 const GENRES = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'];
 const METERS = (process.env.METERS ?? '4/4,3/4,6/8,5/4,5/8,7/8,9/8,7/4,11/8,mixed').split(',');
 
-interface Acc { songs: number; crashes: number; broken: number; bars: number; barMiss: number; gridOff: number; labelsOff: number; notes: number; cross: number; onBar: number; onGroup: number; onChange: number; chordTone: number; phrases: number; phStart: number; phEnd: number; endings: number; endOnBeat: number; longs: number; longEndOk: number; fractional: number; barLens: Set<number>; err: string }
-const mk = (): Acc => ({ songs: 0, crashes: 0, broken: 0, bars: 0, barMiss: 0, gridOff: 0, labelsOff: 0, notes: 0, cross: 0, onBar: 0, onGroup: 0, onChange: 0, chordTone: 0, phrases: 0, phStart: 0, phEnd: 0, endings: 0, endOnBeat: 0, longs: 0, longEndOk: 0, fractional: 0, barLens: new Set(), err: '' });
+interface Acc { songs: number; crashes: number; broken: number; bars: number; barMiss: number; gridOff: number; labelsOff: number; notes: number; cross: number; onBar: number; onGroup: number; onChange: number; chordTone: number; phrases: number; phStart: number; phEnd: number; endings: number; endOnBeat: number; longs: number; longEndOk: number; fractional: number; short: number; barLens: Set<number>; err: string }
+const mk = (): Acc => ({ songs: 0, crashes: 0, broken: 0, bars: 0, barMiss: 0, gridOff: 0, labelsOff: 0, notes: 0, cross: 0, onBar: 0, onGroup: 0, onChange: 0, chordTone: 0, phrases: 0, phStart: 0, phEnd: 0, endings: 0, endOnBeat: 0, longs: 0, longEndOk: 0, fractional: 0, short: 0, barLens: new Set(), err: '' });
 const rows: Record<string, Acc> = {};
 
 for (const meter of METERS) {
@@ -63,6 +64,7 @@ for (const meter of METERS) {
           if (n.end && n.len >= 2) { a.endings++; if (accents.has(Math.round(n.step))) a.endOnBeat++; }
           a.notes++;
           if (!n.third && (Math.abs(n.step - Math.round(n.step)) > 1e-6 || Math.abs(n.len - Math.round(n.len)) > 1e-6)) a.fractional++;
+          if (n.len <= shortLen(G) + 1e-9) a.short++;
           if (n.len >= 4 && !n.third) { a.longs++; const e = Math.round(n.step + n.len); if (accents.has(e) || halves.has(e) || Math.abs(n.step + n.len - total) < 1e-6) a.longEndOk++; }
           if (starts.some((st) => n.step < st - 1e-6 && n.step + n.len > st + 1e-6)) a.cross++;
           if (starts.some((st) => Math.abs(n.step - st) < 1e-6)) a.onBar++;
@@ -78,10 +80,10 @@ for (const meter of METERS) {
 
 const pc = (x: number, t: number) => (t ? ((100 * x) / t).toFixed(0).padStart(3) + '%' : '   -');
 console.log(`${N} songs per meter, mood notes on\n`);
-console.log('meter  | songs crash | bar lengths     | old-grid misses | grid / labels off | rules broken | notes over a bar line | on bar start | on beat group | on chord change | chord tones | phrases start on a beat | phrases end on a beat | held endings start on a beat | long notes end on a beat or half | notes on a half step');
+console.log('meter  | songs crash | bar lengths     | old-grid misses | grid / labels off | rules broken | notes over a bar line | on bar start | on beat group | on chord change | chord tones | phrases start on a beat | phrases end on a beat | held endings start on a beat | long notes end on a beat or half | notes on a half step | short notes (8th or less)');
 for (const m of METERS) {
   const a = rows[m];
-  console.log(`${m.padEnd(6)} | ${String(a.songs).padStart(5)} ${String(a.crashes).padStart(5)} | ${[...a.barLens].sort((x, y) => x - y).join(',').padEnd(15)} | ${pc(a.barMiss, a.bars).padStart(8)} ${String(a.barMiss).padStart(5)} | ${String(a.gridOff).padStart(8)} ${String(a.labelsOff).padStart(8)} | ${String(a.broken).padStart(12)} | ${pc(a.cross, a.notes).padStart(21)} | ${pc(a.onBar, a.notes).padStart(12)} | ${pc(a.onGroup, a.notes).padStart(13)} | ${pc(a.onChange, a.notes).padStart(15)} | ${pc(a.chordTone, a.notes)} | ${pc(a.phStart, a.phrases).padStart(23)} | ${pc(a.phEnd, a.phrases).padStart(21)} | ${pc(a.endOnBeat, a.endings).padStart(26)} | ${pc(a.longEndOk, a.longs).padStart(32)} | ${String(a.fractional).padStart(18)}`);
+  console.log(`${m.padEnd(6)} | ${String(a.songs).padStart(5)} ${String(a.crashes).padStart(5)} | ${[...a.barLens].sort((x, y) => x - y).join(',').padEnd(15)} | ${pc(a.barMiss, a.bars).padStart(8)} ${String(a.barMiss).padStart(5)} | ${String(a.gridOff).padStart(8)} ${String(a.labelsOff).padStart(8)} | ${String(a.broken).padStart(12)} | ${pc(a.cross, a.notes).padStart(21)} | ${pc(a.onBar, a.notes).padStart(12)} | ${pc(a.onGroup, a.notes).padStart(13)} | ${pc(a.onChange, a.notes).padStart(15)} | ${pc(a.chordTone, a.notes)} | ${pc(a.phStart, a.phrases).padStart(23)} | ${pc(a.phEnd, a.phrases).padStart(21)} | ${pc(a.endOnBeat, a.endings).padStart(26)} | ${pc(a.longEndOk, a.longs).padStart(32)} | ${String(a.fractional).padStart(18)} | ${pc(a.short, a.notes).padStart(10)}`);
   if (a.err) console.log('        first crash:', a.err);
 }
 if (Object.values(rows).some((a) => a.crashes || a.broken || a.gridOff || a.labelsOff)) process.exitCode = 1;
