@@ -92,6 +92,7 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
       `Phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, G)} ${n.style ?? 'held'} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
       `Long holds (1–2 bars): ${notes.filter((n) => n.longHold).map((n) => `${pos(n.step, G)} ${+(n.len / bar).toFixed(2)} bars${n.bendTo === undefined ? '' : `, moves ${1 + (n.more?.length ?? 0)}`}`).join(', ') || 'none'}`,
       `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, G)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
+      `Repeated shapes (${built.shapes.length} of ${phrases.length} phrases): ${built.shapes.map((x) => `${pos(x.step, G)} ${+(x.len / (bar / 4)).toFixed(1)}-beat shape ${x.n === 3 ? "A A A'" : "A A A A'"} (last: ${x.mod})`).join(', ') || 'none'}`,
       ...moodNotes(notes, G),
     ];
   };
