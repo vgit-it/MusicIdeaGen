@@ -8,6 +8,7 @@ import type { Genre } from '../genres';
 import { BarGrid, gridOf } from './grid';
 import { isCalm, shortRange, shortTarget, withLonger } from './longer';
 import { withSpace } from './space';
+import { limitSets, setsAllowed } from './sets';
 import { withShapes, type ShapeInfo, type Skips } from './shapes';
 import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
@@ -170,12 +171,16 @@ export function buildVerse(inp: BuildInput): Built {
       // (mood notes, on the line as it will sound, after the bends: colour notes and surprises, then a long note that starts one step off
       // and glides onto the chord note)
       const flavoured = X ? withSurprise(withColour(noted, phrases, X, `${sd.neighbours}|emo`), phrases, X, `${sd.small}|emo`) : noted;
-      const moods = X ? withSuspensions(flavoured, X, `${sd.bends}|emo`) : flavoured;
+      const moods0 = X ? withSuspensions(flavoured, X, `${sd.bends}|emo`) : flavoured;
+      // (rule 43: no more sets of notes in the leaf than the slider allows, on the line as it will sound, before the shapes are repeated)
+      const maxSets = X?.E.maxSets ? setsAllowed(X.E.maxSets, leaf.bars) : 0;
+      const moods = maxSets ? limitSets(moods0, phrases, G, maxSets) : moods0;
       // (repeat shapes: last, on the line as it will sound, so nothing after it can pull a repeat apart)
       const rep = X?.E.on.has('shape')
         ? withShapes(moods, phrases, G, len, sd.phrases, { key, scale: pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12)), chordAt, range, silence: d.silence, silenceTol: d.silenceTol, short: X.E.on.has('longer'), shortRange: shortRange(X.E.kind) })
         : undefined;
-      const notes = rep ? rep.notes : moods;
+      // (and again on the finished line, in case a later rule opened a gap)
+      const notes = maxSets ? limitSets(rep ? rep.notes : moods, phrases, G, maxSets) : rep ? rep.notes : moods;
       return { notes, phrases, breaks, runs, holds, tones, bars, shapes: rep?.shapes ?? [], skips: rep?.skips ?? {} };
     };
     const MAX_TRIES = 40;

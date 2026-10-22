@@ -86,7 +86,7 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
   const src = chorus && like ? like : idea;
   const emo: EmoCtx | undefined = o.emo && {
     mood: o.emo.mood, on: o.emo.on, kind, key: idea.song.key, mode: idea.song.mode, bpm: idea.song.bpm, energy: src.section?.energy ?? 3,
-    tension: src.section?.tension, climax: !!o.emo.climax && src === o.emo.climax, ending: !!src.section?.ending,
+    tension: src.section?.tension, climax: !!o.emo.climax && src === o.emo.climax, ending: !!src.section?.ending, maxSets: o.emo.maxSets,
   };
   const dials0 = o.pace ? paced(dialsFor(kind, p), idea.song.bpm) : dialsFor(kind, p);
   // (the master's tries: each leaf starts on the dice the master's ended on, so the choruses match)

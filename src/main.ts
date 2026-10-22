@@ -23,6 +23,7 @@ import { buildPartsPanel } from './ui/parts';
 import { buildChordEditor } from './ui/chordedit';
 import { buildRoll } from './ui/roll';
 import { buildVersePanel } from './verse/panel';
+import { SETS_DEFAULT, setsOf } from './verse/emotion';
 import { hasPins } from './parts/sheet';
 import { highlightBar, markSection, renderIdea, renderTrack } from './ui/render';
 
@@ -79,6 +80,12 @@ const verse = buildVersePanel($('verse'), {
     if (!idea) return;
     // (the same song with a mood note switched on or off: only the lead vocal changes)
     showIdea(generate({ ...idea.opts, vocalMoodOff: off.length ? off : undefined }, idea.seeds), true);
+  },
+  maxSets: () => setsOf(idea?.opts.vocalMaxSets),
+  setMaxSets(n) {
+    if (!idea) return;
+    // (the same song with another limit on the sets of notes: only the lead vocal changes)
+    showIdea(generate({ ...idea.opts, vocalMaxSets: n === SETS_DEFAULT ? undefined : n }, idea.seeds), true);
   },
 });
 
@@ -420,7 +427,7 @@ function newIdea() {
   const chords = idea && hasPins(idea.opts.chords) ? idea.opts.chords : undefined;
   // (the vocal's rhythm and the singer's lift carry over to the new idea; the lift then set for its own
   // singer: the new song may sing in the other voice)
-  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns, vocalWriter: idea?.opts.vocalWriter, vocalMoodOff: idea?.opts.vocalMoodOff };
+  const opts: GenOptions = { genre: genreSel.value as GenreSel, meter: meterSel.value, weirdness: +weird.value / 100, bpm: readTempo(), chords, vocalLift: idea?.opts.vocalLift, vocalSinger: idea?.opts.vocalSinger, vocalRhythm: idea?.opts.vocalRhythm, vocalMelody: idea?.opts.vocalMelody, vocalMove: idea?.opts.vocalMove, vocalEnergy: idea?.opts.vocalEnergy, vocalReal: idea?.opts.vocalReal, vocalPatterns: idea?.opts.vocalPatterns, vocalWriter: idea?.opts.vocalWriter, vocalMoodOff: idea?.opts.vocalMoodOff, vocalMaxSets: idea?.opts.vocalMaxSets };
   let next = generate(opts, seeds);
   const h = singerFor(next);
   if ((next.opts.vocalLift ?? 0) !== (h ? HIGH_VOICES[h].lift : 0) || next.opts.vocalSinger !== (h ?? undefined)) next = generate({ ...opts, ...singerOpts(h) }, seeds);
