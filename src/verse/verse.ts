@@ -93,7 +93,7 @@ export function pentatonic(key: number, mode: Mode): Set<number> {
  * The pitch class of a chord note; with a pentatonic, one inside it: the chord's other notes (the 5th, 3rd, root, nearest in that
  * order of the one asked for) if one is in the scale, else the nearest pentatonic note (a semitone down before a semitone up).
  */
-function pickPc(key: number, c: Chord, tone: ChordNote, pent?: ReadonlySet<number>): number {
+export function pickPc(key: number, c: Chord, tone: ChordNote, pent?: ReadonlySet<number>): number {
   const pc = pitchClass(key, c, tone);
   if (!pent || pent.has(pc)) return pc;
   const order: ChordNote[] = tone === 'root' ? ['fifth', 'third'] : tone === 'third' ? ['fifth', 'root'] : ['third', 'root'];
@@ -118,7 +118,7 @@ function inKeyTones(fit: KeyFit, from: number, to: number, among: readonly Chord
 }
 
 /** The pitch class nearest to `centre`. */
-function nearest(pc: number, centre: number): number {
+export function nearest(pc: number, centre: number): number {
   let m = Math.round((centre - pc) / 12) * 12 + pc;
   if (m > centre + 6) m -= 12;
   if (m < centre - 6) m += 12;
@@ -172,11 +172,11 @@ const isStrong = (step: number, bar: BarArg) => gridOf(bar).isStrong(step);
  * rules below weigh (a nudge of a quarter either way, never more): notes lean toward the band's hits, and long notes and
  * new phrases toward its chord changes. Left out, every step counts the same.
  */
-export function bandAccents(total: number, band: { kick?: number[]; snare?: number[]; strum?: string[]; bass?: number[]; changes?: number[] }): number[] {
+export function bandAccents(total: number, band: { kick?: number[]; snare?: number[]; strum?: string[]; bass?: number[]; changes?: number[] }, bassWeight = 0.15): number[] {
   const acc = new Array<number>(total).fill(0);
   const STRUM: Record<string, number> = { D: 0.25, p: 0.2, U: 0.12, x: 0.1 };
   for (let s = 0; s < total; s++) {
-    acc[s] = Math.min(1, ((band.kick?.[s] ?? 0) > 0 ? 0.5 : 0) + ((band.snare?.[s] ?? 0) > 0 ? 0.45 : 0) + (STRUM[band.strum?.[s] ?? '.'] ?? 0) + ((band.bass?.[s] ?? 0) > 0 ? 0.15 : 0));
+    acc[s] = Math.min(1, ((band.kick?.[s] ?? 0) > 0 ? 0.5 : 0) + ((band.snare?.[s] ?? 0) > 0 ? 0.45 : 0) + (STRUM[band.strum?.[s] ?? '.'] ?? 0) + ((band.bass?.[s] ?? 0) > 0 ? bassWeight : 0));
   }
   for (const c of band.changes ?? []) if (c >= 0 && c < total) acc[c] = Math.min(1, acc[c] + 0.5);
   return acc;

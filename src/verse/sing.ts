@@ -25,10 +25,10 @@ export const isSung = (idea: Idea) => {
 };
 
 /** The writer's options for a song: the default range (a high singer's lift moves it), the vocal seed mixed in. */
-export function songOptions(seed: string, lift = 0, emo?: EmoOptions): SectionOptions {
+export function songOptions(seed: string, lift = 0, emo?: EmoOptions, bass = 0): SectionOptions {
   const r = DEFAULT_RANGE;
   const range: Range = { lo: r.lo + lift, hi: r.hi + lift, xlo: r.xlo + lift, xhi: r.xhi + lift };
-  return { range, bends: 'some', meta: true, variation: 'some', pentatonic: false, seed, ...(emo ? { emo } : {}) };
+  return { range, bends: 'some', meta: true, variation: 'some', pentatonic: false, seed, ...(emo ? { emo } : {}), ...(bass > 0 ? { bass } : {}) };
 }
 
 export interface SectionVoice {
@@ -95,7 +95,7 @@ export function writeSong(list: Idea[], o: SectionOptions): Map<Idea, SectionVoi
   const out = new Map<Idea, SectionVoice>();
   const hooks = new Map<string, Built>(), hookWords = new Map<string, Words>();
   const acc = new WeakMap<Idea, number[]>();
-  const accOf = (i: Idea) => { let a = acc.get(i); if (!a) { a = accentsOf(i); acc.set(i, a); } return a; };
+  const accOf = (i: Idea) => { let a = acc.get(i); if (!a) { a = accentsOf(i, !!o.bass); acc.set(i, a); } return a; };
   const verse = list.find((i) => i.section?.kind === 'verse'), chorus = [...list].reverse().find(isChorus);
   for (const idea of list) {
     if (!isSung(idea)) continue;
@@ -131,8 +131,8 @@ export const linkVoice = (from: Idea, to: Idea) => { const v = written.get(from)
  * Give a track's sections the writer's vocal: `vocal` and `sung` are set on every section (empty where nobody sings). A lone idea is
  * passed as a one-section list whose section is a chorus (it sings its chorus tune and hook, as the old vocal did).
  */
-export function singSong(list: Idea[], seed: string, lift = 0, emo?: EmoOptions): void {
-  const song = writeSong(list, songOptions(seed, lift, emo));
+export function singSong(list: Idea[], seed: string, lift = 0, emo?: EmoOptions, bass = 0): void {
+  const song = writeSong(list, songOptions(seed, lift, emo, bass));
   list.forEach((idea) => {
     const v = song.get(idea);
     if (v) written.set(idea, v);

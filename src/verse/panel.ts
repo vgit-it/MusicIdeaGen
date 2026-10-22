@@ -17,12 +17,13 @@ export interface VersePanel {
   update(list: Idea[]): void;
 }
 
-export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'classic'; setWriter(w: 'verse' | 'classic'): void; moodOff(): string[]; setMoodOff(off: string[]): void; maxSets(): number; setMaxSets(n: number): void }): VersePanel {
+export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'classic' | 'bass'; setWriter(w: 'verse' | 'classic' | 'bass'): void; bassShare(): number; setBassShare(n: number): void; moodOff(): string[]; setMoodOff(off: string[]): void; maxSets(): number; setMaxSets(n: number): void }): VersePanel {
   root.innerHTML = `
     <h2>Vocal melody</h2>
     <p class="hint">The lead vocal is written by the verse melody writer, section by section: phrases with breaks, 16th runs, long notes and bent ones, and rules for the pre-chorus climb, the bridge's dwell, the interlude and outro echoing the chorus. A song's choruses (and pre-choruses, bridges, interludes, outros) are one melody over their own chords, and every song draws its own personality. Below: the words and what was written.</p>
     <div class="guiderow">
-      <label title="Who writes the lead vocal: the verse melody writer (new), or the classic writer. Same song, only the lead vocal changes">Writer <select id="v-writer" class="gsing"><option value="verse">New</option><option value="classic">Classic</option></select></label>
+      <label title="Who writes the lead vocal: the verse melody writer (new), or the classic writer. Same song, only the lead vocal changes">Writer <select id="v-writer" class="gsing"><option value="verse">New</option><option value="bass">New · bass-led</option><option value="classic">Classic</option></select></label>
+      <label title="Bass-led only: how much of the vocal's rhythm and chord notes is the bass line's. At 100% the line starts only where the bass starts a note and sits on the chord note the bass plays; lower, the usual 8th-note fill comes back between the bass's notes; 0% is the New writer. Every other rule (phrases, endings, mood notes, longer notes...) still applies on top">Bass share <input type="range" id="v-bass" min="0" max="100" step="5" style="width:140px;vertical-align:middle"> <output id="v-bass-out"></output></label>
     </div>
     <p class="hint" style="margin-bottom:6px">Mood notes: what music research says about feeling in the notes, each its own switch (on = used). The song's Mood (Track options) shapes them; off, the line is as it was.</p>
     <div class="guiderow" id="v-emo"></div>
@@ -34,7 +35,14 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
   const sel = $('v-writer') as HTMLSelectElement;
   sel.value = ctl.writer();
-  sel.addEventListener('change', () => ctl.setWriter(sel.value as 'verse' | 'classic'));
+  sel.addEventListener('change', () => ctl.setWriter(sel.value as 'verse' | 'classic' | 'bass'));
+  // the bass share slider: only for the bass-led writer; a release regenerates the vocal
+  const bassIn = $('v-bass') as HTMLInputElement, bassOut = $('v-bass-out') as HTMLOutputElement;
+  const showBass = () => { bassOut.textContent = `${bassIn.value}%`; };
+  const syncBass = () => { bassIn.value = String(ctl.bassShare()); bassIn.disabled = ctl.writer() !== 'bass'; showBass(); };
+  bassIn.addEventListener('input', showBass);
+  bassIn.addEventListener('change', () => ctl.setBassShare(+bassIn.value));
+  syncBass();
   // the mood-note switches: one button each, on by default; a click regenerates the vocal with that rule on or off
   const emoRow = $('v-emo');
   const emoBtns = EMO_IDS.map((id) => {
@@ -128,6 +136,7 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
     update(l) {
       list = l;
       sel.value = ctl.writer();
+      syncBass();
       syncEmo();
       syncSets();
       info();
