@@ -26,7 +26,7 @@ import type { BarGrid } from './grid';
 import { cumulative, type Dials } from './profile';
 import { fifth, roll, third, type BandNote, type Gap, type Range, type ToneBias } from './verse';
 
-export const EMO_IDS = ['colour', 'endings', 'suspend', 'contour', 'arousal', 'tension', 'moodmode', 'surprise'] as const;
+export const EMO_IDS = ['colour', 'endings', 'suspend', 'contour', 'arousal', 'tension', 'moodmode', 'surprise', 'longer'] as const;
 export type EmoId = (typeof EMO_IDS)[number];
 
 export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
@@ -38,6 +38,7 @@ export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
   tension: { name: 'Tension curve', hint: "Follows the song's tension, bar by bar: more colour notes and hanging ends as it builds, home ends as it eases, the line drifting up and down with it" },
   moodmode: { name: 'Mood over mode', hint: "When the mood is brighter or darker than the key (a Happy song in minor), the line leans to the bright or dark degrees. Off: the mode's own feel only" },
   surprise: { name: 'Surprise', hint: 'Now and then, late in a section: a note pushed early, a note off the scale, a deceptive ending. Calm moods fewer, tense and dreamy more, the climax one extra' },
+  longer: { name: 'Longer notes', hint: 'Fewer 8th-note-or-shorter notes: neighbouring short notes are joined until about 35 to 50% of the notes are short, by genre and section (funk busiest, grunge calmest; verses busier than choruses and breaks)' },
 };
 
 /** The switches that are on: all of them, except those listed (what the app stores). */
