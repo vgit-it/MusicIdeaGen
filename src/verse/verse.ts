@@ -200,7 +200,7 @@ export const roll = (seed: string, tag: string, step: number) => new Rng(`${seed
 export function planPhrases(totalSteps: number, barArg: BarArg, seed: string, acc?: number[], d: Dials = VERSE): { phrases: Gap[]; breaks: Gap[] } {
   const rng = new Rng(seed + '|phrases');
   const G = gridOf(barArg), bar = G.bar;
-  const beat = bar / 4;
+  const beat = G.beat;
   const phrases: Gap[] = [];
   const breaks: Gap[] = [];
   let pos = 0;
@@ -376,9 +376,8 @@ export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[],
  */
 export function randomHolds(totalSteps: number, barArg: BarArg, gaps: Gap[], runs: Gap[], tones: ChordNote[], chordAt: Chord[], seed: string, acc?: number[], d: Dials = VERSE): Gap[] {
   const rng = new Rng(seed + '|holds');
-  const G = gridOf(barArg), bar = G.bar;
+  const G = gridOf(barArg);
   const holds: Gap[] = [];
-  const beat = bar / 4;
   for (let bi = 0, from = 0; from < totalSteps; from = G.start(++bi)) {
     // (the bar's own beats: four quarters, or a 7/8 bar's three)
     const beats = G.beats(bi);
@@ -388,13 +387,15 @@ export function randomHolds(totalSteps: number, barArg: BarArg, gaps: Gap[], run
       if (pass === 1 && (d.holdTwice <= 0 || !rng.chance(d.holdTwice))) break;
       // (a few tries for a clear spot: gaps and runs take up much of a bar)
       for (let tries = 0; tries < 6; tries++) {
-        const len = Math.round(beat * [1, 1.5, 2, 4][cumulative(d.holdLen, rng.next())]);
+        const mult = [1, 1.5, 2, 4][cumulative(d.holdLen, rng.next())];
         // (the lean: long notes mostly start on the 2nd or 4th quarter)
         // (and toward the band's chord changes and hits)
         const w = beats.map((b, k) => [1, 2.1, 1, 1.9][k % 4] * nudge(acc, from + b));
+        // (a beat, a beat and a half, two beats or the whole bar, counted along the bar's own beats)
         let q = rng.next() * w.reduce((x, y) => x + y, 0), k0 = 0;
         while (k0 < w.length - 1 && q >= w[k0]) q -= w[k0++];
         const step = from + Math.round(beats[k0]);
+        const len = mult >= 4 ? G.len(bi) : G.forwardLen(step, mult);
         const span = { step, len };
         if (step + len > Math.min(totalSteps, from + G.len(bi))) continue;
         if (gaps.some((g) => overlaps(g, span)) || runs.some((o) => overlaps(o, span)) || holds.some((o) => overlaps(o, span))) continue;
@@ -638,10 +639,10 @@ export function phraseEndings(
   notes: BandNote[], phrases: Gap[], barArg: BarArg, seed: string, d: Dials = VERSE,
   ctx?: { key: number; mode: Mode; chordAt: Chord[]; range?: Range },
 ): BandNote[] {
-  const G = gridOf(barArg), bar = G.bar;
+  const G = gridOf(barArg);
   const rng = new Rng(seed + '|endings');
   const chance = d.end[0] + rng.next() * (d.end[1] - d.end[0]);
-  const beat = bar / 4;
+  const beat = G.beat;
   const styles = END_STYLES.filter((x) => d.endStyle[x] > 0);
   let out = notes;
   for (const ph of phrases) {
@@ -666,7 +667,7 @@ export function phraseEndings(
       if (!pos.length) continue;
       const at = pos.length === 1 || roll(seed, 'punchat', ph.step) < 0.5 ? pos[0] : pos[1];
       const core = coreBefore(at);
-      if (core) put(at, roll(seed, 'punchlen', ph.step) < 0.5 ? 2 : beat, core.midi, 'punch');
+      if (core) put(at, roll(seed, 'punchlen', ph.step) < 0.5 ? 2 : G.forwardLen(at, 1), core.midi, 'punch');
       continue;
     }
     const from = end - len - (style === 'sync' ? 2 : 0);
@@ -709,7 +710,7 @@ export function withLeadIn(
   const i = out.findIndex((n) => n.end && n.step + n.len === end);
   if (i < 0) return notes;
   // (held on into the break that follows, by up to half a bar, but not to the section's very end)
-  const len = Math.max(out[i].len, Math.min(total - 1 - out[i].step, out[i].len + bar / 2));
+  const len = Math.max(out[i].len, Math.min(total - 1 - out[i].step, out[i].len + Math.floor(bar / 2)));
   return out.map((n, k) => (k === i ? { ...n, len, lead: true } : n));
 }
 
@@ -785,11 +786,11 @@ export function addBends(
   seed: string,
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
-  const bar = gridOf(barArg).bar;
+  const G = gridOf(barArg), bar = G.bar;
   const out = notes.map((n) => ({ ...n }));
   const lift = (ctx.amount === 'lots' ? 1.6 : 1) * (0.7 + 0.6 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 1 : 2) * bar;
-  const beat = bar / 4, eighth = bar / 8;
+  const beat = G.beat, eighth = bar / 8;
   const cand: { i: number; pri: number; p: number; slide?: number; fade?: number; kind: string }[] = [];
   const firsts = new Map<number, number>(); // note index -> break before its phrase, in beats
   phrases.forEach((ph, k) => {
@@ -833,19 +834,22 @@ export function addBends(
  */
 export function withOpeners(notes: BandNote[], phrases: Gap[], chordAt: Chord[], barArg: BarArg, seed: string, acc?: number[], d: Dials = VERSE): { notes: BandNote[]; opened: Gap[] } {
   if (d.opener <= 0) return { notes, opened: [] };
-  const beat = gridOf(barArg).bar / 4;
+  const G = gridOf(barArg), beat = G.beat;
   const opened: Gap[] = [];
   let out = notes;
   for (const ph of phrases) {
     const inside = out.filter((n) => n.step >= ph.step && n.step < ph.step + ph.len);
     const first = inside[0];
     if (!first || first.len > 2 || first.step !== ph.step || first.third || roll(seed, 'opener', ph.step) >= d.opener * nudge(acc, ph.step)) continue;
-    const want = Math.round(beat * [1, 1.5, 2, 3][cumulative(d.openLen, roll(seed, 'openlen', ph.step))]);
+    // (a beat, a beat and a half, two or three beats along the real beats)
+    const want = G.forwardLen(ph.step, [1, 1.5, 2, 3][cumulative(d.openLen, roll(seed, 'openlen', ph.step))]);
     let end = Math.min(ph.step + want, ph.step + ph.len - beat);
     for (const n of inside.slice(1)) if (n.step < end && (n.len > 2 || n.third)) { end = n.step; break; }
     for (let s = ph.step + 1; s < end; s++) if (chordAt[s].root !== chordAt[ph.step].root || chordAt[s].q !== chordAt[ph.step].q) { end = s; break; }
     // (on a beat, and at least a beat long)
-    end = ph.step + Math.floor((end - ph.step) / beat) * beat;
+    const onBeat = G.floorBeat(end);
+    if (onBeat === undefined || onBeat <= ph.step) continue;
+    end = onBeat;
     if (end - ph.step < beat) continue;
     out = out.filter((n) => n === first || n.step < ph.step || n.step >= end).map((n) => (n === first ? { ...n, len: end - ph.step, opener: true } : n));
     opened.push(ph);
@@ -871,7 +875,7 @@ export function withLongHolds(
 ): BandNote[] {
   if (d.holdLong <= 0 || !chordAt.length) return notes;
   const G = gridOf(barArg), bar = G.bar;
-  const beat = bar / 4;
+  const beat = G.beat;
   const pent = d.pent;
   const at = (g: number) => chordAt[Math.max(0, Math.min(chordAt.length - 1, Math.floor(g + 1e-6)))];
   const pcsOf = (c: Chord) => [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12);
@@ -898,12 +902,13 @@ export function withLongHolds(
     prevHeld = false;
     const rng = new Rng(`${seed}|long|${Math.round(ph.step * 100)}`);
     const next = phrases[pi + 1];
-    const limit = Math.min(phEnd + bar / 2, next ? next.step - beat : total - (ctx.moreLeaves ? beat : 1));
+    const limit = Math.min(phEnd + bar / 2, next ? next.step - G.backLen(next.step, 1) : total - (ctx.moreLeaves ? G.backLen(total, 1) : 1));
     for (let k = cumulative(Array.from({ length: 9 }, (_, i) => Math.exp(-0.4 * i)), rng.next()); k >= 0; k--) {
       const L = Math.round(bar * (1 + k / 8));
       const cands: { s: number; e: number; w: number }[] = [];
       for (const s of G.beatSteps(ph.step, phEnd - 1e-6)) {
-        const e = s + L;
+        // (it ends on a beat or a half beat of the real bar)
+        const e = G.snapHalf(s + L, s);
         if (s < ph.step || e > limit + 1e-6) continue;
         // (nothing between a beat and nothing is left either side of it inside the phrase)
         if (s > ph.step + 1e-6 && s - ph.step < beat - 1e-6) continue;
@@ -1034,7 +1039,7 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], barArg: BarArg, to
       cover += by;
     }
     // (still too empty: a phrase's last note held on into the break after it, up to half a bar, leaving a beat of silence)
-    const beat = bar / 4;
+    const beat = G.beat;
     const lasts = phrases.map((ph) => {
       const idx = out.map((n, i) => (n.step >= ph.step && n.step < ph.step + ph.len ? i : -1)).filter((i) => i >= 0);
       return idx.length ? idx[idx.length - 1] : -1;
@@ -1044,7 +1049,7 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], barArg: BarArg, to
       const n = out[i];
       if (n.third || n.longHold) continue;
       const room = (out[i + 1] ? out[i + 1].step : total) - (n.step + n.len) - beat;
-      const by = Math.min(Math.floor(room), bar / 2, Math.ceil((sil() - target) * total));
+      const by = Math.min(Math.floor(room), Math.floor(bar / 2), Math.ceil((sil() - target) * total));
       if (by < 1) continue;
       n.len += by;
       cover += by;
@@ -1061,7 +1066,7 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], barArg: BarArg, to
  * instead (the last resort).
  */
 export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], barArg: BarArg, drop = false): { notes: BandNote[]; ok: boolean } {
-  const beat = gridOf(barArg).bar / 4;
+  const beat = gridOf(barArg).beat;
   let out = notes.map((n) => ({ ...n }));
   let ok = true;
   let i = 0;
@@ -1108,7 +1113,7 @@ export function addNoteBends(
   const lift = (ctx.amount === 'lots' ? 1 : 0.5) * (0.75 + 0.48 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 0.75 : 1) * bar;
   const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string; back?: { at: number; len: number }; boost?: number }[] = [];
-  const beat = bar / 4, eighth = bar / 8;
+  const beat = G.beat, eighth = bar / 8;
   const scale = ctx.mode ? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12)) : undefined;
   out.forEach((n, i) => {
     // (a phrase end set to home or hanging by the mood notes keeps its degree: a bend away would undo it)
