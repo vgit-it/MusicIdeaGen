@@ -11,7 +11,7 @@ import { withSpace } from './space';
 import { withShapes, type ShapeInfo, type Skips } from './shapes';
 import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
-  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
+  addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planCall, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
   pentatonic, thirdBars, trimOverlaps, verseOverBand, voiceLead, walkToNext, withGaps, withHolds, withLeadIn, withLongHolds, withOpeners, withRuns, withStretch,
   type BandNote, type BarTone, type BendAmount, type ChordNote, type Gap, type Range,
 } from './verse';
@@ -119,7 +119,8 @@ export function buildVerse(inp: BuildInput): Built {
       // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)
       // (a beat of the leaf's last bar: its last beat group, so the phrases stop on a beat)
       const tail = end < total ? Math.max(1, G.backLen(len, 1)) : 0;
-      const planned = planPhrases(len - tail, G, sd.phrases, accOf('phrases'), d);
+      // (call and response: a 4-bar leaf of a called section is two phrases, bars 1-2 and bars 3-4)
+      const planned = inp.emo?.on.has('call') && inp.call && leaf.bars === 4 && (inp.bars === 8 || inp.bars === 16) ? planCall(len - tail, G, sd.phrases, d) : planPhrases(len - tail, G, sd.phrases, accOf('phrases'), d);
       const phrases = planned.phrases, breaks = planned.breaks;
       if (tail) {
         const last = breaks[breaks.length - 1];
@@ -185,7 +186,7 @@ export function buildVerse(inp: BuildInput): Built {
       if (w) { tryOf.set(leaf.id, t); out.tries.push(t); }
     }
     const { notes, phrases, breaks, runs, holds, tones, bars, shapes, skips } = w;
-    const shift = (g: Gap): Gap => ({ step: g.step + from, len: g.len });
+    const shift = (g: Gap): Gap => ({ ...g, step: g.step + from });
     out.notes.push(...notes.map((n) => ({ ...n, step: n.step + from })));
     out.phrases.push(...phrases.map(shift));
     out.breaks.push(...breaks.map(shift));

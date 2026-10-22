@@ -237,7 +237,7 @@ export function buildRoll(root: HTMLElement) {
         x.beginPath(); x.roundRect(x0 + 0.5, yPh + 1.5, w - 1, PHRASE_H - 3, 4); x.stroke();
         const e = endingOf(built!.notes, ph), bars = Math.round((ph.len / meanBar) * 2) / 2;
         x.fillStyle = '#e8eaf0';
-        x.fillText(fit(`${i + 1} · ${bars} bar${bars === 1 ? '' : 's'} · ${e.style}${e.role ? ' ' + e.role : ''}`, w - 8), x0 + 4, yPh + PHRASE_H / 2);
+        x.fillText(fit(`${ph.role ?? i + 1} · ${bars} bar${bars === 1 ? '' : 's'} · ${e.style}${e.role ? ' ' + e.role : ''}`, w - 8), x0 + 4, yPh + PHRASE_H / 2);
       });
     }
     if (showSh) {

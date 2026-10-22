@@ -76,6 +76,9 @@ for (let i = 0; i < N; i++) {
   const run = (on: boolean) => writeSong(list, songOptions(s + 'v', 0, { mood, on: new Set(EMO_IDS.filter((x) => on || x !== 'shape')), climax: list[0] } as never));
   const off = run(false), on = run(true);
   const scale = new Set(SCALES[idea.song.mode].map((p) => (p + idea.song.key) % 12));
+  // (a note that ends its phrase: a flag left on a note inside a phrase, by a lead-in written after it, doesn't count)
+  const lastOf = (built: { phrases: { step: number; len: number }[]; notes: { step: number }[] }, step: number) =>
+    built.phrases.some((ph) => { const last = [...built.notes].reverse().find((n) => n.step >= ph.step - 1e-6 && n.step < ph.step + ph.len - 1e-6); return last?.step === step; });
   for (const sec of list) {
     const a = off.get(sec), b = on.get(sec);
     if (!a || !b) continue;
@@ -113,9 +116,10 @@ for (let i = 0; i < N; i++) {
       if (x.mod === 'lift' || x.mod === 'hold') {
         if (rel(last.filter((_, k) => k < last.length - (x.mod === 'hold' ? 1 : 0)), base) !== rel(ts[0].filter((_, k) => k < last.length - (x.mod === 'hold' ? 1 : 0)), x.step)) fail(`${where}: the changed time differs in rhythm beyond its change (${x.mod})`);
       }
-      if (x.mod === 'ending' && a.built.notes.some((n) => n.end && n.step >= x.step && n.step < x.step + x.n * x.len) && !b.built.notes.some((n) => n.end && n.step >= x.step && n.step < x.step + x.n * x.len)) fail(`${where}: the ending was lost`);
+      if (x.mod === 'ending' && a.built.notes.some((n) => n.end && n.step >= x.step && n.step < x.step + x.n * x.len && lastOf(a.built, n.step)) && !b.built.notes.some((n) => n.end && n.step >= x.step && n.step < x.step + x.n * x.len && lastOf(b.built, n.step))) fail(`${where}: the ending was lost`);
     }
-    if (a.built.notes.filter((n) => n.end).length !== b.built.notes.filter((n) => n.end).length) fail(`${s} ${sec.section?.kind}: held endings ${a.built.notes.filter((n) => n.end).length} became ${b.built.notes.filter((n) => n.end).length}`);
+    const ends = (v: typeof a) => v.built.notes.filter((n) => n.end && lastOf(v.built, n.step)).length;
+    if (ends(a) !== ends(b)) fail(`${s} ${sec.section?.kind}: held endings ${ends(a)} became ${ends(b)}`);
     // (outside the repeats, the line is the one written without the switch)
     const inRegion = (n: BandNote) => regions.some(([f, e]) => n.step >= f - EPS && n.step < e - EPS);
     const keep = (ns: BandNote[]) => ns.filter((n) => !inRegion(n)).map((n) => `${n.step}:${n.midi}`).join(' ');

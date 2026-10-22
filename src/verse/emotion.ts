@@ -26,7 +26,7 @@ import type { BarGrid } from './grid';
 import { cumulative, type Dials } from './profile';
 import { fifth, roll, third, type BandNote, type Gap, type Range, type ToneBias } from './verse';
 
-export const EMO_IDS = ['colour', 'endings', 'suspend', 'contour', 'arousal', 'tension', 'moodmode', 'surprise', 'longer', 'space', 'shape'] as const;
+export const EMO_IDS = ['colour', 'endings', 'suspend', 'contour', 'arousal', 'tension', 'moodmode', 'surprise', 'longer', 'space', 'shape', 'call'] as const;
 export type EmoId = (typeof EMO_IDS)[number];
 
 export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
@@ -41,6 +41,7 @@ export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
   longer: { name: 'Longer notes', hint: 'Fewer 8th-note-or-shorter notes: neighbouring short notes are joined until about 35 to 50% of the notes are short, by genre and section (funk busiest, grunge calmest; verses busier than choruses and breaks)' },
   space: { name: 'Use the space', hint: 'A short note before a big gap, and a held ending, are held on into the gap (a breath left), the end of a repeated phrase most; notes of 3/4 bar or more bend more often, sometimes there and back, even a held ending' },
   shape: { name: 'Repeat shapes', hint: "Inside a phrase, one small shape (a bar or less) is sung again: twice the same and the third time changed, or three times the same and the fourth changed; 1 phrase in 4 has none. The repeats move with the chords; the last one changed is often the phrase's own ending" },
+  call: { name: 'Call & response', hint: 'In a verse, chorus or bridge of 8 or 16 bars, every 4 bars are two phrases: a call (bars 1-2, ending on a question, never home) and a response (bars 3-4, ending open, or home where the section ends)' },
 };
 
 /** The switches that are on: all of them, except those listed (what the app stores). */
@@ -323,6 +324,9 @@ const SECTION_END: Record<string, [number, number, number]> = {
 const QUESTION: [number, number, number] = [0.25, 0.5, 0.25];
 /** The end of a leaf that is not the section's last, in a called form: open or hanging, never home. */
 const ASK: [number, number, number] = [0, 0.65, 0.35];
+/** The call of a called leaf (hanging) and the response that isn't the section's last (open, settled but not home). */
+const CALL: [number, number, number] = [0, 0.4, 0.6];
+const RESPONSE: [number, number, number] = [0, 0.8, 0.2];
 const ANSWER: [number, number, number] = [0.8, 0.17, 0.03];
 
 /** The octave of the pitch class `pc` nearest `near`, within `maxStep` semitones of it, in the main range if it can be. */
@@ -360,6 +364,9 @@ export function withEndDegrees(notes: BandNote[], phrases: Gap[], X: EmoBuild, s
     else {
       const question = !last && (k % 2 === 0 || k === phrases.length - 1);
       let w = last ? (E.ending ? (E.mood === 'dreamy' || E.mood === 'nostalgic' ? [0.5, 0.4, 0.1] : [0.9, 0.08, 0.02]) : SECTION_END[E.kind] ?? SECTION_END.verse) : question ? (X.call && !X.lastLeaf && k === phrases.length - 1 ? ASK : QUESTION) : ANSWER;
+      // (call and response: the call asks, hanging; a response that isn't the section's last answers half way: open)
+      if (ph.role === 'call') w = CALL;
+      else if (ph.role === 'response' && !last) w = RESPONSE;
       const t = ten(ph.step + ph.len - 1);
       w = w.map((x, j) => x * M.end[j] * (t === undefined ? 1 : j === 0 ? 1.3 - 0.6 * t : j === 2 ? 0.6 + 0.8 * t : 1));
       role = ROLES[cumulative(w, roll(seed, 'emo-role', ph.step))];
