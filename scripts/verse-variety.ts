@@ -82,7 +82,8 @@ for (let i = 0; i < N; i++) {
   const toneAt = (n: BandNote): string => {
     const c = ch[Math.min(total - 1, Math.floor(n.step))];
     const iv = QUALITIES[c.q] as readonly number[];
-    const rel = ((n.midi - key - c.root) % 12 + 12) % 12;
+    // (a delayed resolution starts a step off and glides onto the chord note: that note is what it lands on)
+    const rel = (((n.inner?.startsWith('suspension') ? n.bendTo! : n.midi) - key - c.root) % 12 + 12) % 12;
     const third = iv.find((x) => x === 3 || x === 4) ?? 7, fifth = iv.find((x) => x === 6 || x === 7 || x === 8) ?? 7;
     return rel === 0 ? 'root' : rel === third ? '3rd' : rel === fifth ? '5th' : 'off-chord';
   };
@@ -98,6 +99,7 @@ for (let i = 0; i < N; i++) {
     add('chorus last note on the chord', toneAt(last));
     add('chorus last note timing', Math.abs(last.step / (bar / 4) - Math.round(last.step / (bar / 4))) < 1e-6 ? 'on a beat' : 'off the beat');
     add('chorus first note on the chord', toneAt(cn[0]));
+    if (process.env.DEBUG && toneAt(cn[0]) === 'off-chord') console.log('off-chord first note', s, chorus.song.meter ?? '', JSON.stringify(cn.slice(0, 3)), 'chords', JSON.stringify(chorus.chords.timeline.slice(0, 3).map((e) => [e.step, e.chord])));
     const perBar = (a: BandNote[]) => (a.length * bar) / total;
     const cd = perBar(cn), vd0 = perBar(vn);
     add('chorus notes per bar', cd < 2.6 ? 'few' : cd < 3.8 ? 'some' : 'many');

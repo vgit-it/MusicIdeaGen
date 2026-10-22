@@ -30,6 +30,8 @@ export class BarGrid {
     }
   }
 
+  /** A beat's worth of steps, as a whole number: a quarter of the nominal bar (4 in 4/4, 3 in 6/8, 4 in 7/8). For sizes, not for places. */
+  get beat(): number { return Math.max(1, Math.round(this.bar / 4)); }
   /** The bars as they really are (not equal bars made from one number). */
   get real(): boolean { return !!this.bars; }
   /** Bars the grid lists (a uniform grid goes on for ever). */
@@ -127,6 +129,29 @@ export class BarGrid {
     const beats = this.beatSteps(after + EPS, Math.max(target, after) + this.bar * 2).filter((b) => b > after + EPS);
     if (!beats.length) return Math.round(target);
     return beats.reduce((best, b) => (Math.abs(b - target) <= Math.abs(best - target) ? b : best), beats[0]);
+  }
+
+  /** The last beat at or before a step (the step itself if it is one); `undefined` before the first. */
+  floorBeat(step: number): number | undefined {
+    const beats = this.beatSteps(Math.max(0, step - 3 * this.bar), step + EPS).filter((b) => b <= step + EPS);
+    return beats.length ? beats[beats.length - 1] : undefined;
+  }
+
+  /** The beat or half beat nearest to `target` that comes after `after` (a tie goes to the later one). */
+  snapHalf(target: number, after: number): number {
+    const beats = this.beatSteps(Math.max(0, after - 2 * this.bar), Math.max(target, after) + 2 * this.bar);
+    const all = beats.flatMap((b, i) => (i + 1 < beats.length ? [b, Math.round((b + beats[i + 1]) / 2)] : [b])).filter((x) => x > after + EPS);
+    if (!all.length) return Math.round(target);
+    return all.reduce((best, x) => (Math.abs(x - target) <= Math.abs(best - target) ? x : best), all[0]);
+  }
+
+  /** A length of `n` beats (a half beat allowed) counted forward from `start` along the real beats: in 4/4, `n` quarters. */
+  forwardLen(start: number, n: number): number {
+    const arr = this.beatSteps(start + EPS, start + 8 * this.bar).filter((b) => b > start + EPS);
+    const whole = Math.floor(n + 1e-9), frac = n - whole;
+    if (arr.length < whole + (frac > 1e-9 ? 1 : 0) || whole < 1) return Math.round(this.beat * n);
+    const at = frac > 1e-9 ? Math.round((arr[whole - 1] + arr[whole]) / 2) : arr[whole - 1];
+    return at - start;
   }
 
   /**

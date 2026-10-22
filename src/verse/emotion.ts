@@ -399,7 +399,7 @@ export function withSuspensions(notes: BandNote[], X: EmoBuild, seed: string): B
   const { E } = X;
   if (!E.on.has('suspend') || X.pent) return notes;
   const M = MOOD[E.mood], ten = tensionAt(X), scale = scaleOf(X.key, X.mode);
-  const beat = X.bar / 4, eighth = X.bar / 8, glide = 1;
+  const beat = Math.round(X.bar / 4), eighth = X.bar / 8, glide = 1;
   const cap = Math.ceil(X.total / X.bar / 3);
   const out = notes.map((n) => ({ ...n }));
   const used: number[] = [];
@@ -450,7 +450,7 @@ export function withSurprise(notes: BandNote[], phrases: Gap[], X: EmoBuild, see
   const count = Math.min(2, Math.floor(budget) + (roll(seed, 'emo-sn', 0) < budget - Math.floor(budget) ? 1 : 0));
   if (!count) return notes;
   const out = notes.map((n) => ({ ...n }));
-  const half = X.total / 2, scale = scaleOf(X.key, X.mode), beat = X.bar / 4;
+  const half = X.total / 2, scale = scaleOf(X.key, X.mode), beat = Math.round(X.bar / 4);
   const kinds = (['push', 'chromatic', 'deceptive'] as const).map((k, j) => ({ k, w: M.surp[j] }));
   const order: ('push' | 'chromatic' | 'deceptive')[] = [];
   const pool = [...kinds];
@@ -462,7 +462,7 @@ export function withSurprise(notes: BandNote[], phrases: Gap[], X: EmoBuild, see
     if (kind === 'push') {
       const c = out.map((n, i) => ({ n, i })).filter(({ n, i }) => {
         const prev = out[i - 1];
-        const onBeat = Math.abs(n.step / beat - Math.round(n.step / beat)) < 1e-6;
+        const onBeat = X.grid ? X.grid.isBeat(X.leafFrom + n.step) : Math.abs(n.step / beat - Math.round(n.step / beat)) < 1e-6;
         return n.step >= half && onBeat && n.len >= 2 && !n.walk && !n.land && !n.nb && !n.third && !n.end && !n.longHold && !n.lead && !n.slide && n.bendTo === undefined && !near(n.step)
           && !phrases.some((p) => Math.abs(p.step - n.step) < 1e-6) && (!prev || prev.step + prev.len <= n.step - 1 + 1e-6);
       });
