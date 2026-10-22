@@ -6,6 +6,7 @@
 //   - notes crossing a real bar line (a long note over the line is fine now and then; many is a sign of a drifting grid)
 //   - note starts: on a bar's first beat, on a beat group's start (the real accents), on a chord change
 //   - chord tones: share of notes that are the sounding chord's root, 3rd or 5th at the note's start
+//   - phrasing: phrases starting and ending on a beat group's start, and the held endings that start on one (a syncopated one is allowed, a few)
 //   npm run meter-check          (N=28 songs per meter)
 //   N=70 npm run meter-check
 
@@ -22,8 +23,8 @@ const N = Number(process.env.N ?? 28);
 const GENRES = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'];
 const METERS = (process.env.METERS ?? '4/4,3/4,6/8,5/4,5/8,7/8,9/8,7/4,11/8,mixed').split(',');
 
-interface Acc { songs: number; crashes: number; broken: number; bars: number; barMiss: number; gridOff: number; labelsOff: number; notes: number; cross: number; onBar: number; onGroup: number; onChange: number; chordTone: number; barLens: Set<number>; err: string }
-const mk = (): Acc => ({ songs: 0, crashes: 0, broken: 0, bars: 0, barMiss: 0, gridOff: 0, labelsOff: 0, notes: 0, cross: 0, onBar: 0, onGroup: 0, onChange: 0, chordTone: 0, barLens: new Set(), err: '' });
+interface Acc { songs: number; crashes: number; broken: number; bars: number; barMiss: number; gridOff: number; labelsOff: number; notes: number; cross: number; onBar: number; onGroup: number; onChange: number; chordTone: number; phrases: number; phStart: number; phEnd: number; endings: number; endOnBeat: number; barLens: Set<number>; err: string }
+const mk = (): Acc => ({ songs: 0, crashes: 0, broken: 0, bars: 0, barMiss: 0, gridOff: 0, labelsOff: 0, notes: 0, cross: 0, onBar: 0, onGroup: 0, onChange: 0, chordTone: 0, phrases: 0, phStart: 0, phEnd: 0, endings: 0, endOnBeat: 0, barLens: new Set(), err: '' });
 const rows: Record<string, Acc> = {};
 
 for (const meter of METERS) {
@@ -51,7 +52,13 @@ for (const meter of METERS) {
         for (const b of bars) { a.bars++; if (Math.abs(b.start / bar - Math.round(b.start / bar)) > 1e-6) a.barMiss++; }
         const starts = bars.map((b) => b.start), accents = new Set(bars.flatMap((b) => groupStarts(b.groups).map((g) => b.start + g)));
         const changes = new Set(chords.map((e) => e.step));
+        for (const ph of v.built.phrases) {
+          a.phrases++;
+          if (accents.has(Math.round(ph.step))) a.phStart++;
+          if (accents.has(Math.round(ph.step + ph.len)) || Math.abs(ph.step + ph.len - total) < 1e-6) a.phEnd++;
+        }
         for (const n of ns) {
+          if (n.end && n.len >= 2) { a.endings++; if (accents.has(Math.round(n.step))) a.endOnBeat++; }
           a.notes++;
           if (starts.some((st) => n.step < st - 1e-6 && n.step + n.len > st + 1e-6)) a.cross++;
           if (starts.some((st) => Math.abs(n.step - st) < 1e-6)) a.onBar++;
@@ -67,10 +74,10 @@ for (const meter of METERS) {
 
 const pc = (x: number, t: number) => (t ? ((100 * x) / t).toFixed(0).padStart(3) + '%' : '   -');
 console.log(`${N} songs per meter, mood notes on\n`);
-console.log('meter  | songs crash | bar lengths     | old-grid misses | grid / labels off | rules broken | notes over a bar line | on bar start | on beat group | on chord change | chord tones');
+console.log('meter  | songs crash | bar lengths     | old-grid misses | grid / labels off | rules broken | notes over a bar line | on bar start | on beat group | on chord change | chord tones | phrases start on a beat | phrases end on a beat | held endings start on a beat');
 for (const m of METERS) {
   const a = rows[m];
-  console.log(`${m.padEnd(6)} | ${String(a.songs).padStart(5)} ${String(a.crashes).padStart(5)} | ${[...a.barLens].sort((x, y) => x - y).join(',').padEnd(15)} | ${pc(a.barMiss, a.bars).padStart(8)} ${String(a.barMiss).padStart(5)} | ${String(a.gridOff).padStart(8)} ${String(a.labelsOff).padStart(8)} | ${String(a.broken).padStart(12)} | ${pc(a.cross, a.notes).padStart(21)} | ${pc(a.onBar, a.notes).padStart(12)} | ${pc(a.onGroup, a.notes).padStart(13)} | ${pc(a.onChange, a.notes).padStart(15)} | ${pc(a.chordTone, a.notes)}`);
+  console.log(`${m.padEnd(6)} | ${String(a.songs).padStart(5)} ${String(a.crashes).padStart(5)} | ${[...a.barLens].sort((x, y) => x - y).join(',').padEnd(15)} | ${pc(a.barMiss, a.bars).padStart(8)} ${String(a.barMiss).padStart(5)} | ${String(a.gridOff).padStart(8)} ${String(a.labelsOff).padStart(8)} | ${String(a.broken).padStart(12)} | ${pc(a.cross, a.notes).padStart(21)} | ${pc(a.onBar, a.notes).padStart(12)} | ${pc(a.onGroup, a.notes).padStart(13)} | ${pc(a.onChange, a.notes).padStart(15)} | ${pc(a.chordTone, a.notes)} | ${pc(a.phStart, a.phrases).padStart(23)} | ${pc(a.phEnd, a.phrases).padStart(21)} | ${pc(a.endOnBeat, a.endings).padStart(26)}`);
   if (a.err) console.log('        first crash:', a.err);
 }
 if (Object.values(rows).some((a) => a.crashes || a.broken || a.gridOff || a.labelsOff)) process.exitCode = 1;

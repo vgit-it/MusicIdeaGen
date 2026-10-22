@@ -105,7 +105,8 @@ export function buildVerse(inp: BuildInput): Built {
     const accOf = (rule: Rule) => win(inp.acc, rootFrom(leaf, rule), len, 0.5);
     const write = (sd: Record<Rule, string>, final: boolean) => {
       // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)
-      const tail = end < total ? Math.round(bar / 4) : 0;
+      // (a beat of the leaf's last bar: its last beat group, so the phrases stop on a beat)
+      const tail = end < total ? Math.max(1, G.backLen(len, 1)) : 0;
       const planned = planPhrases(len - tail, G, sd.phrases, accOf('phrases'), d);
       const phrases = planned.phrases, breaks = planned.breaks;
       if (tail) {

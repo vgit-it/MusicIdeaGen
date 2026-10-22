@@ -210,12 +210,14 @@ export function planPhrases(totalSteps: number, barArg: BarArg, seed: string, ac
     phrases.push({ step: pos, len });
     pos += len;
     if (pos >= totalSteps) break;
-    let gap = Math.round(beat * (cumulative(d.breakBeats, rng.next()) + 1));
+    // (a break of that many beats, then on to the beat nearest: the next phrase comes in on a beat of the real bar, not a half step
+    // off it in 7/8, 5/8, 9/8... or off the beat groups)
+    const snap = (g: number) => G.snapBeat(pos + Math.round(g), pos) - pos;
+    let gap = snap(beat * (cumulative(d.breakBeats, rng.next()) + 1));
     // (the lean: the next phrase mostly comes in on the 1st or 3rd quarter; so the break mostly covers the 2nd or 4th)
     // (and the band's: a chord change or a big hit counts as a good place to come in too)
     const good = G.isStrong(pos + gap) || accAt(acc, pos + gap) >= 0.6;
-    // (a whole step: a beat is a half step in 7/8, 5/8, 9/8...)
-    if (!good && rng.chance(0.6)) gap = Math.round(gap + beat <= bar ? gap + beat : gap - beat);
+    if (!good && rng.chance(0.6)) gap = snap(gap + beat <= bar ? gap + beat : gap - beat);
     const rest = totalSteps - pos;
     // (under a bar left for another phrase: the rest of the verse is the break)
     if (rest - gap < bar) { breaks.push({ step: pos, len: rest }); break; }
@@ -644,7 +646,8 @@ export function phraseEndings(
   let out = notes;
   for (const ph of phrases) {
     const end = ph.step + ph.len;
-    const len = Math.round(beat * [1, 1.5, 2, 3, 4][cumulative(d.endLen, roll(seed, 'endlen', ph.step))]);
+    // (a beat, a beat and a half, two... counted back along the real beats from the phrase's end)
+    const len = G.backLen(end, [1, 1.5, 2, 3, 4][cumulative(d.endLen, roll(seed, 'endlen', ph.step))]);
     if (roll(seed, 'end', ph.step) >= chance) continue;
     const style: EndStyle = styles.length === 1 ? styles[0] : styles[cumulative(styles.map((x) => d.endStyle[x]), roll(seed, 'endstyle', ph.step))] ?? 'held';
     if (style === 'plain') continue;
@@ -659,7 +662,7 @@ export function phraseEndings(
     if (style === 'punch') {
       // (the last bar's downbeat or half bar: whatever length that bar is)
       const L = G.lenAt(end - 1e-6);
-      const pos = [end - L, end - L / 2].filter((x) => x >= ph.step + beat);
+      const pos = [end - L, end - (L - G.beatNear(G.index(end - 1e-6), 0.5))].filter((x) => x >= ph.step + beat);
       if (!pos.length) continue;
       const at = pos.length === 1 || roll(seed, 'punchat', ph.step) < 0.5 ? pos[0] : pos[1];
       const core = coreBefore(at);

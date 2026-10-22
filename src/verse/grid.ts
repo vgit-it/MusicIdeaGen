@@ -111,11 +111,35 @@ export class BarGrid {
     return Math.min(3, Math.floor((step - s.start) / (s.len / 4) + 1e-9));
   }
 
-  /** How far a phrase of `k` bars reaches from `pos`: the same place in the bar `k` bars on (a bar of any length). */
+  /**
+   * How far a phrase of `k` bars reaches from `pos`: to the same beat of the bar `k` bars on (a bar of any length, so a phrase that
+   * starts on the 3rd beat of a 7/8 bar ends on the 3rd beat of the 4/4 bar after it).
+   */
   span(pos: number, k: number): number {
     if (!this.bars) return Math.round(this.bar * k);
-    const i = this.index(pos), off = pos - this.start(i), j = i + k;
-    return this.start(j) + Math.min(off, this.len(j) - 1) - pos;
+    const i = this.index(pos), off = pos - this.start(i), j = i + k, here = this.beats(i), there = this.beats(j);
+    const m = here.reduce((best, b, n) => (Math.abs(b - off) < Math.abs(here[best] - off) ? n : best), 0);
+    return this.start(j) + there[Math.min(m, there.length - 1)] - pos;
+  }
+
+  /** The beat nearest to `target` that comes after `after` (a tie goes to the later one); `target` itself when no beat is known. */
+  snapBeat(target: number, after: number): number {
+    const beats = this.beatSteps(after + EPS, Math.max(target, after) + this.bar * 2).filter((b) => b > after + EPS);
+    if (!beats.length) return Math.round(target);
+    return beats.reduce((best, b) => (Math.abs(b - target) <= Math.abs(best - target) ? b : best), beats[0]);
+  }
+
+  /**
+   * A length of `n` beats (a half beat allowed) counted back from `end` along the real beats: the position `n` beats before `end`, as a
+   * length. In 4/4 that is `n` quarters; in a 7/8 bar of 4+4+6 two beats back from the bar's end is 10 steps.
+   */
+  backLen(end: number, n: number): number {
+    const arr = this.beatSteps(Math.max(0, end - 8 * this.bar), end);
+    if (arr[arr.length - 1] !== Math.round(end) || Math.abs(end - Math.round(end)) > EPS) arr.push(end);
+    const o = arr.length - 1, whole = Math.floor(n + 1e-9), frac = n - whole;
+    if (o - whole - (frac > 1e-9 ? 1 : 0) < 0) return Math.round((this.bar / 4) * n);
+    const at = frac > 1e-9 ? Math.round((arr[o - whole] + arr[o - whole - 1]) / 2) : arr[o - whole];
+    return end - at;
   }
 
   /** The beat of bar `i` nearest to a fraction of the bar (not its first), as steps from the bar's start; a tie goes to the later one. */
