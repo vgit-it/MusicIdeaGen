@@ -8,7 +8,7 @@ import { gridOf, type BarArg } from './grid';
 import { quarterOf, type BandNote, type Gap } from './verse';
 import { accentsOf, isBridge, isChorus, isInterlude, isOutro, isPre, isShared, personalityOf, songGrid } from './section';
 import { describe, dialsFor } from './personality';
-import { EMO_IDS, EMO_INFO, emoSummary, type EmoId } from './emotion';
+import { EMO_IDS, EMO_INFO, SETS_MAX, SETS_MIN, emoSummary, type EmoId } from './emotion';
 import { isSung, voiceOf } from './sing';
 import { MOOD_LABEL } from '../tension';
 
@@ -17,7 +17,7 @@ export interface VersePanel {
   update(list: Idea[]): void;
 }
 
-export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'classic'; setWriter(w: 'verse' | 'classic'): void; moodOff(): string[]; setMoodOff(off: string[]): void }): VersePanel {
+export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'classic'; setWriter(w: 'verse' | 'classic'): void; moodOff(): string[]; setMoodOff(off: string[]): void; maxSets(): number; setMaxSets(n: number): void }): VersePanel {
   root.innerHTML = `
     <h2>Vocal melody</h2>
     <p class="hint">The lead vocal is written by the verse melody writer, section by section: phrases with breaks, 16th runs, long notes and bent ones, and rules for the pre-chorus climb, the bridge's dwell, the interlude and outro echoing the chorus. A song's choruses (and pre-choruses, bridges, interludes, outros) are one melody over their own chords, and every song draws its own personality. Below: the words and what was written.</p>
@@ -26,6 +26,9 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
     </div>
     <p class="hint" style="margin-bottom:6px">Mood notes: what music research says about feeling in the notes, each its own switch (on = used). The song's Mood (Track options) shapes them; off, the line is as it was.</p>
     <div class="guiderow" id="v-emo"></div>
+    <div class="guiderow">
+      <label title="The most sets of notes in 4 bars. A set is notes with no rest between them; a rest of a 16th or more ends it. Smaller gaps are closed (the note before is held on), lone short notes dropped. Phrase breaks stay. Off: as written">Sets of notes per 4 bars <input type="range" id="v-sets" min="${SETS_MIN}" max="${SETS_MAX + 1}" step="1" style="width:140px;vertical-align:middle"> <output id="v-sets-out"></output></label>
+    </div>
     <p class="hint" id="v-lyrics" style="white-space:pre-line"></p>
     <p class="hint" id="v-info" style="white-space:pre-line"></p>`;
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
@@ -49,6 +52,13 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
   });
   const syncEmo = () => { const off = new Set(ctl.moodOff()); for (const [id, b] of emoBtns) b.classList.toggle('on', !off.has(id)); };
   syncEmo();
+  // the sets slider: 2 to 8 sets of notes in 4 bars, the end of the track is Off (stored as 0); a release regenerates the vocal
+  const setsIn = $('v-sets') as HTMLInputElement, setsOut = $('v-sets-out') as HTMLOutputElement;
+  const showSets = () => { setsOut.textContent = +setsIn.value > SETS_MAX ? 'Off' : `up to ${setsIn.value}`; };
+  const syncSets = () => { const n = ctl.maxSets(); setsIn.value = String(n === 0 ? SETS_MAX + 1 : n); showSets(); };
+  setsIn.addEventListener('input', showSets);
+  setsIn.addEventListener('change', () => ctl.setMaxSets(+setsIn.value > SETS_MAX ? 0 : +setsIn.value));
+  syncSets();
   let list: Idea[] = [];
   const noteName = (m: number) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
   const accents = new WeakMap<Idea, number[]>();
@@ -119,6 +129,7 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
       list = l;
       sel.value = ctl.writer();
       syncEmo();
+      syncSets();
       info();
     },
   };

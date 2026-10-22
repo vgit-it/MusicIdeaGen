@@ -60,6 +60,8 @@ export interface GenOptions {
   vocalWriter?: 'verse' | 'classic';
   /** The verse writer's mood notes the user switched off (src/verse/emotion.ts: colour, endings, suspend, contour, arousal, tension, moodmode, surprise); left out: all on. */
   vocalMoodOff?: string[];
+  /** The verse writer's most sets of notes (notes with a rest either side) in 4 bars (src/verse/sets.ts): left out, 4; 0, no limit. */
+  vocalMaxSets?: number;
   /** Real strum mix (docs/STUDY-RHYTHM.md): strumming patterns from a library widened to what real guitarists play: held chords, quarters, 8ths in many shapes, 16ths, stabs. */
   strumMix?: boolean;
   /** Guitar 2 (the lead player) plays whole lines, mostly by step, as well as short licks (docs/LEAD-LINES.md). Off: as before. */
