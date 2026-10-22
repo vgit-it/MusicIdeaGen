@@ -7,6 +7,7 @@ import { EMO_PULL, pullTo, toneBias, withColour, withEndDegrees, withSuspensions
 import type { Genre } from '../genres';
 import { BarGrid, gridOf } from './grid';
 import { shortTarget, withLonger } from './longer';
+import { withSpace } from './space';
 import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
@@ -90,6 +91,8 @@ export function buildVerse(inp: BuildInput): Built {
     while (w.length < len) w.push(w.length ? w[w.length - 1] : pad);
     return w;
   };
+  // (how many times a leaf repeats an earlier one: A' once, A'' twice)
+  const repeatsOf = (leaf: Leaf): number => { let n = 0, l = leaf; while (l.source !== null) { n++; l = leaves.find((x) => x.id === l.source)!; } return n; };
   // (the try each leaf was written on: an answering leaf starts on its source's, so the two still match)
   const tryOf = new Map<number, number>();
   for (const leaf of leaves) {
@@ -141,17 +144,20 @@ export function buildVerse(inp: BuildInput): Built {
       const led = end >= total ? withLeadIn(shaped, phrases, G, len, sd.endings, d, { key, mode, chordAt, range }) : shaped;
       // (rule 28: a phrase now and then holds one note for 1 to 2 bars)
       const longed = withLongHolds(led, phrases, chordAt, G, len, { key, range, moreLeaves: end < total }, sd.holds, accOf('holds'), d);
+      // (use the space: a short note or a held ending with a big gap after it is held on into it, a repeat most; the silence fit below
+      // has the last word on a chorus's rests)
+      const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
+      const spaced = X?.E.on.has('space') ? withSpace(longed, G, len, key, chordAt, `${sd.holds}|space|${leaf.id}`, { repeat: repeatsOf(leaf), final: end >= total }) : longed;
       // (the chorus: fitted to the song's share of silence)
-      const fitted = d.silence === undefined ? longed : fitSilence(longed, phrases, G, len, d.silence, sd.small, accOf('small'), d.silenceTol);
+      const fitted = d.silence === undefined ? spaced : fitSilence(spaced, phrases, G, len, d.silence, sd.small, accOf('small'), d.silenceTol);
       // (longer notes: neighbouring 8ths joined until the share of short notes is the genre's and the section's; a section fitted to a
       // share of silence keeps its rests)
-      const changes = inp.changes.filter((c) => c >= from && c < end).map((c) => c - from);
       const stretched = X?.E.on.has('longer') ? withLonger(fitted, phrases, G, shortTarget(inp.genre as Genre, X.E.kind), changes, `${sd.holds}|longer`, d.silence === undefined) : fitted;
       // (rule 20: no unit shorter than a quarter bar with silence on either side; unfixable: another try, the last try drops it)
       const units = fixUnits(stretched, phrases, chordAt, G, final);
       if (!units.ok) return null;
       const bent = addBends(units.notes, phrases, G, { amount: inp.bends, energy: inp.energy, genre: inp.genre, chordAt, tones, changes, mult: d.bends }, sd.bends);
-      const noted = addNoteBends(bent, G, { amount: inp.bends, energy: inp.energy, key, mode, chordAt, range, mult: d.bends, pent }, `${sd.bends}|in`);
+      const noted = addNoteBends(bent, G, { amount: inp.bends, energy: inp.energy, key, mode, chordAt, range, mult: d.bends, pent, space: X?.E.on.has('space') }, `${sd.bends}|in`);
       // (mood notes, on the line as it will sound, after the bends: colour notes and surprises, then a long note that starts one step off
       // and glides onto the chord note)
       const flavoured = X ? withSurprise(withColour(noted, phrases, X, `${sd.neighbours}|emo`), phrases, X, `${sd.small}|emo`) : noted;

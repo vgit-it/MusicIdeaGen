@@ -1104,7 +1104,7 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
  */
 export function addNoteBends(
   notes: BandNote[], barArg: BarArg,
-  ctx: { amount: BendAmount; energy: number; key: number; mode?: Mode; chordAt: Chord[]; range: Range; mult?: number; pent?: ReadonlySet<number> },
+  ctx: { amount: BendAmount; energy: number; key: number; mode?: Mode; chordAt: Chord[]; range: Range; mult?: number; pent?: ReadonlySet<number>; space?: boolean },
   seed: string,
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
@@ -1112,12 +1112,15 @@ export function addNoteBends(
   const out = notes.map((n) => ({ ...n }));
   const lift = (ctx.amount === 'lots' ? 1 : 0.5) * (0.75 + 0.48 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 0.75 : 1) * bar;
-  const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string; back?: { at: number; len: number }; boost?: number }[] = [];
+  const cand: { i: number; p: number; to: number; at: number; glide: number; kind: string; back?: { at: number; len: number }; boost?: number; long?: boolean }[] = [];
   const beat = G.beat, eighth = bar / 8;
   const scale = ctx.mode ? new Set(SCALES[ctx.mode].map((i) => (ctx.key + i) % 12)) : undefined;
   out.forEach((n, i) => {
     // (a phrase end set to home or hanging by the mood notes keeps its degree: a bend away would undo it)
-    if (n.len < 2 || n.slide || (n.fadeBy && n.len < 6) || n.walk || n.nb || n.third || n.longHold || n.endRole === 'home' || n.endRole === 'hang') return;
+    // (rule 38: a note of 3/4 bar or more bends more often, even one scooped into; a home or hanging end only there and back)
+    const longNote = !!ctx.space && n.len >= 0.75 * bar - 1e-6;
+    const keepEnd = n.endRole === 'home' || n.endRole === 'hang';
+    if (n.len < 2 || (n.slide && !longNote) || (n.fadeBy && n.len < 6) || n.walk || n.nb || n.third || n.longHold || (keepEnd && !longNote)) return;
     const r = (tag: string) => roll(seed, `ib-${tag}`, n.step);
     // (how many of the same pitch came just before)
     let same = 0;
@@ -1141,7 +1144,7 @@ export function addNoteBends(
     const c = ctx.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(n.step + at + 1e-6))];
     const pcs = c ? [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12) : [];
     // to the next bar's core note: only when it is also a note of the chord sounding now (the end note is held before the bar turns)
-    if (barLine && nx && nx.step - end <= bar / 4 && !nx.nb && !nx.third && pcs.includes(((nx.midi % 12) + 12) % 12)) {
+    if (!keepEnd && barLine && nx && nx.step - end <= bar / 4 && !nx.nb && !nx.third && pcs.includes(((nx.midi % 12) + 12) % 12)) {
       const d = nx.midi - n.midi;
       if (Math.abs(d) >= 1 && Math.abs(d) <= maxBend && ok(nx.midi)) cand.push({ i, p: (p + 0.2) * 1.5 * (nx.step - end > 1 ? 0.5 : 1), to: nx.midi, at, glide, kind: 'next bar' });
     }
@@ -1155,7 +1158,7 @@ export function addNoteBends(
       if (dist) {
         const dirs = [1, -1].filter((sg) => inScale(sg * dist));
         const sg = dirs.length === 2 ? (r('sdir') < 0.6 ? 1 : -1) : dirs[0];
-        const wantBack = r('shape') < (dist === 1 ? 0.3 : 0.7);
+        const wantBack = keepEnd || r('shape') < (longNote ? (dist === 1 ? 0.4 : 0.75) : dist === 1 ? 0.3 : 0.7);
         const g = wantBack && dist === 1 ? 2 : 1;
         // (and back: the new pitch for an 8th of a bar to a beat, the first and the last held as above)
         const avail = n.len - eighth - beat - 2 * g;
@@ -1168,14 +1171,15 @@ export function addNoteBends(
         a1 = back ? a1 : Math.min(n.len / 2 - 0.5, n.len - 1 - beat);
         if (back || a1 >= eighth - 1e-6) {
           // (a whole tone away, from-to is the less likely shape)
-          cand.push({ i, p: dist === 2 && !back ? p * 0.5 : p, boost: SINGLE_BOOST, to: n.midi + sg * dist, at: a1, glide: back ? g : 1, back, kind: `${dist === 1 ? 'half' : 'whole'} step ${sg > 0 ? 'up' : 'down'}${back ? ' and back' : ''}` });
+          if (keepEnd && !back) return;
+          cand.push({ i, p: dist === 2 && !back ? p * 0.5 : p, boost: SINGLE_BOOST * (longNote ? 1.5 : 1), long: longNote, to: n.midi + sg * dist, at: a1, glide: back ? g : 1, back, kind: `${dist === 1 ? 'half' : 'whole'} step ${sg > 0 ? 'up' : 'down'}${back ? ' and back' : ''}` });
           scaled = true;
         }
       }
     }
     // to a chord note or a step of the scale, up to a major 3rd either way: any of them, not just the nearest (the 5th to the root
     // and back, a 4th, was most of the bends)
-    if (c && !scaled) {
+    if (c && !scaled && !keepEnd) {
       const opts: { d: number; w: number; chord: boolean }[] = [];
       for (let d = -maxBend; d <= maxBend; d++) {
         const m = n.midi + d, pc = ((m % 12) + 12) % 12;
@@ -1187,11 +1191,11 @@ export function addNoteBends(
       }
       if (opts.length) {
         const o = opts[cumulative(opts.map((x) => x.w), r('pick'))];
-        cand.push({ i, p, to: n.midi + o.d, at, glide, kind: `${o.chord ? 'chord note' : 'scale step'} ${o.d > 0 ? 'up' : 'down'}` });
+        cand.push({ i, p, to: n.midi + o.d, at, glide, boost: longNote ? 1.5 : undefined, long: longNote, kind: `${o.chord ? 'chord note' : 'scale step'} ${o.d > 0 ? 'up' : 'down'}` });
       }
     }
   });
-  const won = cand.filter((c) => roll(seed, `ib-${c.kind}`, out[c.i].step) < Math.min(0.9, c.p * lift * (c.boost ?? 1))).sort((a, b) => b.p - a.p || out[a.i].step - out[b.i].step);
+  const won = cand.filter((c) => roll(seed, `ib-${c.kind}`, out[c.i].step) < Math.min(c.long ? 0.97 : 0.9, c.p * lift * (c.boost ?? 1))).sort((a, b) => b.p - a.p || out[a.i].step - out[b.i].step);
   const spots = out.filter((n) => n.bend).map((n) => n.step);
   for (const c of won) {
     const n = out[c.i];
