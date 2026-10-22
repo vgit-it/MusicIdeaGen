@@ -196,6 +196,13 @@ The writer used to read "a bar" as one number: equal bars, a beat a quarter of i
 - **Compare**: an answering leaf's notes matched to its source's by position in the leaf: same, other pitch, other length, new; source notes with no match shown dashed in red. A pitch change can come from the answer's own chords.
 - Seen on 80 songs (variants-check): an answer's notes are the same as its source's in about 22%. Even with no rule written again an answer differs: it has no closing beat of silence when last, rule 38 treats a repeat differently, and its dice include the leaf's id.
 
+## Melody view: the lead guitar (2026-10-22; `src/ui/leadnotes.ts`, `npm run lead-roll-check`)
+- A section with no sung notes but Guitar 2 notes (a solo, a lead break, a jam or solo outro, a hook intro or interlude, a breakdown's lead) shows the lead guitar in the same roll. Sections with a vocal show the vocal as before; lead fills under a vocal are not drawn.
+- One note per hit: its top note on the curve (runs break at a gap of a beat or more, leaps marked inside a run); the other notes of a double-stop (and a pedal note) are drawn dimmer, with no curve.
+- The hands' version is drawn where the player has one (`touch`): bends up into a note, picked low then pushed up (late bend), bends let down, slides, fall-offs, vibrato on held notes; marks h / p / s on hammer-ons, pull-offs and slides, tr trill, tm tremolo. Triplet notes sit on their exact spot.
+- No Form / Phrases / Shapes / Compare layers there: they come from the vocal writer's record, and the solo writer keeps none. The stats line adds a count of each technique.
+- Seen on 168 songs: every lead-only section draws, every hit's notes are drawn, all in range.
+
 ## Rule 40: the called form (2026-10-22; `src/verse/form.ts`, `npm run form-check`)
 - A verse, chorus or bridge of exactly 8 or 16 bars always splits into 4-bar leaves (before: 8 bars split 85% of the time, 16 bars into 4 leaves ~77%). 8 bars: A A'. 16 bars: (A A')(A A')', named A A' A'' A''', the third leaf answering the first, the fourth the second. The second 8 varies a little more than the 4-bar pair.
 - Question and answer: the end of every leaf but the last asks (open or hanging, never home; `ASK` in `emotion.ts`, needs the Ending degrees mood note, on by default). The section's last leaf keeps the section-end rule (chorus home, verse and bridge lean on). Every answering leaf always writes its ending again (before: 75%).

@@ -10,9 +10,10 @@ import type { Idea } from '../idea';
 import { NOTE_NAMES, QUALITIES, SCALES, chordName } from '../theory';
 import { voiceOf } from '../verse/sing';
 import type { Rule } from '../verse/form';
+import { leadOnly, leadView, type RollNote } from './leadnotes';
 import { compareLeaf, endingOf, leafSpans, type Diff, type LeafCompare, type LeafSpan } from '../verse/variants';
 
-interface N { step: number; len: number; midi: number; bend?: number; slide?: number; fall?: number; slideLen?: number }
+type N = RollNote;
 
 const COL = { chord: '#5ad69a', key: '#ffcf5b', out: '#ff5b6e' } as const;
 type Role = keyof typeof COL;
@@ -47,7 +48,7 @@ const mod = (n: number, m: number) => ((n % m) + m) % m;
 const noteName = (m: number) => `${NOTE_NAMES[mod(m, 12)]}${Math.floor(m / 12) - 1}`;
 
 export function buildRoll(root: HTMLElement) {
-  root.innerHTML = `<h2>Melody view</h2>
+  root.innerHTML = `<h2>Melody view<span class="rollwho"></span></h2>
     <div class="rolllayers"></div>
     <div class="rolllegend"></div>
     <div class="rollwrap">
@@ -58,9 +59,10 @@ export function buildRoll(root: HTMLElement) {
     </div>
     <div class="rollstats hint"></div>
     <label class="rollsync hint">Sync <input type="range" class="rollnudge" min="-200" max="400" step="10" value="0" aria-label="Nudge the needle later or earlier"> <span class="rollms">0 ms</span></label>
-    <div class="rollempty hint" hidden>No vocal in this section.</div>`;
+    <div class="rollempty hint" hidden>No vocal or lead guitar in this section.</div>`;
   const q = <T extends HTMLElement>(c: string) => root.querySelector<T>('.' + c)!;
   const legend = q('rolllegend'), layersEl = q('rolllayers'), wrap = q('rollwrap'), stats = q('rollstats'), empty = q('rollempty');
+  const who = q('rollwho');
   const gut = q<HTMLCanvasElement>('rollgut'), scroll = q('rollscroll'), inner = q('rollinner');
   const base = q<HTMLCanvasElement>('rollbase'), lit = q<HTMLCanvasElement>('rolllit'), ph = q('rollph');
 
@@ -106,8 +108,12 @@ export function buildRoll(root: HTMLElement) {
   function show(idea: Idea | null) {
     cur = idea;
     litIdx = -1;
-    const lines: N[][] = !idea ? [] : idea.sung ? idea.sung.map((l) => l.notes) : groupLines(idea);
+    // (no sung notes but lead guitar ones: the lead guitar's line instead, nothing of the vocal writer's to show)
+    const lv = idea && leadOnly(idea) ? leadView(idea) : null;
+    const lines: N[][] = !idea ? [] : lv ? lv.lines : idea.sung ? idea.sung.map((l) => l.notes) : groupLines(idea);
+    const extras: N[] = lv?.extras ?? [];
     const notes = lines.flat();
+    who.textContent = lv ? ' · Lead guitar' : '';
     wrap.hidden = stats.hidden = !notes.length;
     legend.hidden = !notes.length;
     empty.hidden = !!notes.length;
@@ -116,7 +122,7 @@ export function buildRoll(root: HTMLElement) {
     const { song, chords } = idea;
     const total = song.total;
     // (how it was built: only where the writer's own record of it exists)
-    const built = voiceOf(idea)?.built;
+    const built = lv ? undefined : voiceOf(idea)?.built;
     layersEl.hidden = !built;
     const lay_ = (id: LayerId) => !!built && on.has(id);
     const showForm = lay_('form'), showPh = lay_('phrases'), showSh = lay_('shapes'), showCmp = lay_('compare') && built!.leaves.some((l) => l.source !== null);
@@ -135,8 +141,9 @@ export function buildRoll(root: HTMLElement) {
     const roleOf = (n: N): Role => (tonesOf(chordAt(n.step)).has(mod(n.midi, 12)) ? 'chord' : inKey(n.midi) ? 'key' : 'out');
 
     // pitch range: the line (with its scoops) and a little room, at least a ninth
-    let lo = Math.min(...notes.map((n) => n.midi - (n.slide ?? 0))) - 2;
-    let hi = Math.max(...notes.map((n) => n.midi)) + 2;
+    const every = [...notes, ...extras];
+    let lo = Math.min(...every.map((n) => n.midi - Math.max(n.slide ?? 0, n.late ?? 0))) - 2;
+    let hi = Math.max(...every.map((n) => n.midi)) + 2;
     if (hi - lo < 14) { const m = Math.ceil((14 - (hi - lo)) / 2); lo -= m; hi += m; }
     const rows = hi - lo + 1;
     const rowH = Math.max(9, Math.min(18, Math.floor(260 / rows)));
@@ -292,16 +299,18 @@ export function buildRoll(root: HTMLElement) {
     }
     // the notes
     x.textAlign = 'left'; x.textBaseline = 'middle'; x.font = '600 10px system-ui, sans-serif';
-    for (const n of notes) {
+    for (const n of every) {
       const r = { x: X(n.step), y: Y(n.midi) + 1, w: Math.max(3, X(n.len) - 1.5), h: rowH - 2 };
       rects.push({ n, ...r });
+      x.globalAlpha = extras.includes(n) ? 0.6 : 1;
       x.fillStyle = COL[roleOf(n)];
       x.beginPath(); x.roundRect(r.x, r.y, r.w, r.h, 3); x.fill();
+      x.globalAlpha = 1;
       if (showCmp) {
         const f = diffOfStep.find((q) => n.step >= q.step - 1e-6 && n.step < q.end - 1e-6);
         if (f && f.d !== 'same') { x.strokeStyle = DIFF_COL[f.d]; x.lineWidth = 2; x.stroke(); }
       }
-      if (r.w >= 15) { x.fillStyle = '#10131a'; x.fillText(DEG[mod(n.midi - key, 12)], r.x + 3, r.y + r.h / 2 + 0.5); }
+      if (r.w >= 15) { x.fillStyle = '#10131a'; x.fillText(DEG[mod(n.midi - key, 12)] + (n.mark && r.w >= 27 ? ' ' + n.mark : ''), r.x + 3, r.y + r.h / 2 + 0.5); }
     }
     // the pitch curve: scoops up into a note, bends from the last note, falls off the end
     x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 1.5; x.lineJoin = 'round';
@@ -316,8 +325,21 @@ export function buildRoll(root: HTMLElement) {
         } else if (n.slide) {
           const e = Math.min(t1, t0 + (n.slideLen ? X(n.slideLen) : (t1 - t0) * 0.4));
           x.moveTo(t0, YC(n.midi - n.slide)); bezier(x, t0, YC(n.midi - n.slide), e, yN);
+        } else if (n.late) {
+          // (picked low, held, then pushed up to the note part of the way through)
+          const mid = t0 + (t1 - t0) * 0.5, yLow = YC(n.midi - n.late);
+          x.moveTo(t0, yLow); x.lineTo(mid, yLow); bezier(x, mid, yLow, Math.max(mid, Math.min(t1 - 1, mid + X(1.5))), yN);
         } else x.moveTo(t0, yN);
-        x.lineTo(t1 - 1, yN);
+        let yEnd = yN;
+        if (n.unbend) {
+          // (a bend let down again part of the way through)
+          const mid = t0 + (t1 - t0) * 0.5;
+          yEnd = YC(n.midi - n.unbend);
+          x.lineTo(mid, yN); bezier(x, mid, yN, Math.max(mid, Math.min(t1 - 1, mid + X(1.5))), yEnd);
+        } else if (n.vib && t1 - t0 > 20) {
+          for (let px = t0 + (t1 - t0) * 0.4; px < t1 - 1; px += 2) x.lineTo(px, yN + Math.sin((px - t0) / 2.2) * 2);
+        }
+        x.lineTo(t1 - 1, yEnd);
         if (n.fall) {
           // (falls off the end: over about the last 2 steps, or the last third of a short note)
           const f = Math.min(X(2), (t1 - t0) / 3);
@@ -363,7 +385,11 @@ export function buildRoll(root: HTMLElement) {
         if (c) extra.push(`${prime(sp.leaf.name)} against ${prime(spanOf(sp.leaf.source)!.leaf.name)}: ${c.count.same} same · ${c.count.pitch} other pitch · ${c.count.rhythm} other length · ${c.count.new} new · ${c.count.dropped} dropped`);
       }
     }
-    legend.innerHTML = legendBase + (showCmp
+    if (lv) {
+      const t = Object.entries(lv.counts).map(([k, n]) => `${n} ${k}`);
+      extra.push(`Lead guitar: ${lines.length} run${lines.length === 1 ? '' : 's'}${extras.length ? ` · ${extras.length} double-stop notes` : ''}${t.length ? ' · ' + t.join(' · ') : ''}`);
+    }
+    legend.innerHTML = legendBase + (lv ? '<span>h hammer-on · p pull-off · s slide · tr trill · tm tremolo</span>' : '') + (showCmp
       ? (Object.keys(DIFF_COL) as (keyof typeof DIFF_COL)[]).map((d) => `<span><i class="out" style="border-color:${DIFF_COL[d]}"></i>${DIFF_LABEL[d]}</span>`).join('') +
         `<span><i class="out" style="border-color:rgba(255,255,255,.5);border-style:dashed"></i>Source note</span><span><i class="out" style="border-color:#ff5b6e;border-style:dashed"></i>Dropped</span>`
       : '');
