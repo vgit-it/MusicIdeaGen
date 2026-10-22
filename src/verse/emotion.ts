@@ -26,7 +26,7 @@ import type { BarGrid } from './grid';
 import { cumulative, type Dials } from './profile';
 import { fifth, roll, third, type BandNote, type Gap, type Range, type ToneBias } from './verse';
 
-export const EMO_IDS = ['colour', 'endings', 'suspend', 'contour', 'arousal', 'tension', 'moodmode', 'surprise', 'longer', 'space'] as const;
+export const EMO_IDS = ['colour', 'endings', 'suspend', 'contour', 'arousal', 'tension', 'moodmode', 'surprise', 'longer', 'space', 'shape'] as const;
 export type EmoId = (typeof EMO_IDS)[number];
 
 export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
@@ -40,6 +40,7 @@ export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
   surprise: { name: 'Surprise', hint: 'Now and then, late in a section: a note pushed early, a note off the scale, a deceptive ending. Calm moods fewer, tense and dreamy more, the climax one extra' },
   longer: { name: 'Longer notes', hint: 'Fewer 8th-note-or-shorter notes: neighbouring short notes are joined until about 35 to 50% of the notes are short, by genre and section (funk busiest, grunge calmest; verses busier than choruses and breaks)' },
   space: { name: 'Use the space', hint: 'A short note before a big gap, and a held ending, are held on into the gap (a breath left), the end of a repeated phrase most; notes of 3/4 bar or more bend more often, sometimes there and back, even a held ending' },
+  shape: { name: 'Repeat shapes', hint: "Inside a phrase, one small shape (a bar or less) is sung again: twice the same and the third time changed, or three times the same and the fourth changed; 1 phrase in 4 has none. The repeats move with the chords; the last one changed is often the phrase's own ending" },
 };
 
 /** The switches that are on: all of them, except those listed (what the app stores). */

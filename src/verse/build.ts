@@ -1,13 +1,14 @@
 // The verse melody, built (experiment): the whole rule pipeline over a verse, one leaf of the form at a time (form.ts).
 // Pure: the same input gives the same notes.
 
-import type { Chord, Mode } from '../theory';
+import { SCALES, type Chord, type Mode } from '../theory';
 import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from './form';
 import { EMO_PULL, pullTo, toneBias, withColour, withEndDegrees, withSuspensions, withSurprise, type EmoBuild, type EmoCtx } from './emotion';
 import type { Genre } from '../genres';
 import { BarGrid, gridOf } from './grid';
 import { shortTarget, withLonger } from './longer';
 import { withSpace } from './space';
+import { withShapes, type ShapeInfo, type Skips } from './shapes';
 import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
@@ -62,6 +63,10 @@ export interface Built {
   leaves: Leaf[];
   /** The try each leaf was written on (0: the first dice; more: it was written again for rule 20). */
   tries: number[];
+  /** Rule 39: the shapes repeated inside phrases (steps from the section's start). */
+  shapes: ShapeInfo[];
+  /** Why phrases got no shape (counts, for the check). */
+  skips: Skips;
 }
 
 export function buildVerse(inp: BuildInput): Built {
@@ -78,7 +83,7 @@ export function buildVerse(inp: BuildInput): Built {
   const total = inp.chordAt.length;
   const leaves = planForm(inp.bars, inp.meta, inp.variation, inp.seed);
   const seeds = leafSeeds(leaves, inp.seed);
-  const out: Built = { notes: [], phrases: [], breaks: [], runs: [], holds: [], tones: [], bars: [], leaves, tries: [] };
+  const out: Built = { notes: [], phrases: [], breaks: [], runs: [], holds: [], tones: [], bars: [], leaves, tries: [], shapes: [], skips: {} };
   // (what a rule looks at in the band: an answering leaf's rhythm rules look at the band under the leaf they answer, so the
   // rhythm repeats even where the band under it doesn't; the rules about notes look at the band under the leaf itself)
   const rootFrom = (leaf: Leaf, rule: Rule): number => {
@@ -161,8 +166,13 @@ export function buildVerse(inp: BuildInput): Built {
       // (mood notes, on the line as it will sound, after the bends: colour notes and surprises, then a long note that starts one step off
       // and glides onto the chord note)
       const flavoured = X ? withSurprise(withColour(noted, phrases, X, `${sd.neighbours}|emo`), phrases, X, `${sd.small}|emo`) : noted;
-      const notes = X ? withSuspensions(flavoured, X, `${sd.bends}|emo`) : flavoured;
-      return { notes, phrases, breaks, runs, holds, tones, bars };
+      const moods = X ? withSuspensions(flavoured, X, `${sd.bends}|emo`) : flavoured;
+      // (repeat shapes: last, on the line as it will sound, so nothing after it can pull a repeat apart)
+      const rep = X?.E.on.has('shape')
+        ? withShapes(moods, phrases, G, len, sd.phrases, { key, scale: pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12)), chordAt, range, silence: d.silence, silenceTol: d.silenceTol, short: X.E.on.has('longer') })
+        : undefined;
+      const notes = rep ? rep.notes : moods;
+      return { notes, phrases, breaks, runs, holds, tones, bars, shapes: rep?.shapes ?? [], skips: rep?.skips ?? {} };
     };
     const MAX_TRIES = 40;
     const t0 = Math.max(inp.tries?.[leaves.indexOf(leaf)] ?? 0, leaf.source === null ? 0 : tryOf.get(leaf.source) ?? 0);
@@ -172,7 +182,7 @@ export function buildVerse(inp: BuildInput): Built {
       w = write(sd, t >= t0 + MAX_TRIES);
       if (w) { tryOf.set(leaf.id, t); out.tries.push(t); }
     }
-    const { notes, phrases, breaks, runs, holds, tones, bars } = w;
+    const { notes, phrases, breaks, runs, holds, tones, bars, shapes, skips } = w;
     const shift = (g: Gap): Gap => ({ step: g.step + from, len: g.len });
     out.notes.push(...notes.map((n) => ({ ...n, step: n.step + from })));
     out.phrases.push(...phrases.map(shift));
@@ -181,6 +191,8 @@ export function buildVerse(inp: BuildInput): Built {
     out.holds.push(...holds.map(shift));
     out.tones.push(...tones);
     out.bars.push(...bars);
+    for (const [k, v] of Object.entries(skips)) out.skips[k] = (out.skips[k] ?? 0) + v;
+    out.shapes.push(...shapes.map((x) => ({ ...x, phrase: x.phrase + from, step: x.step + from })));
   }
   return out;
 }
