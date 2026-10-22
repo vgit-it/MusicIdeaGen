@@ -1,6 +1,8 @@
 // The verse melody's form (experiment): how the bars are grouped above the phrases.
 // A block of 8 bars or more splits into two halves; the second half is the first one again, with variations; a half that
-// is 8 bars or more splits the same way, so 16 bars are A A' / B B' (A' answers A, B answers A, B' answers A').
+// is 8 bars or more splits the same way. Where the form is called (`call`: a verse, chorus or bridge of exactly 8 or 16 bars) the split
+// is always made and every answer writes its ending again: 8 bars are A A' (4+4), 16 bars (A A')(A A')' = A A' A'' A''' (A'' answers A,
+// A''' answers A'). Other lengths (and the other sections) split by chance, as before.
 // The leaves, 4 bars each (or whatever a block that doesn't split has), are what the phrases are written in.
 // A leaf that answers another one writes itself with the other's seeds, so its rhythm and notes are the same, except for
 // the rules drawn to vary: those take a seed of their own.
@@ -32,28 +34,35 @@ const LETTERS = 'ABCDEFGH';
 
 /**
  * Cut `totalBars` into leaves. `meta` off: one leaf, as before. Blocks of 8 bars or more split in two (8 bars: 85% of the time,
- * 16 and over: 90%); the second half answers the first, leaf by leaf, varied by `variation`.
+ * 16 and over: 90%); the second half answers the first, leaf by leaf, varied by `variation`. `call`: a block of exactly 8 or 16
+ * bars always splits (the dice are still rolled, so nothing else moves), and an answer always writes its ending again.
  */
-export function planForm(totalBars: number, meta: boolean, variation: Variation, seed: string): Leaf[] {
+export function planForm(totalBars: number, meta: boolean, variation: Variation, seed: string, call = false): Leaf[] {
   const rng = new Rng(seed + '|form');
   let nextId = 0, nextLetter = 0;
   const layout = (from: number, bars: number, depth: number): Leaf[] => {
-    const split = meta && bars >= 8 && rng.chance(bars >= 16 ? 0.9 : 0.85);
+    const rolled = meta && bars >= 8 && rng.chance(bars >= 16 ? 0.9 : 0.85);
+    const split = rolled || (meta && call && (totalBars === 8 || totalBars === 16) && bars >= 8 && bars % 8 === 0);
     if (!split) return [{ id: nextId++, from, bars, source: null, varied: [], name: LETTERS[nextLetter++ % LETTERS.length] }];
     const half = Math.ceil(bars / 2);
+    // (a called 8 or 16: every leaf is 4 bars, named A with a prime for each leaf before it)
+    const called = call && meta && (totalBars === 8 || totalBars === 16);
     const left = layout(from, half, depth + 1);
     // (the right half: each leaf of the left again, with the bars that fit; the further apart the repeat, the more it varies)
     const letters = new Map<string, string>();
     const right = left.filter((l) => l.from - from < bars - half).map((l): Leaf => {
       const base = l.name[0], primes = l.name.slice(1);
-      // (a block of 16 bars or more answers with a new letter, B for A; a smaller one with a prime, A' for A)
-      if (bars >= 16 && !letters.has(base)) letters.set(base, LETTERS[nextLetter++ % LETTERS.length]);
+      // (a block of 16 bars or more answers with a new letter, B for A; a smaller one with a prime, A' for A; a called one is all A, A' A'' A''')
+      if (bars >= 16 && !letters.has(base) && !called) letters.set(base, LETTERS[nextLetter++ % LETTERS.length]);
       const p = LEVEL[variation] * (depth === 0 ? 1.15 : 1);
+      const varied = RULES.filter((r) => rng.chance(Math.min(0.95, VARY[r] * p)));
+      if (called && !varied.includes('endings')) varied.push('endings');
       return {
         id: nextId++, from: from + half + (l.from - from), bars: Math.min(l.bars, bars - half - (l.from - from)), source: l.id,
-        varied: RULES.filter((r) => rng.chance(Math.min(0.95, VARY[r] * p))), name: bars >= 16 ? letters.get(base)! + primes : l.name + "'",
+        varied, name: called ? '' : bars >= 16 ? letters.get(base)! + primes : l.name + "'",
       };
     });
+    if (called) for (const l of right) l.name = 'A' + "'".repeat(left.length + right.indexOf(l));
     return [...left, ...right];
   };
   return layout(0, totalBars, 0);

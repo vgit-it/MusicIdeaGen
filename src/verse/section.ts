@@ -62,7 +62,7 @@ export const verseSeed = (idea: Idea, o: SectionOptions) => `${idea.seeds.song}|
 const BORROWED: Rule[] = ['phrases', 'small'];
 function borrowedFrom(verse: Idea, o: SectionOptions): Partial<Record<Rule, string>> {
   const seed = verseSeed(verse, o);
-  const leaves = planForm(verse.song.bars.length, o.meta, o.variation, seed);
+  const leaves = planForm(verse.song.bars.length, o.meta, o.variation, seed, true);
   const seeds = leafSeeds(leaves, seed).get(leaves[0].id)!;
   return Object.fromEntries(BORROWED.map((r) => [r, seeds[r]]));
 }
@@ -71,7 +71,7 @@ function borrowedFrom(verse: Idea, o: SectionOptions): Partial<Record<Rule, stri
 const ECHOED: Rule[] = ['phrases', 'tones', 'holds'];
 function echoedFrom(chorus: Idea, o: SectionOptions): Partial<Record<Rule, string>> {
   const seed = hookSig(chorus, o);
-  const leaves = planForm(chorus.song.bars.length, o.meta, personalityOf(chorus, o.seed, moodOf(chorus, o)).chorusVariation, seed);
+  const leaves = planForm(chorus.song.bars.length, o.meta, personalityOf(chorus, o.seed, moodOf(chorus, o)).chorusVariation, seed, true);
   const seeds = leafSeeds(leaves, seed).get(leaves[0].id)!;
   return Object.fromEntries(ECHOED.map((r) => [r, seeds[r]]));
 }
@@ -94,7 +94,7 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
   return buildVerse({
     key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: (chorus && like ? like : idea).section?.energy ?? 3,
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
-    bar: barOf(idea), grid: songGrid(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation,
+    bar: barOf(idea), grid: songGrid(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation, call: kind === 'verse' || kind === 'chorus' || kind === 'bridge',
     thirds: idea.song.bars.some((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
     seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: emo ? emoDials(dials0, emo) : dials0, emo, tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
   });

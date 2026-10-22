@@ -42,7 +42,7 @@ const DIFF_COL: Record<Exclude<Diff, 'same'>, string> = { pitch: '#ff9d3c', rhyt
 const DIFF_LABEL: Record<Exclude<Diff, 'same'>, string> = { pitch: 'Other pitch', rhythm: 'Other length', new: 'New note' };
 
 /** A leaf's name as written (A') with a proper prime. */
-const prime = (n: string) => n.replace("'", '′');
+const prime = (n: string) => n.replace(/'/g, '′');
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 const noteName = (m: number) => `${NOTE_NAMES[mod(m, 12)]}${Math.floor(m / 12) - 1}`;
 

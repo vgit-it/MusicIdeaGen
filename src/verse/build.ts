@@ -37,6 +37,8 @@ export interface BuildInput {
   /** Group the bars into meta-phrases (4+4, 8+8...) with the second answering the first. */
   meta: boolean;
   variation: Variation;
+  /** A verse, chorus or bridge: 8 and 16 bars always split into 4-bar leaves, half 1 asks and half 2 answers (form.ts). */
+  call?: boolean;
   seed: string;
   /** Whether a bar may be three even notes (a third of a bar a note): only where a third of the bar is whole 16ths. */
   thirds?: boolean;
@@ -81,7 +83,7 @@ export function buildVerse(inp: BuildInput): Built {
   const lo = Math.max(inp.range.xlo, Math.min(inp.range.xhi - width, inp.range.lo + d.lift));
   const range: Range = d.lift ? { ...inp.range, lo, hi: lo + width } : inp.range;
   const total = inp.chordAt.length;
-  const leaves = planForm(inp.bars, inp.meta, inp.variation, inp.seed);
+  const leaves = planForm(inp.bars, inp.meta, inp.variation, inp.seed, inp.call);
   const seeds = leafSeeds(leaves, inp.seed);
   const out: Built = { notes: [], phrases: [], breaks: [], runs: [], holds: [], tones: [], bars: [], leaves, tries: [], shapes: [], skips: {} };
   // (what a rule looks at in the band: an answering leaf's rhythm rules look at the band under the leaf they answer, so the
@@ -111,7 +113,7 @@ export function buildVerse(inp: BuildInput): Built {
     // (rule 4 and 21 keep the core notes in the section's own key)
     const fit = { key, mode, chordAt };
     // (the mood notes' view of this leaf)
-    const X: EmoBuild | undefined = inp.emo && { E: inp.emo, key, mode, bar, grid: G0, total: len, leafFrom: from, lastLeaf: end >= total, chordAt, range, pent };
+    const X: EmoBuild | undefined = inp.emo && { E: inp.emo, key, mode, bar, grid: G0, total: len, leafFrom: from, lastLeaf: end >= total, call: !!inp.call, chordAt, range, pent };
     const accOf = (rule: Rule) => win(inp.acc, rootFrom(leaf, rule), len, 0.5);
     const write = (sd: Record<Rule, string>, final: boolean) => {
       // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)

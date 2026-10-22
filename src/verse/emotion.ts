@@ -81,6 +81,8 @@ export interface EmoBuild {
   leafFrom: number;
   /** The leaf holds the section's last bar. */
   lastLeaf: boolean;
+  /** A called form (form.ts): the end of a leaf that isn't the last asks a question, it never comes home. */
+  call?: boolean;
   chordAt: Chord[];
   range: Range;
   /** The pentatonic option's scale (the mood notes that leave it stand down). */
@@ -319,6 +321,8 @@ const SECTION_END: Record<string, [number, number, number]> = {
   chorus: [0.8, 0.15, 0.05], verse: [0.3, 0.4, 0.3], prechorus: [0.1, 0.35, 0.55], bridge: [0.1, 0.3, 0.6], interlude: [0.3, 0.4, 0.3], outro: [0.75, 0.2, 0.05],
 };
 const QUESTION: [number, number, number] = [0.25, 0.5, 0.25];
+/** The end of a leaf that is not the section's last, in a called form: open or hanging, never home. */
+const ASK: [number, number, number] = [0, 0.65, 0.35];
 const ANSWER: [number, number, number] = [0.8, 0.17, 0.03];
 
 /** The octave of the pitch class `pc` nearest `near`, within `maxStep` semitones of it, in the main range if it can be. */
@@ -355,7 +359,7 @@ export function withEndDegrees(notes: BandNote[], phrases: Gap[], X: EmoBuild, s
     if (!last && n.end && (n.style === 'open' || n.style === 'hang')) role = n.style;
     else {
       const question = !last && (k % 2 === 0 || k === phrases.length - 1);
-      let w = last ? (E.ending ? (E.mood === 'dreamy' || E.mood === 'nostalgic' ? [0.5, 0.4, 0.1] : [0.9, 0.08, 0.02]) : SECTION_END[E.kind] ?? SECTION_END.verse) : question ? QUESTION : ANSWER;
+      let w = last ? (E.ending ? (E.mood === 'dreamy' || E.mood === 'nostalgic' ? [0.5, 0.4, 0.1] : [0.9, 0.08, 0.02]) : SECTION_END[E.kind] ?? SECTION_END.verse) : question ? (X.call && !X.lastLeaf && k === phrases.length - 1 ? ASK : QUESTION) : ANSWER;
       const t = ten(ph.step + ph.len - 1);
       w = w.map((x, j) => x * M.end[j] * (t === undefined ? 1 : j === 0 ? 1.3 - 0.6 * t : j === 2 ? 0.6 + 0.8 * t : 1));
       role = ROLES[cumulative(w, roll(seed, 'emo-role', ph.step))];
