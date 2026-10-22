@@ -4,6 +4,7 @@
 import type { Idea } from '../idea';
 import { autoMood, type Mood } from '../tension';
 import { buildVerse, type Built } from './build';
+import { BarGrid } from './grid';
 import { leafSeeds, planForm, type Rule, type Variation } from './form';
 import { emoDials, type EmoCtx, type EmoOptions } from './emotion';
 import { dialsFor, drawPersonality, paced, type Personality } from './personality';
@@ -27,8 +28,10 @@ export const kindOf = (idea: Idea): SungKind =>
 /** A kind whose sections of a song are one melody (a chorus, a pre-chorus, a bridge, an interlude, an outro): built from the song's last one, over each one's own chords. */
 export const isShared = (idea: Idea) => kindOf(idea) !== 'verse';
 export const chordsOf = (idea: Idea): Chord[] => idea.chords.chordIdx.map((i) => idea.chords.timeline[i].chord);
-/** Steps in a bar. */
+/** Steps in a bar (the mean one, where the bars differ). */
 export const barOf = (idea: Idea) => Math.max(4, Math.round(idea.chords.chordIdx.length / idea.song.bars.length));
+/** The song's real bars: where each starts, how long it is and its beat groups (a 7/8 bar is 2+2+3), for songs that change meter too. */
+export const songGrid = (idea: Idea): BarGrid => new BarGrid(barOf(idea), idea.song.bars.map((b) => ({ start: b.start, len: b.len, groups: b.groups })));
 /** How much the melody leans on the band's hits (0-1): 1 follows every hit, 0 ignores them. Accents are pulled toward the middle (0.5) by this much. */
 export const BAND_LEAN = 0.5;
 /** How hard the band hits on each 16th step (drums, chord changes, strum, bass), softened by BAND_LEAN. */
@@ -91,8 +94,8 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
   return buildVerse({
     key: idea.song.key, mode: idea.song.mode, genre: idea.song.genre, energy: (chorus && like ? like : idea).section?.energy ?? 3,
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
-    bar: barOf(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation,
-    thirds: idea.song.bars.every((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
+    bar: barOf(idea), grid: songGrid(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation,
+    thirds: idea.song.bars.some((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
     seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: emo ? emoDials(dials0, emo) : dials0, emo, tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
   });
 }
