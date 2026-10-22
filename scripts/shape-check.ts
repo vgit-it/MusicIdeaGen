@@ -6,7 +6,7 @@ import { MAIN_GUITARS, generate } from '../src/generator';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { autoMood } from '../src/tension';
 import { EMO_IDS } from '../src/verse/emotion';
-import { shortLen } from '../src/verse/longer';
+import { shortLen, shortRange } from '../src/verse/longer';
 import { NO_SHAPE, withShapes, type ShapeInfo } from '../src/verse/shapes';
 import { barOf } from '../src/verse/section';
 import { songOptions, writeSong } from '../src/verse/sing';
@@ -88,7 +88,7 @@ for (let i = 0; i < N; i++) {
       const t = T[m], notes = v.built.notes;
       t.notes += notes.length; t.phrases += v.built.phrases.length; t.shapes += v.built.shapes.length;
       t.short += notes.filter((n) => n.len <= lim).length;
-      if (notes.length >= 12) { t.secs++; const sh = notes.filter((n) => n.len <= lim).length / notes.length; if (sh < 0.3 || sh > 0.55) t.outside++; } t.bars += sec.chords.chordIdx.length / bar;
+      if (notes.length >= 12) { t.secs++; const sh = notes.filter((n) => n.len <= lim).length / notes.length; const [lo, hi] = shortRange(sec.section?.kind ?? 'verse'); if (sh < lo - 0.05 || sh > hi + 0.05) t.outside++; } t.bars += sec.chords.chordIdx.length / bar;
       t.offKey += notes.filter((n) => !n.colour && !n.surprise && !n.nb && !n.walk && !scale.has(((n.midi % 12) + 12) % 12)).length;
       if (sec.section?.kind === 'chorus' && notes.length) {
         const total = sec.chords.chordIdx.length;
@@ -133,7 +133,7 @@ const mean = (a: number[]) => (a.reduce((x, y) => x + y, 0) / Math.max(1, a.leng
 console.log(`chorus silence, a chorus with the switch on against off: ${sd(T.off.chorusSil, T.on.chorusSil)}`);
 for (const m of ['off', 'on'] as const) {
   const t = T[m];
-  console.log(`switch ${m}: phrases ${t.phrases}, with a repeated shape ${t.shapes} (${pct(t.shapes, t.phrases)}); notes/bar ${(t.notes / t.bars).toFixed(2)}; short notes ${pct(t.short, t.notes)}; chorus silence ${mean(t.chorusSil)}; off-key core notes ${t.offKey}; sections with a short share under 30% or over 55%: ${t.outside} of ${t.secs}`);
+  console.log(`switch ${m}: phrases ${t.phrases}, with a repeated shape ${t.shapes} (${pct(t.shapes, t.phrases)}); notes/bar ${(t.notes / t.bars).toFixed(2)}; short notes ${pct(t.short, t.notes)}; chorus silence ${mean(t.chorusSil)}; off-key core notes ${t.offKey}; sections with a short share 5 points outside their kind's range (35-50%, a bridge or an interlude less): ${t.outside} of ${t.secs}`);
 }
 console.log(`shapes: A A A' ${pat[3] ?? 0}, A A A A' ${pat[4] ?? 0}; last time changed by ${JSON.stringify(mods)}; shape length in steps ${JSON.stringify(cellLen)}`);
 console.log('phrases with a shape, by length in bars:', Object.entries(byLen).sort((x, y) => +x[0] - +y[0]).map(([k, [n, c]]) => `${k}: ${c}/${n}`).join('  '));

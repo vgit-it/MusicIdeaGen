@@ -30,6 +30,8 @@ export interface ShapeCtx {
   silenceTol?: number;
   /** Rule 37 is on: keep the share of short notes inside its 35-50% (or where it was). */
   short?: boolean;
+  /** The share of short notes rule 37 keeps this kind of section inside (left out: 35-50%). */
+  shortRange?: [number, number];
 }
 
 /** Why a phrase got no shape (for the check): counts. */
@@ -248,7 +250,7 @@ export function withShapes(notes: BandNote[], phrases: Gap[], barArg: BarArg, to
       }
       if (ctx.short) {
         const was = shortShare(cur), now = shortShare(next);
-        if (now < Math.min(was, SHORT_MIN - 0.05) - 1e-9 || now > Math.max(was, SHORT_MAX + 0.05) + 1e-9) { skip('share of short notes'); return null; }
+        if (now < Math.min(was, (ctx.shortRange?.[0] ?? SHORT_MIN) - 0.05) - 1e-9 || now > Math.max(was, (ctx.shortRange?.[1] ?? SHORT_MAX) + 0.05) + 1e-9) { skip('share of short notes'); return null; }
       }
       return { phrase: ph.step, n, step: s0, len: c, mod, shifts: used, notes: next };
     };

@@ -38,7 +38,7 @@ export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
   tension: { name: 'Tension curve', hint: "Follows the song's tension, bar by bar: more colour notes and hanging ends as it builds, home ends as it eases, the line drifting up and down with it" },
   moodmode: { name: 'Mood over mode', hint: "When the mood is brighter or darker than the key (a Happy song in minor), the line leans to the bright or dark degrees. Off: the mode's own feel only" },
   surprise: { name: 'Surprise', hint: 'Now and then, late in a section: a note pushed early, a note off the scale, a deceptive ending. Calm moods fewer, tense and dreamy more, the climax one extra' },
-  longer: { name: 'Longer notes', hint: 'Fewer 8th-note-or-shorter notes: neighbouring short notes are joined until about 35 to 50% of the notes are short, by genre and section (funk busiest, grunge calmest; verses busier than choruses and breaks)' },
+  longer: { name: 'Longer notes', hint: 'Fewer 8th-note-or-shorter notes: neighbouring short notes are joined until about 35 to 50% of the notes are short, by genre and section (funk busiest, grunge calmest; verses busier than choruses and breaks). A bridge keeps about 23% short, an interlude about 18%' },
   space: { name: 'Use the space', hint: 'A short note before a big gap, and a held ending, are held on into the gap (a breath left), the end of a repeated phrase most; notes of 3/4 bar or more bend more often, sometimes there and back, even a held ending' },
   shape: { name: 'Repeat shapes', hint: "Inside a phrase, one small shape (a bar or less) is sung again: twice the same and the third time changed, or three times the same and the fourth changed; 1 phrase in 4 has none. The repeats move with the chords; the last one changed is often the phrase's own ending" },
   call: { name: 'Call & response', hint: 'In a verse, chorus or bridge of 8 or 16 bars, every 4 bars are two phrases: a call (bars 1-2, ending on a question, never home) and a response (bars 3-4, ending open, or home where the section ends)' },
@@ -188,6 +188,8 @@ export function emoDials(d: Dials, E: EmoCtx): Dials {
       push: clamp(out.push + 0.08 * Math.max(0, a), 0, 0.6),
     };
   }
+  // (longer notes: a bridge or an interlude is written with no 16th runs, fewer walking notes into the next phrase, more stretched 8ths and more long openers, so there is less to join)
+  if (E.on.has('longer') && (E.kind === 'bridge' || E.kind === 'interlude')) out = { ...out, runs: 0, walk: Math.min(out.walk, 0.65), stretch: Math.max(out.stretch, 0.6), opener: Math.max(out.opener, 0.6) };
   // (a pre-chorus keeps its own octave jumps: rule 22's climb already pulls it up, and more jumps would climb it too often)
   if (E.on.has('contour') && E.kind !== 'prechorus') {
     const L = MOOD[E.mood].leap;
