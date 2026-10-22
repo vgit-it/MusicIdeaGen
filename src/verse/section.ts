@@ -9,10 +9,11 @@ import { leafSeeds, planForm, type Rule, type Variation } from './form';
 import { emoDials, type EmoCtx, type EmoOptions } from './emotion';
 import { dialsFor, drawPersonality, paced, type Personality } from './personality';
 import { bandAccents, type BendAmount, type Range } from './verse';
+import { BASS_ACCENT, bassSkeleton } from './bassline';
 import type { Chord } from '../theory';
 
 /** What the user can set on the card. */
-export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string; /** Dials moved to the song's tempo (personality.ts `paced`); the experiment's melodies are written without. */ pace?: boolean; /** The song's mood and the mood notes that are on (emotion.ts); left out: the Auto mood and no mood notes, the line as it always was. */ emo?: EmoOptions }
+export interface SectionOptions { range: Range; bends: BendAmount; meta: boolean; variation: Variation; /** Every note from the key's pentatonic scale. */ pentatonic?: boolean; /** The song's vocal seed, mixed into every roll (left out: the card's own seeds). */ seed?: string; /** Dials moved to the song's tempo (personality.ts `paced`); the experiment's melodies are written without. */ pace?: boolean; /** The bass-led vocal (bassline.ts): how much of the line is the bass's, 0-1; left out or 0: the usual line. */ bass?: number; /** The song's mood and the mood notes that are on (emotion.ts); left out: the Auto mood and no mood notes, the line as it always was. */ emo?: EmoOptions }
 
 export const isChorus = (idea: Idea) => idea.section?.kind === 'chorus';
 export const isPre = (idea: Idea) => idea.section?.kind === 'prechorus';
@@ -35,9 +36,9 @@ export const songGrid = (idea: Idea): BarGrid => new BarGrid(barOf(idea), idea.s
 /** How much the melody leans on the band's hits (0-1): 1 follows every hit, 0 ignores them. Accents are pulled toward the middle (0.5) by this much. */
 export const BAND_LEAN = 0.5;
 /** How hard the band hits on each 16th step (drums, chord changes, strum, bass), softened by BAND_LEAN. */
-export function accentsOf(idea: Idea): number[] {
+export function accentsOf(idea: Idea, bassLed = false): number[] {
   const { kick, snare } = idea.drums;
-  return bandAccents(idea.chords.chordIdx.length, { kick, snare, strum: idea.strum, bass: idea.bass, changes: idea.chords.timeline.map((e) => e.step) }).map((a) => 0.5 + (a - 0.5) * BAND_LEAN);
+  return bandAccents(idea.chords.chordIdx.length, { kick, snare, strum: idea.strum, bass: idea.bass, changes: idea.chords.timeline.map((e) => e.step) }, bassLed ? BASS_ACCENT : undefined).map((a) => 0.5 + (a - 0.5) * BAND_LEAN);
 }
 /** The song's melodic personality (personality.ts): the same for every section of a song. */
 export const personalityOf = (idea: Idea, salt?: string, mood?: Mood): Personality => drawPersonality(salt ? `${idea.seeds.song}|${salt}` : idea.seeds.song, idea.song.genre, mood ?? autoMood(idea.song, idea.seeds.song));
@@ -80,7 +81,7 @@ function echoedFrom(chorus: Idea, o: SectionOptions): Partial<Record<Rule, strin
  * The melody over a section; `accents` are the band's (computed when left out). A chorus built `like` another (its master, with the
  * master's accents) writes with the master's seed, energy and accents, so its rhythm and shape are the master's, over its own chords.
  */
-export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea), like?: Idea, verse?: Idea, chorusIdea?: Idea): Built {
+export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = accentsOf(idea, !!o.bass), like?: Idea, verse?: Idea, chorusIdea?: Idea): Built {
   const chorus = isShared(idea), p = personalityOf(idea, o.seed, moodOf(idea, o)), kind = kindOf(idea);
   // (the mood notes: a chorus built like its master takes the master's view of the song, as it takes its energy)
   const src = chorus && like ? like : idea;
@@ -96,6 +97,8 @@ export function buildSection(idea: Idea, o: SectionOptions, accents: number[] = 
     chordAt: chordsOf(idea), acc: accents, changes: idea.chords.timeline.map((e) => e.step),
     bar: barOf(idea), grid: songGrid(idea), bars: idea.song.bars.length, range: o.range, bends: o.bends, meta: o.meta, variation: kind === 'chorus' ? p.chorusVariation : o.variation, call: kind === 'verse' || kind === 'chorus' || kind === 'bridge',
     thirds: idea.song.bars.some((b) => b.len % 3 === 0), pentatonic: o.pentatonic,
-    seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: emo ? emoDials(dials0, emo) : dials0, emo, tries, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
+    seed: chorus ? hookSig(idea, o) : verseSeed(idea, o), dials: emo ? emoDials(dials0, emo) : dials0, emo, tries,
+    // (the bass-led vocal: a chorus built like its master takes the master's bass, as it takes its accents)
+    bass: o.bass ? { share: o.bass, skel: bassSkeleton(src.bass, chordsOf(src), src.song.key) } : undefined, borrow: kind === 'prechorus' && verse ? borrowedFrom(verse, o) : (kind === 'interlude' || kind === 'outro') && chorusIdea ? echoedFrom(chorusIdea, o) : undefined,
   });
 }

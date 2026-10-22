@@ -56,8 +56,10 @@ export interface GenOptions {
   vocalReal?: boolean;
   /** Patterns (docs/PATTERNS.md): the vocal's rhythms and short shapes drawn from a library of common real ones. */
   vocalPatterns?: boolean;
-  /** Who writes the lead vocal: the verse melody writer (src/verse/, the default) or the classic one (Rhythm Words, Melody Learned...). */
-  vocalWriter?: 'verse' | 'classic';
+  /** Who writes the lead vocal: the verse melody writer (src/verse/, the default) the same writer led by the bass line ('bass', docs/VOCAL-BASS.md), or the classic one (Rhythm Words, Melody Learned...). */
+  vocalWriter?: 'verse' | 'classic' | 'bass';
+  /** The bass-led writer's share (src/verse/bassline.ts): how much of the vocal's rhythm and chord notes is the bass line's, 0-100; left out: 70. */
+  vocalBassShare?: number;
   /** The verse writer's mood notes the user switched off (src/verse/emotion.ts: colour, endings, suspend, contour, arousal, tension, moodmode, surprise); left out: all on. */
   vocalMoodOff?: string[];
   /** The verse writer's most sets of notes (notes with a rest either side) in 4 bars (src/verse/sets.ts): left out, 4; 0, no limit. */

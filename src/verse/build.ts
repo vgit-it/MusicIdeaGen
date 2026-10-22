@@ -8,6 +8,7 @@ import type { Genre } from '../genres';
 import { BarGrid, gridOf } from './grid';
 import { isCalm, shortRange, shortTarget, withLonger } from './longer';
 import { withSpace } from './space';
+import { bassBias, bassOverBand, bothBiases, stopsOf, type BassLead, type BassSkel } from './bassline';
 import { limitSets, setsAllowed } from './sets';
 import { withShapes, type ShapeInfo, type Skips } from './shapes';
 import { VERSE, phraseLenFor, type Dials } from './profile';
@@ -53,6 +54,8 @@ export interface BuildInput {
   tries?: number[];
   /** The mood notes this section is written with (src/verse/emotion.ts); left out: none, the line as it always was. */
   emo?: EmoCtx;
+  /** The bass-led vocal (bassline.ts): the bass line's starts and chord notes, and how much of the line is the bass's (0-1); left out: the plain grid. */
+  bass?: { skel: BassSkel; share: number };
 }
 
 export interface Built {
@@ -116,6 +119,8 @@ export function buildVerse(inp: BuildInput): Built {
     // (the mood notes' view of this leaf)
     const X: EmoBuild | undefined = inp.emo && { E: inp.emo, key, mode, bar, grid: G0, total: len, leafFrom: from, lastLeaf: end >= total, call: !!inp.call, chordAt, range, pent };
     const accOf = (rule: Rule) => win(inp.acc, rootFrom(leaf, rule), len, 0.5);
+    // (the bass-led vocal: what the bass plays under this leaf; the rhythm of an answering leaf is its source's, like the band's hits)
+    const lead: BassLead | undefined = inp.bass && inp.bass.share > 0 ? { share: inp.bass.share, on: win(inp.bass.skel.on, rootFrom(leaf, 'holds'), len, false), tone: win(inp.bass.skel.tone, rootFrom(leaf, 'tones'), len, undefined) } : undefined;
     const write = (sd: Record<Rule, string>, final: boolean) => {
       // (a leaf that isn't the last leaves a beat of silence at its end: the phrases stop before it)
       // (a beat of the leaf's last bar: its last beat group, so the phrases stop on a beat)
@@ -131,7 +136,7 @@ export function buildVerse(inp: BuildInput): Built {
       const runs = randomRuns(len, G, inp.energy, breaks, sd.runs, accOf('runs'), d);
       // (rule 21: each phrase starts on a freshly drawn core note)
       // (mood notes: the chord note a bar or phrase sits on leans to the mood's degrees and the phrase's contour)
-      const bias = X && toneBias(X, phrases, sd.phrases);
+      const bias = bothBiases(X && toneBias(X, phrases, sd.phrases), lead && bassBias(lead));
       const drawn = randomTones(len, G, sd.tones, accOf('tones'), d, { from, total }, fit, bias);
       const { tones, bars } = rerollTones(drawn.tones, drawn.bars, phrases, G, sd.tones, d, fit, bias);
       const holds = randomHolds(len, G, breaks, runs, tones, win(inp.chordAt, rootFrom(leaf, 'holds'), len, inp.chordAt[0]), sd.holds, accOf('holds'), d);
@@ -139,7 +144,9 @@ export function buildVerse(inp: BuildInput): Built {
       // (rule 24: a dwelling section pulls toward one home pitch instead)
       const climbTo = d.climb ? (step: number) => range.lo + 2 + (d.climb! + 2) * Math.min(1, (from + step) / Math.max(1, total - bar))
         : d.dwell !== undefined ? () => range.lo + d.dwell! * (range.hi - range.lo) : undefined;
-      const plain = withRuns(withGaps(verseOverBand(key, chordAt, tones, undefined, pent), breaks), runs, key, chordAt, tones, undefined, pent);
+      // (the bass-led vocal starts from the bass's notes instead of a plain 8th grid; a phrase and a long note always start on a note)
+      const base = lead ? bassOverBand(key, chordAt, tones, lead, Math.max(2, Math.round(bar / 2)), sd.holds, stopsOf(breaks, runs, holds), [...phrases, ...holds].map((g) => g.step), pent) : verseOverBand(key, chordAt, tones, undefined, pent);
+      const plain = withRuns(withGaps(base, breaks), runs, key, chordAt, tones, undefined, pent);
       // (a phrase may open on one long note; the short notes after it stay short)
       const held = withOpeners(withHolds(plain, holds), phrases, chordAt, G, sd.phrases, accOf('phrases'), d);
       // (mood notes: where the climb and the dwell don't pull, the phrase's contour and the tension lean the register, gently)

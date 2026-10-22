@@ -2,6 +2,7 @@
 
 import { singLead } from './parts/leadvocal';
 import { emoOn, setsOf } from './verse/emotion';
+import { bassShareOf } from './verse/bassline';
 import { linkVoice, singSong } from './verse/sing';
 import type { MoveId } from './parts/moves';
 import { autoVoice, singIdea } from './parts/vocal';
@@ -122,7 +123,7 @@ export function generate(opts: GenOptions, seeds: Seeds = randomSeeds()): Idea {
   // the singer: the idea is a chorus, so it sings the chorus tune and its hook
   const vs = seeds.vocal ?? `${seeds.chords}-vocal`;
   singIdea(idea, vs, autoMood(song, seeds.song), opts.vocalLift ?? 0, opts.vocalRhythm, opts.vocalMelody, opts.vocalMove as MoveId | undefined, opts.vocalSinger, opts.vocalEnergy as EnergyStyle | 'off' | undefined, opts.vocalReal, opts.vocalPatterns,
-    opts.vocalWriter === 'classic' ? undefined : (fake) => { singSong([fake], vs, opts.vocalLift ?? 0, { mood: autoMood(song, seeds.song), on: emoOn(opts.vocalMoodOff), maxSets: setsOf(opts.vocalMaxSets) }); linkVoice(fake, idea); });
+    opts.vocalWriter === 'classic' ? undefined : (fake) => { singSong([fake], vs, opts.vocalLift ?? 0, { mood: autoMood(song, seeds.song), on: emoOn(opts.vocalMoodOff), maxSets: setsOf(opts.vocalMaxSets) }, bassShareOf(opts.vocalWriter, opts.vocalBassShare)); linkVoice(fake, idea); });
   idea.vocalVoice = autoVoice(vs, song.partGenres.strum);
   idea.vocalHigh = pickHigh(vs, song.partGenres.strum);
   // the lead vocal as it's sung (an idea on its own: its own mood)
