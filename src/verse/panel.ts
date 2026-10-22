@@ -4,8 +4,9 @@
 
 import type { Idea } from '../idea';
 import { NOTE_NAMES } from '../theory';
+import { gridOf, type BarArg } from './grid';
 import { quarterOf, type BandNote, type Gap } from './verse';
-import { accentsOf, barOf, isBridge, isChorus, isInterlude, isOutro, isPre, isShared, personalityOf } from './section';
+import { accentsOf, isBridge, isChorus, isInterlude, isOutro, isPre, isShared, personalityOf, songGrid } from './section';
 import { describe, dialsFor } from './personality';
 import { EMO_IDS, EMO_INFO, emoSummary, type EmoId } from './emotion';
 import { isSung, voiceOf } from './sing';
@@ -55,16 +56,17 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
   const wordsFor = (idea: Idea) => voiceOf(idea)!.words;
   const persFor = (idea: Idea) => personalityOf(idea, voiceOf(idea)!.seed, voiceOf(idea)!.mood);
   const notesFor = (idea: Idea): BandNote[] => voiceOf(idea)!.built.notes;
-  const pos = (step: number, bar: number) => +(step / bar + 1).toFixed(2);
+  const pos = (step: number, bar: BarArg) => { const G = gridOf(bar), i = G.index(step); return +(i + (step - G.start(i)) / G.len(i) + 1).toFixed(2); };
   const at = (g: Gap, bar: number) => `${pos(g.step, bar)} (${bar / g.len > 6 ? '⅛' : bar / g.len > 3 ? '¼' : '½'} bar)`;
   /** "walks: 2→3 (2 steps), ...": the bars whose end walks into the next bar's core. */
-  const walks = (notes: BandNote[], bar: number) => {
+  const walks = (notes: BandNote[], bar: BarArg) => {
+    const G = gridOf(bar);
     const by = new Map<number, number>();
-    for (const n of notes) if (n.walk) by.set(Math.floor(n.step / bar), (by.get(Math.floor(n.step / bar)) ?? 0) + 1);
+    for (const n of notes) if (n.walk) by.set(G.index(n.step), (by.get(G.index(n.step)) ?? 0) + 1);
     return by.size ? `walks into bar ${[...by].map(([b, c]) => `${b + 2} (${c} step${c > 1 ? 's' : ''})`).join(', ')}` : 'no walks';
   };
   /** The mood notes a section got (nothing when they are all off). */
-  const moodNotes = (notes: BandNote[], bar: number): string[] => {
+  const moodNotes = (notes: BandNote[], bar: BarArg): string[] => {
     const m = emoSummary(notes);
     if (!m.colour.length && !m.ends.length && !m.suspensions && !m.surprises.length) return [];
     return [
@@ -74,23 +76,23 @@ export function buildVersePanel(root: HTMLElement, ctl: { writer(): 'verse' | 'c
   };
   /** What the card shows about one section: its form, phrases, notes and the rules' choices. */
   const report = (first: Idea): string[] => {
-    const bar = barOf(first), built = voiceOf(first)!.built, { phrases, breaks, runs, holds, bars, leaves } = built;
+    const G = songGrid(first), bar = G.bar, built = voiceOf(first)!.built, { phrases, breaks, runs, holds, bars, leaves } = built;
     const notes = built.notes;
     return [
       `Form: ${leaves.map((l) => `${l.name} (bars ${l.from + 1}–${l.from + l.bars}${l.source === null ? '' : `, varies ${leaves.find((x) => x.id === l.source)!.name}: ${l.varied.join(', ') || 'nothing'}`})`).join(' · ')}`,
-      `Phrases (bar from–to): ${phrases.map((p) => `${pos(p.step, bar)}–${pos(p.step + p.len, bar)}`).join(' · ')}`,
+      `Phrases (bar from–to): ${phrases.map((p) => `${pos(p.step, G)}–${pos(p.step + p.len, G)}`).join(' · ')}`,
       `Breaks after: ${breaks.map((g) => `${+(g.len / (bar / 4)).toFixed(2)} beat${g.len === bar / 4 ? '' : 's'}`).join(' · ')}`,
       `Chord note per bar: ${bars.join(' · ')}`,
       `Range ${notes.length ? `${noteName(Math.min(...notes.map((n) => n.midi)))}–${noteName(Math.max(...notes.map((n) => n.midi)))}` : "none"}, ${notes.filter((n) => n.midi < voiceOf(first)!.range.lo || n.midi > voiceOf(first)!.range.hi).length} notes in the extended zone`,
-      `${notes.length} notes (${notes.filter((n) => n.nb).length} neighbour, ${walks(notes, bar)}, ${notes.filter((n) => n.third).length / 3} third-bar shapes) · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
+      `${notes.length} notes (${notes.filter((n) => n.nb).length} neighbour, ${walks(notes, G)}, ${notes.filter((n) => n.third).length / 3} third-bar shapes) · energy ${first.section?.energy ?? 3} · 16th runs: ${runs.length ? runs.map((g) => at(g, bar)).join(', ') : 'none'}`,
       `On the band's hits: ${Math.round((100 * notes.filter((n) => accOf(first)[Math.floor(n.step + 1e-6)] >= 0.5).length) / Math.max(1, notes.length))}% of notes start on a drum or chord hit (${Math.round((100 * accOf(first).filter((a) => a >= 0.5).length) / accOf(first).length)}% of steps are one)`,
-      `Bends (${notes.filter((n) => n.bend).length}): ${notes.filter((n) => n.bend).map((n) => `${pos(n.step, bar)} ${n.bend} ${n.fadeBy ? `fades out ${n.fadeBy} dB` : n.slide! > 0 ? `from ${n.slide} below` : `from ${-n.slide!} above`}`).join(', ') || 'none'}`,
-      `Bends inside notes (${notes.filter((n) => n.inner).length}): ${notes.filter((n) => n.inner).map((n) => `${pos(n.step, bar)} ${n.inner} (${n.bendTo! > n.midi ? '+' : ''}${n.bendTo! - n.midi}, note ${+(n.len / (bar / 4)).toFixed(1)} beats, ${n.bendAt === 0 ? 'bends from its start' : `bends after ${+(n.bendAt! / (bar / 4)).toFixed(2)} beats`})`).join(', ') || 'none'}`,
-      `Notes starting in each quarter of the bar: ${[0, 1, 2, 3].map((q) => notes.filter((n) => quarterOf(n.step, bar) === q).length).join(' · ')}`,
-      `Phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, bar)} ${n.style ?? 'held'} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
-      `Long holds (1–2 bars): ${notes.filter((n) => n.longHold).map((n) => `${pos(n.step, bar)} ${+(n.len / bar).toFixed(2)} bars${n.bendTo === undefined ? '' : `, moves ${1 + (n.more?.length ?? 0)}`}`).join(', ') || 'none'}`,
-      `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, bar)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
-      ...moodNotes(notes, bar),
+      `Bends (${notes.filter((n) => n.bend).length}): ${notes.filter((n) => n.bend).map((n) => `${pos(n.step, G)} ${n.bend} ${n.fadeBy ? `fades out ${n.fadeBy} dB` : n.slide! > 0 ? `from ${n.slide} below` : `from ${-n.slide!} above`}`).join(', ') || 'none'}`,
+      `Bends inside notes (${notes.filter((n) => n.inner).length}): ${notes.filter((n) => n.inner).map((n) => `${pos(n.step, G)} ${n.inner} (${n.bendTo! > n.midi ? '+' : ''}${n.bendTo! - n.midi}, note ${+(n.len / (bar / 4)).toFixed(1)} beats, ${n.bendAt === 0 ? 'bends from its start' : `bends after ${+(n.bendAt! / (bar / 4)).toFixed(2)} beats`})`).join(', ') || 'none'}`,
+      `Notes starting in each quarter of the bar: ${[0, 1, 2, 3].map((q) => notes.filter((n) => quarterOf(n.step, G) === q).length).join(' · ')}`,
+      `Phrase endings (${notes.filter((n) => n.end).length} of ${phrases.length} phrases): ${notes.filter((n) => n.end).map((n) => `${pos(n.step + n.len, G)} ${n.style ?? 'held'} (${+(n.len / (bar / 4)).toFixed(1)} beats)`).join(', ') || 'none'}`,
+      `Long holds (1–2 bars): ${notes.filter((n) => n.longHold).map((n) => `${pos(n.step, G)} ${+(n.len / bar).toFixed(2)} bars${n.bendTo === undefined ? '' : `, moves ${1 + (n.more?.length ?? 0)}`}`).join(', ') || 'none'}`,
+      `Long notes: ${holds.length ? holds.map((g) => `${pos(g.step, G)} (${+(g.len / (bar / 4)).toFixed(1)} ${g.len === bar / 4 ? 'beat' : 'beats'})`).join(', ') : 'none'}`,
+      ...moodNotes(notes, G),
     ];
   };
 

@@ -11,7 +11,7 @@ import type { Built } from './build';
 import { dialsFor } from './personality';
 import { energyVolume } from './profile';
 import type { EmoOptions } from './emotion';
-import { accentsOf, barOf, buildSection, chordsKey, chorusMaster, hookSig, isChorus, isInterlude, isOutro, isShared, kindOf, moodOf, personalityOf, verseSeed, type SectionOptions, type SungKind } from './section';
+import { accentsOf, buildSection, chordsKey, chorusMaster, hookSig, isChorus, isInterlude, isOutro, isShared, kindOf, moodOf, personalityOf, songGrid, verseSeed, type SectionOptions, type SungKind } from './section';
 import { DEFAULT_RANGE, type BandNote, type Range } from './verse';
 import { writeWords, type Words } from './words';
 
@@ -111,7 +111,7 @@ export function writeSong(list: Idea[], o: SectionOptions): Map<Idea, SectionVoi
     const wsig = shared ? `${hookSig(idea, o)}|${built.notes.map((n) => `${n.step}:${n.len}`).join(',')}` : '';
     let words = wsig ? hookWords.get(wsig) : undefined;
     if (!words) {
-      words = writeWords(built.notes, built.phrases, barOf(idea), { mood: moodOf(idea, o), genre: idea.song.genre, real: true },
+      words = writeWords(built.notes, built.phrases, songGrid(idea), { mood: moodOf(idea, o), genre: idea.song.genre, real: true },
         o.range.hi + dialsFor(kind, personalityOf(idea, o.seed, moodOf(idea, o))).lift - 4, shared ? hookSig(idea, o) : verseSeed(idea, o), accOf(idea), DENSITY[kind]);
       if (wsig) hookWords.set(wsig, words);
     }

@@ -22,6 +22,7 @@
 import type { Idea } from '../idea';
 import type { Mood } from '../tension';
 import { SCALES, type Chord, type Mode } from '../theory';
+import type { BarGrid } from './grid';
 import { cumulative, type Dials } from './profile';
 import { fifth, roll, third, type BandNote, type Gap, type Range, type ToneBias } from './verse';
 
@@ -70,6 +71,8 @@ export interface EmoBuild {
   key: number;
   mode: Mode;
   bar: number;
+  /** The section's bars (all of them, not just this leaf's). */
+  grid?: BarGrid;
   /** Steps in the leaf, and where it starts in the section. */
   total: number;
   leafFrom: number;
@@ -155,7 +158,7 @@ export const tiltOf = (E: EmoCtx): number => (E.on.has('moodmode') ? clamp((MOOD
 function tensionAt(X: EmoBuild): ((step: number) => number | undefined) {
   const t = X.E.tension;
   if (!X.E.on.has('tension') || !t?.length) return () => undefined;
-  return (step) => t[Math.max(0, Math.min(t.length - 1, Math.floor((X.leafFrom + step + 1e-6) / X.bar)))];
+  return (step) => t[Math.max(0, Math.min(t.length - 1, X.grid ? X.grid.index(X.leafFrom + step + 1e-6) : Math.floor((X.leafFrom + step + 1e-6) / X.bar)))];
 }
 
 const chordPcs = (key: number, c: Chord): number[] => [0, third(c), fifth(c)].map((x) => mod12(key + c.root + x));

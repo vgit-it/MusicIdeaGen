@@ -5,6 +5,7 @@
 import { Rng } from '../rng';
 import { QUALITIES, SCALES, degreeChord, type Chord, type Mode } from '../theory';
 import { END_STYLES, VERSE, cumulative, energyEdge, type Dials, type EndStyle } from './profile';
+import { gridOf, type BarArg } from './grid';
 
 export const BARS = 8;
 export const STEPS_PER_BAR = 8; // 8th notes, 4/4
@@ -162,8 +163,9 @@ const overlaps = (a: Gap, b: Gap) => a.step < b.step + b.len && b.step < a.step 
  * quarters (0, 2: "strong"), longer notes or silence in the 2nd and 4th (1, 3: "weak"). Always a lean, never a rule: each
  * rule that makes a random choice weights it, so a verse can still break it.
  */
-export const quarterOf = (step: number, bar: number) => Math.floor((((step % bar) + bar) % bar) / (bar / 4) + 1e-9);
-const isStrong = (step: number, bar: number) => quarterOf(step, bar) % 2 === 0;
+export const quarterOf = (step: number, bar: BarArg) => gridOf(bar).quarterOf(step);
+/** A strong place: the lean's 1st and 3rd beat (a beat group of the real bar; see grid.ts). */
+const isStrong = (step: number, bar: BarArg) => gridOf(bar).isStrong(step);
 
 /**
  * How much the band hits on each 16th step (0-1): a kick, a snare, a chord change, a strum, a bass note. One more factor the
@@ -195,22 +197,25 @@ export const roll = (seed: string, tag: string, step: number) => new Rng(`${seed
  * A phrase starts on a beat, right after the break before it. What is left at the end if under a bar is silence.
  * `bar`: 16ths in a bar. Returns the phrases and the breaks between them.
  */
-export function planPhrases(totalSteps: number, bar: number, seed: string, acc?: number[], d: Dials = VERSE): { phrases: Gap[]; breaks: Gap[] } {
+export function planPhrases(totalSteps: number, barArg: BarArg, seed: string, acc?: number[], d: Dials = VERSE): { phrases: Gap[]; breaks: Gap[] } {
   const rng = new Rng(seed + '|phrases');
+  const G = gridOf(barArg), bar = G.bar;
   const beat = bar / 4;
   const phrases: Gap[] = [];
   const breaks: Gap[] = [];
   let pos = 0;
   while (pos < totalSteps) {
-    const len = Math.min(Math.round(bar * (cumulative(d.phraseLen, rng.next()) + 1)), totalSteps - pos);
+    // (whole bars on: the phrase ends at the same place in a bar as it began, whatever the bars' lengths)
+    const len = Math.min(G.span(pos, cumulative(d.phraseLen, rng.next()) + 1), totalSteps - pos);
     phrases.push({ step: pos, len });
     pos += len;
     if (pos >= totalSteps) break;
     let gap = Math.round(beat * (cumulative(d.breakBeats, rng.next()) + 1));
     // (the lean: the next phrase mostly comes in on the 1st or 3rd quarter; so the break mostly covers the 2nd or 4th)
     // (and the band's: a chord change or a big hit counts as a good place to come in too)
-    const good = isStrong(pos + gap, bar) || accAt(acc, pos + gap) >= 0.6;
-    if (!good && rng.chance(0.6)) gap = gap + beat <= bar ? gap + beat : gap - beat;
+    const good = G.isStrong(pos + gap) || accAt(acc, pos + gap) >= 0.6;
+    // (a whole step: a beat is a half step in 7/8, 5/8, 9/8...)
+    if (!good && rng.chance(0.6)) gap = Math.round(gap + beat <= bar ? gap + beat : gap - beat);
     const rest = totalSteps - pos;
     // (under a bar left for another phrase: the rest of the verse is the break)
     if (rest - gap < bar) { breaks.push({ step: pos, len: rest }); break; }
@@ -229,13 +234,14 @@ export function withGaps(notes: BandNote[], gaps: Gap[]): BandNote[] {
  * Rule 3: stretches of 16th notes, an eighth of a bar, a quarter or a half, at random, in the open spaces between the breaks.
  * Most at the middle energy (3), fewer toward both ends (1 and 5).
  */
-export function randomRuns(totalSteps: number, bar: number, energy: number, gaps: Gap[], seed: string, acc?: number[], d: Dials = VERSE): Gap[] {
+export function randomRuns(totalSteps: number, barArg: BarArg, energy: number, gaps: Gap[], seed: string, acc?: number[], d: Dials = VERSE): Gap[] {
   const rng = new Rng(seed + '|runs');
+  const G = gridOf(barArg), bar = G.bar;
   const runs: Gap[] = [];
   const p = Math.min(1, Math.max(0.05, 0.5 - 0.33 * energyEdge(energy)) * d.runs); // energy 3: 50%, 2 and 4: 33%, 1 and 5: 17% (of 4 tries every 4 bars)
-  const block = bar * 4;
-  for (let from = 0; from < totalSteps; from += block) {
-    const to = Math.min(totalSteps, from + block);
+  // (blocks of 4 bars, from bar line to bar line)
+  for (let b = 0, from = 0; from < totalSteps; b += 4, from = G.start(b)) {
+    const to = Math.min(totalSteps, G.start(b + 4));
     for (let k = 0; k < 4; k++) {
       if (!rng.chance(p)) continue;
       const len = Math.max(2, Math.round(bar / [8, 4, 2][cumulative(d.runLen, rng.next())]));
@@ -245,7 +251,7 @@ export function randomRuns(totalSteps: number, bar: number, energy: number, gaps
         if (step + len > to || gaps.some((g) => overlaps(g, run)) || runs.some((o) => overlaps(o, run))) continue;
         // (the lean: runs mostly start on the 1st or 3rd quarter)
         // (and on the band's hits)
-        if (!rng.chance((isStrong(step, bar) ? 1 : 0.3) * Math.min(1, nudge(acc, step)))) continue;
+        if (!rng.chance((G.isStrong(step) ? 1 : 0.3) * Math.min(1, nudge(acc, step)))) continue;
         runs.push(run);
         break;
       }
@@ -281,13 +287,15 @@ export type ToneBias = (step: number, tone: ChordNote) => number;
  * another part way through, at the half bar or the third beat.
  * Returns the chord note for every 16th step, and each bar's choice.
  */
-export function randomTones(totalSteps: number, bar: number, seed: string, acc?: number[], d: Dials = VERSE, whole?: { from: number; total: number }, fit?: KeyFit, bias?: ToneBias): { tones: ChordNote[]; bars: BarTone[] } {
+export function randomTones(totalSteps: number, barArg: BarArg, seed: string, acc?: number[], d: Dials = VERSE, whole?: { from: number; total: number }, fit?: KeyFit, bias?: ToneBias): { tones: ChordNote[]; bars: BarTone[] } {
   const rng = new Rng(seed + '|tones');
+  const G = gridOf(barArg), bar = G.bar;
   // (the key check draws on its own dice, so a draw that was already in the key stays as it was)
   const rk = new Rng(seed + '|tones-key');
   const tones: ChordNote[] = [];
   const bars: BarTone[] = [];
-  for (let from = 0; from < totalSteps; from += bar) {
+  for (let bi = 0, from = 0; from < totalSteps; from = G.start(++bi)) {
+    const L = G.len(bi);
     // (rule 22: a climbing section leans from the root toward the 5th, bar by bar)
     const pr = d.climb ? Math.min(1, ((whole?.from ?? 0) + from) / Math.max(1, (whole?.total ?? totalSteps) - bar)) : 0;
     const baseW: [number, number, number] = d.climb ? [1.6 - pr, 1, 0.6 + pr] : d.toneW;
@@ -299,12 +307,12 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
     let first = first0;
     let then = moves ? (uniform ? rng.pick(NOTES.filter((n) => n !== first)) : rng.weighted(NOTES.filter((n) => n !== first).map((n) => [n, toneW[NOTES.indexOf(n)]] as const))) : first;
     // (the move comes at the half bar or the third beat: a bit more often where the band hits harder)
-    const half = 0.65 * nudge(acc, from + bar / 2), late = 0.35 * nudge(acc, from + (bar * 3) / 4);
-    const at = from + Math.round(rng.chance(half / (half + late)) ? bar / 2 : (bar * 3) / 4);
+    const half = 0.65 * nudge(acc, from + L / 2), late = 0.35 * nudge(acc, from + (L * 3) / 4);
+    const at = from + G.beatNear(bi, rng.chance(half / (half + late)) ? 0.5 : 0.75);
     if (fit) {
       // (a core note out of the key is drawn again, from the chord notes that are in it, by the same weights; a chord with
       // none in the key keeps what was drawn)
-      const end = Math.min(totalSteps, from + bar);
+      const end = Math.min(totalSteps, from + L);
       const redraw = (among: readonly ChordNote[], a: number, b: number, now: ChordNote): ChordNote => {
         if (inKeyTones(fit, a, b, [now]).length) return now;
         const ok = inKeyTones(fit, a, b, among);
@@ -320,7 +328,7 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
       } else then = first;
     }
     bars.push(moves ? `${NAMES[first]}→${NAMES[then]}` : NAMES[first]);
-    for (let s = from; s < Math.min(totalSteps, from + bar); s++) tones.push(s < at ? first : then);
+    for (let s = from; s < Math.min(totalSteps, from + L); s++) tones.push(s < at ? first : then);
   }
   return { tones, bars };
 }
@@ -331,7 +339,8 @@ export function randomTones(totalSteps: number, bar: number, seed: string, acc?:
  * weights as rule 4), and holds from there to the next change in the bar's picks or the bar's end. The earlier part of the bar
  * (the end of the last phrase, or the break) keeps its pick. The draw is by step, so a leaf that repeats a seed repeats it.
  */
-export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE, fit?: KeyFit, bias?: ToneBias): { tones: ChordNote[]; bars: BarTone[] } {
+export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[], barArg: BarArg, seed: string, d: Dials = VERSE, fit?: KeyFit, bias?: ToneBias): { tones: ChordNote[]; bars: BarTone[] } {
+  const G = gridOf(barArg), bar = G.bar;
   const out = tones.slice();
   const uniform = !bias && d.toneW.every((x) => x === d.toneW[0]);
   for (const ph of phrases) {
@@ -339,7 +348,7 @@ export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[],
     const toneW = bias ? d.toneW.map((w, i) => w * bias(ph.step, NOTES[i])) : d.toneW;
     let pick = uniform ? NOTES[Math.min(2, Math.floor(u * 3))] : NOTES[cumulative(toneW, u)];
     let end = ph.step + 1;
-    while (end < out.length && end % bar !== 0 && tones[end] === tones[ph.step]) end++;
+    while (end < out.length && !G.isLine(end) && tones[end] === tones[ph.step]) end++;
     // (a core note shift has to last at least an 8th of a bar: a phrase starting closer than that to the bar's end or to the next
     // change keeps the note it is on)
     if (end - ph.step < bar / 8 - 1e-9) continue;
@@ -353,7 +362,7 @@ export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[],
   // (each bar's label again: its picks in order, "1", or "1→3" and so on)
   const labels = bars.map((_, b) => {
     const seq: ChordNote[] = [];
-    for (let s = b * bar; s < Math.min(out.length, (b + 1) * bar); s++) if (seq[seq.length - 1] !== out[s]) seq.push(out[s]);
+    for (let s = G.start(b); s < Math.min(out.length, G.start(b + 1)); s++) if (seq[seq.length - 1] !== out[s]) seq.push(out[s]);
     return seq.map((t) => NAMES[t]).join('→');
   });
   return { tones: out, bars: labels };
@@ -363,11 +372,14 @@ export function rerollTones(tones: ChordNote[], bars: BarTone[], phrases: Gap[],
  * Rule 5: longer notes. About 4 bars in 10 hold one note for a beat, a beat and a half, two beats or a whole bar,
  * starting on a beat, only where the line is plain 8ths on one chord note over one chord.
  */
-export function randomHolds(totalSteps: number, bar: number, gaps: Gap[], runs: Gap[], tones: ChordNote[], chordAt: Chord[], seed: string, acc?: number[], d: Dials = VERSE): Gap[] {
+export function randomHolds(totalSteps: number, barArg: BarArg, gaps: Gap[], runs: Gap[], tones: ChordNote[], chordAt: Chord[], seed: string, acc?: number[], d: Dials = VERSE): Gap[] {
   const rng = new Rng(seed + '|holds');
+  const G = gridOf(barArg), bar = G.bar;
   const holds: Gap[] = [];
   const beat = bar / 4;
-  for (let from = 0; from < totalSteps; from += bar) {
+  for (let bi = 0, from = 0; from < totalSteps; from = G.start(++bi)) {
+    // (the bar's own beats: four quarters, or a 7/8 bar's three)
+    const beats = G.beats(bi);
     if (!rng.chance(d.holdBar)) continue;
     // (a section that holds more than one note a bar tries twice)
     for (let pass = 0; pass < 2; pass++) {
@@ -377,12 +389,12 @@ export function randomHolds(totalSteps: number, bar: number, gaps: Gap[], runs: 
         const len = Math.round(beat * [1, 1.5, 2, 4][cumulative(d.holdLen, rng.next())]);
         // (the lean: long notes mostly start on the 2nd or 4th quarter)
         // (and toward the band's chord changes and hits)
-        const w = [1, 2.1, 1, 1.9].map((x, k) => x * nudge(acc, from + k * beat));
-        let q = rng.next() * (w[0] + w[1] + w[2] + w[3]), k0 = 0;
-        while (k0 < 3 && q >= w[k0]) q -= w[k0++];
-        const step = from + Math.round(k0 * beat);
+        const w = beats.map((b, k) => [1, 2.1, 1, 1.9][k % 4] * nudge(acc, from + b));
+        let q = rng.next() * w.reduce((x, y) => x + y, 0), k0 = 0;
+        while (k0 < w.length - 1 && q >= w[k0]) q -= w[k0++];
+        const step = from + Math.round(beats[k0]);
         const span = { step, len };
-        if (step + len > Math.min(totalSteps, from + bar)) continue;
+        if (step + len > Math.min(totalSteps, from + G.len(bi))) continue;
         if (gaps.some((g) => overlaps(g, span)) || runs.some((o) => overlaps(o, span)) || holds.some((o) => overlaps(o, span))) continue;
         let same = true;
         for (let k = step; k < step + len; k++) {
@@ -411,7 +423,7 @@ export function withHolds(notes: BandNote[], holds: Gap[]): BandNote[] {
  * chord note over the same chord: two 8ths become one note a beat long, and now and then a third joins (a beat and a half).
  * Fewer, longer notes, mostly starting on the beat or where the band hits.
  */
-export function withStretch(notes: BandNote[], tones: ChordNote[], chordAt: Chord[], bar: number, seed: string, acc?: number[], d: Dials = VERSE, skip: Gap[] = []): BandNote[] {
+export function withStretch(notes: BandNote[], tones: ChordNote[], chordAt: Chord[], bar: BarArg, seed: string, acc?: number[], d: Dials = VERSE, skip: Gap[] = []): BandNote[] {
   if (d.stretch <= 0) return notes;
   const same = (a: number, b: number) => tones[a] === tones[b] && chordAt[a].root === chordAt[b].root && chordAt[a].q === chordAt[b].q;
   const out: BandNote[] = [];
@@ -448,12 +460,13 @@ export const DEFAULT_RANGE: Range = { lo: 45, hi: 67, xlo: 42, xhi: 86 };
  */
 export function voiceLead(
   notes: BandNote[], r: Range = DEFAULT_RANGE, target?: (step: number) => number | undefined,
-  oct?: { tones: ChordNote[]; chordAt: Chord[]; bar: number; chance: number; up: number; seed: string },
+  oct?: { tones: ChordNote[]; chordAt: Chord[]; bar: BarArg; chance: number; up: number; seed: string },
   /** How hard a target pulls against the smoothest step (the climb and the dwell pull hard; the mood notes' contour leans). */
   pull = { leap: 0.3, w: 2 },
 ): BandNote[] {
   let prev = Math.round((r.lo + r.hi) / 2);
   let lock: number | undefined;
+  const G = oct && gridOf(oct.bar);
   return notes.map((n, i) => {
     const pc = ((n.midi % 12) + 12) % 12;
     let best = Math.round((prev - pc) / 12) * 12 + pc, score = Infinity;
@@ -466,7 +479,7 @@ export function voiceLead(
     if (oct && oct.chance > 0) {
       const at = (s: number) => Math.max(0, Math.min(oct.chordAt.length - 1, Math.floor(s + 1e-6)));
       const a = at(n.step), b = i ? at(notes[i - 1].step) : -1;
-      const core = i === 0 || Math.floor(a / oct.bar) !== Math.floor(b / oct.bar) || oct.tones[a] !== oct.tones[b] || oct.chordAt[a].root !== oct.chordAt[b].root || oct.chordAt[a].q !== oct.chordAt[b].q;
+      const core = i === 0 || G!.index(a) !== G!.index(b) || oct.tones[a] !== oct.tones[b] || oct.chordAt[a].root !== oct.chordAt[b].root || oct.chordAt[a].q !== oct.chordAt[b].q;
       if (core) {
         lock = undefined;
         if (roll(oct.seed, 'oct', n.step) < oct.chance) {
@@ -499,12 +512,13 @@ export function foldIntoRange(notes: BandNote[], r: Range = DEFAULT_RANGE): Band
  * same bar now and then (3 in 10) goes one scale step up or down from it, and the next note is back on the core.
  * Only 8ths and 16ths; the first note of a bar stays on the core.
  */
-export function addNeighbours(notes: BandNote[], key: number, mode: Mode, bar: number, seed: string, d: Dials = VERSE): BandNote[] {
+export function addNeighbours(notes: BandNote[], key: number, mode: Mode, barArg: BarArg, seed: string, d: Dials = VERSE): BandNote[] {
+  const G = gridOf(barArg);
   const scale = d.pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12));
   const out: BandNote[] = [];
   for (const n of notes) {
     const prev = out[out.length - 1];
-    const sameBar = prev && Math.floor(prev.step / bar) === Math.floor(n.step / bar);
+    const sameBar = prev && G.index(prev.step) === G.index(n.step);
     if (sameBar && !prev.nb && n.len <= 2 && roll(seed, 'nb', n.step) < d.neighbour) {
       const dir = roll(seed, 'nbd', n.step) < 0.5 ? 1 : -1;
       // (a step of the scale: in the pentatonic, 2 or 3 semitones)
@@ -523,17 +537,18 @@ export function addNeighbours(notes: BandNote[], key: number, mode: Mode, bar: n
  * anything else in those two slots (16ths, a break, a neighbour note) is replaced.
  * If the cores are further apart than the walk covers, the line leaps first, then walks in.
  */
-export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode: Mode, bar: number, seed: string, dials: Dials = VERSE): BandNote[] {
+export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode: Mode, barArg: BarArg, seed: string, dials: Dials = VERSE): BandNote[] {
+  const G = gridOf(barArg);
   const scale = dials.pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12));
   const ladder: number[] = [];
   for (let m = 24; m <= 108; m++) if (scale.has(m % 12)) ladder.push(m);
   const nearest = (m: number) => ladder.reduce((best, x, i) => (Math.abs(x - m) < Math.abs(ladder[best] - m) ? i : best), 0);
   let out = notes.map((n) => ({ ...n }));
   const total = Math.max(0, ...out.map((n) => n.step + n.len));
-  for (let B = bar; B < total; B += bar) {
+  for (let bi = 1, B = G.start(1); B < total; B = G.start(++bi)) {
     if (!phrases.some((p) => p.step < B && B < p.step + p.len)) continue;
     const next = out.find((n) => n.step === B);
-    const core = [...out].reverse().find((n) => n.step < B && n.step >= B - bar && !n.nb && !n.walk);
+    const core = [...out].reverse().find((n) => n.step < B && n.step >= G.start(bi - 1) && !n.nb && !n.walk);
     if (!next || !core || next.midi === core.midi) continue;
     const dir = next.midi > core.midi ? 1 : -1;
     const iNext = nearest(next.midi), d = Math.abs(iNext - nearest(core.midi));
@@ -558,7 +573,7 @@ export function walkToNext(notes: BandNote[], phrases: Gap[], key: number, mode:
  * quarter, 16% on the 2nd and 4th; 16th: 5% and 20%).
  * The first and last note of each phrase always stay.
  */
-export function smallBreaks(notes: BandNote[], phrases: Gap[], bar: number, seed: string, acc?: number[], d: Dials = VERSE): BandNote[] {
+export function smallBreaks(notes: BandNote[], phrases: Gap[], bar: BarArg, seed: string, acc?: number[], d: Dials = VERSE): BandNote[] {
   const out: BandNote[] = [];
   for (const ph of phrases) {
     const inside = notes.filter((n) => n.step >= ph.step && n.step < ph.step + ph.len);
@@ -618,9 +633,10 @@ export function limitSame(notes: BandNote[], max = MAX_SAME): BandNote[] {
  *   - plain: nothing is done; the phrase stops where the line does.
  */
 export function phraseEndings(
-  notes: BandNote[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE,
+  notes: BandNote[], phrases: Gap[], barArg: BarArg, seed: string, d: Dials = VERSE,
   ctx?: { key: number; mode: Mode; chordAt: Chord[]; range?: Range },
 ): BandNote[] {
+  const G = gridOf(barArg), bar = G.bar;
   const rng = new Rng(seed + '|endings');
   const chance = d.end[0] + rng.next() * (d.end[1] - d.end[0]);
   const beat = bar / 4;
@@ -641,7 +657,9 @@ export function phraseEndings(
       ].sort((a, b) => a.step - b.step);
     };
     if (style === 'punch') {
-      const pos = [end - bar, end - bar / 2].filter((x) => x >= ph.step + beat);
+      // (the last bar's downbeat or half bar: whatever length that bar is)
+      const L = G.lenAt(end - 1e-6);
+      const pos = [end - L, end - L / 2].filter((x) => x >= ph.step + beat);
       if (!pos.length) continue;
       const at = pos.length === 1 || roll(seed, 'punchat', ph.step) < 0.5 ? pos[0] : pos[1];
       const core = coreBefore(at);
@@ -676,13 +694,14 @@ export function phraseEndings(
  * Run after the phrase endings: it overrides the last phrase's own ending.
  */
 export function withLeadIn(
-  notes: BandNote[], phrases: Gap[], bar: number, total: number, seed: string, d: Dials,
+  notes: BandNote[], phrases: Gap[], barArg: BarArg, total: number, seed: string, d: Dials,
   ctx: { key: number; mode: Mode; chordAt: Chord[]; range?: Range },
 ): BandNote[] {
+  const bar = gridOf(barArg).bar;
   const last = phrases[phrases.length - 1];
   if (!d.leadIn || !last || roll(seed, 'leadin', last.step) >= d.leadIn) return notes;
   const forced: Dials = { ...d, end: [1, 1], endStyle: { held: 0, open: 3, hang: 1, punch: 0, sync: 0, plain: 0 }, endLen: [0, 0.2, 0.4, 0.3, 0.1] };
-  const out = phraseEndings(notes, [last], bar, `${seed}|lead`, forced, ctx);
+  const out = phraseEndings(notes, [last], barArg, `${seed}|lead`, forced, ctx);
   const end = last.step + last.len;
   const i = out.findIndex((n) => n.end && n.step + n.len === end);
   if (i < 0) return notes;
@@ -695,12 +714,12 @@ export function withLeadIn(
  * Rule 16 (push): a note on a beat now and then comes a 16th early, so the line leans ahead of the band. Not the first note
  * of a phrase, and only where the 16th before it is free. More where the band hits hard.
  */
-export function pushNotes(notes: BandNote[], phrases: Gap[], bar: number, seed: string, acc?: number[], d: Dials = VERSE): BandNote[] {
+export function pushNotes(notes: BandNote[], phrases: Gap[], barArg: BarArg, seed: string, acc?: number[], d: Dials = VERSE): BandNote[] {
   if (d.push <= 0) return notes;
-  const beat = bar / 4;
+  const G = gridOf(barArg);
   return notes.map((n, i) => {
     const prev = notes[i - 1];
-    const onBeat = Math.abs(n.step / beat - Math.round(n.step / beat)) < 1e-6;
+    const onBeat = G.isBeat(n.step);
     if (!onBeat || n.len < 2 || n.walk || n.land || n.nb || n.third || n.end || phrases.some((p) => Math.abs(p.step - n.step) < 1e-6)) return n;
     if (prev && prev.step + prev.len > n.step - 1 + 1e-6) return n;
     if (roll(seed, 'push', n.step) >= d.push * nudge(acc, n.step)) return n;
@@ -714,12 +733,14 @@ export function pushNotes(notes: BandNote[], phrases: Gap[], bar: number, seed: 
  * They sit between the usual steps, so steps and lengths are fractions (5⅓ sixteenths in 4/4).
  * Done last, so nothing else has to know about them.
  */
-export function thirdBars(notes: BandNote[], phrases: Gap[], bar: number, seed: string, d: Dials = VERSE): BandNote[] {
-  // (only where a third of the bar is whole 16ths: 3/4, 6/8, 9/8...; not in 4/4, 7/8...)
-  if (Math.abs(bar / 3 - Math.round(bar / 3)) > 1e-6) return notes;
+export function thirdBars(notes: BandNote[], phrases: Gap[], barArg: BarArg, seed: string, d: Dials = VERSE): BandNote[] {
+  const G = gridOf(barArg);
   const total = Math.max(0, ...notes.map((n) => n.step + n.len));
   let out = notes;
-  for (let b0 = 0; b0 + bar <= total; b0 += bar) {
+  for (let bi = 0, b0 = 0; b0 + G.len(bi) <= total; b0 = G.start(++bi)) {
+    const bar = G.len(bi);
+    // (only a bar where a third of it is whole 16ths: 3/4, 6/8, 9/8...; not 4/4, 7/8...)
+    if (Math.abs(bar / 3 - Math.round(bar / 3)) > 1e-6) continue;
     if (!phrases.some((p) => p.step <= b0 && b0 + bar <= p.step + p.len)) continue;
     const inside = out.filter((n) => n.step >= b0 && n.step < b0 + bar);
     if (!inside.length || inside.some((n) => n.walk || n.end) || roll(seed, 'third', b0) >= d.third) continue;
@@ -756,11 +777,12 @@ const BLUE: Record<string, number> = { rock: 1, hardrock: 1, grunge: 1, funk: 1,
  * bends are closer than 2 bars (Some) or 1 bar (Lots), keeping the ones listed first.
  */
 export function addBends(
-  notes: BandNote[], phrases: Gap[], bar: number,
+  notes: BandNote[], phrases: Gap[], barArg: BarArg,
   ctx: { amount: BendAmount; energy: number; genre: string; chordAt: Chord[]; tones: ChordNote[]; changes: number[]; mult?: number },
   seed: string,
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
+  const bar = gridOf(barArg).bar;
   const out = notes.map((n) => ({ ...n }));
   const lift = (ctx.amount === 'lots' ? 1.6 : 1) * (0.7 + 0.6 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 1 : 2) * bar;
@@ -806,9 +828,9 @@ export function addBends(
  * least a beat of phrase for the notes after. An opener is scooped into and bent more often than other notes (rules 13, 15).
  * Returns the notes and the phrases that opened this way (so the stretch rule leaves their short notes short).
  */
-export function withOpeners(notes: BandNote[], phrases: Gap[], chordAt: Chord[], bar: number, seed: string, acc?: number[], d: Dials = VERSE): { notes: BandNote[]; opened: Gap[] } {
+export function withOpeners(notes: BandNote[], phrases: Gap[], chordAt: Chord[], barArg: BarArg, seed: string, acc?: number[], d: Dials = VERSE): { notes: BandNote[]; opened: Gap[] } {
   if (d.opener <= 0) return { notes, opened: [] };
-  const beat = bar / 4;
+  const beat = gridOf(barArg).bar / 4;
   const opened: Gap[] = [];
   let out = notes;
   for (const ph of phrases) {
@@ -841,10 +863,11 @@ export function withOpeners(notes: BandNote[], phrases: Gap[], chordAt: Chord[],
  * Run before the silence fit, which leaves it as it is. `total`: steps in the leaf; `moreLeaves`: a leaf follows (a beat of silence at the end).
  */
 export function withLongHolds(
-  notes: BandNote[], phrases: Gap[], chordAt: Chord[], bar: number, total: number,
+  notes: BandNote[], phrases: Gap[], chordAt: Chord[], barArg: BarArg, total: number,
   ctx: { key: number; range: Range; moreLeaves: boolean }, seed: string, acc?: number[], d: Dials = VERSE,
 ): BandNote[] {
   if (d.holdLong <= 0 || !chordAt.length) return notes;
+  const G = gridOf(barArg), bar = G.bar;
   const beat = bar / 4;
   const pent = d.pent;
   const at = (g: number) => chordAt[Math.max(0, Math.min(chordAt.length - 1, Math.floor(g + 1e-6)))];
@@ -876,8 +899,8 @@ export function withLongHolds(
     for (let k = cumulative(Array.from({ length: 9 }, (_, i) => Math.exp(-0.4 * i)), rng.next()); k >= 0; k--) {
       const L = Math.round(bar * (1 + k / 8));
       const cands: { s: number; e: number; w: number }[] = [];
-      for (let q = Math.ceil(ph.step / beat - 1e-9); q * beat < phEnd - 1e-6; q++) {
-        const s = Math.round(q * beat), e = s + L;
+      for (const s of G.beatSteps(ph.step, phEnd - 1e-6)) {
+        const e = s + L;
         if (s < ph.step || e > limit + 1e-6) continue;
         // (nothing between a beat and nothing is left either side of it inside the phrase)
         if (s > ph.step + 1e-6 && s - ph.step < beat - 1e-6) continue;
@@ -899,8 +922,7 @@ export function withLongHolds(
         const changes: number[] = [];
         for (let g = Math.ceil(s + 1e-6); g < e - 1e-6; g++) if (!same(at(g), at(g - 1))) changes.push(g);
         const slots: number[] = [];
-        for (let q = Math.ceil((s + beat) / beat - 1e-9); q * beat <= e - beat + 1e-6; q++) {
-          const t = Math.round(q * beat);
+        for (const t of G.beatSteps(s + beat, e - beat + 1e-6)) {
           if (!changes.some((g) => Math.abs(g - t) < beat / 2)) slots.push(t);
         }
         const free: number[] = [];
@@ -959,7 +981,8 @@ export function withLongHolds(
  * phrase's first or last note, a walk, a long note or a third-bar note); too empty, notes are held into the gaps inside their phrase.
  * `total`: steps in the section.
  */
-export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total: number, target: number, seed: string, acc?: number[], tol = 0.03): BandNote[] {
+export function fitSilence(notes: BandNote[], phrases: Gap[], barArg: BarArg, total: number, target: number, seed: string, acc?: number[], tol = 0.03): BandNote[] {
+  const G = gridOf(barArg), bar = G.bar;
   const out = notes.map((n) => ({ ...n }));
   let cover = out.reduce((a, n) => a + n.len, 0);
   const sil = () => 1 - cover / total;
@@ -970,7 +993,7 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total
       if (inside.length) { edge.add(inside[0]); edge.add(inside[inside.length - 1]); }
     }
     const cand = out.filter((n) => !edge.has(n) && !n.walk && !n.land && !n.third && !n.end && n.len < 4);
-    const score = (n: BandNote) => n.len + 1.5 * accAt(acc, n.step) + (isStrong(n.step, bar) ? 0.7 : 0) - (n.nb ? 1 : 0) + roll(seed, 'fit', n.step) * 0.6;
+    const score = (n: BandNote) => n.len + 1.5 * accAt(acc, n.step) + (G.isStrong(n.step) ? 0.7 : 0) - (n.nb ? 1 : 0) + roll(seed, 'fit', n.step) * 0.6;
     cand.sort((a, b) => score(a) - score(b));
     const drop = new Set<BandNote>();
     for (const n of cand) {
@@ -1034,8 +1057,8 @@ export function fitSilence(notes: BandNote[], phrases: Gap[], bar: number, total
  * unit can't be fixed that way: the caller writes the leaf again (new dice) until it is. With `drop`, such a unit is removed
  * instead (the last resort).
  */
-export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], bar: number, drop = false): { notes: BandNote[]; ok: boolean } {
-  const beat = bar / 4;
+export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], barArg: BarArg, drop = false): { notes: BandNote[]; ok: boolean } {
+  const beat = gridOf(barArg).bar / 4;
   let out = notes.map((n) => ({ ...n }));
   let ok = true;
   let i = 0;
@@ -1072,11 +1095,12 @@ export function fixUnits(notes: BandNote[], phrases: Gap[], chordAt: Chord[], ba
  * third-bar notes and long holds (rule 28 moves those itself) are left alone (a long held ending that fades out may bend first, and then fades half as far), and no two inner bends are closer than a bar (Some) or ¾ bar (Lots), nor an inner and an outer bend closer than half that.
  */
 export function addNoteBends(
-  notes: BandNote[], bar: number,
+  notes: BandNote[], barArg: BarArg,
   ctx: { amount: BendAmount; energy: number; key: number; mode?: Mode; chordAt: Chord[]; range: Range; mult?: number; pent?: ReadonlySet<number> },
   seed: string,
 ): BandNote[] {
   if (ctx.amount === 'off') return notes;
+  const G = gridOf(barArg), bar = G.bar;
   const out = notes.map((n) => ({ ...n }));
   const lift = (ctx.amount === 'lots' ? 1 : 0.5) * (0.75 + 0.48 * energyEdge(ctx.energy)) * (ctx.mult ?? 1);
   const gap = (ctx.amount === 'lots' ? 0.75 : 1) * bar;
@@ -1104,7 +1128,7 @@ export function addNoteBends(
     // (an 8th note bends at most 3 semitones)
     const maxBend = n.len <= eighth + 1e-6 ? 3 : MAX_BEND;
     const nx = out[i + 1];
-    const barLine = Math.abs(end / bar - Math.round(end / bar)) < 1e-6;
+    const barLine = G.isLine(end);
     const ok = (m: number) => m >= ctx.range.xlo && m <= ctx.range.xhi;
     const c = ctx.chordAt[Math.min(ctx.chordAt.length - 1, Math.floor(n.step + at + 1e-6))];
     const pcs = c ? [0, third(c), fifth(c)].map((x) => (ctx.key + c.root + x) % 12) : [];
