@@ -1,6 +1,6 @@
 # The solo plan (landings first, then the paths between them)
 
-Status: design (2026-10-23); every step built (1 to 6), and step 7 (repeat shapes) after Paul's ask. Why: the solo writer (`docs/SOLO-NEW.md`, `src/parts/solo2.ts`) builds a solo lick by lick, each lick placed nearest the note before. Listening and measuring (91 solos):
+Status: design (2026-10-23); every step built (1 to 6), step 7 (repeat shapes) after Paul's ask, and round 3 (no Twin on solos, the gaps filled) after the next one. Why: the solo writer (`docs/SOLO-NEW.md`, `src/parts/solo2.ts`) builds a solo lick by lick, each lick placed nearest the note before. Listening and measuring (91 solos):
 - the planned height follows the energy only loosely (bar-mean pitch vs the planned centre: correlation 0.49), so the direction is hard to see;
 - 6.5 pairs a solo of the same note, same length, touching; 3.9 runs of 3+ the same pitch; a stretch of 4+ equal-length notes 1.6 times a solo (nothing limits it, the vocal has rules 7 and 20);
 - a bar's rhythm comes back about 3% of the time (real solos 55%), so no motif holds it together;
@@ -232,3 +232,14 @@ Paul: remove the Twin from the solo completely. Many stray notes with nothing ar
 - Calm solos lose their long rests: holds and bends carry them instead. Tune by ear.
 - 2x licks at 32nd speed sound like flurries: only where the pace there is already up, and sparingly.
 - The hands: a bend onto a pitch more than 3 semitones away is a slide, not a bend.
+
+### Round 3: built (2026-10-23)
+A, B and D are in; C (the breath cap) was left out because the fill step already ends every silence at a beat, so the plan's rests stay as drawn; E (2x licks in the normal connect) is not built.
+- **A. Twin off the solo**: `src/track.ts` no longer adds the second lead guitar to a solo (both writers). The hook and lead lines keep it. The old-writer hash is taken without the solo's `twin` field (`8eaa9620...`, was `d9686e3b...`); nothing else changed.
+- **B/D. Fill the gaps** (`FEATURES.fill`, `fillGaps` in `soloplan.ts`, run after the polish so nothing moves the gaps afterwards):
+  - A silence is the end of one note to the start of the next; the most allowed is 4 steps (`MAX_GAP`), from the first note (the opening too) to the last. A note alone (`STRAY_GAP`): a set of 1-2 notes inside a beat with a beat of silence either side; around it the most is 2 steps.
+  - For each gap a short rest is kept (0, 2 or 4 steps, mostly 2) and the rest is covered, by weighted chance: **hold on** (the note before is held longer; if the note after is a scale step or two off, the hold is bent onto it: pushed up from below, or picked bent and let down, landing as the next note is picked: `bendAt`, `lateBend`, `unbend`); **hold then a path**; or **a path** from the last note to the next one: a library lick that ends on it, else a scale walk, with a waypoint for a long way (`pathInto`, the connect step's own `lickPath` and `walkPath`). A path into the climax stays under it.
+  - **Licks at 2x** (`FEATURES.fast`): a path's lick is now and then played at double speed (every gap halved; a half step is a note a 32nd late, `shift`, as the triplets). A rhythm may only be halved if no two notes land in one step and its shortest gap stays at least `FAST_MIN_MS` (70 ms): at 100 bpm most licks, at 175 only licks that were 8ths or slower. Chance `FAST_P` 0.3 by player (`FAST_LEAN`: the shredder most, the sung player least), less in the calm, only for a gap of 10 steps or less.
+- **Numbers (90 planned solos)**: silences over a beat 230 to 0 (78 solos to none); notes alone 32 to 0; longest silence 4 steps; 2.9 gaps filled a solo, 0.38 quick licks, 0.33 bend links; time silent 19% to 12%; notes a bar 5.2. The check (`solo-plan-check`) fails on any silence over a beat, a note alone, a Twin on a planned solo, or a quick note faster than the tempo allows. Also: the off-scale check no longer skips every note with a timed bend, only the carried last note.
+- A repeat shape's copies are filled where they stand, so a `same` copy can differ a little from its source (exact repeats 10% to 8%).
+Not listened to yet. Tune by ear: `MAX_GAP`, the rest kept (`leave` weights), the hold / path weights, `FAST_P`.

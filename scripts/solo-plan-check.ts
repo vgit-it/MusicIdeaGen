@@ -32,7 +32,9 @@ const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length
 const SETS_CAP = 6;
 const A: Record<'old' | 'plan', Agg> = { old: zero(), plan: zero() };
 /** The moves used (step 4: runs, triplets, bend moves, build-ups, enclosures), counted from the writer's note. */
-const mv: Record<string, number> = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0, rep: 0 };
+const mv: Record<string, number> = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0, rep: 0, fill: 0, fast: 0, link: 0, stray: 0 };
+/** Round 3 (docs/SOLO-PLAN.md): silences over a beat, notes alone, the longest silence, and the quick (2x) licks beside the tempo. */
+const gap = { over: 0, strays: 0, longest: 0, fastNotes: 0, fastTooQuick: 0, solos: 0, twin: 0 };
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], s = `sp-${i}-${genre}`;
   const idea = generate({ genre, meter: '4/4', weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
@@ -55,7 +57,7 @@ for (let i = 0; i < N; i++) {
         if (x.len >= 8) { a.long8++; own8++; }
         if (x.len >= 12) a.long12++;
         // (the carried last note bends to a note of the next section's chord, whatever its key)
-        if (x.bendAt === undefined && !scale.includes((((x.notes[0] - sec.song.key) % 12) + 12) % 12)) {
+        if (!(x.bendAt !== undefined && x.step + x.len > total) && !scale.includes((((x.notes[0] - sec.song.key) % 12) + 12) % 12)) {
           // (off the scale: a chord note of a borrowed chord is allowed to be)
           const chord = sec.chords.timeline[sec.chords.chordIdx[Math.min(total - 1, x.step)]].chord;
           const tone = chordTones(sec.song.key, chord).includes(((x.notes[0] % 12) + 12) % 12);
@@ -106,7 +108,33 @@ for (let i = 0; i < N; i++) {
       }
       if (which !== 'plan') continue;
       // ---- the plan's own checks
-      for (const m of JSON.stringify(sec.notes ?? sec).matchAll(/, (\d+) (run|trip|bend|build|enclose|motif|hook|rep)\b/g)) mv[m[2]] += Number(m[1]);
+      for (const m of JSON.stringify(sec.notes ?? sec).matchAll(/, (\d+) (run|trip|bend|build|enclose|motif|hook|rep|fill|fast|link|stray)\b/g)) mv[m[2]] += Number(m[1]);
+      // ---- round 3: no silence over a beat (a held note is sound), no note alone, the quick licks within the tempo, no Twin
+      {
+        gap.solos++;
+        const hs = sec.guitar2.filter((h: any) => !h.mute && h.notes.length).sort((x: any, y: any) => x.step - y.step);
+        if (hs.some((h: any) => h.twin)) gap.twin++;
+        const sets: any[][] = [];
+        hs.forEach((h: any, k: number) => {
+          const pe = k ? hs[k - 1].step + hs[k - 1].len : 0, silence = h.step - pe;
+          if (silence > 4) { gap.over++; fail(`plan ${s}: ${silence} steps of silence before ${h.step}`); }
+          gap.longest = Math.max(gap.longest, silence);
+          const last = sets[sets.length - 1];
+          if (last && silence <= 1) last.push(h); else sets.push([h]);
+          const nx = hs[k + 1];
+          if (h.shift === 0.5 || (k && hs[k - 1].shift === 0.5)) {
+            gap.fastNotes++;
+            // (the shortest gap between two notes of a quick lick, in ms)
+            const t0 = h.step + (h.shift ?? 0), t1 = nx ? nx.step + (nx.shift ?? 0) : t0 + 4;
+            if ((t1 - t0) * (15000 / sec.song.bpm) < 69) gap.fastTooQuick++;
+          }
+        });
+        sets.forEach((st, k) => {
+          const a = st[0], z = st[st.length - 1], zEnd = z.step + z.len, pz = k ? sets[k - 1][sets[k - 1].length - 1] : null;
+          const before = pz ? a.step - (pz.step + pz.len) : a.step;
+          if (k + 1 < sets.length && st.length <= 2 && zEnd - a.step <= 4 && before >= 4 && sets[k + 1][0].step - zEnd >= 4 && !st.some((h: any) => h.notes.length > 1)) { gap.strays++; fail(`plan ${s}: a note alone at ${a.step}`); }
+        });
+      }
       const L = c?.landings as { step: number; midi: number; len: number; role: string }[] | undefined;
       if (!L?.length) { fail(`plan ${s}: no landings recorded`); continue; }
       const all = sec.guitar2.filter((h: any) => !h.mute && h.notes.length);
@@ -186,7 +214,11 @@ console.log(`last note carried into the next section ${pct(p.carryOk, p.carried)
 console.log(`an answer lands lower than the landing before it ${pct(p.fall, p.falls)}`);
 console.log(`planned: ${p.landings} landings (${p.waypoints} waypoints), calls off the root ${pct(p.callUp, p.calls)}, answers on the root ${pct(p.answerRoot, p.answers)}, climax highest for its place ${pct(p.climaxHigh, p.climaxes)} (${p.climaxes} of ${p.solos} solos have one)`);
 if (p.solos < 20) fail('too few solos');
-console.log(`moves (a solo): ${Object.entries(mv).map(([k, n]) => `${k} ${(n / Math.max(1, p.solos)).toFixed(2)}`).join(', ')}`);
+console.log(`silences over a beat ${gap.over}, notes alone ${gap.strays}, longest silence ${gap.longest} steps, Twin on a planned solo ${gap.twin}; the gaps filled (a solo): ${Object.entries(mv).filter(([k]) => ['fill', 'fast', 'link', 'stray'].includes(k)).map(([k, n]) => `${{ fill: 'gaps', fast: 'quick (2x) licks', link: 'bend links', stray: 'notes alone found' }[k]} ${(n / Math.max(1, p.solos)).toFixed(2)}`).join(', ')}; notes of the quick licks ${gap.fastNotes}, any too quick for the tempo ${gap.fastTooQuick}`);
+console.log(`moves (a solo): ${Object.entries(mv).filter(([k]) => !['fill', 'fast', 'link', 'stray'].includes(k)).map(([k, n]) => `${k} ${(n / Math.max(1, p.solos)).toFixed(2)}`).join(', ')}`);
+if (gap.twin) fail(`${gap.twin} planned solos with a Twin`);
+if (gap.fastTooQuick) fail(`${gap.fastTooQuick} notes of a quick lick are faster than the tempo allows`);
+if (p.solos >= 60 && !mv.fill) fail('no gaps filled in the planned solos');
 for (const k of ['run', 'bend', 'build', 'enclose', 'motif', 'rep']) if (p.solos >= 60 && !mv[k]) fail(`no ${k} move in ${p.solos} planned solos`);
 if (p.notes / p.bars < 4.2) fail(`planned solos play ${(p.notes / p.bars).toFixed(1)} notes a bar, under 4.2`);
 // round 2, step 5: the carried ending
