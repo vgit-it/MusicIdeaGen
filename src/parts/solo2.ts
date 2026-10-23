@@ -13,7 +13,7 @@
 
 import data from '../realism/solo-licks.json';
 import type { Genre } from '../genres';
-import type { ChordPart, GuitarHit, Song } from '../idea';
+import type { ChordPart, GuitarHit, Song, SoloCurve } from '../idea';
 import type { LickKind } from '../players/lead';
 import type { Rng } from '../rng';
 import { SCALES, chordPc } from '../theory';
@@ -801,8 +801,16 @@ export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: Gui
   });
 
   const hits = playSolo(rng, evs, { lick, key, minor, isTone: fit.isTone, inScale, total, t });
+  // (what it followed, for the neck view: a value per 16th)
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const curve: SoloCurve = {
+    shape: ENERGY_WORDS[en.shape](en), pitchC: en.pitchC, paceC: en.paceC,
+    energy: Array.from({ length: total }, (_, g) => r2(E(g))),
+    centre: Array.from({ length: total }, (_, g) => centerAt(g)),
+    pace: Array.from({ length: total }, (_, g) => r2(1 + en.paceC * en.pace * E(g))),
+  };
   return {
-    hits,
+    hits, curve,
     notes: [`Guitar 2: a solo (new): ${ENERGY_WORDS[en.shape](en)}${en.pitchC ? `, ${en.pitchC > 0 ? 'higher' : 'lower'} where it's strong` : ''}${en.paceC ? `, ${en.paceC > 0 ? 'busier' : 'sparer'} where it's strong` : ''}${quoted ? ', starts on the hook' : ''}, ${units} licks from real solos${repeats ? `, ${repeats} played again` : ''}${triplets ? ', triplets' : ''}${builds ? `, ${builds === 1 ? 'a build-up' : `${builds} build-ups`}` : ''}${runny ? ', quick turning runs' : ''}`],
   };
 }

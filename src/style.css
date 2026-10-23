@@ -227,6 +227,11 @@ button.bar { display: block; width: 100%; text-align: left; font: inherit; color
 .rollinner .rolllit { position: absolute; left: 0; top: 0; pointer-events: none; }
 .rollph { position: absolute; left: 0; top: 0; width: 2px; background: #fff; box-shadow: 0 0 6px rgba(255,255,255,.7); pointer-events: none; display: none; will-change: transform; }
 .rollstats { margin: 10px 0 0; white-space: pre-line; }
+/* solo on the neck */
+.neck .necklit { position: absolute; left: 0; top: 0; pointer-events: none; }
+.neckboardwrap { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--field); }
+.neckboardwrap canvas { display: block; }
+.neckstats { margin: 10px 0 0; white-space: pre-line; }
 .rolllayers { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 8px; }
 .rolllayers[hidden] { display: none; }
 .rolllayers label { flex-direction: row; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); }

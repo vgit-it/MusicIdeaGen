@@ -22,6 +22,7 @@ import { type PartKey, buildLockPanel } from './ui/locks';
 import { buildPartsPanel } from './ui/parts';
 import { buildChordEditor } from './ui/chordedit';
 import { buildRoll } from './ui/roll';
+import { buildNeck } from './ui/neck';
 import { buildVersePanel } from './verse/panel';
 import { SETS_DEFAULT, setsOf } from './verse/emotion';
 import { BASS_SHARE_DEFAULT } from './verse/bassline';
@@ -65,8 +66,10 @@ let preparing = false;
 engine.onBar = highlightBar;
 // the melody view: the sung line over the chords, with a playhead
 const roll = buildRoll($('roll'));
-engine.onStep = (i, _idx, g, time, six) => { if (engine.playing) roll.step(i, g, time, six); };
-engine.onStop = () => roll.stopped();
+// the solo on the neck: the curves the solo followed and where the hands play it
+const neck = buildNeck($('neck'));
+engine.onStep = (i, _idx, g, time, six) => { if (engine.playing) { roll.step(i, g, time, six); neck.step(i, g, time, six); } };
+engine.onStop = () => { roll.stopped(); neck.stopped(); };
 
 // the new verse melody writer (src/verse/): its own card
 const verse = buildVersePanel($('verse'), {
@@ -121,6 +124,7 @@ function render() {
   showReal();
   verse.update(track ? track.sections : [cur]);
   roll.show(cur);
+  neck.show(cur);
 }
 
 function setPlaying(on: boolean) {

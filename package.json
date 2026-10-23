@@ -47,6 +47,7 @@
     "sets-check": "rolldown scripts/sets-check.ts --platform node --format esm -o node_modules/.cache/sets-check.mjs && node node_modules/.cache/sets-check.mjs",
     "longer-check": "rolldown scripts/longer-check.ts --platform node --format esm -o node_modules/.cache/longer-check.mjs && node node_modules/.cache/longer-check.mjs",
     "lead-roll-check": "rolldown scripts/lead-roll-check.ts --platform node --format esm -o node_modules/.cache/lead-roll-check.mjs && node node_modules/.cache/lead-roll-check.mjs",
+    "neck-check": "rolldown scripts/neck-check.ts --platform node --format esm -o node_modules/.cache/neck-check.mjs && node node_modules/.cache/neck-check.mjs",
     "form-check": "rolldown scripts/form-check.ts --platform node --format esm -o node_modules/.cache/form-check.mjs && node node_modules/.cache/form-check.mjs",
     "variants-check": "rolldown scripts/variants-check.ts --platform node --format esm -o node_modules/.cache/variants-check.mjs && node node_modules/.cache/variants-check.mjs",
     "interval-check": "rolldown scripts/interval-check.ts --platform node --format esm -o node_modules/.cache/interval-check.mjs && node node_modules/.cache/interval-check.mjs",
