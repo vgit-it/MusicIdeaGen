@@ -1,0 +1,397 @@
+// The planned solo writer (docs/SOLO-PLAN.md, step 2): the solo written landings first, then the paths between them.
+// 1. Plan: the solo is units of two bars (a call that ends up and open, an answer that comes home; the last unit ends the
+//    solo), each cut into phrases of real lengths. Every phrase has a landing: a chord note, at a time, held for a time, with a
+//    breath after it (rests and holds come from the mood, the energy and the genre, not from a clean-up). The climax phrase,
+//    on the energy's highest crest, lands highest and longest. A landing's pitch is picked by the vocal's interval theory
+//    (src/verse/intervals.ts): the mood's liking of the move from the landing before, pulled to the height the energy wants.
+// 2. Connect: the path from one landing to the next, in the time there is. A library lick that ends on the landing (src/realism/
+//    solo-licks.json, a shape ending on that note, in a real rhythm that fits the time and the pace, scored by the mood's liking of
+//    its intervals), or a stepwise walk through the scale; a long path is cut at a waypoint on a beat, a weaker landing.
+// Not yet (steps 3-5): bend moves, build-ups, triplets, quick runs, the hook quoted, the motif coming back, the polish rules.
+// Played by the same hands as the other writers (playSolo).
+
+import type { Genre } from '../genres';
+import type { ChordPart, GuitarHit, Song, SoloCurve } from '../idea';
+import type { LickKind } from '../players/lead';
+import type { Rng } from '../rng';
+import { SCALES, chordPc } from '../theory';
+import type { Mood } from '../tension';
+import { TUNINGS } from '../theory/fretboard';
+import { intervalCost, profileFor } from '../verse/intervals';
+import { type Guitar2Part, MINORISH } from './guitar2';
+import { lickFit } from './licks';
+import { RHYTHMS, type Rhythm } from './reallicks';
+import { type Ev, playSolo } from './solo';
+import { BUSY, DENSITY, ENERGY_WORDS, HELD, type Held, energyAt, pickEnergy } from './solo2';
+import { LIB_GENRES, LIB_SHAPES, type LibShape, type RhythmTags, moodFit, rhythmTags, shapeRel } from './solotags';
+
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
+
+export type LandingRole = 'mid' | 'call' | 'answer' | 'climax' | 'end' | 'waypoint';
+export interface Landing { step: number; midi: number; len: number; role: LandingRole }
+
+/** How much a mood breathes (rests and long holds), and a genre. */
+const BREATH_MOOD: Record<Mood, number> = { melancholic: 1.4, nostalgic: 1.2, dreamy: 1.3, dark: 1.1, tense: 0.8, angry: 0.6, happy: 0.8, triumphant: 0.7 };
+const BREATH_GENRE: Record<Genre, number> = { funk: 1.3, pop: 1.1, rock: 1, grunge: 1.1, altmetal: 0.9, hardrock: 0.8, metal: 0.7 };
+/** The path's notes a beat against the real notes a bar: the rests and holds are planned apart, so the paths are busier than the average. */
+const PATH_BOOST = 1.5;
+/** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
+const PICK_T = 1.5;
+
+// the library by the degree its shape ends on, and the rhythms by note count
+const ENDS: Record<'m' | 'M', LibShape[][]> = { m: Array.from({ length: 12 }, () => []), M: Array.from({ length: 12 }, () => []) };
+for (const s of LIB_SHAPES) if (s.n >= 3) { const rel = shapeRel(s); ENDS[s.minor ? 'm' : 'M'][mod(rel[rel.length - 1], 12)].push(s); }
+const RH_BY_N = new Map<number, { r: Rhythm; t: RhythmTags }[]>();
+for (const r of RHYTHMS) { const a = RH_BY_N.get(r.ons.length) ?? []; a.push({ r, t: rhythmTags(r) }); RH_BY_N.set(r.ons.length, a); }
+
+function pickCost<T>(rng: Rng, items: { v: T; cost: number }[]): T | null {
+  if (!items.length) return null;
+  const lo = Math.min(...items.map((x) => x.cost));
+  return rng.weighted(items.map((x) => [x.v, Math.exp(-(x.cost - lo) / PICK_T)] as [T, number]));
+}
+
+export interface PlanOpts {
+  /** The song's mood (the track's): the intervals, the height of the call and the answer, and how much it breathes. */
+  mood?: Mood;
+  /** The section's tension, a level (0-1) for each bar. */
+  tension?: number[];
+}
+
+export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, _hook: GuitarHit[] | null, intensity = 0.7, o: PlanOpts = {}): Guitar2Part {
+  const { key, mode, bars, total } = song;
+  const genre = song.partGenres.strum;
+  const gi = LIB_GENRES.indexOf(genre);
+  const t = song.tuning ?? TUNINGS.standard;
+  const minor = MINORISH.includes(mode);
+  const fit = lickFit(song, chords, riff);
+  const scale = [...(SCALES[mode] as readonly number[])].sort((a, b) => a - b);
+  const inScale = (m: number) => scale.includes(mod(m - key, 12));
+  const changes = new Set(chords.timeline.map((e) => e.step));
+  const barStarts = new Set(bars.map((b) => b.start));
+  const boxMinor = minor || (lick === 'blues' && rng.chance(0.5));
+  const mood: Mood = o.mood ?? 'nostalgic';
+  const barOf = (g: number) => { for (let i = bars.length - 1; i >= 0; i--) if (g >= bars[i].start) return i; return 0; };
+  const tensionAt = (g: number) => (o.tension?.length ? o.tension[Math.min(o.tension.length - 1, barOf(g))] : 0.5);
+  const profs = bars.map((_, i) => profileFor(mood, 'solo', o.tension?.length ? o.tension[Math.min(o.tension.length - 1, i)] : undefined));
+  const prof = (g: number) => profs[barOf(g)];
+
+  // the energy, the height and the pace it asks for (as the other writer: docs/SOLO-NEW.md)
+  const en = pickEnergy(rng, genre, bars.length);
+  if (en.shape === 'wave' || en.shape === 'saw' || en.shape === 'steps') en.waves = Math.round(2 * en.waves * Math.max(1, bars.length / 8) ** 0.6) / 2;
+  const E = (g: number) => energyAt(en, clamp(g / total, 0, 1));
+  const R = 57 + mod(key - 57, 12);
+  const base = R + 3 + Math.round(3 * intensity);
+  const centerAt = (g: number) => base + Math.round(en.pitchC * en.pitch * E(g));
+  const windowAt = (g: number): [number, number] => [Math.max(50, centerAt(g) - 8), Math.min(84, centerAt(g) + 9)];
+  const D = DENSITY[genre] * BUSY[lick] * (0.85 + 0.3 * intensity);
+  /** Wanted: the path's notes a beat at `g`. */
+  const pbAt = (g: number) => (PATH_BOOST * D / 4) * (1 + en.paceC * en.pace * E(g));
+  /** How much slower than usual the pace is at `g` (0 = usual or faster, up to 1). */
+  const calmAt = (g: number) => Math.max(0, -en.paceC * E(g));
+  const vel0 = 0.8 + 0.08 * intensity;
+
+  const evs: Ev[] = [];
+  const landings: Landing[] = [];
+  const fits = (ms: number[], steps: number[], lens: number[]) => ms.every((m, i) => {
+    const g = steps[i];
+    if (g >= total || fit.clash(m, g)) return false;
+    if (lens[i] >= 4 && fit.rubs(m, g)) return false;
+    if (!inScale(m) && !fit.isTone(m, g) && lens[i] > 2) return false;
+    return true;
+  });
+
+  // ---- the landings' notes: held, bent, or the trademark on the climax
+  const peakEv = (m: number, g: number, len: number): Ev => {
+    const e: Ev = { step: g, midi: m, len, vel: 0.96, peak: true, bend: 0 };
+    const way = rng.next();
+    if (lick === 'sung' && way < 0.5) Object.assign(e, { bend: 2, dyad: 0 });
+    else if ((lick === 'blues' || lick === 'muted') && way < 0.5 && (inScale(m - 3) || inScale(m - 4))) Object.assign(e, { bend: inScale(m - 3) ? 3 : 4, rake: 3 });
+    else if (lick === 'run' && way < 0.5) Object.assign(e, { bend: 0, trill: inScale(m + 2) ? 2 : 1 });
+    else if (lick === 'simple' && way < 0.5) Object.assign(e, { bend: 0, dyad: 12, slide: -2 });
+    else Object.assign(e, { bend: inScale(m - 2) ? 2 : inScale(m - 1) ? 1 : 0 });
+    return e;
+  };
+  const landingEv = (m: number, g: number, len: number, role: LandingRole): Ev => {
+    const v = vel0 + 0.05 * E(g) + (role === 'waypoint' ? -0.02 : 0.04);
+    if (role === 'climax') return peakEv(m, g, len);
+    if (role === 'waypoint' || len < 6 || !rng.chance(0.6)) return { step: g, midi: m, len, vel: v };
+    // a long landing sung the player's way: bent and held, held then bent, bent and let down, a unison bend, or plain
+    const b = inScale(m - 2) ? 2 : inScale(m - 1) ? 1 : 0;
+    const way: Held = b ? rng.weighted(HELD[lick]) : 'plain';
+    const lets = !fit.rubs(m - b, g + len - 1) && !fit.clash(m - b, g + len - 1);
+    if (way === 'bendHold') return { step: g, midi: m, len, vel: v, bend: b };
+    if (way === 'holdBend' && len >= 8) return { step: g, midi: m, len, vel: v, bend: 0, lateBend: b };
+    if (way === 'bendRelease' && lets) return { step: g, midi: m, len, vel: v, bend: b, unbend: b };
+    if (way === 'preRelease' && lets) return { step: g, midi: m, len, vel: v, bend: 0, unbend: b };
+    if (way === 'unison' && b === 2) return { step: g, midi: m, len, vel: v, bend: 2, dyad: 0 };
+    return { step: g, midi: m, len, vel: v };
+  };
+  const land = (m: number, g: number, len: number, role: LandingRole) => {
+    evs.push(landingEv(m, g, len, role));
+    landings.push({ step: g, midi: m, len, role });
+  };
+
+  // ---- breath and hold: from the mood, the genre, the pace there and the tension
+  const breathK = (g: number) => (BREATH_MOOD[mood] * BREATH_GENRE[genre] / (1 + en.paceC * en.pace * E(g))) * (1.2 - 0.4 * tensionAt(g));
+  /** The rest after a phrase (steps, even): real solos rest none after 41%, under a beat 41%, 1-2 beats 12%, more 6%. */
+  const breathFor = (g: number, role: LandingRole) => Math.round((rng.weighted<number>([[0, 41], [2, 41], [6, 12], [10, 6]]) * breathK(g) * (role === 'mid' ? 1 : 1.3)) / 2) * 2;
+  /** How long a landing is held (steps): a call or answer mostly long, a middle one less, the climax longest; longer in the calm. */
+  const holdFor = (g: number, role: LandingRole, phraseLen: number) => {
+    const calm = calmAt(g);
+    if (role === 'climax') return 2 * Math.round((8 + rng.next() * 4) / 2);
+    const longP = clamp((role === 'mid' ? 0.45 : 0.75) + 0.3 * calm, 0.2, 0.95);
+    const h = rng.chance(longP) ? 6 + rng.next() * (4 + 2 * calm) : 2 + rng.next() * 2;
+    // (a short phrase keeps room for a path: the hold is at most 0.6 of it)
+    return Math.max(2, Math.min(2 * Math.round(h / 2), 2 * Math.round((0.6 * phraseLen) / 2)));
+  };
+  /** A phrase's length in steps with its hold, not its breath: real phrases, longer where the pace is up. */
+  const phraseSteps = (at: number) => {
+    const [lo, hi] = rng.weighted<[number, number]>([[[1, 1.5], 19], [[1.5, 2], 17], [[2, 4], 33], [[4, 8], 20], [[8, 12], 10]]);
+    const lvl = en.paceC * E(at);
+    const beats = 1.25 * (lo + rng.next() * (hi - lo)) * (lvl > 0 ? 1 + 1.2 * lvl : 1 + 0.5 * Math.max(-0.6, lvl));
+    return Math.max(6, 2 * Math.round(beats * 2));
+  };
+
+  // ---- the plan: units, phrases, the climax
+  const end = total - 2;
+  interface Phrase { S: number; end: number; role: LandingRole; len: number }
+  const units: { s: number; e: number; role: LandingRole }[] = [];
+  for (let b = 0; b < bars.length;) {
+    const take = bars.length - b === 3 || bars.length < 2 ? bars.length - b : 2;
+    units.push({ s: bars[b].start, e: b + take < bars.length ? bars[b + take].start : end, role: units.length % 2 ? 'answer' : 'call' });
+    b += take;
+  }
+  units[units.length - 1].role = 'end';
+  const phrases: Phrase[] = [];
+  for (const u of units) {
+    let pos = u.s;
+    while (pos < u.e - 5) {
+      let len = phraseSteps(pos);
+      if (u.e - pos - len < 8) len = u.e - pos;
+      const lastOne = pos + len >= u.e;
+      // (starts: the first lick on the beat about two times in three, later ones a little late now and then)
+      const delay = !phrases.length ? (rng.chance(0.64) ? 0 : 2) : rng.weighted<number>([[0, 40], [2, 40], [4, 20]]);
+      phrases.push({ S: pos + (len - delay >= 8 ? delay : 0), end: pos + len, role: lastOne ? u.role : 'mid', len });
+      pos += len;
+    }
+  }
+  // the climax: the phrase in the middle of the energy's highest crest, if it is long enough to build to
+  let crest = Math.floor(total * 0.4), best = -Infinity;
+  for (let g = Math.floor(total * 0.15); g < total - 12; g += 2) { const e = E(g) + 0.01 * rng.next(); if (e > best) { best = e; crest = g; } }
+  const eligible = phrases.map((p, i) => ({ p, i })).filter(({ p }) => p.role !== 'end' && p.len >= 12);
+  const climaxAt = eligible.length ? eligible.reduce((a, b) => (Math.abs((b.p.S + b.p.end) / 2 - crest) < Math.abs((a.p.S + a.p.end) / 2 - crest) ? b : a)).i : -1;
+  if (climaxAt >= 0) phrases[climaxAt].role = 'climax';
+
+  // ---- where a landing sits: a chord note near the height the role wants, by the mood's liking of the move from the one before
+  const chooseLanding = (L: number, role: LandingRole, hold: number, prev: number | null, lastMove: number, before: number | null) => {
+    const win = windowAt(L), P = prof(L), c = centerAt(L);
+    const target = role === 'climax' ? Math.min(win[1], c + 5) : role === 'call' ? c + 0.8 * P.size : role === 'answer' || role === 'end' ? c - 0.8 * P.size : c + (rng.next() - 0.5) * 1.5 * P.size;
+    const root = chordPc(key, fit.chordAt(L));
+    const items: { v: number; cost: number }[] = [];
+    for (let m = win[0]; m <= win[1]; m++) {
+      if (!fit.isTone(m, L) || fit.clash(m, L) || (hold >= 4 && fit.rubs(m, L))) continue;
+      let cost = (role === 'climax' ? 0.5 : 0.22) * Math.abs(m - target) + (prev !== null ? intervalCost(P, prev, m, lastMove, true) : 0);
+      // (the climax sits above the rest; the rest keep under what the height and the mood allow, and under the climax once it is sung)
+      if (role === 'climax') cost += Math.max(0, c + 3 - m);
+      else cost += Math.max(0, m - (c + P.size + 2)) + (climaxMidi !== null ? Math.max(0, m - (climaxMidi - 1)) : 0);
+      // (a landing on the same note as the one before, or the one before that, is a dull line)
+      if (m === prev) cost += 2.5; else if (m === before) cost += 1;
+      const isRoot = mod(m, 12) === root;
+      if (role === 'call') cost += isRoot ? 4 : 0;
+      else if (role === 'answer' || role === 'end') cost += isRoot ? -1.5 : 1;
+      items.push({ v: m, cost });
+    }
+    const m = pickCost(rng, items);
+    if (m !== null) return m;
+    // (nothing fits under the riff: the nearest chord note, clashing or not)
+    for (let d = 0; d < 12; d++) for (const x of [c + d, c - d]) if (fit.isTone(x, L)) return x;
+    return c;
+  };
+
+  // ---- connecting two landings
+  const stepsOfRhythm = (r: Rhythm, L: number) => r.ons.map((x) => L - (r.ons[r.ons.length - 1] - x));
+  const shapeWeight = (s: LibShape, g: number, adapt: boolean) =>
+    Math.sqrt(s.songs) * (1 + (gi >= 0 ? (3 * s.genres[gi]) / Math.max(1, s.genres.reduce((a, b) => a + b, 0)) : 0)) * moodFit(s, mood, tensionAt(g)) * (adapt ? 0.35 : 1);
+
+  /** A stepwise walk through the scale from `f` toward `tp`, filling [S, L) exactly: the notes before the landing. */
+  const walkPath = (f: number, S: number, tp: number, L: number, lastMove: number): Ev[] => {
+    const P = L - S;
+    if (P < 2) return [];
+    const pb = pbAt(S);
+    const us = [1, 2, 4].filter((u) => u <= P);
+    const u = rng.weighted(us.map((x) => [x, Math.exp(-(((4 / x - pb) / (0.45 * pb)) ** 2)) + 0.01] as [number, number]));
+    // note lengths: mostly the walk's own unit, a longer note now and then (to breathe), a shorter one (a pair of quick ones)
+    const dur: number[] = [];
+    for (let rem = P; rem > 0;) {
+      const opts: [number, number][] = [[u, 6], [2 * u, 2], [u / 2, u >= 2 ? 1 : 0], [3 * u, 0.5]];
+      const ok = opts.filter(([x, w]) => w > 0 && x <= rem && Number.isInteger(x));
+      // (what is left is too short for a note of its own: the last note takes it)
+      if (!ok.length) { if (dur.length) dur[dur.length - 1] += rem; else dur.push(rem); break; }
+      const d = rng.weighted(ok);
+      dur.push(d);
+      rem -= d;
+    }
+    const k = dur.length;
+    const win = windowAt(S), pool: number[] = [];
+    for (let m = win[0] - 3; m <= win[1] + 3; m++) if (inScale(m)) pool.push(m);
+    const idx = (m: number) => pool.reduce((bi, x, i) => (Math.abs(x - m) < Math.abs(pool[bi] - m) ? i : bi), 0);
+    const i0 = idx(f), iT = idx(tp), Pr = prof(S);
+    const sign = rng.chance(Pr.up) ? 1 : -1;
+    const leapy = clamp((Pr.size - 2.2) / 6, 0, 0.5);
+    const path: number[] = [];
+    let prev = i0;
+    for (let j = 1; j <= k; j++) {
+      let x = i0 + (iT - i0) * (j / (k + 1));
+      // (a bend of the line, toward the way the mood leans; and now and then a leap, stepped back from)
+      if (P >= 8) x += sign * Math.sin((Math.PI * j) / (k + 1)) * rng.next() * 2;
+      let i = Math.round(x);
+      if (rng.chance(leapy) && j < k) i += rng.pick([-3, -2, 2, 3]);
+      i = clamp(i, 0, pool.length - 1);
+      if (i === prev) i = clamp(i + (j === k ? (iT >= prev ? -1 : 1) : sign), 0, pool.length - 1);
+      if (j === k && i === iT) i = clamp(i + (prev >= iT ? 1 : -1), 0, pool.length - 1);
+      path.push(i);
+      prev = i;
+    }
+    const out: Ev[] = [];
+    let g = S;
+    path.forEach((i, j) => {
+      let m = pool[i];
+      // (a chord note on the beats, a step away if need be)
+      if ((g % 4 === 0 || changes.has(g)) && !fit.isTone(m, g)) for (const d of [1, -1, 2, -2]) { const c = pool[clamp(i + d, 0, pool.length - 1)]; if (fit.isTone(c, g) && c !== tp) { m = c; break; } }
+      if (fit.clash(m, g)) for (const d of [1, -1]) { const c = pool[clamp(i + d, 0, pool.length - 1)]; if (!fit.clash(c, g)) { m = c; break; } }
+      // (never the note just played again)
+      const before = out.length ? out[out.length - 1].midi : f;
+      if (m === before) for (const d of [sign, -sign, 2 * sign]) { const c = pool[clamp(i + d, 0, pool.length - 1)]; if (c !== before && c !== tp && !fit.clash(c, g)) { m = c; break; } }
+      out.push({ step: g, midi: m, len: dur[j], vel: vel0 + 0.05 * E(g) + (j === 0 ? 0.03 : 0) + (rng.next() - 0.5) * 0.06 });
+      g += dur[j];
+    });
+    void lastMove;
+    return out;
+  };
+
+  /** A library lick that ends on the landing, in a real rhythm that fits the time: its notes before the landing, or null. */
+  const lickPath = (f: number, S: number, tp: number, L: number, lastMove: number): { evs: Ev[]; start: number } | null => {
+    const P = L - S;
+    const endDeg = mod(tp - key, 12), pools = ENDS[boxMinor ? 'm' : 'M'];
+    const cands: { s: LibShape; delta: number; w: number }[] = [];
+    for (const delta of [0, 1, -1, 2, -2]) for (const s of pools[mod(endDeg + delta, 12)]) cands.push({ s, delta, w: shapeWeight(s, L, delta !== 0) });
+    if (!cands.length) return null;
+    const win = windowAt(L), Pr = prof(S), pb = pbAt(L);
+    const gap0 = (st: number) => st - S;
+    const tries: { v: { ms: number[]; steps: number[]; lens: number[] }; cost: number }[] = [];
+    for (let k = 0; k < 24; k++) {
+      const { s, delta } = rng.weighted(cands.map((c) => [c, c.w] as [typeof c, number]));
+      const rs = (RH_BY_N.get(s.n) ?? []).filter((x) => x.r.ons[s.n - 1] <= P);
+      if (!rs.length) continue;
+      const { r, t: rt } = rng.weighted(rs.map((x) => [x, Math.sqrt(x.r.songs) * Math.exp(-(((x.t.perBeat - pb) / (0.4 * pb)) ** 2)) + 1e-3] as [typeof x, number]));
+      const steps = stepsOfRhythm(r, L), lens = steps.map((g, i) => (i + 1 < steps.length ? steps[i + 1] - g : 4));
+      if (steps[0] < S) continue;
+      const rel = shapeRel(s), last = rel[rel.length - 1];
+      // (the notes end on the landing; a shape that ends a step or two off has its last note moved onto it)
+      const ms = rel.map((x, i) => (i === rel.length - 1 ? tp : tp - delta - (last - x)));
+      if (ms.some((m) => m < win[0] - 3 || m > win[1] + 3)) continue;
+      if (delta !== 0 && (ms[ms.length - 1] === ms[ms.length - 2] || Math.abs(ms[ms.length - 1] - ms[ms.length - 2]) > 5)) continue;
+      if (!fits(ms.slice(0, -1), steps.slice(0, -1), lens.slice(0, -1))) continue;
+      let cost = intervalCost(Pr, f, ms[0], lastMove, false) + 0.5 * -Math.log(moodFit(s, mood, tensionAt(L))) + 0.5 * ((rt.perBeat - pb) / pb) ** 2 + 0.15 * (steps[0] - S);
+      // (chord notes where they are heard: the beats and the chord changes)
+      ms.slice(0, -1).forEach((m, i) => { if (steps[i] % 4 === 0 || changes.has(steps[i])) cost -= fit.isTone(m, steps[i]) ? 0.8 : -0.8; });
+      if (delta !== 0) cost += 0.8;
+      // (a lick that starts on the note just played says it twice)
+      if (ms[0] === f && !(gap0(steps[0]) >= 3)) cost += 1.5;
+      tries.push({ v: { ms, steps, lens }, cost });
+    }
+    const pick = pickCost(rng, tries);
+    if (!pick) return null;
+    const out: Ev[] = [];
+    // a gap before the lick: walked, if it is long enough to say something, else a rest
+    const gap = pick.steps[0] - S;
+    if (gap >= 3) out.push(...walkPath(f, S, pick.ms[0], pick.steps[0], lastMove));
+    pick.ms.slice(0, -1).forEach((m, i) => out.push({ step: pick.steps[i], midi: m, len: pick.lens[i], vel: vel0 + 0.05 * E(pick.steps[i]) + (i === 0 ? 0.03 : 0) + (rng.next() - 0.5) * 0.06 }));
+    return { evs: out, start: pick.steps[0] };
+  };
+
+  /** The path from the note `f` to the landing `tp` at `L`, from `S`; then the landing itself. A long path is cut at a waypoint. */
+  const connect = (f: number, S: number, tp: number, L: number, hold: number, role: LandingRole, lastMove: number): void => {
+    const P = L - S;
+    if (P > 14) {
+      // a waypoint on a beat near the middle: a weaker landing, a chord note between the two
+      const wl = clamp(S + 4 * Math.round((P * (0.4 + 0.2 * rng.next())) / 4), S + 4, L - 8);
+      const dw = rng.pick([2, 2, 4]);
+      const win = windowAt(wl), frac = (wl - S) / P, P0 = prof(wl);
+      const ideal = f + (tp - f) * frac + (rng.next() - 0.3) * 3;
+      const items: { v: number; cost: number }[] = [];
+      for (let m = win[0]; m <= win[1]; m++) {
+        if (!fit.isTone(m, wl) || fit.clash(m, wl)) continue;
+        items.push({ v: m, cost: (m === f || m === tp ? 1.5 : 0) + 0.3 * Math.abs(m - ideal) + 0.5 * intervalCost(P0, f, m, lastMove, false) + 0.5 * intervalCost(P0, m, tp, m - f, false) });
+      }
+      const w = pickCost(rng, items);
+      if (w !== null) {
+        connect(f, S, w, wl, dw, 'waypoint', lastMove);
+        connect(w, wl + dw, tp, L, hold, role, w - f);
+        return;
+      }
+    }
+    if (P >= 2) {
+      const lp = P >= 3 && (rng.chance(0.8) || P <= 4) ? lickPath(f, S, tp, L, lastMove) : null;
+      const path = lp ? lp.evs : walkPath(f, S, tp, L, lastMove);
+      evs.push(...path);
+    }
+    land(tp, L, hold, role);
+  };
+
+  // ---- the solo: phrase by phrase
+  let prevLanding: number | null = null, before: number | null = null, climaxMidi: number | null = null, lastMove = 0, f = centerAt(0);
+  phrases.forEach((p, pi) => {
+    const lastPhrase = pi === phrases.length - 1;
+    let { S, end: pe } = p;
+    let hold: number, breath: number;
+    if (lastPhrase) {
+      // the ending: most run on into the next section (a short last note), some land on the root, held
+      const home = rng.chance(0.4);
+      hold = home ? 2 * Math.round((6 + 6 * rng.next()) / 2) : 3;
+      breath = 0;
+      pe = end;
+    } else {
+      hold = holdFor(pe, p.role, p.len);
+      breath = breathFor(pe, p.role);
+    }
+    let L = pe - breath - hold;
+    // (no room for a path: a held note, the hold taking what there is)
+    if (L - S < 2) { L = S; hold = Math.max(2, Math.min(14, pe - S - breath)); }
+    // (a hold over a chord change keeps to the chord it was played on, if the note isn't in the next one)
+    let m = chooseLanding(L, p.role === 'end' && hold === 3 ? 'mid' : p.role, hold, prevLanding, lastMove, before);
+    if (p.role === 'end' && hold > 3) {
+      const root = chordPc(key, fit.chordAt(L));
+      const alt = [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5].map((d) => m + d).find((x) => mod(x, 12) === root && !fit.clash(x, L) && x >= windowAt(L)[0] - 2 && x <= windowAt(L)[1] + 2);
+      if (alt !== undefined) m = alt;
+    }
+    for (let g = L + 1; g < L + hold; g++) if (changes.has(g) && !fit.isTone(m, g)) { hold = Math.max(2, 2 * Math.floor((g - L) / 2)); break; }
+    connect(prevLanding === null ? f : prevLanding, S, m, L, hold, p.role, lastMove);
+    lastMove = prevLanding === null ? 0 : m - prevLanding;
+    if (p.role === 'climax') climaxMidi = m;
+    before = prevLanding;
+    prevLanding = m;
+    f = m;
+  });
+
+  // ---- notes never run into the next
+  evs.sort((a, b) => a.step - b.step);
+  for (let i = 0; i + 1 < evs.length; i++) if (evs[i].step + evs[i].len > evs[i + 1].step) evs[i].len = Math.max(1, evs[i + 1].step - evs[i].step);
+
+  const hits = playSolo(rng, evs, { lick, key, minor, isTone: fit.isTone, inScale, total, t });
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const curve: SoloCurve = {
+    shape: ENERGY_WORDS[en.shape](en), pitchC: en.pitchC, paceC: en.paceC,
+    energy: Array.from({ length: total }, (_, g) => r2(E(g))),
+    centre: Array.from({ length: total }, (_, g) => centerAt(g)),
+    pace: Array.from({ length: total }, (_, g) => r2(1 + en.paceC * en.pace * E(g))),
+    landings: landings.map((l) => ({ ...l })),
+  };
+  const peak = landings.find((l) => l.role === 'climax');
+  void barStarts;
+  return {
+    hits, curve,
+    notes: [`Guitar 2: a solo (planned): ${ENERGY_WORDS[en.shape](en)}, ${landings.filter((l) => l.role !== 'waypoint').length} landings${peak ? `, the peak in bar ${Math.floor(peak.step / 16) + 1}` : ''}, ${mood} intervals`],
+  };
+}

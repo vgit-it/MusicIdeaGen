@@ -13,6 +13,9 @@ const mod = (n: number, m: number) => ((n % m) + m) % m;
 export interface ShapeLike { minor: boolean; deg: number; steps: number[] }
 export interface LibShape extends ShapeLike { n: number; songs: number; genres: number[] }
 
+/** The genres the shapes' counts are by. */
+export const LIB_GENRES = data.genres as string[];
+
 export const LIB_SHAPES: LibShape[] = (data.shapes as [string, number, number[], number, number[]][])
   .map(([m, deg, steps, songs, genres]) => ({ minor: m === 'm', deg, steps, n: steps.length + 1, songs, genres }));
 
