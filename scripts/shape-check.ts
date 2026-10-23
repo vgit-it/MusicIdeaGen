@@ -1,4 +1,4 @@
-// Repeat shapes (rule 39): checks the rule on made-up phrases (the 25% with none, the split between A A A' and A A A A', the repeats
+// Repeat shapes (rules 39 and 45): checks the rule on made-up phrases (the 25% with none, the split between A A A' and A A A A', the repeats
 // really repeat), then on real songs with the switch off and on: every repeated shape is what it says, nothing else in the line changed,
 // the key and the short-note share and the chorus silence hold.
 //   npm run shape-check            (N=120 songs)
@@ -33,19 +33,23 @@ const rel = (ns: BandNote[], at: number) => ns.map((n) => `${Math.round((n.step 
     out.push({ step: 48, len: 4, midi: 64 }, { step: 52, len: 12, midi: 67, end: true, style: 'held' });
     return out;
   };
-  let none = 0, three = 0, four = 0, tries = 0;
+  let none = 0, three = 0, four = 0, alts = 0, tries = 0;
   const madeSkips: Record<string, number> = {};
   const mods: Record<string, number> = {};
   for (let t = 0; t < 600; t++) {
     tries++;
-    const r = withShapes(line(), [{ step: 0, len: 64 }], G, 64, `made-${t}`, { key: 0, scale: SC, chordAt, range: { lo: 55, hi: 72, xlo: 50, xhi: 80 } });
+    const r = withShapes(line(), [{ step: 0, len: 64 }], G, 64, `made-${t}`, { key: 0, scale: SC, chordAt, range: { lo: 55, hi: 72, xlo: 50, xhi: 80 }, alt: t % 2 === 1 });
     if (!r.shapes.length) { none++; for (const [k, c] of Object.entries(r.skips)) madeSkips[k] = (madeSkips[k] ?? 0) + c; continue; }
     const x = r.shapes[0];
-    if (x.n === 3) three++; else four++;
+    if (x.alt) alts++; else if (x.n === 3) three++; else four++;
     mods[x.mod] = (mods[x.mod] ?? 0) + 1;
     const ts = timesOf(r.notes, x);
     // (the times before the last are the first one again, pitch for pitch over one chord)
     for (let i = 1; i < x.n - 1; i++) {
+      if (x.alt && i === 1) {
+        if (rel(ts[i], x.step + i * x.len) === rel(ts[0], x.step) && ts[i].every((n, k) => n.midi === ts[0][k].midi)) fail(`made #${t}: A' (time 2) is not changed (${x.mids})`);
+        continue;
+      }
       if (rel(ts[i], x.step + i * x.len) !== rel(ts[0], x.step)) fail(`made #${t}: time ${i + 1} differs in rhythm`);
       if (ts[i].some((n, k) => n.midi !== ts[0][k].midi)) fail(`made #${t}: time ${i + 1} differs in pitch over the same chord`);
     }
@@ -54,10 +58,10 @@ const rel = (ns: BandNote[], at: number) => ns.map((n) => `${Math.round((n.step 
     else if (rel(last, x.step + (x.n - 1) * x.len) === rel(first, x.step) && last.every((n, k) => n.midi === first[k].midi)) fail(`made #${t}: the last time is not changed (${x.mod})`);
     if (r.notes.some((n, i) => i && r.notes[i - 1].step + r.notes[i - 1].len > n.step + EPS)) fail(`made #${t}: overlap`);
   }
-  console.log(`made-up phrases: ${tries}; none ${none} (${((100 * none) / tries).toFixed(0)}%); A A A' ${three}, A A A A' ${four}; the last time changed by ${JSON.stringify(mods)}`);
+  console.log(`made-up phrases: ${tries}; none ${none} (${((100 * none) / tries).toFixed(0)}%); A A A' ${three}, A A A A' ${four}, A A' A A' ${alts}; the last time changed by ${JSON.stringify(mods)}`);
   if (process.env.SKIPS) console.log(madeSkips);
   if (Math.abs(none / tries - NO_SHAPE) > 0.06) fail(`made: ${none / tries} of the phrases have none, not about ${NO_SHAPE}`);
-  if (three < tries * 0.2 || four < tries * 0.2) fail('made: one of the two patterns is rare');
+  if (three < tries * 0.1 || four < tries * 0.1 || alts < tries * 0.05) fail('made: one of the patterns is rare');
 }
 
 // 2. real songs, with the switch off and on
@@ -66,14 +70,14 @@ const GENRES = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'
 interface Tot { outside: number; secs: number; notes: number; phrases: number; shapes: number; short: number; bars: number; chorusSil: number[]; offKey: number }
 const blank = (): Tot => ({ outside: 0, secs: 0, notes: 0, phrases: 0, shapes: 0, short: 0, bars: 0, chorusSil: [], offKey: 0 });
 const T = { off: blank(), on: blank() };
-const pat: Record<string, number> = {}, mods: Record<string, number> = {}, cellLen: Record<string, number> = {}, skips: Record<string, number> = {};
+const bigPat: Record<string, number> = {}, pat: Record<string, number> = {}, mods: Record<string, number> = {}, cellLen: Record<string, number> = {}, skips: Record<string, number> = {};
 let sections = 0, changed = 0; const byLen: Record<string, [number, number]> = {};
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], s = `hh-${i}-${genre}`;
   const idea = generate({ genre, meter: i % 9 === 8 ? '6/8' : '4/4', weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const list = buildTrack(idea, { ...defaultTrackOptions(idea) } as never).sections;
   const mood = autoMood(idea.song, idea.seeds.song);
-  const run = (on: boolean) => writeSong(list, songOptions(s + 'v', 0, { mood, on: new Set(EMO_IDS.filter((x) => on || x !== 'shape')), climax: list[0] } as never));
+  const run = (on: boolean) => writeSong(list, songOptions(s + 'v', 0, { mood, on: new Set(EMO_IDS.filter((x) => (on || x !== 'shape') && !(process.env.NOALT && x === 'shape2'))), climax: list[0] } as never));
   const off = run(false), on = run(true);
   const scale = new Set(SCALES[idea.song.mode].map((p) => (p + idea.song.key) % 12));
   // (a note that ends its phrase: a flag left on a note inside a phrase, by a lead-in written after it, doesn't count)
@@ -105,11 +109,32 @@ for (let i = 0; i < N; i++) {
     // (every repeated shape is what it says)
     const regions: [number, number][] = [];
     for (const x of b.built.shapes) {
-      pat[x.n] = (pat[x.n] ?? 0) + 1; mods[x.mod] = (mods[x.mod] ?? 0) + 1; cellLen[x.len] = (cellLen[x.len] ?? 0) + 1;
+      if (x.bars) {
+        // (a bar-long or two-bar shape across phrases: every plain time is the first again, every changed time starts like it)
+        const key = `${x.bars}-bar ${x.n === 3 ? "A A A'" : x.alt ? "A A' A A'" : "A A A A'"}`;
+        bigPat[key] = (bigPat[key] ?? 0) + 1;
+        regions.push([x.step + x.len, x.step + x.n * x.len]);
+        const ts = timesOf(b.built.notes, x), where = `${s} ${sec.section?.kind} @${x.step} (${key})`;
+        if (ts[0].length < 2) fail(`${where}: no notes in the shape`);
+        for (let k = 1; k < x.n; k++) {
+          if (x.changed?.includes(k)) {
+            if (!ts[k].length || ts[k][0].len !== ts[0][0].len || ts[k][0].step - (x.step + k * x.len) !== ts[0][0].step - x.step) fail(`${where}: changed time ${k + 1} does not start like the first`);
+          } else if (rel(ts[k], x.step + k * x.len) !== rel(ts[0], x.step)) fail(`${where}: time ${k + 1} differs in rhythm from the first`);
+        }
+        const kept = (x.changed ?? []).map((k) => ts[k]);
+        if (x.changed?.length && kept.some((t, i) => rel(t, 0) === rel(ts[x.changed![i] === 1 ? 2 : 0], 0))) { /* (a changed time can't be told from a plain one by rhythm alone) */ }
+        if (!x.changed?.includes(x.n - 1)) fail(`${where}: the last time is not changed`);
+        continue;
+      }
+      pat[x.alt ? 'alt' : x.n] = (pat[x.alt ? 'alt' : x.n] ?? 0) + 1; mods[x.mod] = (mods[x.mod] ?? 0) + 1; cellLen[x.len] = (cellLen[x.len] ?? 0) + 1;
       regions.push([x.step + x.len, x.step + x.n * x.len]);
       const ts = timesOf(b.built.notes, x), where = `${s} ${sec.section?.kind} @${x.step}`;
       if (!ts[0].length) fail(`${where}: no notes in the shape`);
       for (let k = 1; k < x.n - 1; k++) {
+        if (x.alt && k === 1) {
+          if (rel(ts[k], x.step + k * x.len) === rel(ts[0], x.step) && ts[k].every((n, q) => n.midi === ts[0][q].midi)) fail(`${where}: A' (time 2) is not changed`);
+          continue;
+        }
         if (rel(ts[k], x.step + k * x.len) !== rel(ts[0], x.step)) fail(`${where}: time ${k + 1} differs in rhythm from the first`);
       }
       const last = ts[x.n - 1], base = x.step + (x.n - 1) * x.len;
@@ -118,13 +143,14 @@ for (let i = 0; i < N; i++) {
       }
       if (x.mod === 'ending' && a.built.notes.some((n) => n.end && n.step >= x.step && n.step < x.step + x.n * x.len && lastOf(a.built, n.step)) && !b.built.notes.some((n) => n.end && n.step >= x.step && n.step < x.step + x.n * x.len && lastOf(b.built, n.step))) fail(`${where}: the ending was lost`);
     }
+    const hasBig = b.built.shapes.some((x) => x.bars);
     const ends = (v: typeof a) => v.built.notes.filter((n) => n.end && lastOf(v.built, n.step)).length;
-    if (ends(a) !== ends(b)) fail(`${s} ${sec.section?.kind}: held endings ${ends(a)} became ${ends(b)}`);
+    if (!hasBig && ends(a) !== ends(b)) fail(`${s} ${sec.section?.kind}: held endings ${ends(a)} became ${ends(b)}`);
     // (outside the repeats, the line is the one written without the switch)
     const inRegion = (n: BandNote) => regions.some(([f, e]) => n.step >= f - EPS && n.step < e - EPS);
     const keep = (ns: BandNote[]) => ns.filter((n) => !inRegion(n)).map((n) => `${n.step}:${n.midi}`).join(' ');
     // (the shape's own first time may have a note clipped: compare steps and pitches only)
-    if (keep(a.built.notes) !== keep(b.built.notes)) { changed++; if (changed < 4) fail(`${s} ${sec.section?.kind}: notes outside the repeats changed`); }
+    if (!hasBig && keep(a.built.notes) !== keep(b.built.notes)) { changed++; if (changed < 4) fail(`${s} ${sec.section?.kind}: notes outside the repeats changed`); }
   }
 }
 const pct = (x: number, y: number) => (y ? (100 * x / y).toFixed(0) : '-') + '%';
@@ -135,7 +161,8 @@ for (const m of ['off', 'on'] as const) {
   const t = T[m];
   console.log(`switch ${m}: phrases ${t.phrases}, with a repeated shape ${t.shapes} (${pct(t.shapes, t.phrases)}); notes/bar ${(t.notes / t.bars).toFixed(2)}; short notes ${pct(t.short, t.notes)}; chorus silence ${mean(t.chorusSil)}; off-key core notes ${t.offKey}; sections with a short share 5 points outside their kind's range (35-50%, a bridge or an interlude less): ${t.outside} of ${t.secs}`);
 }
-console.log(`shapes: A A A' ${pat[3] ?? 0}, A A A A' ${pat[4] ?? 0}; last time changed by ${JSON.stringify(mods)}; shape length in steps ${JSON.stringify(cellLen)}`);
+console.log(`shapes: A A A' ${pat[3] ?? 0}, A A A A' ${pat[4] ?? 0}, A A' A A' ${pat.alt ?? 0}; last time changed by ${JSON.stringify(mods)}; shape length in steps ${JSON.stringify(cellLen)}`);
+console.log('across phrases:', JSON.stringify(bigPat));
 console.log('phrases with a shape, by length in bars:', Object.entries(byLen).sort((x, y) => +x[0] - +y[0]).map(([k, [n, c]]) => `${k}: ${c}/${n}`).join('  '));
 if (process.env.SKIPS) console.log(skips);
 if (changed) console.log(`${changed} sections had notes changed outside the repeats`);

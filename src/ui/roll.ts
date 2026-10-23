@@ -12,6 +12,7 @@ import { voiceOf } from '../verse/sing';
 import type { Rule } from '../verse/form';
 import { leadOnly, leadView, type RollNote } from './leadnotes';
 import { compareLeaf, endingOf, leafSpans, type Diff, type LeafCompare, type LeafSpan } from '../verse/variants';
+import { changedTimes, shapeName } from '../verse/shapes';
 
 type N = RollNote;
 
@@ -28,7 +29,7 @@ const TOP = 30, GUT = 52, MIN_STEP_PX = 5.5;
 const LAYERS = [
   { id: 'form', name: 'Form', hint: 'The leaves (A, A′, B…), which one answers which, and the rules each answer wrote again' },
   { id: 'phrases', name: 'Phrases', hint: 'Each phrase with its length and how it ends; the breaks shaded' },
-  { id: 'shapes', name: 'Shapes', hint: 'Rule 39: the small shape sung again inside a phrase, the last time changed' },
+  { id: 'shapes', name: 'Shapes', hint: "Rule 39 and 45: the small shape sung again inside a phrase, or a bar or two across call and response, the changed times (A′) in orange" },
   { id: 'compare', name: 'Compare', hint: 'An answering leaf against its source: ghosts of the source under it, the notes that differ outlined' },
 ] as const;
 type LayerId = (typeof LAYERS)[number]['id'];
@@ -250,18 +251,21 @@ export function buildRoll(root: HTMLElement) {
     if (showSh) {
       x.font = '600 9px system-ui, sans-serif';
       const has = new Set(built!.shapes.map((sh) => sh.phrase));
+      // (a shape across phrases covers the phrases it runs over)
+      for (const sh of built!.shapes) if (sh.bars) for (const ph of built!.phrases) if (ph.step >= sh.step - 1e-6 && ph.step < sh.step + sh.n * sh.len - 1e-6) has.add(ph.step);
       for (const ph of built!.phrases) if (!has.has(ph.step)) {
         x.fillStyle = '#4b5263'; x.fillText(fit('no shape', X(ph.len) - 6), X(ph.step) + 4, ySh + SHAPE_H / 2);
       }
       for (const sh of built!.shapes) {
+        const changed = changedTimes(sh);
         for (let i = 0; i < sh.n; i++) {
-          const last = i === sh.n - 1, x0 = X(sh.step + i * sh.len), w = X(sh.len);
-          const c = last ? '#ff9d3c' : '#5b8cff';
+          const last = i === sh.n - 1, alt = changed.includes(i), x0 = X(sh.step + i * sh.len), w = X(sh.len);
+          const c = alt ? '#ff9d3c' : '#5b8cff';
           x.globalAlpha = 0.08; x.fillStyle = c; x.fillRect(x0, top, w, H - top); x.globalAlpha = 1;
-          x.fillStyle = c; x.globalAlpha = last ? 0.9 : 0.6;
+          x.fillStyle = c; x.globalAlpha = alt ? 0.9 : 0.6;
           x.beginPath(); x.roundRect(x0 + 1, ySh + 1, w - 2, SHAPE_H - 3, 3); x.fill(); x.globalAlpha = 1;
           x.fillStyle = '#10131a';
-          x.fillText(fit(last ? `A′ ${sh.mod}` : 'A', w - 6), x0 + 4, ySh + SHAPE_H / 2);
+          x.fillText(fit(alt ? (last ? `A′ ${sh.mod}` : 'A′') : 'A', w - 6), x0 + 4, ySh + SHAPE_H / 2);
         }
       }
     }
@@ -376,8 +380,9 @@ export function buildRoll(root: HTMLElement) {
       extra.push(`Phrases: ${built!.phrases.length} · ends: ${[...kinds].map(([k, n]) => `${n} ${k}`).join(', ')}`);
     }
     if (showSh) {
-      const n3 = built!.shapes.filter((sh) => sh.n === 3).length;
-      extra.push(`Shapes: ${built!.shapes.length} of ${built!.phrases.length} phrases (${n3} × A A A′, ${built!.shapes.length - n3} × A A A A′)`);
+      const names = new Map<string, number>();
+      for (const sh of built!.shapes) { const k = `${sh.bars ? `${sh.bars}-bar ` : ''}${shapeName(sh).replace(/'/g, '′')}`; names.set(k, (names.get(k) ?? 0) + 1); }
+      extra.push(`Shapes: ${built!.shapes.length} (${[...names].map(([k, n]) => `${n} × ${k}`).join(', ') || 'none'}) in ${built!.phrases.length} phrases`);
     }
     if (showCmp) {
       for (const sp of spans) {

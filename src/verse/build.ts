@@ -11,6 +11,7 @@ import { withSpace } from './space';
 import { bassBias, bassOverBand, bothBiases, stopsOf, type BassLead, type BassSkel } from './bassline';
 import { limitSets, setsAllowed } from './sets';
 import { withShapes, type ShapeInfo, type Skips } from './shapes';
+import { withBigShapes } from './bigshapes';
 import { VERSE, phraseLenFor, type Dials } from './profile';
 import {
   addBends, addNoteBends, addNeighbours, fitSilence, fixUnits, foldIntoRange, limitSame, phraseEndings, planCall, planPhrases, pushNotes, randomHolds, randomRuns, randomTones, rerollTones, smallBreaks,
@@ -184,7 +185,7 @@ export function buildVerse(inp: BuildInput): Built {
       const moods = maxSets ? limitSets(moods0, phrases, G, maxSets) : moods0;
       // (repeat shapes: last, on the line as it will sound, so nothing after it can pull a repeat apart)
       const rep = X?.E.on.has('shape')
-        ? withShapes(moods, phrases, G, len, sd.phrases, { key, scale: pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12)), chordAt, range, silence: d.silence, silenceTol: d.silenceTol, short: X.E.on.has('longer'), shortRange: shortRange(X.E.kind) })
+        ? withShapes(moods, phrases, G, len, sd.phrases, { key, scale: pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12)), chordAt, range, silence: d.silence, silenceTol: d.silenceTol, short: X.E.on.has('longer'), shortRange: shortRange(X.E.kind), alt: X.E.on.has('shape2') })
         : undefined;
       // (and again on the finished line, in case a later rule opened a gap)
       const notes = maxSets ? limitSets(rep ? rep.notes : moods, phrases, G, maxSets) : rep ? rep.notes : moods;
@@ -209,6 +210,27 @@ export function buildVerse(inp: BuildInput): Built {
     out.bars.push(...bars);
     for (const [k, v] of Object.entries(skips)) out.skips[k] = (out.skips[k] ?? 0) + v;
     out.shapes.push(...shapes.map((x) => ({ ...x, phrase: x.phrase + from, step: x.step + from })));
+  }
+  // (more shapes: in a called section a bar or two is sung again across call and response, on the finished section)
+  if (inp.emo?.on.has('shape') && inp.emo.on.has('shape2') && inp.emo.on.has('call') && inp.call && (inp.bars === 8 || inp.bars === 16)) {
+    const E = inp.emo;
+    const leafEnd = (leaf: Leaf) => (leaf.from + leaf.bars >= inp.bars ? total : G0.start(leaf.from + leaf.bars));
+    // (rule 43 holds leaf by leaf: a line the sets limit would change is no good)
+    const setsHold = E.maxSets ? (ns: BandNote[]): boolean => leaves.every((leaf) => {
+      const from = G0.start(leaf.from), end = leafEnd(leaf);
+      const mine = ns.filter((n) => n.step >= from - 1e-6 && n.step < end - 1e-6).map((n) => ({ ...n, step: n.step - from }));
+      const phr = out.phrases.filter((g) => g.step >= from - 1e-6 && g.step < end - 1e-6).map((g) => ({ ...g, step: g.step - from }));
+      const got = limitSets(mine, phr, G0.slice(from, end), setsAllowed(E.maxSets!, leaf.bars));
+      return got.length === mine.length && got.every((n, i) => n.step === mine[i].step && n.len === mine[i].len);
+    }) : undefined;
+    const big = withBigShapes(out.notes, out.phrases, G0, total, inp.seed, {
+      key, scale: pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12)), chordAt: inp.chordAt, range, silence: d.silence, silenceTol: d.silenceTol,
+      short: E.on.has('longer'), shortRange: shortRange(E.kind), bars: inp.bars, setsHold,
+    });
+    out.notes = big.notes;
+    // (a small shape in a bar a bigger one wrote over is gone)
+    out.shapes = [...out.shapes.filter((x) => !big.zones.some(([a, b]) => x.step < b && x.step + x.n * x.len > a)), ...big.shapes];
+    for (const [k, v] of Object.entries(big.skips)) out.skips[k] = (out.skips[k] ?? 0) + v;
   }
   return out;
 }

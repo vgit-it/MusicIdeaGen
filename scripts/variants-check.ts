@@ -42,7 +42,7 @@ for (let i = 0; i < N; i++) {
     for (const sh of built.shapes) {
       const ph = built.phrases.find((p) => p.step === sh.phrase);
       if (!ph) { fail(`${L}: shape with no phrase at ${sh.phrase}`); continue; }
-      if (sh.step < ph.step - 1e-6 || sh.step + sh.n * sh.len > ph.step + ph.len + 1e-6) fail(`${L}: shape outside its phrase`);
+      if (!sh.bars && (sh.step < ph.step - 1e-6 || sh.step + sh.n * sh.len > ph.step + ph.len + 1e-6)) fail(`${L}: shape outside its phrase`);
       tot.shapes++;
     }
     for (const ph of built.phrases) {
