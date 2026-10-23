@@ -35,11 +35,13 @@ export interface Landing { step: number; midi: number; len: number; role: Landin
 const BREATH_MOOD: Record<Mood, number> = { melancholic: 1.4, nostalgic: 1.2, dreamy: 1.3, dark: 1.1, tense: 0.8, angry: 0.6, happy: 0.8, triumphant: 0.7 };
 const BREATH_GENRE: Record<Genre, number> = { funk: 1.3, pop: 1.1, rock: 1, grunge: 1.1, altmetal: 0.9, hardrock: 0.8, metal: 0.7 };
 /** The path's notes a beat against the real notes a bar: the rests and holds are planned apart, so the paths are busier than the average. */
-const PATH_BOOST = 1.5;
+const PATH_BOOST = 1.7;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
 /** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
-export const FEATURES = { intoKey: true, peak: true };
+export const FEATURES = { intoKey: true, peak: true, holds: true };
+/** How much a player sings one long note (a held phrase). */
+const HOLD_LEAN: Record<LickKind, number> = { sung: 1.4, blues: 1.2, simple: 1, muted: 0.8, run: 0.6 };
 
 // the library by the degree its shape ends on, and the rhythms by note count
 const ENDS: Record<'m' | 'M', LibShape[][]> = { m: Array.from({ length: 12 }, () => []), M: Array.from({ length: 12 }, () => []) };
@@ -173,11 +175,13 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   /** How long a landing is held (steps): a call or answer mostly long, a middle one less, the climax longest; longer in the calm. */
   const holdFor = (g: number, role: LandingRole, phraseLen: number) => {
     const calm = calmAt(g);
-    if (role === 'climax') return 2 * Math.round((8 + rng.next() * 4) / 2);
+    if (role === 'climax') return 2 * Math.round((FEATURES.holds ? 12 + rng.next() * 4 : 8 + rng.next() * 4) / 2);
     const longP = clamp((role === 'mid' ? 0.45 : 0.75) + 0.3 * calm, 0.2, 0.95);
-    const h = rng.chance(longP) ? 6 + rng.next() * (4 + 2 * calm) : 2 + rng.next() * 2;
+    let h = rng.chance(longP) ? 6 + rng.next() * (4 + 2 * calm) : 2 + rng.next() * 2;
+    // (a call or answer now and then held a good while: 3 to 4 beats)
+    if (FEATURES.holds && role !== 'mid' && h >= 6 && rng.chance(0.2 + 0.3 * calm)) h = 12 + rng.next() * 4;
     // (a short phrase keeps room for a path: the hold is at most 0.6 of it)
-    return Math.max(2, Math.min(2 * Math.round(h / 2), 2 * Math.round((0.6 * phraseLen) / 2)));
+    return Math.max(2, Math.min(2 * Math.round(h / 2), 2 * Math.round(((FEATURES.holds ? 0.7 : 0.6) * phraseLen) / 2)));
   };
   /** A phrase's length in steps with its hold, not its breath: real phrases, longer where the pace is up. */
   const phraseSteps = (at: number) => {
@@ -189,7 +193,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
 
   // ---- the plan: units, phrases, the climax
   const end = total - 2;
-  interface Phrase { S: number; end: number; role: LandingRole; len: number }
+  interface Phrase { S: number; end: number; role: LandingRole; len: number; held?: boolean }
   const units: { s: number; e: number; role: LandingRole }[] = [];
   for (let b = 0; b < bars.length;) {
     const take = bars.length - b === 3 || bars.length < 2 ? bars.length - b : 2;
@@ -197,16 +201,25 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     b += take;
   }
   units[units.length - 1].role = 'end';
+  // a held phrase: one long note over the band (Paul: more long holds); more in the calm, for the melodic and bluesy players, and each solo leans its own way
+  const heldLean = 0.5 + rng.next();
+  const heldP = (at: number, role: LandingRole) => (FEATURES.holds ? clamp((0.03 + 0.4 * calmAt(at) + (role === 'mid' ? 0 : 0.03)) * HOLD_LEAN[lick] * heldLean, 0, 0.5) : 0);
   const phrases: Phrase[] = [];
   for (const u of units) {
     let pos = u.s;
     while (pos < u.e - 5) {
       let len = phraseSteps(pos);
       if (u.e - pos - len < 8) len = u.e - pos;
+      let held = false;
+      if (u.e - pos >= 10 && !(u.role === 'end' && pos + 14 >= u.e) && rng.chance(heldP(pos, pos + len >= u.e ? u.role : 'mid'))) {
+        held = true;
+        len = Math.min(u.e - pos, 2 * Math.round(rng.pick([10, 12, 14, 16, 18]) / 2));
+        if (u.e - pos - len < 8) len = u.e - pos;
+      }
       const lastOne = pos + len >= u.e;
       // (starts: the first lick on the beat about two times in three, later ones a little late now and then)
       const delay = !phrases.length ? (rng.chance(0.64) ? 0 : 2) : rng.weighted<number>([[0, 40], [2, 40], [4, 20]]);
-      phrases.push({ S: pos + (len - delay >= 8 ? delay : 0), end: pos + len, role: lastOne ? u.role : 'mid', len });
+      phrases.push({ S: pos + (len - delay >= 8 ? delay : 0), end: pos + len, role: lastOne ? u.role : 'mid', len, ...(held ? { held } : {}) });
       pos += len;
     }
   }
@@ -394,12 +407,14 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       hold = holdFor(pe, p.role, p.len);
       breath = breathFor(pe, p.role);
     }
+    // (a held phrase is the one note: it takes the window, less a short breath)
+    if (p.held) { breath = Math.min(breath, 4); hold = pe - p.S - breath; }
     // (into the climax: the phrase before it ends low and breathes, so the peak is a rise; the climax keeps room for a path to it)
     if (FEATURES.peak && phrases[pi + 1]?.role === 'climax') breath = Math.max(breath, 4);
     if (FEATURES.peak && p.role === 'climax') hold = Math.min(hold, Math.max(2, 2 * Math.floor((p.len - 8) / 2)));
     let L = pe - breath - hold;
     // (no room for a path: a held note, the hold taking what there is)
-    if (L - S < 2) { L = S; hold = Math.max(2, Math.min(14, pe - S - breath)); }
+    if (L - S < 2) { L = S; hold = Math.max(2, Math.min(FEATURES.holds ? 18 : 14, pe - S - breath)); }
     return { hold, breath, L };
   };
   // the climax first (docs/SOLO-PLAN.md, round 2): its note is the highest chord note the window allows, and it is the ceiling:

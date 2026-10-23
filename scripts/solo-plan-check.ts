@@ -17,9 +17,9 @@ interface Agg {
   solos: number; notes: number; bars: number; steps: number; covered: number;
   pairs: number; run3: number; eq4: number; same: number; moves: number; leaps: number; small: number;
   corr: number[]; bandSd: number[]; rhyBars: number; rhyAgain: number; held: number; lens: number;
-  long8: number; long12: number; noLong: number; off: number; offFree: number; offHeld: number; offBeat: number; landings: number; fall: number; falls: number; callUp: number; calls: number; answerRoot: number; answers: number; climaxHigh: number; climaxes: number; peakTop: number; peakGap: number; waypoints: number;
+  long8: number; long12: number; noLong: number; off: number; offFree: number; offHeld: number; offBeat: number; landings: number; fall: number; falls: number; callUp: number; calls: number; answerRoot: number; answers: number; climaxHigh: number; climaxes: number; peakTop: number; peakGap: number; landCorr: number[]; waypoints: number;
 }
-const zero = (): Agg => ({ solos: 0, notes: 0, bars: 0, steps: 0, covered: 0, pairs: 0, run3: 0, eq4: 0, same: 0, moves: 0, leaps: 0, small: 0, corr: [], bandSd: [], rhyBars: 0, rhyAgain: 0, held: 0, lens: 0, long8: 0, long12: 0, noLong: 0, off: 0, offFree: 0, offHeld: 0, offBeat: 0, landings: 0, fall: 0, falls: 0, callUp: 0, calls: 0, answerRoot: 0, answers: 0, climaxHigh: 0, climaxes: 0, peakTop: 0, peakGap: 0, waypoints: 0 });
+const zero = (): Agg => ({ solos: 0, notes: 0, bars: 0, steps: 0, covered: 0, pairs: 0, run3: 0, eq4: 0, same: 0, moves: 0, leaps: 0, small: 0, corr: [], bandSd: [], rhyBars: 0, rhyAgain: 0, held: 0, lens: 0, long8: 0, long12: 0, noLong: 0, off: 0, offFree: 0, offHeld: 0, offBeat: 0, landings: 0, fall: 0, falls: 0, callUp: 0, calls: 0, answerRoot: 0, answers: 0, climaxHigh: 0, climaxes: 0, peakTop: 0, peakGap: 0, landCorr: [], waypoints: 0 });
 const corr = (a: number[], b: number[]) => {
   const n = a.length; if (n < 3) return 0;
   const ma = a.reduce((x, y) => x + y, 0) / n, mb = b.reduce((x, y) => x + y, 0) / n;
@@ -102,6 +102,7 @@ for (let i = 0; i < N; i++) {
         if (l.step + l.len > total) fail(`plan ${s}: landing at ${l.step} len ${l.len} past the end`);
       }
       const real = L.filter((l) => l.role !== 'waypoint');
+      if (c.pitchC !== 0 && real.length > 3 && Math.max(...c.centre) > Math.min(...c.centre)) a.landCorr.push(corr(real.map((l) => l.midi), real.map((l) => c.centre[Math.min(c.centre.length - 1, l.step)])));
       const cl = real.filter((l) => l.role === 'climax');
       if (cl.length > 1) fail(`plan ${s}: ${cl.length} climaxes`);
       // (the climax sits highest for its place on the planned height: a solo whose height runs against its energy has no 'highest')
@@ -141,10 +142,15 @@ row('notes off the scale and not a chord note', (a) => pct(a.offFree, a.notes));
 row('bars whose rhythm comes back', (a) => pct(a.rhyAgain, a.rhyBars));
 row('bar-mean pitch vs the planned height (corr)', (a) => avg(a.corr).toFixed(2));
 row('spread of bar-mean pitch (semitones)', (a) => avg(a.bandSd).toFixed(1));
+console.log(`the landings follow the planned height (corr, solos where it follows the energy) ${avg(p.landCorr).toFixed(2)}`);
 console.log(`the climax is the solo's top note ${pct(p.peakTop, p.climaxes)}, and over the next-highest landing by ${(p.peakGap / Math.max(1, p.climaxes)).toFixed(1)} semitones`);
 console.log(`an answer lands lower than the landing before it ${pct(p.fall, p.falls)}`);
 console.log(`planned: ${p.landings} landings (${p.waypoints} waypoints), calls off the root ${pct(p.callUp, p.calls)}, answers on the root ${pct(p.answerRoot, p.answers)}, climax highest for its place ${pct(p.climaxHigh, p.climaxes)} (${p.climaxes} of ${p.solos} solos have one)`);
 if (p.solos < 20) fail('too few solos');
+// round 2, step 3: more long holds
+if (p.long8 / p.solos < Math.max(4.7, o.long8 / o.solos)) fail(`notes of 2+ beats ${(p.long8 / p.solos).toFixed(1)} a solo, under the other writer's ${(o.long8 / o.solos).toFixed(1)}`);
+if (p.long12 / p.solos < 0.8) fail(`notes of 3+ beats ${(p.long12 / p.solos).toFixed(1)} a solo, under 0.8`);
+if (p.noLong) fail(`${p.noLong} solos with no note of 2+ beats`);
 // round 2, step 2: a clear peak
 if (p.climaxes && p.peakTop / p.climaxes < 0.85) fail(`the climax is the top note in only ${pct(p.peakTop, p.climaxes)}`);
 if (p.climaxes && p.peakGap / p.climaxes < 2.5) fail('the climax should clear the next landing by 2.5+ semitones');
