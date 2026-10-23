@@ -24,9 +24,10 @@ import type { Mood } from '../tension';
 import { SCALES, type Chord, type Mode } from '../theory';
 import type { BarGrid } from './grid';
 import { cumulative, type Dials } from './profile';
+import { profileFor, type IntervalCtx } from './intervals';
 import { fifth, roll, third, type BandNote, type Gap, type Range, type ToneBias } from './verse';
 
-export const EMO_IDS = ['colour', 'endings', 'suspend', 'contour', 'arousal', 'tension', 'moodmode', 'surprise', 'longer', 'space', 'shape', 'call', 'shape2'] as const;
+export const EMO_IDS = ['colour', 'endings', 'suspend', 'contour', 'arousal', 'tension', 'moodmode', 'surprise', 'longer', 'space', 'shape', 'call', 'shape2', 'intervals'] as const;
 export type EmoId = (typeof EMO_IDS)[number];
 
 export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
@@ -42,6 +43,7 @@ export const EMO_INFO: Record<EmoId, { name: string; hint: string }> = {
   space: { name: 'Use the space', hint: 'A short note before a big gap, and a held ending, are held on into the gap (a breath left), the end of a repeated phrase most; notes of 3/4 bar or more bend more often, sometimes there and back, even a held ending' },
   shape: { name: 'Repeat shapes', hint: "Inside a phrase, one small shape (a bar or less) is sung again: twice the same and the third time changed, or three times the same and the fourth changed; 1 phrase in 4 has none. The repeats move with the chords; the last one changed is often the phrase's own ending" },
   shape2: { name: 'More shapes', hint: "Repeat shapes get a third pattern, A A' A A' (the 2nd and 4th time each changed), and in a verse, chorus or bridge of 8 or 16 bars a shape may be two bars long: the call sung again as the response and again, over 6 to 8 bars. Needs Repeat shapes (and Call & response for the two-bar ones)" },
+  intervals: { name: 'Intervals', hint: "The mood in how the line moves, on its own (nothing else needed): sad and dark mostly small falling steps, happy and triumphant wider rising ones, angry big leaps and repeats, tense rough half steps, dreamy and nostalgic warm 6ths and 2nds; a leap is usually stepped back from; more tension, rougher and wider" },
   call: { name: 'Call & response', hint: 'In a verse, chorus or bridge of 8 or 16 bars, every 4 bars are two phrases: a call (bars 1-2, ending on a question, never home) and a response (bars 3-4, ending open, or home where the section ends)' },
 };
 
@@ -172,6 +174,21 @@ function tensionAt(X: EmoBuild): ((step: number) => number | undefined) {
   const t = X.E.tension;
   if (!X.E.on.has('tension') || !t?.length) return () => undefined;
   return (step) => t[Math.max(0, Math.min(t.length - 1, X.grid ? X.grid.index(X.leafFrom + step + 1e-6) : Math.floor((X.leafFrom + step + 1e-6) / X.bar)))];
+}
+
+/** The section's tension at a step of a leaf from the song's arc, whether or not the Tension curve switch is on (for the switches that stand alone). */
+function tensionRaw(X: EmoBuild): ((step: number) => number | undefined) {
+  const t = X.E.tension;
+  if (!t?.length) return () => undefined;
+  return (step) => t[Math.max(0, Math.min(t.length - 1, X.grid ? X.grid.index(X.leafFrom + step + 1e-6) : Math.floor((X.leafFrom + step + 1e-6) / X.bar)))];
+}
+
+/** Rule 46 (docs/INTERVALS.md): the mood's interval profile for a leaf, moved by the section's kind and the tension; undefined with the switch off. */
+export function intervalsFor(X: EmoBuild, phrases: Gap[], seed: string): IntervalCtx | undefined {
+  const { E } = X;
+  if (!E.on.has('intervals')) return undefined;
+  const ten = tensionRaw(X);
+  return { at: (step) => profileFor(E.mood, E.kind, ten(step)), seed, key: X.key, scale: X.pent ?? scaleOf(X.key, X.mode), phrases };
 }
 
 const chordPcs = (key: number, c: Chord): number[] => [0, third(c), fifth(c)].map((x) => mod12(key + c.root + x));

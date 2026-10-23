@@ -3,7 +3,7 @@
 Goal: the lead vocal (the verse melody writer, `src/verse/`) conveys the song's Mood through **which intervals it sings**, not only through hooks, endings and register.
 Rule of thumb from the research: **choose the scale for colour, choose the intervals for energy and feeling.**
 
-Status: plan only (2026-10-23). Nothing built yet.
+Status: **built (2026-10-23)**, rule 46 in `docs/VERSE-SECTIONS.md`, `src/verse/intervals.ts`, a fourteenth mood-note switch "Intervals" (on by default), `npm run interval-check`. Paul listens next. What changed from the plan is in section 9; the rest of this page is the plan as it was drawn.
 
 ## 1. Why (what the writer does today)
 - **The vocal ignores the chosen Mood.** `personalityOf` (`src/verse/section.ts`) and the words (`src/verse/sing.ts`) call `autoMood(...)`, so the vocal always gets the mood Auto would pick from genre, key and tempo. Pick Melancholic and the vocal may be written as Happy.
@@ -168,3 +168,15 @@ dark        1.3 1.7 1.0 1.3 0.4 0.8 1.1 0.7 1.3 0.2 0.6 0.4 0.4
 - Rhythm by mood (separate: Energy styles, `docs/VOCAL-ENERGY.md`).
 - The classic vocal writer (Writer: Classic) and the guide line.
 - Guitar 2 / solos (could reuse `intervals.ts` later).
+
+## 9. What was built, and what changed from the plan (2026-10-23)
+- **Stands alone.** The switch reads only the mood, the section's kind and the song's raw tension curve. It needs none of the other mood notes (Contour & leaps, Arousal, Tension curve, Endings...), so it works with them all off. Nothing in it checks another switch.
+- **Step 1 dropped.** The picked Mood already reaches the vocal (`moodOf`, the song hands it over). `generate()` (an idea on its own) uses its own Auto mood on purpose.
+- **Pitch choice** (`voiceLead` in `src/verse/verse.ts`, replaces rule 25's flat octave chance): at each core note the candidates are the chord's notes that are in the key (or the pentatonic), each in every octave of the extended range. Cost = a share of the smooth step (as before; `1 - strength`) + the range penalty and the climb / dwell / contour pull (unchanged) + the mood's interval cost. One is drawn by weighted chance (`exp(-cost / 2)`), on the section's own dice. The chord note drawn earlier (by the tone weights, the mood notes, the bass) keeps a lead of 0.5, and the rest of the bar's notes on it move with a re-picked one.
+- **Interval cost** (`intervalCost`): minus the log of the mood's weight for the interval, 0.3 per semitone off the mood's size, 3 times minus the log of its up / down share, a leap not followed by a step back the other way costs more (the mood's `fill`), the last core note of a phrase leans harder on direction.
+- **Neighbour notes** (rule 8): the chance is times the mood's `nb` (dreamy, melancholic more; angry, tense fewer, so more repeats), the direction follows the mood's weight of the half or whole step and its up share, and after a leap the neighbour steps back the other way (by `fill`).
+- **Tension:** per bar of the song's arc: rough intervals times 0.6 to 1.4, size times 0.85 to 1.15, up share +/- 0.05.
+- **Not built:** chromatic neighbours and walks for Tense and Dark (kept in the key), the Cooke sighs, bend targets by mood, the Melody view colouring by interval. Phrase endings (`withEndDegrees`) are untouched: the direction lean is in the pitch choice.
+- **Targets, rewritten.** About half of all moves in this writer are repeats whatever the mood, and a move averages 3 semitones when repeats aren't counted. The plan's absolute sizes (Triumphant 4.8...) are out of reach and unnatural, so `interval-check` asks for the ways the moods differ (Intervals alone, 56 songs x 8 moods): triumphant and angry move 0.3 semitones further and leap 1.4x as often as melancholic and dark; melancholic and dark at least half down; triumphant and happy 55%+ up; tense and dark 1.4x happy's rough share; tense and angry repeat more than dreamy; steps and repeats at least half of all moves in every mood. All met.
+- **Measured** (Intervals alone, moving size / repeats / leaps / up): happy 2.5 / 57% / 4% / 57%, melancholic 2.2 / 54% / 3% / 49%, tense 2.3 / 66% / 3% / 57%, angry 2.6 / 67% / 4% / 53%, dreamy 2.4 / 51% / 4% / 51%, triumphant 2.7 / 58% / 5% / 61%, dark 2.3 / 64% / 3% / 46% (all moods alike before: 3.0 / 52% / 8% / 51%). With every other mood note on as well, leaps drop from 14% to 10% of moves.
+- **Switch off:** every section note for note as before (hash over 56 songs x 8 moods, 2,584 sections, with the other switches on and with them all off).

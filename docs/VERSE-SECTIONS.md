@@ -201,6 +201,14 @@ The writer used to read "a bar" as one number: equal bars, a beat a quarter of i
 - Costs: loop feel, strongest with A A A A' over 8 bars (kept at the lowest chance); the response's own start is replaced by the call's, so a response no longer answers with a rhythm of its own; the Compare layer shows more "same"; not listened to yet.
 - Next, if wanted: A starting mid-leaf or on a response, a 3-bar A, an `ending` that also lifts.
 
+## Rule 46: intervals by mood (2026-10-23; `src/verse/intervals.ts`, `voiceLead` and `addNeighbours` in `src/verse/verse.ts`, a fourteenth switch "Intervals", on by default; `docs/INTERVALS.md`, `npm run interval-check`)
+- Asked for: the mood in how the line moves, not only in hooks, endings and register. Stands alone: it reads the mood, the section kind and the song's tension curve, nothing from the other mood notes, so it works with Contour & leaps and the rest off. Switch off: every section note for note as before (hash, 2,584 sections).
+- **Core notes**: each is sung on a chord note in the key, in an octave, chosen by weighted chance from the cost of the move from the note before: the smooth step (less of it), the mood's liking of the interval, the size it aims at, its up / down share, a step back after a leap, the phrase's last core note leaning harder on direction. The note drawn earlier keeps a small lead. Replaces rule 25's flat octave chance.
+- **Neighbour notes** (rule 8): dreamy, melancholic and nostalgic have more, angry, tense and dark fewer (more repeats); the direction follows the mood's liking of the half or whole step and its up share; after a leap a neighbour steps back.
+- **Moods**: happy and triumphant wide and rising, melancholic and dark small and falling, tense and dark rough (half steps), angry big and repeating, dreamy and nostalgic warm. A chorus reaches 20% further and a bit higher, a verse 10% less, a pre-chorus climbs; more tension is rougher, wider and higher.
+- Measured (Intervals alone): moving size 2.2 (melancholic) to 2.7 (triumphant), repeats 51% (dreamy) to 67% (angry), up 46% (dark) to 61% (triumphant); before, every mood 3.0 / 52% / 51%.
+- Not done: chromatic neighbours and walks, Cooke sighs, bend targets by mood. Not listened to yet.
+
 ## Melody view layers (form, phrases, shapes, compare)
 - Read from `voiceOf(idea).built` (leaves, phrases, breaks, shapes, tries) and the notes; the writer is untouched. Pure helpers in `src/verse/variants.ts`; `npm run variants-check` checks them on real songs.
 - **Form**: a band per leaf with its name, the leaf it answers, the rules it writes again, the try it needed (rule 20); a wash of the leaf's colour down the roll.

@@ -49,6 +49,7 @@
     "lead-roll-check": "rolldown scripts/lead-roll-check.ts --platform node --format esm -o node_modules/.cache/lead-roll-check.mjs && node node_modules/.cache/lead-roll-check.mjs",
     "form-check": "rolldown scripts/form-check.ts --platform node --format esm -o node_modules/.cache/form-check.mjs && node node_modules/.cache/form-check.mjs",
     "variants-check": "rolldown scripts/variants-check.ts --platform node --format esm -o node_modules/.cache/variants-check.mjs && node node_modules/.cache/variants-check.mjs",
+    "interval-check": "rolldown scripts/interval-check.ts --platform node --format esm -o node_modules/.cache/interval-check.mjs && node node_modules/.cache/interval-check.mjs",
     "shape-check": "rolldown scripts/shape-check.ts --platform node --format esm -o node_modules/.cache/shape-check.mjs && node node_modules/.cache/shape-check.mjs",
     "space-check": "rolldown scripts/space-check.ts --platform node --format esm -o node_modules/.cache/space-check.mjs && node node_modules/.cache/space-check.mjs",
     "long-hold-check": "rolldown scripts/long-hold-check.ts --platform node --format esm -o node_modules/.cache/long-hold-check.mjs && node node_modules/.cache/long-hold-check.mjs",
