@@ -18,8 +18,9 @@ interface Agg {
   pairs: number; run3: number; eq4: number; same: number; moves: number; leaps: number; small: number;
   corr: number[]; bandSd: number[]; rhyBars: number; rhyAgain: number; exact: number; held: number; lens: number;
   long8: number; long12: number; noLong: number; off: number; offFree: number; offHeld: number; offBeat: number; landings: number; fall: number; falls: number; callUp: number; calls: number; answerRoot: number; answers: number; climaxHigh: number; climaxes: number; peakTop: number; peakGap: number; landCorr: number[]; carried: number; carryOk: number; carryTone: number; carryBend: number; carryOnBar: number; waypoints: number;
+  sets: number; leaves: number; overSets: number; lone: number; shortGap: number; run3b: number;
 }
-const zero = (): Agg => ({ solos: 0, notes: 0, bars: 0, steps: 0, covered: 0, pairs: 0, run3: 0, eq4: 0, same: 0, moves: 0, leaps: 0, small: 0, corr: [], bandSd: [], rhyBars: 0, rhyAgain: 0, exact: 0, held: 0, lens: 0, long8: 0, long12: 0, noLong: 0, off: 0, offFree: 0, offHeld: 0, offBeat: 0, landings: 0, fall: 0, falls: 0, callUp: 0, calls: 0, answerRoot: 0, answers: 0, climaxHigh: 0, climaxes: 0, peakTop: 0, peakGap: 0, landCorr: [], carried: 0, carryOk: 0, carryTone: 0, carryBend: 0, carryOnBar: 0, waypoints: 0 });
+const zero = (): Agg => ({ solos: 0, notes: 0, bars: 0, steps: 0, covered: 0, pairs: 0, run3: 0, eq4: 0, same: 0, moves: 0, leaps: 0, small: 0, corr: [], bandSd: [], rhyBars: 0, rhyAgain: 0, exact: 0, held: 0, lens: 0, long8: 0, long12: 0, noLong: 0, off: 0, offFree: 0, offHeld: 0, offBeat: 0, landings: 0, fall: 0, falls: 0, callUp: 0, calls: 0, answerRoot: 0, answers: 0, climaxHigh: 0, climaxes: 0, peakTop: 0, peakGap: 0, landCorr: [], carried: 0, carryOk: 0, carryTone: 0, carryBend: 0, carryOnBar: 0, waypoints: 0, sets: 0, leaves: 0, overSets: 0, lone: 0, shortGap: 0, run3b: 0 });
 const corr = (a: number[], b: number[]) => {
   const n = a.length; if (n < 3) return 0;
   const ma = a.reduce((x, y) => x + y, 0) / n, mb = b.reduce((x, y) => x + y, 0) / n;
@@ -28,9 +29,10 @@ const corr = (a: number[], b: number[]) => {
 };
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
+const SETS_CAP = 6;
 const A: Record<'old' | 'plan', Agg> = { old: zero(), plan: zero() };
 /** The moves used (step 4: runs, triplets, bend moves, build-ups, enclosures), counted from the writer's note. */
-const mv: Record<string, number> = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0 };
+const mv: Record<string, number> = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0 };
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], s = `sp-${i}-${genre}`;
   const idea = generate({ genre, meter: '4/4', weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
@@ -75,6 +77,18 @@ for (let i = 0; i < N; i++) {
         if (Math.abs(d) <= 2) a.small++;
       });
       a.covered += cov;
+      // ---- step 5, the polish: sets of notes in 4 bars, lone 16ths, a short note before a gap
+      {
+        const byLeaf = new Map<number, number>();
+        hits.forEach((x: any, k: number) => {
+          const p = hits[k - 1], nx = hits[k + 1], leaf = Math.floor(x.step / 64);
+          if (!p || x.step >= p.step + p.len + 1) byLeaf.set(leaf, (byLeaf.get(leaf) ?? 0) + 1);
+          if (x.len === 1 && (!p || x.step > p.step + p.len) && (!nx || nx.step > x.step + 1)) a.lone++;
+          if (x.len <= 2 && nx && nx.step - (x.step + x.len) >= 3) a.shortGap++;
+          if (p && hits[k - 2] && x.notes[0] === p.notes[0] && p.notes[0] === hits[k - 2].notes[0]) a.run3b++;
+        });
+        for (const [leaf, n] of byLeaf) if ((leaf + 1) * 64 <= total) { a.leaves++; a.sets += n; if (n > SETS_CAP) a.overSets++; }
+      }
       if (!own8 && sec !== sections[sections.length - 1]) a.noLong++;
       const rs = [...rhy.values()].filter((r) => r.split(',').length > 3);
       for (let x = 0; x < rs.length; x++) { a.rhyBars++; if (rs.some((r, j) => j !== x && r === rs[x])) a.rhyAgain++; }
@@ -92,7 +106,7 @@ for (let i = 0; i < N; i++) {
       }
       if (which !== 'plan') continue;
       // ---- the plan's own checks
-      for (const m of JSON.stringify(sec.notes ?? sec).matchAll(/, (\d+) (run|trip|bend|build|enclose)\b/g)) mv[m[2]] += Number(m[1]);
+      for (const m of JSON.stringify(sec.notes ?? sec).matchAll(/, (\d+) (run|trip|bend|build|enclose|motif)\b/g)) mv[m[2]] += Number(m[1]);
       const L = c?.landings as { step: number; midi: number; len: number; role: string }[] | undefined;
       if (!L?.length) { fail(`plan ${s}: no landings recorded`); continue; }
       const all = sec.guitar2.filter((h: any) => !h.mute && h.notes.length);
@@ -155,6 +169,8 @@ row('time silent', (a) => pct(a.steps - a.covered, a.steps));
 row('same note as the one before', (a) => pct(a.same, a.moves));
 row('same note, same length, touching (a solo)', (a) => (a.pairs / a.solos).toFixed(1));
 row('runs of 3+ the same note (a solo)', (a) => (a.run3 / a.solos).toFixed(1));
+row('sets of notes a 4 bars / over the cap', (a) => `${(a.sets / Math.max(1, a.leaves)).toFixed(1)}/${pct(a.overSets, a.leaves)}`);
+row('lone 16ths / short notes before a gap (a solo)', (a) => `${(a.lone / a.solos).toFixed(1)}/${(a.shortGap / a.solos).toFixed(1)}`);
 row('4+ touching notes of one length (a solo)', (a) => (a.eq4 / a.solos).toFixed(1));
 row('moves of a 5th or more / of a tone or less', (a) => `${pct(a.leaps, a.moves)}/${pct(a.small, a.moves)}`);
 row('notes of 2+ beats / of 3+ beats (a solo)', (a) => `${(a.long8 / a.solos).toFixed(1)}/${(a.long12 / a.solos).toFixed(1)}`);
@@ -171,7 +187,7 @@ console.log(`an answer lands lower than the landing before it ${pct(p.fall, p.fa
 console.log(`planned: ${p.landings} landings (${p.waypoints} waypoints), calls off the root ${pct(p.callUp, p.calls)}, answers on the root ${pct(p.answerRoot, p.answers)}, climax highest for its place ${pct(p.climaxHigh, p.climaxes)} (${p.climaxes} of ${p.solos} solos have one)`);
 if (p.solos < 20) fail('too few solos');
 console.log(`moves (a solo): ${Object.entries(mv).map(([k, n]) => `${k} ${(n / Math.max(1, p.solos)).toFixed(2)}`).join(', ')}`);
-for (const k of ['run', 'bend', 'build', 'enclose']) if (p.solos >= 60 && !mv[k]) fail(`no ${k} move in ${p.solos} planned solos`);
+for (const k of ['run', 'bend', 'build', 'enclose', 'motif']) if (p.solos >= 60 && !mv[k]) fail(`no ${k} move in ${p.solos} planned solos`);
 if (p.notes / p.bars < 4.2) fail(`planned solos play ${(p.notes / p.bars).toFixed(1)} notes a bar, under 4.2`);
 // round 2, step 5: the carried ending
 if (p.carried && (p.carryOk < p.carried || p.carryTone < p.carried)) fail('every solo followed by a section should carry its last note into it, ending on a note of its first chord');

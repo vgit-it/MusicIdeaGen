@@ -134,6 +134,8 @@ export function buildNeck(root: HTMLElement) {
     x.strokeStyle = 'rgba(255,255,255,.28)'; x.lineWidth = 1; x.beginPath();
     tops.forEach((n, i) => { const px = X(n.step), py = YCf(n.fret); i ? x.lineTo(px, py) : x.moveTo(px, py); });
     x.stroke();
+    // (the planned solo's landings: a ring round the note, the climax's a heavier one)
+    const lands = new Map((curve.landings ?? []).filter((l) => l.role !== 'waypoint').map((l) => [l.step, l.role]));
     v.notes.forEach((n) => {
       const r = { x: X(n.step), y: Yf(n.fret) + 1, w: Math.max(3, X(n.len) - 1.5), h: rowH - 2 };
       rects.push({ n, ...r });
@@ -141,6 +143,10 @@ export function buildNeck(root: HTMLElement) {
       x.fillStyle = STRING_COL[n.string] ?? '#8b93a7';
       x.beginPath(); x.roundRect(r.x, r.y, r.w, r.h, 3); x.fill();
       x.globalAlpha = 1;
+      if (n.top && lands.has(n.step)) {
+        x.strokeStyle = '#fff'; x.lineWidth = lands.get(n.step) === 'climax' ? 2.2 : 1.2;
+        x.beginPath(); x.roundRect(r.x - 1.5, r.y - 1.5, r.w + 3, r.h + 3, 4); x.stroke();
+      }
       // the way it was played: a slide's run in, a bend's arrow, hammer-on or pull-off letters
       x.strokeStyle = '#fff'; x.lineWidth = 1.2;
       if (n.slide && n.top) {
@@ -167,6 +173,7 @@ export function buildNeck(root: HTMLElement) {
       `<span><i style="background:#e8eaf0"></i>Energy</span>` +
       (curve.pitchC ? `<span><i style="background:#ffa94d"></i>Height aimed at</span>` : '') +
       (curve.paceC ? `<span><i style="background:#5b8cff"></i>Pace</span>` : '') +
+      (lands.size ? '<span>▭ landing (heavy: the climax)</span>' : '') +
       '<span>↑ bend · h hammer-on · p pull-off · s slide · tr trill · tm tremolo</span>';
     const t = Object.entries(v.counts).map(([k, n]) => `${n} ${k}`);
     const coupling = [curve.pitchC ? `${curve.pitchC > 0 ? 'higher' : 'lower'} where it's strong` : 'height not following it',

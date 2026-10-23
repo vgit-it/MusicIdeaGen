@@ -9,7 +9,10 @@
 //    its intervals), or a stepwise walk through the scale; a long path is cut at a waypoint on a beat, a weaker landing.
 // 3. Moves (step 4): the other writer's moves as connectors: a quick turning run, 8th triplets, a bend move (bent and let down,
 //    the same bend picked again, two-string bends climbing) that ends on the landing, a build-up at the climax, an enclosure.
-// Not yet (steps 3 and 5): full scoring, the hook quoted, the motif coming back, the polish rules.
+// 4. Full scoring (step 3): a lick scored on its fit, the time and pace, the mood's intervals, chord notes on the beats; the solo's
+//    motif (its first lick) comes back in rhythm or shape on other pitches; never a copy, never the lick just played.
+// 5. Polish (step 5): no 3 of one pitch in a row, no 4 equal lengths, no lone 16th, a short note before a gap held on.
+// Not yet: the hook quoted.
 // Played by the same hands as the other writers (playSolo).
 
 import type { Genre } from '../genres';
@@ -41,7 +44,7 @@ const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
 /** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
-export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true };
+export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true };
 /** How much a genre and a player play a lick again (an echo). */
 const ECHO_GENRE: Record<Genre, number> = { rock: 1.1, hardrock: 1.2, metal: 1.2, grunge: 1.1, altmetal: 1.1, pop: 0.8, funk: 1 };
 const ECHO_LICK: Record<LickKind, number> = { blues: 1.3, simple: 1.2, sung: 1, muted: 1, run: 0.8 };
@@ -321,7 +324,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   const runny = FEATURES.moves && rng.chance(Math.min(0.9, RUNS[genre] * RUN_LEAN[lick] * (0.7 + 0.6 * intensity)));
   const triplets = FEATURES.moves && rng.chance(0.1 * TRIP_LEAN[lick]);
   const maxBuilds = bars.length >= 16 ? 2 : 1;
-  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0 };
+  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0 };
   const bendInto = (m: number) => (inScale(m - 2) ? 2 : inScale(m - 1) ? 1 : 0);
   /** A note `k` notes along the key's scale. */
   const stepScale = (m: number, k: number) => {
@@ -586,6 +589,12 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     return out;
   };
 
+  // full scoring (docs/SOLO-PLAN.md, step 3): the licks played so far, and the motif, the solo's first lick: later licks come back to
+  // its rhythm or its shape, moved to other pitches, never a copy; and never the lick just played
+  interface Played { s: LibShape; r: Rhythm; sig: string }
+  const played: Played[] = [];
+  let motif: Played | null = null;
+  const motifLean = FEATURES.score ? 0.5 + 0.4 * rng.next() : 0;
   /** A library lick that ends on the landing, in a real rhythm that fits the time: its notes before the landing, or null. */
   const lickPath = (f: number, S: number, tp: number, L: number, lastMove: number): { evs: Ev[]; start: number } | null => {
     const P = L - S;
@@ -595,12 +604,17 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     if (!cands.length) return null;
     const win = windowAt(L), Pr = prof(S), pb = pbAt(L);
     const gap0 = (st: number) => st - S;
-    const tries: { v: { ms: number[]; steps: number[]; lens: number[] }; cost: number }[] = [];
+    const tries: { v: { ms: number[]; steps: number[]; lens: number[]; s: LibShape; r: Rhythm; sig: string }; cost: number }[] = [];
     for (let k = 0; k < 24; k++) {
-      const { s, delta } = rng.weighted(cands.map((c) => [c, c.w] as [typeof c, number]));
+      // (a try that comes back to the motif: its rhythm, with a shape of that many notes, or its shape)
+      const back = FEATURES.score && motif !== null && k < 14 && rng.chance(motifLean);
+      let pickC = cands;
+      if (back) { const fc = cands.filter((c) => c.s.n === motif!.r.ons.length); if (fc.length) pickC = fc; }
+      const { s, delta } = rng.weighted(pickC.map((c) => [c, c.w] as [typeof c, number]));
       const rs = (RH_BY_N.get(s.n) ?? []).filter((x) => x.r.ons[s.n - 1] <= P);
       if (!rs.length) continue;
-      const { r, t: rt } = rng.weighted(rs.map((x) => [x, Math.sqrt(x.r.songs) * Math.exp(-(((x.t.perBeat - pb) / (0.4 * pb)) ** 2)) + 1e-3] as [typeof x, number]));
+      const rpick = back && motif!.r.ons.length === s.n && motif!.r.ons[s.n - 1] <= P ? rs.find((x) => x.r === motif!.r) : undefined;
+      const { r, t: rt } = rpick ?? rng.weighted(rs.map((x) => [x, Math.sqrt(x.r.songs) * Math.exp(-(((x.t.perBeat - pb) / (0.4 * pb)) ** 2)) + 1e-3] as [typeof x, number]));
       const steps = stepsOfRhythm(r, L), lens = steps.map((g, i) => (i + 1 < steps.length ? steps[i + 1] - g : 4));
       if (steps[0] < S) continue;
       const rel = shapeRel(s), last = rel[rel.length - 1];
@@ -616,10 +630,30 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       if (delta !== 0) cost += 0.8;
       // (a lick that starts on the note just played says it twice)
       if (ms[0] === f && !(gap0(steps[0]) >= 3)) cost += 1.5;
-      tries.push({ v: { ms, steps, lens }, cost });
+      const sig = ms.map((m) => m - ms[ms.length - 1]).join(',') + '|' + ms[ms.length - 1];
+      if (FEATURES.score) {
+        const prev = played[played.length - 1];
+        // (never a copy of a lick already played; not the lick just played, nor its shape or rhythm)
+        if (played.some((x) => x.sig === sig)) cost += 3;
+        if (prev && prev.s === s) cost += 1.5;
+        if (prev && prev.r === r && r !== motif?.r) cost += 0.8;
+        if (played.slice(-4).some((x) => x.s === s)) cost += 0.5;
+        // (the motif coming back: its rhythm, or its shape on other notes)
+        if (motif) {
+          if (r === motif.r) cost -= 1.5;
+          if (s === motif.s && sig !== motif.sig) cost -= 0.6;
+        }
+      }
+      tries.push({ v: { ms, steps, lens, s, r, sig }, cost });
     }
     const pick = pickCost(rng, tries);
     if (!pick) return null;
+    if (FEATURES.score) {
+      const now: Played = { s: pick.s, r: pick.r, sig: pick.sig };
+      if (motif && (now.r === motif.r || now.s === motif.s)) used.motif++;
+      if (!motif && pick.ms.length >= 4) motif = now;
+      played.push(now);
+    }
     const out: Ev[] = [];
     // a gap before the lick: walked, if it is long enough to say something, else a rest
     const gap = pick.steps[0] - S;
@@ -631,7 +665,8 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   /** The path from the note `f` to the landing `tp` at `L`, from `S`; then the landing itself. A long path is cut at a waypoint. */
   const connect = (f: number, S: number, tp: number, L: number, hold: number, role: LandingRole, lastMove: number): void => {
     const P = L - S;
-    if (tryMove(f, S, tp, L, hold, role, lastMove)) return;
+    const mk = evs.length;
+    if (tryMove(f, S, tp, L, hold, role, lastMove)) { for (let i = mk; i < evs.length; i++) (evs[i] as Ev & { keep?: boolean }).keep = true; return; }
     if (P > 14) {
       // a waypoint on a beat near the middle: a weaker landing, a chord note between the two
       const wl = clamp(S + 4 * Math.round((P * (0.4 + 0.2 * rng.next())) / 4), S + 4, L - 8);
@@ -814,6 +849,41 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   // ---- notes never run into the next
   evs.sort((a, b) => a.step - b.step);
   for (let i = 0; i + 1 < evs.length; i++) if (evs[i].step + evs[i].len > evs[i + 1].step) evs[i].len = Math.max(1, evs[i + 1].step - evs[i].step);
+
+  // ---- polish (docs/SOLO-PLAN.md, step 5): the vocal's rules on the finished line. Landings, moves and notes with a technique stay.
+  if (FEATURES.polish) {
+    const lands = new Set(landings.map((l) => l.step));
+    const plain = (e: Ev) => !lands.has(e.step) && !(e as Ev & { keep?: boolean }).keep && !e.bend && !e.slide && !e.art && !e.dyad && !e.shift && !e.peak && !e.unbend && !e.lateBend && !e.trill && !e.tremolo && !e.rake;
+    const touching = (a: Ev, b: Ev) => a.step + a.len === b.step;
+    // (no more than 2 of the same pitch in a row: the third goes a scale step toward the note after it)
+    for (let i = 2; i < evs.length; i++) {
+      if (evs[i].midi !== evs[i - 1].midi || evs[i - 1].midi !== evs[i - 2].midi || !plain(evs[i])) continue;
+      const nx = evs[i + 1];
+      for (const d of nx && nx.midi < evs[i].midi ? [-1, 1] : [1, -1]) {
+        const c = stepScale(evs[i].midi, d);
+        if (c !== evs[i].midi && c !== evs[i - 1].midi && (!nx || c !== nx.midi) && fits([c], [evs[i].step], [evs[i].len]) && c >= windowAt(evs[i].step)[0] - 3 && c <= windowAt(evs[i].step)[1]) { evs[i].midi = c; break; }
+      }
+    }
+    // (no 4 touching notes of one length: the 3rd takes the 4th's time, one longer note)
+    for (let i = 0; i + 3 < evs.length; i++) {
+      const [a, b, c, d] = [evs[i], evs[i + 1], evs[i + 2], evs[i + 3]];
+      if (a.len < 2 || !(touching(a, b) && touching(b, c) && touching(c, d)) || a.len !== b.len || b.len !== c.len || c.len !== d.len) continue;
+      if (!plain(c) || !plain(d)) continue;
+      c.len += d.len;
+      evs.splice(i + 3, 1);
+    }
+    // (a lone 16th, rests either side, is stretched to an 8th; a short note before a gap is held on to the next beat)
+    for (let i = 0; i < evs.length; i++) {
+      const e = evs[i], nx = evs[i + 1], prevEnd = i ? evs[i - 1].step + evs[i - 1].len : -1;
+      if (!plain(e)) continue;
+      const room = (nx ? nx.step : total) - (e.step + e.len);
+      if (e.len === 1 && e.step > prevEnd && room >= 2) { e.len = 2; continue; }
+      if (e.len <= 2 && nx && room >= 3) {
+        const end = Math.ceil((e.step + e.len) / 4) * 4;
+        if (end <= nx.step - 1 && end > e.step + e.len) e.len = end - e.step;
+      }
+    }
+  }
 
   const hits = playSolo(rng, evs, { lick, key, minor, isTone: fit.isTone, inScale, total, t });
   const r2 = (v: number) => Math.round(v * 100) / 100;

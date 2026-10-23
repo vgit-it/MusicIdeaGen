@@ -41,9 +41,9 @@ Computed from the library, nothing tagged by hand.
 ## Steps
 1. Tags, in the lick lab. **Done.**
 2. Plan layer with simple connectors (scale walk, licks ending on the landing), behind a switch. **Done** (below).
-3. Full scoring (library, motif, mood, busyness).
+3. Full scoring (library, motif, mood, busyness). **Done** (below).
 4. The existing moves as connector kinds.
-5. Polish rules; the plan on the neck view (landings as dots).
+5. Polish rules; the plan on the neck view (landings as dots). **Done** (below).
 Each behind its own switch with a check script, as with the vocal; Paul listens between steps.
 
 ## Risks
@@ -145,3 +145,23 @@ The other writer's moves, pulled into `src/parts/soloplan.ts` as ways to connect
 - **Enclosure** (`encloseMove`): the scale notes above and below the landing, then the landing. 0.2 a solo.
 Check: `solo-plan-check` prints the moves a solo and fails if a kind never turns up, or if planned solos play under 4.2 notes a bar (now 4.8, was 4.6). All other numbers as before.
 Known: build-ups are rare (the climax phrase is mostly short); the trademark note is still the climax landing only. Not listened to yet.
+
+## Step 3: full scoring of the library licks (built, 2026-10-23)
+Each library lick a connector tries (24 tries, the cheapest by weighted chance) is now scored on all of the plan's list (`lickPath`, `FEATURES.score` switches the new parts off, and then the output is note for note as before):
+- fit at both ends, the time and the pace, the mood's liking of its intervals, chord notes on the beats and changes (as before);
+- **not the lick just played:** the same shape twice in a row +1.5, the same rhythm +0.8, a shape from the last four +0.5;
+- **never a copy:** the same notes as a lick already played +3;
+- **the motif:** the solo's first lick of 4+ notes. Later tries come back to it (a solo leans 50-90%): its rhythm with a shape of that many notes (-1.5), or its shape on other pitches (-0.6).
+Check: `solo-plan-check` prints `motif` in the moves line (licks that came back to the motif: 1.5 a solo) and fails if it never turns up. Other numbers as before: bars played again note for note 2% (was 4%).
+Known: the bar-level "rhythm comes back" stays 14%, since runs and bend moves sit between the licks. Not listened to yet. Next: the hook quoted, the polish rules (step 5).
+
+## Step 5: polish, and the landings on the neck view (built, 2026-10-23)
+The vocal's rules on the finished line, before the hands (`FEATURES.polish`; off = note for note as before). Only plain notes are touched: landings, notes a move wrote (runs, bends, build-ups, triplets, enclosures) and notes with a technique stay as they are.
+- no more than 2 of the same pitch in a row (the third goes a scale step toward the note after it);
+- no 4 touching notes of one length (the 3rd takes the 4th's time: one longer note);
+- a lone 16th (rests either side) is stretched to an 8th;
+- a short note before a gap of 3+ steps is held on to the next beat.
+The set cap (the vocal's "sets of notes per 4 bars") is not needed: planned solos have 3.0 sets per 4 bars, 1% over 6. `solo-plan-check` now prints sets, lone 16ths and short notes before a gap.
+Result: plain notes have none of these left. What the check still counts is the plan's own: a landing is a short note before its planned breath, and a move's repeats (a hammered or bent note) are on purpose. Same-note runs 0.6 to 0.5 a solo, four equal lengths 0.6 to 0.4. Little changes by ear; it is a safety net.
+Neck view: each landing has a white ring round its note on the fret picture, the climax's heavier (legend: landing). Not looked at in a browser.
+Next: the hook quoted.
