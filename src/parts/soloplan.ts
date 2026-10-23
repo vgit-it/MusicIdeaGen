@@ -38,6 +38,8 @@ const BREATH_GENRE: Record<Genre, number> = { funk: 1.3, pop: 1.1, rock: 1, grun
 const PATH_BOOST = 1.5;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
+/** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
+export const FEATURES = { intoKey: true };
 
 // the library by the degree its shape ends on, and the rhythms by note count
 const ENDS: Record<'m' | 'M', LibShape[][]> = { m: Array.from({ length: 12 }, () => []), M: Array.from({ length: 12 }, () => []) };
@@ -100,6 +102,30 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     if (!inScale(m) && !fit.isTone(m, g) && lens[i] > 2) return false;
     return true;
   });
+
+  /**
+   * Off-key notes moved into the key (Paul: lick notes outside the scale move a step up or down): a note that is neither in the
+   * key's scale nor a chord note goes to the scale note next to it that sits nearest its neighbours, never onto either neighbour.
+   * A quick passing note off the beat stays now and then for the blues and shredder players (1 in 3).
+   */
+  const intoKey = (ms: number[], steps: number[], lens: number[], before: number, after: number) => {
+    if (!FEATURES.intoKey) return ms;
+    const out = [...ms];
+    for (let i = 0; i < out.length; i++) {
+      const m = out[i];
+      if (inScale(m) || fit.isTone(m, steps[i])) continue;
+      if (lens[i] <= 1 && steps[i] % 4 !== 0 && (lick === 'blues' || lick === 'run') && rng.chance(1 / 3)) continue;
+      const a = i ? out[i - 1] : before, b = i + 1 < out.length ? out[i + 1] : after;
+      const opts: { v: number; cost: number }[] = [];
+      for (const d of [1, -1, 2, -2]) {
+        const c = m + d;
+        if (!inScale(c) || c === a || c === b || fit.clash(c, steps[i])) continue;
+        opts.push({ v: c, cost: Math.abs(d) * 2 + Math.abs(c - a) + Math.abs(c - b) + rng.next() * 0.5 });
+      }
+      if (opts.length) out[i] = opts.reduce((x, y) => (y.cost < x.cost ? y : x)).v;
+    }
+    return out;
+  };
 
   // ---- the landings' notes: held, bent, or the trademark on the climax
   const peakEv = (m: number, g: number, len: number): Ev => {
@@ -289,7 +315,8 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       if (steps[0] < S) continue;
       const rel = shapeRel(s), last = rel[rel.length - 1];
       // (the notes end on the landing; a shape that ends a step or two off has its last note moved onto it)
-      const ms = rel.map((x, i) => (i === rel.length - 1 ? tp : tp - delta - (last - x)));
+      const raw = rel.map((x, i) => (i === rel.length - 1 ? tp : tp - delta - (last - x)));
+      const ms = [...intoKey(raw.slice(0, -1), steps.slice(0, -1), lens.slice(0, -1), f, tp), tp];
       if (ms.some((m) => m < win[0] - 3 || m > win[1] + 3)) continue;
       if (delta !== 0 && (ms[ms.length - 1] === ms[ms.length - 2] || Math.abs(ms[ms.length - 1] - ms[ms.length - 2]) > 5)) continue;
       if (!fits(ms.slice(0, -1), steps.slice(0, -1), lens.slice(0, -1))) continue;
