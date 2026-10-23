@@ -14,7 +14,9 @@ import type { LickKind } from '../players/lead';
 import { MINORISH } from '../parts/guitar2';
 import { LIBRARY, type LibLick, type PlacedNote, lickFit, placeLibLick, placedHit } from '../parts/licks';
 import { RHYTHMS, type Rhythm, realLick } from '../parts/reallicks';
+import { moodFit, rhythmTags, shapeTags } from '../parts/solotags';
 import { Rng } from '../rng';
+import { MOODS, MOOD_LABEL, type Mood } from '../tension';
 import { NOTE_NAMES, QUALITIES, SCALES, chordName, degreeChord, type Mode } from '../theory';
 import * as Tone from 'tone';
 import { TUNINGS } from '../theory/fretboard';
@@ -69,6 +71,9 @@ const progSel = $<HTMLSelectElement>('prog');
 NOTE_NAMES.forEach((n, i) => keySel.add(new Option(n, String(i), i === 9, i === 9)));
 (Object.keys(SCALES) as Mode[]).forEach((m) => modeSel.add(new Option(m, m, m === 'minor', m === 'minor')));
 const WHO_SEL = $<HTMLSelectElement>('who');
+const MOOD_SEL = $<HTMLSelectElement>('mood');
+MOOD_SEL.add(new Option('Any (most common first)', ''));
+MOODS.forEach((m) => MOOD_SEL.add(new Option(MOOD_LABEL[m], m)));
 WHO_ORDER.forEach((w) => WHO_SEL.add(new Option(WHO_LABEL[w], w)));
 
 function fillProgs() {
@@ -334,6 +339,7 @@ function fillList() {
   pick = null;
   $('whoF').hidden = tab !== 'rhythm';
   $('rhyF').hidden = tab !== 'shape';
+  $('moodF').hidden = tab !== 'shape';
   $('fitOnly').closest('label')!.hidden = tab !== 'lib';
   if (tab === 'lib') {
     for (const w of WHO_ORDER) {
@@ -345,13 +351,20 @@ function fillList() {
   } else if (tab === 'shape') {
     const minor = MINORISH.includes(modeSel.value as Mode);
     head(`Note shapes real solos share (${minor ? 'minor' : 'major'}), most common first`);
-    for (const s of SHAPES.filter((x) => x.minor === minor).slice(0, 80)) {
-      add(shapeNotes(s).map((r) => DEGREE[mod(r, 12)]).join(' → '), `${s.songs} songs`, { kind: 'shape', shape: s });
+    // (tags, docs/SOLO-PLAN.md: how the line moves, and how well the picked mood likes its intervals, 1 = average)
+    const mood = MOOD_SEL.value as Mood | '';
+    const pool = SHAPES.filter((x) => x.minor === minor);
+    const scored = pool.map((s) => ({ s, fit: mood ? moodFit(s, mood) : 1 }));
+    if (mood) scored.sort((a, b) => b.fit - a.fit);
+    for (const { s, fit } of scored.slice(0, 80)) {
+      const t = shapeTags(s);
+      add(shapeNotes(s).map((r) => DEGREE[mod(r, 12)]).join(' → '),
+        `${mood ? `fit ${fit.toFixed(1)} · ` : ''}${t.contour} · move ${t.meanMove.toFixed(1)} · leap ${t.maxLeap}${t.halfShare ? ' · half steps' : ''}${t.repeats ? ' · repeats' : ''}${t.strongEnd ? ' · ends strong' : ''} · ${s.songs} songs`, { kind: 'shape', shape: s });
     }
     fillRhythms(null);
   } else {
     head('Lick rhythms real songs share (x is a note, a gap is a beat); the notes are walked by real odds, New take for another');
-    for (const r of RHYTHMS_BY_SONGS.slice(0, 120)) add(grid(r), `${r.speed} · ${r.songs} songs`, { kind: 'rhythm', rhythm: r }, true);
+    for (const r of RHYTHMS_BY_SONGS.slice(0, 120)) { const t = rhythmTags(r); add(grid(r), `${t.busyness} · ${t.perBeat.toFixed(1)} a beat · shortest ${t.shortest}${t.endsLong ? ' · ends long' : ''} · ${r.songs} songs`, { kind: 'rhythm', rhythm: r }, true); }
   }
 }
 
@@ -365,6 +378,7 @@ document.querySelectorAll<HTMLButtonElement>('.tabs button').forEach((b) => {
   };
 });
 
+$('mood').addEventListener('change', () => { fillList(); refresh(false); });
 for (const id of ['key', 'bpm', 'genre', 'slot', 'who', 'rhy']) $(id).addEventListener('change', () => refresh(false));
 modeSel.addEventListener('change', () => { fillProgs(); fillList(); refresh(true); });
 progSel.addEventListener('change', () => refresh(true));
