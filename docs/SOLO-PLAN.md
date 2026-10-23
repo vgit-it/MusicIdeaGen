@@ -165,3 +165,8 @@ The set cap (the vocal's "sets of notes per 4 bars") is not needed: planned solo
 Result: plain notes have none of these left. What the check still counts is the plan's own: a landing is a short note before its planned breath, and a move's repeats (a hammered or bent note) are on purpose. Same-note runs 0.6 to 0.5 a solo, four equal lengths 0.6 to 0.4. Little changes by ear; it is a safety net.
 Neck view: each landing has a white ring round its note on the fret picture, the climax's heavier (legend: landing). Not looked at in a browser.
 Next: the hook quoted.
+
+## Step 6: the hook quoted (built, 2026-10-23)
+As the other writer does, now and then the planned solo opens on the track's hook (`FEATURES.hook`; off = note for note as before). The hook's first bar (3+ notes) is played at the solo's start, in the octave that sits in the window (never over the ceiling), and the first landing is reached from its last note. Those notes stay as they are (no polish), and an echo of that phrase plays the hook again. Chance 1 in 2 when a hook is given.
+Rare by design: the track gives the solo its hook only when the solo plays over the chorus chords (2 in 5 tracks), so about 1 solo in 30 quotes it. The notes line says `1 hook`. `solo-plan-check` counts it (not a failure if none turns up).
+Done: every step of the plan. Left: Paul listens; tuning (density, echoes, `ECHO_P`); the trademark note beyond the climax; making Planned the default.
