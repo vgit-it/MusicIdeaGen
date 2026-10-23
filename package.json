@@ -46,6 +46,8 @@
     "bass-vocal-check": "rolldown scripts/bass-vocal-check.ts --platform node --format esm -o node_modules/.cache/bass-vocal-check.mjs && node node_modules/.cache/bass-vocal-check.mjs",
     "sets-check": "rolldown scripts/sets-check.ts --platform node --format esm -o node_modules/.cache/sets-check.mjs && node node_modules/.cache/sets-check.mjs",
     "longer-check": "rolldown scripts/longer-check.ts --platform node --format esm -o node_modules/.cache/longer-check.mjs && node node_modules/.cache/longer-check.mjs",
+    "solo-tags-check": "rolldown scripts/solo-tags-check.ts --platform node --format esm -o node_modules/.cache/solo-tags-check.mjs && node node_modules/.cache/solo-tags-check.mjs",
+    "solo-plan-check": "rolldown scripts/solo-plan-check.ts --platform node --format esm -o node_modules/.cache/solo-plan-check.mjs && node node_modules/.cache/solo-plan-check.mjs",
     "lead-roll-check": "rolldown scripts/lead-roll-check.ts --platform node --format esm -o node_modules/.cache/lead-roll-check.mjs && node node_modules/.cache/lead-roll-check.mjs",
     "neck-check": "rolldown scripts/neck-check.ts --platform node --format esm -o node_modules/.cache/neck-check.mjs && node node_modules/.cache/neck-check.mjs",
     "form-check": "rolldown scripts/form-check.ts --platform node --format esm -o node_modules/.cache/form-check.mjs && node node_modules/.cache/form-check.mjs",

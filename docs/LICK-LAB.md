@@ -12,5 +12,7 @@ Page (`lick-lab.html`, `src/lab/lickLab.ts`; `npm run dev`, then `/lick-lab.html
 - **Sound:** the app's own engine and hands; lead Clean / Crunch / Distortion, backing guitar or piano, levels, and Prepare real sound (the real amps; redo after changing the lick).
 - A roll shows the lead's notes over the chords (a line marks a bend), with a playhead.
 
+- **Tags** (`docs/SOLO-PLAN.md`, `src/parts/solotags.ts`): each real shape shows its contour, mean move, biggest leap, half steps, repeats and whether it ends strong; each rhythm its busyness, notes a beat and shortest note. The Mood fit menu sorts the shapes by how well that mood's intervals (the vocal's table) suit them.
+
 ## Not yet (phase 3)
 The moves (bend moves, held notes, build-ups, trademark notes, staircases, triplets) are closures inside `generateSolo2` (`src/parts/solo2.ts`): to audition them they have to be pulled out into functions first, keeping the solo writer's output note for note.

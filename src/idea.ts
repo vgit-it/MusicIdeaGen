@@ -182,6 +182,8 @@ export interface SoloCurve {
   energy: number[];
   centre: number[];
   pace: number[];
+  /** The planned writer (docs/SOLO-PLAN.md): the notes it planned to land on, with their roles. */
+  landings?: { step: number; midi: number; len: number; role: string }[];
 }
 
 export interface Touch {

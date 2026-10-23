@@ -555,6 +555,7 @@ const optSel = {
   solo: $<HTMLSelectElement>('t-solo'),
   riffVerse: $<HTMLSelectElement>('t-riff'),
   band: $<HTMLSelectElement>('t-band'),
+  soloPlan: $<HTMLSelectElement>('t-soloplan'),
 };
 function syncTrackOptions() {
   if (!track) return;
@@ -569,6 +570,7 @@ function syncTrackOptions() {
   optSel.solo.value = track.opts.solo ?? 'auto';
   optSel.riffVerse.value = track.opts.riffVerse ?? 'auto';
   optSel.band.value = track.opts.band ?? 'on';
+  optSel.soloPlan.value = track.opts.soloPlan ?? 'off';
   // only riff genres have a riff to carry through the verses
   optSel.riffVerse.closest('label')!.style.display = track.source.guitar ? '' : 'none';
 }
@@ -577,6 +579,8 @@ for (const [k, sel] of Object.entries(optSel)) {
     if (!track) return;
     // the band playing it (or not) changes how it's played, not the song: stay where you are
     if (k === 'band') return rebuildTrack({ ...track.opts, band: sel.value as 'on' | 'off' }, shown, true);
+    // (the same song with its solos written another way: stay where you are)
+    if (k === 'soloPlan') return rebuildTrack({ ...track.opts, soloPlan: sel.value as 'on' | 'off' }, shown, true);
     const opts: TrackOptions = { ...track.opts, order: undefined };
     if (k === 'mood') opts.mood = sel.value as MoodChoice;
     else if (k === 'intro') opts.intro = sel.value as IntroChoice;

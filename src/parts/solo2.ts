@@ -35,7 +35,7 @@ const GENRE_IX = data.genres as string[];
  * again), steps; how many waves, and how far the height and pace move, by genre.
  */
 type EnergyShape = 'wave' | 'rising' | 'falling' | 'saw' | 'steps';
-interface Energy { shape: EnergyShape; waves: number; flip: boolean; pitchC: number; paceC: number; pitch: number; pace: number }
+export interface Energy { shape: EnergyShape; waves: number; flip: boolean; pitchC: number; paceC: number; pitch: number; pace: number }
 const ENERGY: Record<Genre, { shapes: [EnergyShape, number][]; waves: [number, number]; pitch: number; pace: number }> = {
   metal: { shapes: [['saw', 3], ['wave', 3], ['rising', 2], ['steps', 1]], waves: [2, 4], pitch: 6, pace: 0.5 },
   hardrock: { shapes: [['wave', 3], ['rising', 3], ['saw', 2], ['steps', 1], ['falling', 0.5]], waves: [1, 3], pitch: 6, pace: 0.45 },
@@ -48,7 +48,7 @@ const ENERGY: Record<Genre, { shapes: [EnergyShape, number][]; waves: [number, n
 /** How height and pace follow the energy: with it (high energy: higher, busier), against it, or not at all. */
 const COUPLE: [number, number][] = [[1, 5], [0, 3], [-1, 2]];
 
-function pickEnergy(rng: Rng, genre: Genre, bars: number): Energy {
+export function pickEnergy(rng: Rng, genre: Genre, bars: number): Energy {
   const g = ENERGY[genre];
   // (a long hard rock or metal solo often goes slow and sung first, then fast and high: classic solos)
   const long = bars >= 16 && (genre === 'hardrock' || genre === 'metal');
@@ -61,7 +61,7 @@ function pickEnergy(rng: Rng, genre: Genre, bars: number): Energy {
 }
 
 /** The energy at `x` (0-1 through the solo), -1 to 1. */
-function energyAt(e: Energy, x: number): number {
+export function energyAt(e: Energy, x: number): number {
   switch (e.shape) {
     case 'wave': return (e.flip ? 1 : -1) * Math.cos(2 * Math.PI * e.waves * x);
     case 'rising': return -1 + 2 * x ** 1.2;
@@ -70,13 +70,13 @@ function energyAt(e: Energy, x: number): number {
     case 'steps': { const n = Math.round(e.waves) + 1; return -1 + (2 * Math.min(n - 1, Math.floor(x * n))) / (n - 1); }
   }
 }
-const ENERGY_WORDS: Record<EnergyShape, (e: Energy) => string> = {
+export const ENERGY_WORDS: Record<EnergyShape, (e: Energy) => string> = {
   wave: (e) => (e.waves >= 2 ? `${e.waves} waves of energy` : 'a wave of energy'), rising: () => 'energy rising', falling: () => 'energy falling',
   saw: (e) => `energy built up and dropped${e.waves >= 2 ? ` ${Math.round(e.waves)} times` : ''}`, steps: () => 'energy in steps',
 };
 /** Notes a bar in real solos, by genre; and by player. */
-const DENSITY: Record<Genre, number> = { rock: 5.4, hardrock: 7.1, metal: 8, grunge: 6.1, pop: 6.5, funk: 4.6, altmetal: 6 };
-const BUSY: Record<LickKind, number> = { sung: 0.8, blues: 0.9, run: 1.2, simple: 0.8, muted: 0.9 };
+export const DENSITY: Record<Genre, number> = { rock: 5.4, hardrock: 7.1, metal: 8, grunge: 6.1, pop: 6.5, funk: 4.6, altmetal: 6 };
+export const BUSY: Record<LickKind, number> = { sung: 0.8, blues: 0.9, run: 1.2, simple: 0.8, muted: 0.9 };
 /** Real solos with quick runs, by genre (the shredder more, the raw and melodic players less). */
 const RUNS: Record<Genre, number> = { rock: 0.31, hardrock: 0.56, metal: 0.57, grunge: 0.32, pop: 0.37, funk: 0.33, altmetal: 0.4 };
 const RUN_LEAN: Record<LickKind, number> = { sung: 0.6, blues: 0.8, run: 1.5, simple: 0.4, muted: 0.5 };
@@ -105,8 +105,8 @@ const BEND_RATE: Record<LickKind, number> = { sung: 0.22, blues: 0.28, simple: 0
 type BuildCell = 'brp' | 'shape' | 'pedal';
 
 /** The calm's held notes, by player: bent and held, held then bent, bent and let down, pre-bent and let down, bent and picked again, a unison bend, plain. */
-type Held = 'bendHold' | 'holdBend' | 'bendRelease' | 'preRelease' | 'repick' | 'unison' | 'plain';
-const HELD: Record<LickKind, [Held, number][]> = {
+export type Held = 'bendHold' | 'holdBend' | 'bendRelease' | 'preRelease' | 'repick' | 'unison' | 'plain';
+export const HELD: Record<LickKind, [Held, number][]> = {
   sung: [['bendHold', 3], ['holdBend', 2], ['bendRelease', 2], ['unison', 1], ['repick', 1], ['plain', 1]],
   blues: [['bendHold', 2], ['holdBend', 2], ['bendRelease', 2], ['repick', 2], ['preRelease', 1], ['plain', 1]],
   run: [['bendHold', 2], ['holdBend', 1], ['bendRelease', 1], ['plain', 2]],
