@@ -28,7 +28,7 @@ const STRUM_MS: Record<Feel, number> = { ahead: -3, on: 0, behind: 6 };
 export function playBand(sections: Idea[], seed: string) {
   const drummer = playDrums(sections, seed);
   playBass(sections, seed, drummer);
-  playGuitars(sections, seed);
+  playGuitars(sections, seed, drummer);
   // then how their hands play it: where on the neck, picked or hammered, slid, bent
   playHands(sections, seed);
   const song = sections[0].song;

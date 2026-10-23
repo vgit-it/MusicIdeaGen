@@ -45,14 +45,14 @@ const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
 /** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
-export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true, hook: true, repeat: true, fill: true, fast: true };
+export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true, hook: true, repeat: true, fill: true, fast: true, lock: true };
 /** How much a genre and a player play a lick again (an echo). */
 const ECHO_GENRE: Record<Genre, number> = { rock: 1.1, hardrock: 1.2, metal: 1.2, grunge: 1.1, altmetal: 1.1, pop: 0.8, funk: 1 };
 const ECHO_LICK: Record<LickKind, number> = { blues: 1.3, simple: 1.2, sung: 1, muted: 1, run: 0.8 };
 /** The share of chances that become an echo, before the genre, the player, the calm and the solo's own lean. */
 const ECHO_P = 1.2;
 /** Repeat shapes (step 7): the chance a stretch of bars is played as a pattern (A A', A A A A', ...), before the genre, the player and the solo's lean. */
-const REP_P = 0.28;
+const REP_P = 0.28 * 1.5;  // (x1.5, Paul 2026-10-23: more pattern-based variation)  // (x1.5, Paul 2026-10-23: more pattern-based variation)
 /** How long a stretch is, in bars, with its weight. */
 const REP_SIZES: [number, number][] = [[2, 25], [4, 35], [8, 28], [16, 12]];
 /** The patterns of 4 cells: the cell 0 is written, the others are 'same' (as it was), 'changed' (its ending changed) or 'free' (written fresh). */
@@ -90,6 +90,8 @@ export interface PlanOpts {
   mood?: Mood;
   /** The section's tension, a level (0-1) for each bar. */
   tension?: number[];
+  /** The drums of the section (kick and snare lanes): long notes and landings are pulled onto the beat or a hit (round 4). */
+  drums?: { kick: number[]; snare: number[] };
 }
 
 export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null, intensity = 0.7, o: PlanOpts = {}): Guitar2Part {
@@ -187,7 +189,8 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     const way: Held = b ? rng.weighted(HELD[lick]) : 'plain';
     const lets = !fit.rubs(m - b, g + len - 1) && !fit.clash(m - b, g + len - 1);
     if (way === 'bendHold') return { step: g, midi: m, len, vel: v, bend: b };
-    if (way === 'holdBend' && len >= 8) return { step: g, midi: m, len, vel: v, bend: 0, lateBend: b };
+    // (the push starts soon after the pick on a beat, so the right pitch is there with the drums: round 4)
+    if (way === 'holdBend' && len >= 8) return { step: g, midi: m, len, vel: v, bend: 0, lateBend: b, ...(FEATURES.lock && g < lastBarStart - 4 ? { bendAt: g % 4 === 0 ? 1 : 2 } : {}) };
     if (way === 'bendRelease' && lets) return { step: g, midi: m, len, vel: v, bend: b, unbend: b };
     if (way === 'preRelease' && lets) return { step: g, midi: m, len, vel: v, bend: 0, unbend: b };
     if (way === 'unison' && b === 2) return { step: g, midi: m, len, vel: v, bend: 2, dyad: 0 };
@@ -392,7 +395,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   const runny = FEATURES.moves && rng.chance(Math.min(0.9, RUNS[genre] * RUN_LEAN[lick] * (0.7 + 0.6 * intensity)));
   const triplets = FEATURES.moves && rng.chance(0.1 * TRIP_LEAN[lick]);
   const maxBuilds = bars.length >= 16 ? 2 : 1;
-  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0, rep: 0, fill: 0, fast: 0, link: 0, stray: 0 };
+  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0, rep: 0, fill: 0, fast: 0, link: 0, stray: 0, lock: 0 };
   const bendInto = (m: number) => (inScale(m - 2) ? 2 : inScale(m - 1) ? 1 : 0);
   /** A note `k` notes along the key's scale. */
   const stepScale = (m: number, k: number) => {
@@ -875,10 +878,26 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
             if (!es.length) continue;
             if (B.peak && es.some((e) => e.midi >= B.midi)) continue;
             if (es[0].midi === f0 && es[0].step - aEnd <= 1) continue;
+            // (a lick that starts late or stops early leaves a silence of its own: it has to stay within the limit)
+            const lastE = es[es.length - 1];
+            if (es[0].step - aEnd > lim || B.step - (lastE.step + lastE.len) > lim) continue;
             add.push(...es.map((e) => ({ ...e, keep: true } as Ev)));
             if (fastNow) used.fast++;
             done = true;
           }
+        }
+      }
+      // (nothing fitted: the note is held on far enough that the silence left is within the limit)
+      if (!done && A) for (let cover = g - lim; cover <= g && !done; cover++) done = holdOn(A, B, cover, true);
+      // (or the next note comes in early, held back to the silence's limit: it anticipates its place)
+      if (!done) {
+        const x = g - lim, ns = B.step - x;
+        if (ns > aEnd && !changes.has(B.step) && sameChord(fit.chordAt(ns), fit.chordAt(B.step)) && fits([B.midi - (B.unbend ?? 0)], [ns], [B.len + x])) {
+          const l = landings.find((q) => q.step === B.step);
+          if (l) l.step = ns;
+          B.step = ns; B.len += x;
+          if (B.bendAt !== undefined) B.bendAt += x;
+          done = true;
         }
       }
     }
@@ -1006,6 +1025,9 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
         if (!valid(es, m2)) continue;
       }
       evs.push(...es);
+      // (a cell played again in the other place of the pattern takes that place's job: its last landing is a call or an answer there)
+      const fl = [...ls].reverse().find((l) => l.role !== 'waypoint');
+      if (fl && (p.role === 'call' || p.role === 'answer') && fl.role !== 'climax') fl.role = p.role;
       landings.push(...ls);
       lastMove = prevLanding === null ? 0 : m2 - prevLanding;
       before = prevLanding;
@@ -1101,6 +1123,37 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       }
     }
   }
+
+  // ---- lock to the groove (round 4): long notes and landings off the beat and off every kick and snare are moved onto the nearest
+  // beat or hit (a 16th away; an 8th away now and then), so the lead sits with the drums
+  const lockToGroove = () => {
+    const d = o.drums;
+    if (!d) return;
+    const hit = (g: number) => (d.kick[g] ?? 0) > 0 || (d.snare[g] ?? 0) >= 0.5;
+    evs.sort((a, b) => a.step - b.step);
+    const landAt = new Map(landings.map((l) => [l.step, l]));
+    let moved = 0;
+    for (let i = 1; i < evs.length - 1; i++) {
+      const e = evs[i], prev = evs[i - 1], nx = evs[i + 1];
+      if (!(e.len >= 4 || e.peak || landAt.has(e.step)) || e.shift || e.step % 4 === 0 || hit(e.step) || changes.has(e.step)) continue;
+      const far = e.step % 2 === 0;
+      const cands = [-1, 1, ...(far && rng.chance(0.6) ? [-2, 2] : [])].map((dd) => e.step + dd)
+        .filter((g) => g > prev.step && g < nx.step && g > 0 && g < total - 4 && !changes.has(g) && (g % 4 === 0 || hit(g)) && sameChord(fit.chordAt(g), fit.chordAt(e.step)));
+      if (!cands.length) continue;
+      const score = (g: number) => (g % 4 === 0 ? 2 : 0) + (hit(g) ? 2 : 0) - Math.abs(g - e.step) * 1.5;
+      cands.sort((a, b) => score(b) - score(a));
+      const g = cands[0], dd = g - e.step, len = e.len - dd;
+      if (len < 2 || !fits([e.midi - (e.unbend ?? 0)], [g], [len])) continue;
+      const l = landAt.get(e.step);
+      if (l) { landAt.delete(e.step); l.step = g; landAt.set(g, l); }
+      e.step = g; e.len = len;
+      if (e.bendAt !== undefined) e.bendAt = Math.max(1, e.bendAt - dd);
+      if (prev.step + prev.len > g) prev.len = Math.max(1, g - prev.step);
+      moved++;
+    }
+    used.lock += moved;
+  };
+  if (FEATURES.lock) lockToGroove();
 
   // ---- fill the gaps, after the polish (nothing then changes the gaps)
   if (FEATURES.fill) fillGaps();
