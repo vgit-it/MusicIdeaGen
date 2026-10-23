@@ -35,9 +35,18 @@ export interface Landing { step: number; midi: number; len: number; role: Landin
 const BREATH_MOOD: Record<Mood, number> = { melancholic: 1.4, nostalgic: 1.2, dreamy: 1.3, dark: 1.1, tense: 0.8, angry: 0.6, happy: 0.8, triumphant: 0.7 };
 const BREATH_GENRE: Record<Genre, number> = { funk: 1.3, pop: 1.1, rock: 1, grunge: 1.1, altmetal: 0.9, hardrock: 0.8, metal: 0.7 };
 /** The path's notes a beat against the real notes a bar: the rests and holds are planned apart, so the paths are busier than the average. */
-const PATH_BOOST = 1.5;
+const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
+/** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
+export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true };
+/** How much a genre and a player play a lick again (an echo). */
+const ECHO_GENRE: Record<Genre, number> = { rock: 1.1, hardrock: 1.2, metal: 1.2, grunge: 1.1, altmetal: 1.1, pop: 0.8, funk: 1 };
+const ECHO_LICK: Record<LickKind, number> = { blues: 1.3, simple: 1.2, sung: 1, muted: 1, run: 0.8 };
+/** The share of chances that become an echo, before the genre, the player, the calm and the solo's own lean. */
+const ECHO_P = 1.2;
+/** How much a player sings one long note (a held phrase). */
+const HOLD_LEAN: Record<LickKind, number> = { sung: 1.4, blues: 1.2, simple: 1, muted: 0.8, run: 0.6 };
 
 // the library by the degree its shape ends on, and the rhythms by note count
 const ENDS: Record<'m' | 'M', LibShape[][]> = { m: Array.from({ length: 12 }, () => []), M: Array.from({ length: 12 }, () => []) };
@@ -83,7 +92,15 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   const R = 57 + mod(key - 57, 12);
   const base = R + 3 + Math.round(3 * intensity);
   const centerAt = (g: number) => base + Math.round(en.pitchC * en.pitch * E(g));
-  const windowAt = (g: number): [number, number] => [Math.max(50, centerAt(g) - 8), Math.min(84, centerAt(g) + 9)];
+  const rawWindow = (g: number): [number, number] => [Math.max(50, centerAt(g) - 8), Math.min(84, centerAt(g) + 9)];
+  // the solo's ceiling (docs/SOLO-PLAN.md, round 2): once the climax is chosen, it is the top: its phrase may reach `peakTop`, every
+  // other phrase stays 3 semitones under it
+  let peakTop = Infinity, inClimax = false;
+  const windowAt = (g: number): [number, number] => {
+    const [lo, hi] = rawWindow(g);
+    if (peakTop === Infinity) return [lo, hi];
+    return inClimax ? [Math.max(lo, peakTop - 14), peakTop] : [lo, Math.min(hi, peakTop - 3)];
+  };
   const D = DENSITY[genre] * BUSY[lick] * (0.85 + 0.3 * intensity);
   /** Wanted: the path's notes a beat at `g`. */
   const pbAt = (g: number) => (PATH_BOOST * D / 4) * (1 + en.paceC * en.pace * E(g));
@@ -100,6 +117,30 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     if (!inScale(m) && !fit.isTone(m, g) && lens[i] > 2) return false;
     return true;
   });
+
+  /**
+   * Off-key notes moved into the key (Paul: lick notes outside the scale move a step up or down): a note that is neither in the
+   * key's scale nor a chord note goes to the scale note next to it that sits nearest its neighbours, never onto either neighbour.
+   * A quick passing note off the beat stays now and then for the blues and shredder players (1 in 3).
+   */
+  const intoKey = (ms: number[], steps: number[], lens: number[], before: number, after: number) => {
+    if (!FEATURES.intoKey) return ms;
+    const out = [...ms];
+    for (let i = 0; i < out.length; i++) {
+      const m = out[i];
+      if (inScale(m) || fit.isTone(m, steps[i])) continue;
+      if (lens[i] <= 1 && steps[i] % 4 !== 0 && (lick === 'blues' || lick === 'run') && rng.chance(1 / 3)) continue;
+      const a = i ? out[i - 1] : before, b = i + 1 < out.length ? out[i + 1] : after;
+      const opts: { v: number; cost: number }[] = [];
+      for (const d of [1, -1, 2, -2]) {
+        const c = m + d;
+        if (!inScale(c) || c === a || c === b || fit.clash(c, steps[i])) continue;
+        opts.push({ v: c, cost: Math.abs(d) * 2 + Math.abs(c - a) + Math.abs(c - b) + rng.next() * 0.5 });
+      }
+      if (opts.length) out[i] = opts.reduce((x, y) => (y.cost < x.cost ? y : x)).v;
+    }
+    return out;
+  };
 
   // ---- the landings' notes: held, bent, or the trademark on the climax
   const peakEv = (m: number, g: number, len: number): Ev => {
@@ -139,11 +180,13 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   /** How long a landing is held (steps): a call or answer mostly long, a middle one less, the climax longest; longer in the calm. */
   const holdFor = (g: number, role: LandingRole, phraseLen: number) => {
     const calm = calmAt(g);
-    if (role === 'climax') return 2 * Math.round((8 + rng.next() * 4) / 2);
+    if (role === 'climax') return 2 * Math.round((FEATURES.holds ? 12 + rng.next() * 4 : 8 + rng.next() * 4) / 2);
     const longP = clamp((role === 'mid' ? 0.45 : 0.75) + 0.3 * calm, 0.2, 0.95);
-    const h = rng.chance(longP) ? 6 + rng.next() * (4 + 2 * calm) : 2 + rng.next() * 2;
+    let h = rng.chance(longP) ? 6 + rng.next() * (4 + 2 * calm) : 2 + rng.next() * 2;
+    // (a call or answer now and then held a good while: 3 to 4 beats)
+    if (FEATURES.holds && role !== 'mid' && h >= 6 && rng.chance(0.2 + 0.3 * calm)) h = 12 + rng.next() * 4;
     // (a short phrase keeps room for a path: the hold is at most 0.6 of it)
-    return Math.max(2, Math.min(2 * Math.round(h / 2), 2 * Math.round((0.6 * phraseLen) / 2)));
+    return Math.max(2, Math.min(2 * Math.round(h / 2), 2 * Math.round(((FEATURES.holds ? 0.7 : 0.6) * phraseLen) / 2)));
   };
   /** A phrase's length in steps with its hold, not its breath: real phrases, longer where the pace is up. */
   const phraseSteps = (at: number) => {
@@ -155,7 +198,8 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
 
   // ---- the plan: units, phrases, the climax
   const end = total - 2;
-  interface Phrase { S: number; end: number; role: LandingRole; len: number }
+  /** `w0`: where the phrase's window starts (its first note may come later, at `S`). `echoOf`: the phrase it plays again, `echoN` the time (1 = the first echo). */
+  interface Phrase { S: number; w0: number; end: number; role: LandingRole; len: number; held?: boolean; echoOf?: number; echoN?: number }
   const units: { s: number; e: number; role: LandingRole }[] = [];
   for (let b = 0; b < bars.length;) {
     const take = bars.length - b === 3 || bars.length < 2 ? bars.length - b : 2;
@@ -163,30 +207,73 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     b += take;
   }
   units[units.length - 1].role = 'end';
+  // the last bar is the last note's: the playing stops at its start, the final note rings through it (and on into the next section: src/track.ts, carrySolo)
+  const lastBarStart = bars[bars.length - 1].start;
+  if (FEATURES.carry && bars.length >= 4 && lastBarStart - units[units.length - 1].s >= 12) units[units.length - 1].e = lastBarStart;
+  // a held phrase: one long note over the band (Paul: more long holds); more in the calm, for the melodic and bluesy players, and each solo leans its own way
+  const heldLean = 0.5 + rng.next();
+  const heldP = (at: number, role: LandingRole) => (FEATURES.holds ? clamp((0.05 + 0.4 * calmAt(at) + (role === 'mid' ? 0 : 0.03)) * HOLD_LEAN[lick] * heldLean, 0, 0.5) : 0);
   const phrases: Phrase[] = [];
+  const sameChord = (a: { root: number; q: string }, b: { root: number; q: string }) => a.root === b.root && a.q === b.q;
+  const echoLean = 0.6 + 0.8 * rng.next();
+  const echoP = (at: number) => clamp(ECHO_P * ECHO_GENRE[genre] * ECHO_LICK[lick] * echoLean * (1 - 0.5 * calmAt(at)), 0, 0.8);
   for (const u of units) {
     let pos = u.s;
     while (pos < u.e - 5) {
       let len = phraseSteps(pos);
       if (u.e - pos - len < 8) len = u.e - pos;
+      let held = false;
+      if (u.e - pos >= 10 && !(u.role === 'end' && pos + 14 >= u.e) && rng.chance(heldP(pos, pos + len >= u.e ? u.role : 'mid'))) {
+        held = true;
+        len = Math.min(u.e - pos, 2 * Math.round(rng.pick([10, 12, 14, 16, 18]) / 2));
+        if (u.e - pos - len < 8) len = u.e - pos;
+      }
       const lastOne = pos + len >= u.e;
       // (starts: the first lick on the beat about two times in three, later ones a little late now and then)
       const delay = !phrases.length ? (rng.chance(0.64) ? 0 : 2) : rng.weighted<number>([[0, 40], [2, 40], [4, 20]]);
-      phrases.push({ S: pos + (len - delay >= 8 ? delay : 0), end: pos + len, role: lastOne ? u.role : 'mid', len });
+      phrases.push({ S: pos + (len - delay >= 8 ? delay : 0), w0: pos, end: pos + len, role: lastOne ? u.role : 'mid', len, ...(held ? { held } : {}) });
       pos += len;
+      // Echoes (docs/SOLO-PLAN.md, round 2): a middle phrase may be played again, once or twice, at the same place in the next half bar
+      // or bar(s), on the same chord. Its window is stretched to that (a longer rest or hold), and so is each echo's.
+      const ph = phrases[phrases.length - 1], rootIx = phrases.length - 1;
+      if (FEATURES.echo && ph.role === 'mid' && !ph.held && ph.len >= 6 && !lastOne && rng.chance(echoP(ph.w0))) {
+        const bar = bars[barOf(ph.w0)].len, D = ph.len <= bar / 2 ? bar / 2 : ph.len <= bar ? bar : 0;
+        const times = rng.weighted<number>([[1, 70], [2, 30]]);
+        if (D) {
+          let at = ph.w0 + D;
+          for (let k = 1; k <= times; k++) {
+            if (at + D > u.e + 2) break;
+            // (over another chord it is less likely, and moved or given a new ending to suit it)
+            const sameHarmony = sameChord(fit.chordAt(at), fit.chordAt(ph.w0)) && sameChord(fit.chordAt(at + D - 2), fit.chordAt(ph.w0 + D - 2));
+            if (!sameHarmony && !rng.chance(0.5)) break;
+            const last = phrases[phrases.length - 1];
+            last.end = at; last.len = at - last.w0;
+            const elen = u.e - at - D < 8 ? u.e - at : D;
+            phrases.push({ S: at + (ph.S - ph.w0), w0: at, end: at + elen, role: at + elen >= u.e ? u.role : 'mid', len: elen, echoOf: rootIx, echoN: k });
+            pos = at + elen;
+            at += D;
+            if (pos >= u.e - 5) break;
+          }
+        }
+      }
     }
   }
   // the climax: the phrase in the middle of the energy's highest crest, if it is long enough to build to
   let crest = Math.floor(total * 0.4), best = -Infinity;
   for (let g = Math.floor(total * 0.15); g < total - 12; g += 2) { const e = E(g) + 0.01 * rng.next(); if (e > best) { best = e; crest = g; } }
-  const eligible = phrases.map((p, i) => ({ p, i })).filter(({ p }) => p.role !== 'end' && p.len >= 12);
+  const eligible = phrases.map((p, i) => ({ p, i })).filter(({ p }) => p.role !== 'end' && p.echoOf === undefined && p.len >= (FEATURES.peak ? 16 : 12));
   const climaxAt = eligible.length ? eligible.reduce((a, b) => (Math.abs((b.p.S + b.p.end) / 2 - crest) < Math.abs((a.p.S + a.p.end) / 2 - crest) ? b : a)).i : -1;
-  if (climaxAt >= 0) phrases[climaxAt].role = 'climax';
+  if (climaxAt >= 0) {
+    phrases[climaxAt].role = 'climax';
+    // (the peak is said once)
+    delete phrases[climaxAt].echoOf;
+    for (const x of phrases) if (x.echoOf === climaxAt) delete x.echoOf;
+  }
 
   // ---- where a landing sits: a chord note near the height the role wants, by the mood's liking of the move from the one before
-  const chooseLanding = (L: number, role: LandingRole, hold: number, prev: number | null, lastMove: number, before: number | null) => {
+  const chooseLanding = (L: number, role: LandingRole, hold: number, prev: number | null, lastMove: number, before: number | null, buildUp = false) => {
     const win = windowAt(L), P = prof(L), c = centerAt(L);
-    const target = role === 'climax' ? Math.min(win[1], c + 5) : role === 'call' ? c + 0.8 * P.size : role === 'answer' || role === 'end' ? c - 0.8 * P.size : c + (rng.next() - 0.5) * 1.5 * P.size;
+    const target = role === 'climax' ? (FEATURES.peak ? win[1] - 1 : Math.min(win[1], c + 5)) : role === 'call' ? c + 0.8 * P.size : role === 'answer' || role === 'end' ? c - 0.8 * P.size : c + (rng.next() - 0.5) * 1.5 * P.size;
     const root = chordPc(key, fit.chordAt(L));
     const items: { v: number; cost: number }[] = [];
     for (let m = win[0]; m <= win[1]; m++) {
@@ -194,10 +281,12 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       let cost = (role === 'climax' ? 0.5 : 0.22) * Math.abs(m - target) + (prev !== null ? intervalCost(P, prev, m, lastMove, true) : 0);
       // (the climax sits above the rest; the rest keep under what the height and the mood allow, and under the climax once it is sung)
       if (role === 'climax') cost += Math.max(0, c + 3 - m);
-      else cost += Math.max(0, m - (c + P.size + 2)) + (climaxMidi !== null ? Math.max(0, m - (climaxMidi - 1)) : 0);
+      else cost += Math.max(0, m - (c + P.size + 2)) + (climaxMidi !== null ? Math.max(0, m - (climaxMidi - 1)) : 0) + (buildUp && m > c ? 0.6 * (m - c) : 0);
       // (a landing on the same note as the one before, or the one before that, is a dull line)
       if (m === prev) cost += 2.5; else if (m === before) cost += 1;
       const isRoot = mod(m, 12) === root;
+      // (the last note rings through the last bar: a note of its chord too)
+      if (role === 'end' && FEATURES.carry && !fit.isTone(m, lastBarStart)) cost += 2;
       if (role === 'call') cost += isRoot ? 4 : 0;
       else if (role === 'answer' || role === 'end') cost += isRoot ? -1.5 : 1;
       items.push({ v: m, cost });
@@ -234,7 +323,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     }
     const k = dur.length;
     const win = windowAt(S), pool: number[] = [];
-    for (let m = win[0] - 3; m <= win[1] + 3; m++) if (inScale(m)) pool.push(m);
+    for (let m = win[0] - 3; m <= win[1] + (peakTop === Infinity ? 3 : 0); m++) if (inScale(m)) pool.push(m);
     const idx = (m: number) => pool.reduce((bi, x, i) => (Math.abs(x - m) < Math.abs(pool[bi] - m) ? i : bi), 0);
     const i0 = idx(f), iT = idx(tp), Pr = prof(S);
     const sign = rng.chance(Pr.up) ? 1 : -1;
@@ -289,8 +378,9 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       if (steps[0] < S) continue;
       const rel = shapeRel(s), last = rel[rel.length - 1];
       // (the notes end on the landing; a shape that ends a step or two off has its last note moved onto it)
-      const ms = rel.map((x, i) => (i === rel.length - 1 ? tp : tp - delta - (last - x)));
-      if (ms.some((m) => m < win[0] - 3 || m > win[1] + 3)) continue;
+      const raw = rel.map((x, i) => (i === rel.length - 1 ? tp : tp - delta - (last - x)));
+      const ms = [...intoKey(raw.slice(0, -1), steps.slice(0, -1), lens.slice(0, -1), f, tp), tp];
+      if (ms.some((m) => m < win[0] - 3 || m > win[1] + (peakTop === Infinity ? 3 : 0))) continue;
       if (delta !== 0 && (ms[ms.length - 1] === ms[ms.length - 2] || Math.abs(ms[ms.length - 1] - ms[ms.length - 2]) > 5)) continue;
       if (!fits(ms.slice(0, -1), steps.slice(0, -1), lens.slice(0, -1))) continue;
       let cost = intervalCost(Pr, f, ms[0], lastMove, false) + 0.5 * -Math.log(moodFit(s, mood, tensionAt(L))) + 0.5 * ((rt.perBeat - pb) / pb) ** 2 + 0.15 * (steps[0] - S);
@@ -342,10 +432,16 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
 
   // ---- the solo: phrase by phrase
   let prevLanding: number | null = null, before: number | null = null, climaxMidi: number | null = null, lastMove = 0, f = centerAt(0);
-  phrases.forEach((p, pi) => {
+  /** A phrase's hold, breath and landing time. */
+  const sizePhrase = (p: Phrase, pi: number) => {
     const lastPhrase = pi === phrases.length - 1;
-    let { S, end: pe } = p;
-    let hold: number, breath: number;
+    const { S } = p;
+    let pe = p.end, hold: number, breath: number;
+    if (lastPhrase && FEATURES.carry && p.end === lastBarStart) {
+      // the ending: the last note comes in a beat before the last bar and rings to the end of the section (and on, if another follows)
+      const L = Math.max(p.S, p.end - 4);
+      return { hold: end - L, breath: 0, L };
+    }
     if (lastPhrase) {
       // the ending: most run on into the next section (a short last note), some land on the root, held
       const home = rng.chance(0.4);
@@ -356,20 +452,136 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       hold = holdFor(pe, p.role, p.len);
       breath = breathFor(pe, p.role);
     }
+    // (a held phrase is the one note: it takes the window, less a short breath)
+    if (p.held) { breath = Math.min(breath, 4); hold = pe - p.S - breath; }
+    // (into the climax: the phrase before it ends low and breathes, so the peak is a rise; the climax keeps room for a path to it)
+    if (FEATURES.peak && phrases[pi + 1]?.role === 'climax') breath = Math.max(breath, 4);
+    if (FEATURES.peak && p.role === 'climax') hold = Math.min(hold, Math.max(2, 2 * Math.floor((p.len - 8) / 2)));
     let L = pe - breath - hold;
     // (no room for a path: a held note, the hold taking what there is)
-    if (L - S < 2) { L = S; hold = Math.max(2, Math.min(14, pe - S - breath)); }
+    if (L - S < 2) { L = S; hold = Math.max(2, Math.min(FEATURES.holds ? 18 : 14, pe - S - breath)); }
+    return { hold, breath, L };
+  };
+  // the climax first (docs/SOLO-PLAN.md, round 2): its note is the highest chord note the window allows, and it is the ceiling:
+  // every other phrase, path notes too, stays 3 semitones under it
+  let climaxPlan: { hold: number; breath: number; L: number; m: number } | null = null;
+  if (FEATURES.peak && climaxAt >= 0) {
+    const sz = sizePhrase(phrases[climaxAt], climaxAt);
+    let top = 0;
+    for (let g = 0; g < total; g += 2) top = Math.max(top, rawWindow(g)[1]);
+    let m = -1;
+    for (const strict of [true, false]) {
+      for (let x = top; x >= top - 14 && m < 0; x--) if (fit.isTone(x, sz.L) && (!strict || (!fit.clash(x, sz.L) && (sz.hold < 4 || !fit.rubs(x, sz.L))))) m = x;
+      if (m >= 0) break;
+    }
+    if (m >= 0) { climaxPlan = { ...sz, m }; peakTop = m; }
+  }
+  /** What a phrase wrote, for an echo to play again. */
+  interface Rec { w0: number; evs: Ev[]; lands: Landing[]; m: number; L: number; hold: number }
+  const recs: (Rec | undefined)[] = [];
+  /** A note `k` notes along the key's scale. */
+  const stepScale = (m: number, k: number) => {
+    const rel = mod(m - key, 12), oct = m - rel;
+    let i = scale.indexOf(rel);
+    if (i < 0) i = scale.reduce((bi, x, j) => (Math.abs(x - rel) < Math.abs(scale[bi] - rel) ? j : bi), 0);
+    const j = i + k;
+    return oct + 12 * Math.floor(j / scale.length) + scale[mod(j, scale.length)];
+  };
+  /** The phrase it echoes, played again `dt` steps on: as it was, with another ending, or moved along the scale (chord notes kept on chord notes); false if none fits. */
+  const tryEcho = (p: Phrase, pi: number): boolean => {
+    const r = recs[p.echoOf!];
+    if (!r) return false;
+    const dt = p.w0 - r.w0, L2 = r.L + dt, n = p.echoN ?? 1;
+    if (L2 + r.hold > Math.min(p.end, end)) return false;
+    const copy = () => r.evs.map((e) => ({ ...e, step: e.step + dt }));
+    const copyLands = () => r.lands.map((l) => ({ ...l, step: l.step + dt }));
+    const finalLand = [...r.lands].reverse().find((l) => l.role !== 'waypoint')!;
+    const landSteps = new Set(r.lands.map((l) => l.step + dt));
+    const lastEnd = evs.length ? Math.max(...evs.map((e) => e.step + e.len)) : 0;
+    const valid = (es: Ev[], landNote: number) => {
+      if (Math.min(...es.map((e) => e.step)) < Math.max(lastEnd, p.w0) || Math.max(...es.map((e) => e.step + e.len)) > Math.min(p.end, total)) return false;
+      const rootNow = mod(chordPc(key, fit.chordAt(L2)) , 12);
+      if (p.role === 'call' && mod(landNote, 12) === rootNow) return false;
+      return es.every((e) => {
+        const m = e.midi - (e.unbend ?? 0), win = windowAt(e.step);
+        if (m < win[0] - 3 || e.midi > win[1] + (peakTop === Infinity ? 3 : 0)) return false;
+        if (landSteps.has(e.step)) return fit.isTone(e.midi, e.step) && !fit.clash(e.midi, e.step) && (e.len < 4 || !fit.rubs(e.midi, e.step));
+        return fits([m], [e.step], [e.len]);
+      });
+    };
+    const first = rng.weighted<'same' | 'ending' | 'moved'>(n >= 2 ? [['ending', 55], ['moved', 45]] : [['same', 17], ['ending', 50], ['moved', 33]]);
+    const order = [first, ...(['ending', 'moved', 'same'] as const).filter((k) => k !== first && (n < 2 || k !== 'same'))];
+    for (const kind of order) {
+      let es: Ev[] = [], ls: Landing[] = [], m2 = r.m;
+      if (kind === 'same') { es = copy(); ls = copyLands(); if (!valid(es, m2)) continue; }
+      else if (kind === 'moved') {
+        const ks = rng.chance(prof(L2).up) ? [1, -1, 2, -2] : [-1, 1, -2, 2];
+        let ok = false;
+        for (const k of ks) {
+          es = copy().map((e) => ({ ...e, midi: stepScale(e.midi, k) }));
+          ls = copyLands().map((l) => ({ ...l, midi: stepScale(l.midi, k) }));
+          m2 = stepScale(r.m, k);
+          if (valid(es, m2)) { ok = true; break; }
+        }
+        if (!ok) continue;
+      } else {
+        // another ending: the landing another chord note of the chord, the note before it a step from it
+        es = copy(); ls = copyLands();
+        const li = es.findIndex((e) => e.step === finalLand.step + dt);
+        if (li < 0) continue;
+        const old = es[li].midi, root = chordPc(key, fit.chordAt(L2)), win = windowAt(L2), P = prof(L2);
+        const opts: { v: number; cost: number }[] = [];
+        for (let c = old - 5; c <= old + 5; c++) {
+          if (c === old || c < win[0] - 2 || c > win[1] || !fit.isTone(c, L2) || fit.clash(c, L2) || (es[li].len >= 4 && fit.rubs(c, L2))) continue;
+          const isRoot = mod(c, 12) === root;
+          opts.push({ v: c, cost: Math.abs(c - old) + (p.role === 'call' && isRoot ? 3 : 0) + (p.role === 'answer' && isRoot ? -1 : 0) + 0.5 * (li ? intervalCost(P, es[li - 1].midi, c, 0, true) : 0) });
+        }
+        const c = pickCost(rng, opts);
+        if (c === null) continue;
+        es[li].midi = c;
+        const lastLand = [...ls].reverse().find((l) => l.role !== 'waypoint')!;
+        lastLand.midi = c;
+        m2 = c;
+        const pn = es[li - 1];
+        if (pn && pn.step + pn.len === es[li].step && !landSteps.has(pn.step)) {
+          const a = stepScale(c, pn.midi < c ? -1 : 1);
+          if (a !== c && fits([a], [pn.step], [pn.len])) pn.midi = a;
+        }
+        if (!valid(es, m2)) continue;
+      }
+      evs.push(...es);
+      landings.push(...ls);
+      lastMove = prevLanding === null ? 0 : m2 - prevLanding;
+      before = prevLanding;
+      prevLanding = m2;
+      f = m2;
+      recs[pi] = { w0: p.w0, evs: es.map((e) => ({ ...e })), lands: ls.map((l) => ({ ...l })), m: m2, L: L2, hold: r.hold };
+      return true;
+    }
+    return false;
+  };
+  phrases.forEach((p, pi) => {
+    if (p.echoOf !== undefined && tryEcho(p, pi)) return;
+    const mark = evs.length, markL = landings.length;
+    const { S } = p;
+    const sz = pi === climaxAt && climaxPlan ? climaxPlan : sizePhrase(p, pi);
+    let { hold, L } = sz;
+    const buildUp = FEATURES.peak && phrases[pi + 1]?.role === 'climax';
+    inClimax = FEATURES.peak && pi === climaxAt && !!climaxPlan;
     // (a hold over a chord change keeps to the chord it was played on, if the note isn't in the next one)
-    let m = chooseLanding(L, p.role === 'end' && hold === 3 ? 'mid' : p.role, hold, prevLanding, lastMove, before);
-    if (p.role === 'end' && hold > 3) {
+    let m = pi === climaxAt && climaxPlan ? climaxPlan.m : chooseLanding(L, p.role === 'end' && hold === 3 ? 'mid' : p.role, hold, prevLanding, lastMove, before, buildUp);
+    if (p.role === 'end' && hold > 3 && (!FEATURES.carry || rng.chance(0.5))) {
       const root = chordPc(key, fit.chordAt(L));
       const alt = [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5].map((d) => m + d).find((x) => mod(x, 12) === root && !fit.clash(x, L) && x >= windowAt(L)[0] - 2 && x <= windowAt(L)[1] + 2);
       if (alt !== undefined) m = alt;
     }
-    for (let g = L + 1; g < L + hold; g++) if (changes.has(g) && !fit.isTone(m, g)) { hold = Math.max(2, 2 * Math.floor((g - L) / 2)); break; }
+    // (the final note carries over a chord change: the bend after it moves it to the next chord)
+    if (!(FEATURES.carry && p.role === 'end')) for (let g = L + 1; g < L + hold; g++) if (changes.has(g) && !fit.isTone(m, g)) { hold = Math.max(2, 2 * Math.floor((g - L) / 2)); break; }
     connect(prevLanding === null ? f : prevLanding, S, m, L, hold, p.role, lastMove);
+    recs[pi] = { w0: p.w0, evs: evs.slice(mark).map((e) => ({ ...e })), lands: landings.slice(markL).map((l) => ({ ...l })), m, L, hold };
     lastMove = prevLanding === null ? 0 : m - prevLanding;
     if (p.role === 'climax') climaxMidi = m;
+    inClimax = false;
     before = prevLanding;
     prevLanding = m;
     f = m;

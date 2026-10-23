@@ -48,7 +48,8 @@ export function leadView(idea: Idea): LeadView {
     const step = h.step + (h.shift ?? 0);
     sorted.forEach((m, j) => { if (h.pedal || j < sorted.length - 1) extras.push({ step, len: h.len, midi: m }); });
     if (top === undefined) continue;
-    const n: RollNote = { step, len: h.len, midi: top };
+    // (a note that carries into the next section is drawn to the section's end)
+    const n: RollNote = { step, len: Math.max(1, Math.min(h.len, idea.song.total - step)), midi: top };
     const t = h.touch, bend = h.bend || t?.bend, scoop = bend || h.slide;
     if (scoop) { n.slide = scoop; n.slideLen = Math.min(h.len * 0.5, 2); }
     if (h.lateBend) n.late = h.lateBend;
