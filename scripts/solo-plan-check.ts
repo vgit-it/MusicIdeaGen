@@ -32,7 +32,7 @@ const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length
 const SETS_CAP = 6;
 const A: Record<'old' | 'plan', Agg> = { old: zero(), plan: zero() };
 /** The moves used (step 4: runs, triplets, bend moves, build-ups, enclosures), counted from the writer's note. */
-const mv: Record<string, number> = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0 };
+const mv: Record<string, number> = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0, rep: 0 };
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], s = `sp-${i}-${genre}`;
   const idea = generate({ genre, meter: '4/4', weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
@@ -106,7 +106,7 @@ for (let i = 0; i < N; i++) {
       }
       if (which !== 'plan') continue;
       // ---- the plan's own checks
-      for (const m of JSON.stringify(sec.notes ?? sec).matchAll(/, (\d+) (run|trip|bend|build|enclose|motif|hook)\b/g)) mv[m[2]] += Number(m[1]);
+      for (const m of JSON.stringify(sec.notes ?? sec).matchAll(/, (\d+) (run|trip|bend|build|enclose|motif|hook|rep)\b/g)) mv[m[2]] += Number(m[1]);
       const L = c?.landings as { step: number; midi: number; len: number; role: string }[] | undefined;
       if (!L?.length) { fail(`plan ${s}: no landings recorded`); continue; }
       const all = sec.guitar2.filter((h: any) => !h.mute && h.notes.length);
@@ -187,14 +187,15 @@ console.log(`an answer lands lower than the landing before it ${pct(p.fall, p.fa
 console.log(`planned: ${p.landings} landings (${p.waypoints} waypoints), calls off the root ${pct(p.callUp, p.calls)}, answers on the root ${pct(p.answerRoot, p.answers)}, climax highest for its place ${pct(p.climaxHigh, p.climaxes)} (${p.climaxes} of ${p.solos} solos have one)`);
 if (p.solos < 20) fail('too few solos');
 console.log(`moves (a solo): ${Object.entries(mv).map(([k, n]) => `${k} ${(n / Math.max(1, p.solos)).toFixed(2)}`).join(', ')}`);
-for (const k of ['run', 'bend', 'build', 'enclose', 'motif']) if (p.solos >= 60 && !mv[k]) fail(`no ${k} move in ${p.solos} planned solos`);
+for (const k of ['run', 'bend', 'build', 'enclose', 'motif', 'rep']) if (p.solos >= 60 && !mv[k]) fail(`no ${k} move in ${p.solos} planned solos`);
 if (p.notes / p.bars < 4.2) fail(`planned solos play ${(p.notes / p.bars).toFixed(1)} notes a bar, under 4.2`);
 // round 2, step 5: the carried ending
 if (p.carried && (p.carryOk < p.carried || p.carryTone < p.carried)) fail('every solo followed by a section should carry its last note into it, ending on a note of its first chord');
 if (p.noLong) fail(`${p.noLong} solos with no note of 2+ beats`);
 // round 2, step 4: licks played again
 if (p.rhyAgain / p.rhyBars < 0.1) fail(`bars whose rhythm comes back ${pct(p.rhyAgain, p.rhyBars)}, under 10%`);
-if (p.exact / p.rhyBars > 0.1) fail(`bars played again note for note ${pct(p.exact, p.rhyBars)}, over 10%`);
+// (the repeat patterns, step 7, play a cell again as it was on purpose: A A A A', A A' A A')
+if (p.exact / p.rhyBars > 0.18) fail(`bars played again note for note ${pct(p.exact, p.rhyBars)}, over 18%`);
 // round 2, step 3: more long holds
 if (p.long8 / p.solos < Math.max(4.7, o.long8 / o.solos)) fail(`notes of 2+ beats ${(p.long8 / p.solos).toFixed(1)} a solo, under the other writer's ${(o.long8 / o.solos).toFixed(1)}`);
 if (p.long12 / p.solos < 0.8) fail(`notes of 3+ beats ${(p.long12 / p.solos).toFixed(1)} a solo, under 0.8`);

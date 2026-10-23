@@ -13,6 +13,7 @@
 //    motif (its first lick) comes back in rhythm or shape on other pitches; never a copy, never the lick just played.
 // 5. Polish (step 5): no 3 of one pitch in a row, no 4 equal lengths, no lone 16th, a short note before a gap held on.
 // 6. The hook quoted (step 6): now and then the solo opens on the track's hook.
+// 7. Repeat shapes (step 7): stretches of 2, 4, 8 or 16 bars played as A A', A A A A', A A' A A' or A A A' and a free cell.
 // Played by the same hands as the other writers (playSolo).
 
 import type { Genre } from '../genres';
@@ -44,12 +45,23 @@ const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
 /** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
-export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true, hook: true };
+export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true, hook: true, repeat: true };
 /** How much a genre and a player play a lick again (an echo). */
 const ECHO_GENRE: Record<Genre, number> = { rock: 1.1, hardrock: 1.2, metal: 1.2, grunge: 1.1, altmetal: 1.1, pop: 0.8, funk: 1 };
 const ECHO_LICK: Record<LickKind, number> = { blues: 1.3, simple: 1.2, sung: 1, muted: 1, run: 0.8 };
 /** The share of chances that become an echo, before the genre, the player, the calm and the solo's own lean. */
 const ECHO_P = 1.2;
+/** Repeat shapes (step 7): the chance a stretch of bars is played as a pattern (A A', A A A A', ...), before the genre, the player and the solo's lean. */
+const REP_P = 0.28;
+/** How long a stretch is, in bars, with its weight. */
+const REP_SIZES: [number, number][] = [[2, 25], [4, 35], [8, 28], [16, 12]];
+/** The patterns of 4 cells: the cell 0 is written, the others are 'same' (as it was), 'changed' (its ending changed) or 'free' (written fresh). */
+const REP_FOUR: [string, RepKind[], number][] = [
+  ["A A A A'", ['src', 'same', 'same', 'changed'], 30],
+  ["A A' A A'", ['src', 'changed', 'same', 'changed'], 30],
+  ["A A A' B", ['src', 'same', 'changed', 'free'], 40],
+];
+type RepKind = 'src' | 'same' | 'changed' | 'free';
 /** How much a player sings one long note (a held phrase). */
 const HOLD_LEAN: Record<LickKind, number> = { sung: 1.4, blues: 1.2, simple: 1, muted: 0.8, run: 0.6 };
 
@@ -204,9 +216,42 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   // ---- the plan: units, phrases, the climax
   const end = total - 2;
   /** `w0`: where the phrase's window starts (its first note may come later, at `S`). `echoOf`: the phrase it plays again, `echoN` the time (1 = the first echo). */
-  interface Phrase { S: number; w0: number; end: number; role: LandingRole; len: number; held?: boolean; echoOf?: number; echoN?: number }
-  const units: { s: number; e: number; role: LandingRole }[] = [];
+  interface Phrase { S: number; w0: number; end: number; role: LandingRole; len: number; held?: boolean; echoOf?: number; echoN?: number; rep?: 'same' | 'changed' }
+  /** `cell`: a cell of a repeat pattern (step 7): its place `j` in it, the unit of its cell 0, and what it does with it. `first`, `last`: the phrases of a cell 0. */
+  interface Unit { s: number; e: number; role: LandingRole; cell?: { j: number; src: number; kind: RepKind }; first?: number; last?: number }
+  const units: Unit[] = [];
+  // Repeat shapes (step 7): stretches of 2, 4, 8 or 16 bars played as a pattern of cells: the first written, the others played again as it
+  // was or with its ending changed (A A', A A A A', A A' A A', A A A' and a free cell), as the vocal's repeat shapes. Each size has its chance.
+  const repP = FEATURES.repeat ? clamp(REP_P * ECHO_GENRE[genre] * ECHO_LICK[lick] * (0.5 + rng.next()), 0, 0.85) : 0;
+  const repNames: string[] = [];
   for (let b = 0; b < bars.length;) {
+    if (FEATURES.repeat && rng.chance(repP)) {
+      const sizes = REP_SIZES.filter(([n]) => b + n <= bars.length && bars.length - b - n !== 1 && bars.slice(b, b + n).every((x) => x.len === bars[b].len && x.len % 4 === 0));
+      const len = bars[b]?.len;
+      // (a size is tried; one whose cells sit over other chords is harder to play again and tried again with another size 2 times in 3)
+      let placed = false;
+      while (sizes.length && !placed) {
+        const N = rng.weighted(sizes.map(([n, w]) => [n, w] as const));
+        sizes.splice(sizes.findIndex(([n]) => n === N), 1);
+        // (4 cells need a cell of 8 steps or more)
+        const four = N * len / 4 >= 8 && (N > 2 || len >= 16) && rng.chance(N === 2 ? 0.5 : 0.55);
+        const [name, kinds] = four ? ((x) => [x[0], x[1]] as const)(rng.weighted(REP_FOUR.map((x) => [x, x[2]] as const))) : ["A A'", ['src', 'changed'] as RepKind[]] as const;
+        const c = N * len / kinds.length, src = units.length;
+        let same = 0, all = 0;
+        for (let j = 1; j < kinds.length; j++) for (let g = 0; g < c; g += 2) { const x = fit.chordAt(bars[b].start + g), y = fit.chordAt(bars[b].start + j * c + g); all++; if (x.root === y.root && x.q === y.q) same++; }
+        if (same * 2 < all && rng.chance(0.67)) continue;
+        // (the last cell of the solo has to leave the room the carried ending needs: it starts a bar or more before the last bar)
+        if (FEATURES.carry && bars.length >= 4 && b + N === bars.length && bars[bars.length - 1].start - (bars[b].start + (kinds.length - 1) * c) < 12) continue;
+        kinds.forEach((kind, j) => {
+          const s0 = bars[b].start + j * c;
+          units.push({ s: s0, e: b + N < bars.length || j < kinds.length - 1 ? s0 + c : end, role: j % 2 ? 'answer' : 'call', cell: { j, src, kind } });
+        });
+        repNames.push(`${N} bars ${name}`);
+        b += N;
+        placed = true;
+      }
+      if (placed) continue;
+    }
     const take = bars.length - b === 3 || bars.length < 2 ? bars.length - b : 2;
     units.push({ s: bars[b].start, e: b + take < bars.length ? bars[b + take].start : end, role: units.length % 2 ? 'answer' : 'call' });
     b += take;
@@ -224,6 +269,17 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   const echoP = (at: number) => clamp(ECHO_P * ECHO_GENRE[genre] * ECHO_LICK[lick] * echoLean * (1 - 0.5 * calmAt(at)), 0, 0.8);
   for (const u of units) {
     let pos = u.s;
+    const firstPhrase = phrases.length;
+    // a cell played again: the phrases of its cell 0 a cell on (the last cell of the solo keeps 8 steps for its own ending)
+    if (u.cell && (u.cell.kind === 'same' || u.cell.kind === 'changed')) {
+      const su = units[u.cell.src], dt = u.s - su.s;
+      for (let i = su.first!; i <= su.last!; i++) {
+        const sp = phrases[i], e2 = sp.end + dt;
+        if (sp.echoOf !== undefined || e2 > u.e || (u === units[units.length - 1] && u.e - e2 < 8)) break;
+        phrases.push({ S: sp.S + dt, w0: sp.w0 + dt, end: e2, role: e2 >= u.e ? u.role : 'mid', len: sp.len, ...(sp.held ? { held: true } : {}), echoOf: i, echoN: u.cell.j, rep: u.cell.kind === 'changed' && i === su.last ? 'changed' : 'same' });
+        pos = e2;
+      }
+    }
     while (pos < u.e - 5) {
       let len = phraseSteps(pos);
       if (u.e - pos - len < 8) len = u.e - pos;
@@ -241,7 +297,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       // Echoes (docs/SOLO-PLAN.md, round 2): a middle phrase may be played again, once or twice, at the same place in the next half bar
       // or bar(s), on the same chord. Its window is stretched to that (a longer rest or hold), and so is each echo's.
       const ph = phrases[phrases.length - 1], rootIx = phrases.length - 1;
-      if (FEATURES.echo && ph.role === 'mid' && !ph.held && ph.len >= 6 && !lastOne && rng.chance(echoP(ph.w0))) {
+      if (FEATURES.echo && !u.cell && ph.role === 'mid' && !ph.held && ph.len >= 6 && !lastOne && rng.chance(echoP(ph.w0))) {
         const bar = bars[barOf(ph.w0)].len, D = ph.len <= bar / 2 ? bar / 2 : ph.len <= bar ? bar : 0;
         const times = rng.weighted<number>([[1, 70], [2, 30]]);
         if (D) {
@@ -262,12 +318,16 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
         }
       }
     }
+    if (u.cell?.kind === 'src') { u.first = firstPhrase; u.last = phrases.length - 1; }
   }
   // the climax: the phrase in the middle of the energy's highest crest, if it is long enough to build to
   let crest = Math.floor(total * 0.4), best = -Infinity;
   for (let g = Math.floor(total * 0.15); g < total - 12; g += 2) { const e = E(g) + 0.01 * rng.next(); if (e > best) { best = e; crest = g; } }
   const eligible = phrases.map((p, i) => ({ p, i })).filter(({ p }) => p.role !== 'end' && p.echoOf === undefined && p.len >= (FEATURES.peak ? 16 : 12));
-  let climaxAt = eligible.length ? eligible.reduce((a, b) => (Math.abs((b.p.S + b.p.end) / 2 - crest) < Math.abs((a.p.S + a.p.end) / 2 - crest) ? b : a)).i : -1;
+  // (a phrase that others repeat counts a bar farther from the crest: the peak is said once, so its repeats would be written fresh)
+  const repeated = new Set(FEATURES.repeat ? phrases.flatMap((p) => (p.echoOf !== undefined ? [p.echoOf] : [])) : []);
+  const crestDist = ({ p, i }: { p: Phrase; i: number }) => Math.abs((p.S + p.end) / 2 - crest) + (repeated.has(i) ? bars[0].len : 0);
+  let climaxAt = eligible.length ? eligible.reduce((a, b) => (crestDist(b) < crestDist(a) ? b : a)).i : -1;
   // a build-up into the climax (step 4) needs room: a climax phrase too short for it takes the phrase before it (a plain middle one)
   let wantBuild = false;
   if (FEATURES.moves && climaxAt > 0 && rng.chance(0.85)) {
@@ -324,7 +384,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   const runny = FEATURES.moves && rng.chance(Math.min(0.9, RUNS[genre] * RUN_LEAN[lick] * (0.7 + 0.6 * intensity)));
   const triplets = FEATURES.moves && rng.chance(0.1 * TRIP_LEAN[lick]);
   const maxBuilds = bars.length >= 16 ? 2 : 1;
-  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0 };
+  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0, rep: 0 };
   const bendInto = (m: number) => (inScale(m - 2) ? 2 : inScale(m - 1) ? 1 : 0);
   /** A note `k` notes along the key's scale. */
   const stepScale = (m: number, k: number) => {
@@ -479,7 +539,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       return { pre: [...leadIn(f, S, steps[0], tp, lastMove), ...steps.map((g, i) => ({ step: g, midi: tp, len: 2, vel: v + (i ? -0.03 : 0.03), bend: b }))], landing: { step: L, midi: tp, len: hold, vel: v, bend: b } };
     }
     if (move === 'brb') {
-      if (!b || P < 4 || !fits([tp - b], [L - 4], [2])) return null;
+      if (!b || P < 4 || !fits([tp - b], [L - 4], [2]) || (!inScale(tp) && !fit.isTone(tp, L - 4))) return null;
       return { pre: [...leadIn(f, S, L - 4, tp, lastMove), { step: L - 4, midi: tp, len: 4, vel: v + 0.03, bend: b, unbend: b }], landing: { step: L, midi: tp, len: hold, vel: v, bend: b } };
     }
     // two-string bends climbing: the top note held, a note a 3rd or 4th under it bent up to it, a scale note higher each time
@@ -764,12 +824,15 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       return es.every((e) => {
         const m = e.midi - (e.unbend ?? 0), win = windowAt(e.step);
         if (m < win[0] - 3 || e.midi > win[1] + (peakTop === Infinity ? 3 : 0)) return false;
+        // (a note let down from a bend begins on its top: it keeps to the key too, which a move along the scale can break)
+        if (e.unbend && e.len > 2 && !inScale(e.midi) && !fit.isTone(e.midi, e.step)) return false;
         if (landSteps.has(e.step)) return fit.isTone(e.midi, e.step) && !fit.clash(e.midi, e.step) && (e.len < 4 || !fit.rubs(e.midi, e.step));
         return fits([m], [e.step], [e.len]);
       });
     };
-    const first = rng.weighted<'same' | 'ending' | 'moved'>(n >= 2 ? [['ending', 55], ['moved', 45]] : [['same', 17], ['ending', 50], ['moved', 33]]);
-    const order = [first, ...(['ending', 'moved', 'same'] as const).filter((k) => k !== first && (n < 2 || k !== 'same'))];
+    // (a repeat shape: a cell as it was, or with its ending changed; the old echoes pick as they did)
+    const first = p.rep === 'same' ? 'same' : rng.weighted<'same' | 'ending' | 'moved'>(p.rep === 'changed' || n >= 2 ? [['ending', 55], ['moved', 45]] : [['same', 17], ['ending', 50], ['moved', 33]]);
+    const order = [first, ...(['ending', 'moved', 'same'] as const).filter((k) => k !== first && (p.rep ? p.rep === 'same' || k !== 'same' : n < 2 || k !== 'same'))];
     for (const kind of order) {
       let es: Ev[] = [], ls: Landing[] = [], m2 = r.m;
       if (kind === 'same') { es = copy(); ls = copyLands(); if (!valid(es, m2)) continue; }
@@ -815,6 +878,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       prevLanding = m2;
       f = m2;
       recs[pi] = { w0: p.w0, evs: es.map((e) => ({ ...e })), lands: ls.map((l) => ({ ...l })), m: m2, L: L2, hold: r.hold };
+      if (p.rep) used.rep++;
       return true;
     }
     return false;
@@ -899,7 +963,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       if (e.len === 1 && e.step > prevEnd && room >= 2) { e.len = 2; continue; }
       if (e.len <= 2 && nx && room >= 3) {
         const end = Math.ceil((e.step + e.len) / 4) * 4;
-        if (end <= nx.step - 1 && end > e.step + e.len) e.len = end - e.step;
+        if (end <= nx.step - 1 && end > e.step + e.len && fits([e.midi - (e.unbend ?? 0)], [e.step], [end - e.step])) e.len = end - e.step;
       }
     }
   }
@@ -917,6 +981,6 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   void barStarts;
   return {
     hits, curve,
-    notes: [`Guitar 2: a solo (planned): ${ENERGY_WORDS[en.shape](en)}, ${landings.filter((l) => l.role !== 'waypoint').length} landings${peak ? `, the peak in bar ${Math.floor(peak.step / 16) + 1}` : ''}, ${mood} intervals${Object.entries(used).filter(([, n]) => n).map(([k, n]) => `, ${n} ${k}`).join('')}`],
+    notes: [`Guitar 2: a solo (planned): ${ENERGY_WORDS[en.shape](en)}, ${landings.filter((l) => l.role !== 'waypoint').length} landings${peak ? `, the peak in bar ${Math.floor(peak.step / 16) + 1}` : ''}, ${mood} intervals${Object.entries(used).filter(([, n]) => n).map(([k, n]) => `, ${n} ${k}`).join('')}${repNames.length ? ` (repeats: ${repNames.join(', ')})` : ''}`],
   };
 }
