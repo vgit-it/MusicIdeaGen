@@ -50,6 +50,8 @@ for (let i = 0; i < N; i++) {
       const inside = ns.filter((n) => n.step >= ph.step - 1e-6 && n.step < ph.step + ph.len - 1e-6);
       if (!inside.length) fail(`${s} ${k}: a phrase at ${ph.step} lost all its notes`);
     }
+    // (a shape across phrases may copy over the very notes the limit would have changed, so the two runs can differ and both be within it)
+    if (b.built.shapes.some((q) => q.bars)) within = false;
     x.secs++; if (within) { x.within++; if (md5(b.built.notes) === md5(a.built.notes)) x.same++; }
     const lim = shortLen(barOf(sec)) + 1e-9;
     x.n0 += b.built.notes.length; x.n1 += ns.length;
