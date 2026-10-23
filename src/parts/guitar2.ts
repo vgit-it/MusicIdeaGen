@@ -7,7 +7,7 @@ import type { Genre, RiffStyle } from '../genres';
 import type { LickKind } from '../players/lead';
 import { LICK_HABITS, type LibLick, licksFor, lickFit, placeLibLick, placedHit } from './licks';
 import { REAL_VERSE, realLick } from './reallicks';
-import type { ChordPart, GuitarHit, Song } from '../idea';
+import type { ChordPart, GuitarHit, Song, SoloCurve } from '../idea';
 import { Rng } from '../rng';
 import { type Bar, groupStarts } from '../rhythm';
 import { type Chord, type Mode, QUALITIES, SCALES, chordPc } from '../theory';
@@ -608,6 +608,8 @@ export interface G2Options { lines?: boolean; figures?: boolean; figureSeed?: st
 export interface Guitar2Part {
   hits: GuitarHit[];
   notes: string[];
+  /** A solo: the curves it followed (see Idea.soloCurve). */
+  curve?: SoloCurve;
 }
 
 /**

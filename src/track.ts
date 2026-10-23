@@ -1622,6 +1622,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       const sol = generateSolo2(new Rng(`${soloSeed}-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick,
         s.kind === 'solo' && soloOverChorus && hook.length ? hook : null, intensity);
       idea.guitar2 = sol.hits;
+      idea.soloCurve = sol.curve;
       idea.section!.solo = true;
       g2 = sol.notes[0];
       if (s.kind === 'solo') notes.push(`Guitar solo, ${idea.song.bars.length} bars over the ${soloOverChorus ? 'chorus' : 'verse'} chords; the rhythm guitar backs off`);
@@ -1630,6 +1631,7 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       // Breaks: a short melodic solo, quoting the hook, lower and sparer than a full one; the band as it is
       const sol = generateSolo2(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3);
       idea.guitar2 = sol.hits;
+      idea.soloCurve = sol.curve;
       idea.section!.lead = true;
       g2 = 'Guitar 2: a lead break, a short melodic solo over the chorus chords';
     } else if (s.g2 === 'play') g2 = writeGuitar2(idea, g2o, r, Array.from({ length: runs }, (_, k) => playingStyle(r, idea, k)));

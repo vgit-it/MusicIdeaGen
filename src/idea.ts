@@ -172,6 +172,18 @@ export type Move = 'pick' | 'hammer' | 'pull' | 'slide';
  * How a player actually plays a note (tracks, set by the band's hands pass, src/players/hands.ts):
  * where on the neck, and how the hand gets there. Playback follows it; MIDI export stays as written.
  */
+/** What the solo writer followed through a solo, one value per 16th: its energy (-1 calm to 1 strong), the height it aimed at (a MIDI note, the middle of its window) and the pace (1 = the player's usual). */
+export interface SoloCurve {
+  /** Words for the shape ('2 waves of energy'). */
+  shape: string;
+  /** How height and pace follow the energy: 1 with it, -1 against it, 0 not at all. */
+  pitchC: number;
+  paceC: number;
+  energy: number[];
+  centre: number[];
+  pace: number[];
+}
+
 export interface Touch {
   /** String (0 = lowest) and fret (of the lowest note, for an octave shape). */
   string: number;
@@ -270,6 +282,8 @@ export interface Idea {
   guitar?: GuitarHit[];
   /** Second guitar: lead, harmony, octaves, arpeggios or swells. */
   guitar2: GuitarHit[];
+  /** A solo or lead break: the curves the solo writer followed (src/parts/solo2.ts), for the neck view. */
+  soloCurve?: SoloCurve;
   /** The singer: a melody with a syllable on each note (tracks and ideas; missing in older ones). */
   vocal?: VocalNote[];
   /** The lead vocal as it's sung (src/parts/leadvocal.ts): the vocal's tune with new words, more bends, carried over now and then; its lines. */
