@@ -245,6 +245,8 @@ export interface GuitarHit {
   /** Held, then bent up partway through: picked this many semitones below and pushed up to the note later on
    * (a bend after a hold). The note is the bent-up pitch. */
   lateBend?: number;
+  /** A bend let down or pushed up at this many 16ths into the note, not at the usual time (a note that carries into the next section bends on the bar line). */
+  bendAt?: number;
   /** Trilled: hammered on and pulled off this many semitones above, fast, for the whole note. */
   trill?: number;
   /** Tremolo picked: the note picked again and again, as fast as the hand goes (32nds). */

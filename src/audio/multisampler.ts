@@ -33,6 +33,8 @@ export interface PlayOptions {
   unbend?: number;
   /** Held this many semitones below, then bent up to the note partway through (a bend after a hold). */
   lateBend?: number;
+  /** When the let-down or late bend happens: seconds into the note (otherwise from the note's length). */
+  bendAt?: number;
   /** Trill: hammer on and pull off this many semitones above, fast, through the note. */
   trill?: number;
   /** The next note comes legato out of this one (keep its pitch free for it). */
@@ -110,7 +112,7 @@ export class MultiSampler {
     if (opts.unbend) {
       // the bend let down again: held at pitch a while, then eased back down (a pre-bend held a little
       // less, so the release is heard); vibrato only once it's down
-      const at = Math.max(settle + 0.04, time + Math.min(dur * (bend ? 0.5 : 0.35), 0.6));
+      const at = opts.bendAt !== undefined ? time + opts.bendAt : Math.max(settle + 0.04, time + Math.min(dur * (bend ? 0.5 : 0.35), 0.6));
       const down = rate * 2 ** (-opts.unbend / 12);
       if (!bend && !opts.slide) pr.setValueAtTime(rate, time);
       if (at + 0.13 < end) {
@@ -124,7 +126,7 @@ export class MultiSampler {
     if (opts.lateBend) {
       // held at the lower note a while (a beat or so), then pushed up to the note; vibrato once it's up
       const low = rate * 2 ** (-opts.lateBend / 12);
-      const at = Math.max(time + 0.12, time + Math.min(dur * 0.45, 0.9));
+      const at = opts.bendAt !== undefined ? time + opts.bendAt : Math.max(time + 0.12, time + Math.min(dur * 0.45, 0.9));
       const rise = 0.14 + opts.lateBend * 0.04;
       pr.setValueAtTime(low, time);
       if (at + rise + 0.05 < end) {

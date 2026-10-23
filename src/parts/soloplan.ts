@@ -35,16 +35,16 @@ export interface Landing { step: number; midi: number; len: number; role: Landin
 const BREATH_MOOD: Record<Mood, number> = { melancholic: 1.4, nostalgic: 1.2, dreamy: 1.3, dark: 1.1, tense: 0.8, angry: 0.6, happy: 0.8, triumphant: 0.7 };
 const BREATH_GENRE: Record<Genre, number> = { funk: 1.3, pop: 1.1, rock: 1, grunge: 1.1, altmetal: 0.9, hardrock: 0.8, metal: 0.7 };
 /** The path's notes a beat against the real notes a bar: the rests and holds are planned apart, so the paths are busier than the average. */
-const PATH_BOOST = 1.7;
+const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
 /** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
-export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true };
+export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true };
 /** How much a genre and a player play a lick again (an echo). */
 const ECHO_GENRE: Record<Genre, number> = { rock: 1.1, hardrock: 1.2, metal: 1.2, grunge: 1.1, altmetal: 1.1, pop: 0.8, funk: 1 };
 const ECHO_LICK: Record<LickKind, number> = { blues: 1.3, simple: 1.2, sung: 1, muted: 1, run: 0.8 };
 /** The share of chances that become an echo, before the genre, the player, the calm and the solo's own lean. */
-const ECHO_P = 0.9;
+const ECHO_P = 1.2;
 /** How much a player sings one long note (a held phrase). */
 const HOLD_LEAN: Record<LickKind, number> = { sung: 1.4, blues: 1.2, simple: 1, muted: 0.8, run: 0.6 };
 
@@ -207,6 +207,9 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     b += take;
   }
   units[units.length - 1].role = 'end';
+  // the last bar is the last note's: the playing stops at its start, the final note rings through it (and on into the next section: src/track.ts, carrySolo)
+  const lastBarStart = bars[bars.length - 1].start;
+  if (FEATURES.carry && bars.length >= 4 && lastBarStart - units[units.length - 1].s >= 12) units[units.length - 1].e = lastBarStart;
   // a held phrase: one long note over the band (Paul: more long holds); more in the calm, for the melodic and bluesy players, and each solo leans its own way
   const heldLean = 0.5 + rng.next();
   const heldP = (at: number, role: LandingRole) => (FEATURES.holds ? clamp((0.05 + 0.4 * calmAt(at) + (role === 'mid' ? 0 : 0.03)) * HOLD_LEAN[lick] * heldLean, 0, 0.5) : 0);
@@ -282,6 +285,8 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       // (a landing on the same note as the one before, or the one before that, is a dull line)
       if (m === prev) cost += 2.5; else if (m === before) cost += 1;
       const isRoot = mod(m, 12) === root;
+      // (the last note rings through the last bar: a note of its chord too)
+      if (role === 'end' && FEATURES.carry && !fit.isTone(m, lastBarStart)) cost += 2;
       if (role === 'call') cost += isRoot ? 4 : 0;
       else if (role === 'answer' || role === 'end') cost += isRoot ? -1.5 : 1;
       items.push({ v: m, cost });
@@ -432,6 +437,11 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     const lastPhrase = pi === phrases.length - 1;
     const { S } = p;
     let pe = p.end, hold: number, breath: number;
+    if (lastPhrase && FEATURES.carry && p.end === lastBarStart) {
+      // the ending: the last note comes in a beat before the last bar and rings to the end of the section (and on, if another follows)
+      const L = Math.max(p.S, p.end - 4);
+      return { hold: end - L, breath: 0, L };
+    }
     if (lastPhrase) {
       // the ending: most run on into the next section (a short last note), some land on the root, held
       const home = rng.chance(0.4);
@@ -560,12 +570,13 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     inClimax = FEATURES.peak && pi === climaxAt && !!climaxPlan;
     // (a hold over a chord change keeps to the chord it was played on, if the note isn't in the next one)
     let m = pi === climaxAt && climaxPlan ? climaxPlan.m : chooseLanding(L, p.role === 'end' && hold === 3 ? 'mid' : p.role, hold, prevLanding, lastMove, before, buildUp);
-    if (p.role === 'end' && hold > 3) {
+    if (p.role === 'end' && hold > 3 && (!FEATURES.carry || rng.chance(0.5))) {
       const root = chordPc(key, fit.chordAt(L));
       const alt = [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5].map((d) => m + d).find((x) => mod(x, 12) === root && !fit.clash(x, L) && x >= windowAt(L)[0] - 2 && x <= windowAt(L)[1] + 2);
       if (alt !== undefined) m = alt;
     }
-    for (let g = L + 1; g < L + hold; g++) if (changes.has(g) && !fit.isTone(m, g)) { hold = Math.max(2, 2 * Math.floor((g - L) / 2)); break; }
+    // (the final note carries over a chord change: the bend after it moves it to the next chord)
+    if (!(FEATURES.carry && p.role === 'end')) for (let g = L + 1; g < L + hold; g++) if (changes.has(g) && !fit.isTone(m, g)) { hold = Math.max(2, 2 * Math.floor((g - L) / 2)); break; }
     connect(prevLanding === null ? f : prevLanding, S, m, L, hold, p.role, lastMove);
     recs[pi] = { w0: p.w0, evs: evs.slice(mark).map((e) => ({ ...e })), lands: landings.slice(markL).map((l) => ({ ...l })), m, L, hold };
     lastMove = prevLanding === null ? 0 : m - prevLanding;

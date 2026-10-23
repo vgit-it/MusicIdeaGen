@@ -884,7 +884,7 @@ export class Engine {
       // driven guitars sustain into the next hit (a gap is loud through the drive); others breathe.
       // The player's hands: a note rings right into a legato note after it, or stops as the finger lifts
       dur: ring ?? (h.touch?.tied ? h.len * six + 0.03
-        : (legato ? Math.min(h.len * six + 0.05, 5) : Math.min(h.len * six * 0.97, 4)) - (h.touch?.lift ?? 0) / 1000),
+        : (legato ? Math.min(h.len * six + 0.05, 5) : Math.min(h.len * six * 0.97, h.bendAt !== undefined ? 8 : 4)) - (h.touch?.lift ?? 0) / 1000),
       vel: h.vel * dyn,
       sixteenth: six,
       clean: h.clean,
@@ -892,7 +892,7 @@ export class Engine {
       slide: h.slide,
       swell: h.swell,
       touch: h.touch,
-      bend: h.bend, unbend: h.unbend, lateBend: h.lateBend, trill: h.trill, tremolo: h.tremolo, rake: h.rake,
+      bend: h.bend, unbend: h.unbend, lateBend: h.lateBend, bendAt: h.bendAt !== undefined ? h.bendAt * six : undefined, trill: h.trill, tremolo: h.tremolo, rake: h.rake,
     });
   }
 

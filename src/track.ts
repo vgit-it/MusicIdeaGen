@@ -402,6 +402,36 @@ function shapeBass(idea: Idea, e: number) {
 /** Cap notes so nothing rings past step `s`. */
 const capAt = (s: number) => (h: GuitarHit): GuitarHit => ({ ...h, len: Math.max(1, Math.min(h.len, s - h.step)) });
 
+/**
+ * A planned solo's last note carries on (docs/SOLO-PLAN.md, round 2): it rings through the rest of the section and the next
+ * section's first bar, and bends, on the bar line, to the nearest note of the next section's first chord (up to three semitones:
+ * pushed up from below, or picked bent and let down). Transitions (a band stop, band hits, a snare build) have cut the
+ * section's end by now; the note is the solo's final landing, else the last note left.
+ */
+function carrySolo(idea: Idea, next: Idea | undefined) {
+  const lands = idea.soloCurve?.landings;
+  if (!next || !lands || !idea.guitar2.length) return;
+  const total = idea.song.total;
+  const fin = [...lands].reverse().find((l) => l.role !== 'waypoint');
+  const sorted = [...idea.guitar2].sort((a, b) => a.step - b.step);
+  const h = sorted.find((x) => fin && x.step === fin.step && !x.mute && x.notes.length) ?? [...sorted].reverse().find((x) => !x.mute && x.notes.length);
+  if (!h) return;
+  // (pickup notes into the next section would run into it: the carried note wins)
+  idea.guitar2 = idea.guitar2.filter((x) => x === h || x.step < h.step);
+  h.len = total - h.step + next.song.bars[0].len;
+  // (a double-stop, a trill, a tremolo or a rake just rings on)
+  if (h.notes.length !== 1 || h.trill || h.tremolo || h.rake) return;
+  const tones = chordTones(next.song.key, next.chords.timeline[0].chord);
+  const cur = h.notes[0] - (h.unbend ?? 0);
+  const d = [0, 1, -1, 2, -2, 3, -3].find((x) => tones.includes((((cur + x) % 12) + 12) % 12));
+  if (!d) return;
+  // (on the bar line: a little before, so the move is heard as the chord arrives)
+  const at = total - h.step - 0.5;
+  h.bend = 0;
+  if (d > 0) { h.notes = [cur + d]; h.unbend = undefined; h.lateBend = d; h.bendAt = at; }
+  else { h.notes = [cur]; h.lateBend = undefined; h.unbend = -d; h.bendAt = at; }
+}
+
 /** Everyone stops for the last beat or two of the section, then the next section hits. */
 function bandStop(idea: Idea, beats: number) {
   const { bars } = idea.song;
@@ -1787,6 +1817,8 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     }
     idea.notes.push('The band lands on the first chord and lets it ring for a bar, then the drummer picks up into the half-time feel');
   });
+  // a planned solo's last note carries on into the next section, bending to its first chord
+  sections.forEach((idea, i) => carrySolo(idea, sections[i + 1]));
   // a long outro's tag repeats the chorus's last bars: its bars don't line up with the chorus's
   if (outroLong || jam) delete edit.outro;
   // (a jam ends in its own key)
