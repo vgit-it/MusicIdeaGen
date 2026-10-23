@@ -12,7 +12,7 @@
 // 4. Full scoring (step 3): a lick scored on its fit, the time and pace, the mood's intervals, chord notes on the beats; the solo's
 //    motif (its first lick) comes back in rhythm or shape on other pitches; never a copy, never the lick just played.
 // 5. Polish (step 5): no 3 of one pitch in a row, no 4 equal lengths, no lone 16th, a short note before a gap held on.
-// Not yet: the hook quoted.
+// 6. The hook quoted (step 6): now and then the solo opens on the track's hook.
 // Played by the same hands as the other writers (playSolo).
 
 import type { Genre } from '../genres';
@@ -44,7 +44,7 @@ const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
 /** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
-export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true };
+export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true, hook: true };
 /** How much a genre and a player play a lick again (an echo). */
 const ECHO_GENRE: Record<Genre, number> = { rock: 1.1, hardrock: 1.2, metal: 1.2, grunge: 1.1, altmetal: 1.1, pop: 0.8, funk: 1 };
 const ECHO_LICK: Record<LickKind, number> = { blues: 1.3, simple: 1.2, sung: 1, muted: 1, run: 0.8 };
@@ -72,7 +72,7 @@ export interface PlanOpts {
   tension?: number[];
 }
 
-export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, _hook: GuitarHit[] | null, intensity = 0.7, o: PlanOpts = {}): Guitar2Part {
+export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null, intensity = 0.7, o: PlanOpts = {}): Guitar2Part {
   const { key, mode, bars, total } = song;
   const genre = song.partGenres.strum;
   const gi = LIB_GENRES.indexOf(genre);
@@ -324,7 +324,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   const runny = FEATURES.moves && rng.chance(Math.min(0.9, RUNS[genre] * RUN_LEAN[lick] * (0.7 + 0.6 * intensity)));
   const triplets = FEATURES.moves && rng.chance(0.1 * TRIP_LEAN[lick]);
   const maxBuilds = bars.length >= 16 ? 2 : 1;
-  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0 };
+  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0 };
   const bendInto = (m: number) => (inScale(m - 2) ? 2 : inScale(m - 1) ? 1 : 0);
   /** A note `k` notes along the key's scale. */
   const stepScale = (m: number, k: number) => {
@@ -819,12 +819,31 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     }
     return false;
   };
+  // the hook quoted (docs/SOLO-PLAN.md, step 6): now and then the solo opens on the track's hook (its first bar, up to the octave that
+  // sits in the window), and the first landing is reached from its last note
+  const quote = FEATURES.hook ? (hook?.filter((h) => h.step < 16 && h.notes.length) ?? []) : [];
+  const quoteWanted = quote.length >= 3 && rng.chance(0.5);
   phrases.forEach((p, pi) => {
     if (p.echoOf !== undefined && tryEcho(p, pi)) return;
     const mark = evs.length, markL = landings.length;
-    const { S } = p;
+    let { S } = p;
     const sz = pi === climaxAt && climaxPlan ? climaxPlan : sizePhrase(p, pi);
     let { hold, L } = sz;
+    if (pi === 0 && quoteWanted && pi !== climaxAt) {
+      const qEnd = Math.max(...quote.map((h) => h.step + h.len));
+      const lowQ = Math.min(...quote.map((h) => h.notes[0])), hiQ = Math.max(...quote.map((h) => h.notes[0]));
+      const [wl, wh] = windowAt(0);
+      const around = 12 * Math.round((centerAt(0) - 5 - lowQ) / 12);
+      const shift = [around, around - 12, around + 12].find((sh) => lowQ + sh >= wl - 3 && hiQ + sh <= wh);
+      if (shift !== undefined && qEnd <= L - 2 && qEnd <= p.end && qEnd <= total - 2) {
+        const first = quote.slice().sort((a, b) => a.step - b.step);
+        for (const h of first) evs.push({ step: h.step, midi: h.notes[0] + shift, len: h.len, vel: vel0, bend: 0, keep: true } as Ev);
+        S = qEnd;
+        prevLanding = first[first.length - 1].notes[0] + shift;
+        f = prevLanding;
+        used.hook++;
+      }
+    }
     const buildUp = FEATURES.peak && phrases[pi + 1]?.role === 'climax';
     inClimax = FEATURES.peak && pi === climaxAt && !!climaxPlan;
     // (a hold over a chord change keeps to the chord it was played on, if the note isn't in the next one)
