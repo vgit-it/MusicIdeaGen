@@ -1,6 +1,6 @@
 # The solo plan (landings first, then the paths between them)
 
-Status: design (2026-10-23); every step built (1 to 6), and step 7 (repeat shapes) after Paul's ask. Why: the solo writer (`docs/SOLO-NEW.md`, `src/parts/solo2.ts`) builds a solo lick by lick, each lick placed nearest the note before. Listening and measuring (91 solos):
+Status: design (2026-10-23); every step built (1 to 6), step 7 (repeat shapes) after Paul's ask, and round 3 (no Twin on solos, the gaps filled) after the next one. Why: the solo writer (`docs/SOLO-NEW.md`, `src/parts/solo2.ts`) builds a solo lick by lick, each lick placed nearest the note before. Listening and measuring (91 solos):
 - the planned height follows the energy only loosely (bar-mean pitch vs the planned centre: correlation 0.49), so the direction is hard to see;
 - 6.5 pairs a solo of the same note, same length, touching; 3.9 runs of 3+ the same pitch; a stretch of 4+ equal-length notes 1.6 times a solo (nothing limits it, the vocal has rules 7 and 20);
 - a bar's rhythm comes back about 3% of the time (real solos 55%), so no motif holds it together;
@@ -180,3 +180,66 @@ Paul: the vocal has A A A', A A A A', A A' A A' and so on; the solo should too, 
 - **Numbers (90 solos)**: about 3 in 4 solos have a stretch (1.1 a solo), 83% of the copies fit (2.2 copied phrases a solo); the notes line says `N rep` and `(repeats: 4 bars A A', ...)`. Bars played again note for note go from 2% to about 10% (on purpose: A A A A', A A' A A'; the check allows 18%). Bars whose rhythm comes back 14% to 27%.
 - **Two small fixes found on the way**: the bend-let-down-bend move (`brb`) now keeps its top note in the key or a chord note; a short note held on by the polish must still fit the chord at the longer length.
 Not listened to yet. Tune by ear: `REP_P` (how many stretches), the `same` share (exact repeats), the size weights.
+
+## Round 3: no stray notes, no long silences, and no Twin on solos (plan, 2026-10-23)
+Paul: remove the Twin from the solo completely. Many stray notes with nothing around them; no more than a beat of silence at a time inside the solo. Add a step that finds the stray notes and inserts notes that lead up to and/or away from them until the next one: a single note starting on the last note and bending to the stray note (and the same going out), or licks that fit and join the pieces. Licks may be played 2x as fast to fit a small space, as long as the tempo isn't high.
+
+**Goal**: the solo is one line. Every note is joined to its neighbours; the longest gap is one beat (a breath, not a hole).
+
+### Measured first (90 planned solos, `scratchpad/gaps.ts`)
+- 78 of 90 solos have a silence over a beat; 230 of them (2.6 a solo), the average 7 steps (nearly 2 beats), 29 over 2 beats.
+- 32 are stray notes: a short note with a silence over a beat after it as well.
+- Cause: the breath after a phrase is drawn up to 10 steps (times the mood's breathing), and the polish and the echoes leave what they leave. The breath was a plan feature (calm solos breathe more); now it is capped.
+
+### A. Twin off the solo (`src/track.ts` only)
+- The second lead guitar is no longer added to a `solo` section (both writers). The hook and lead line keep it; its switch stays.
+- Tidy: the Twin comment (says "solo's peak"), the notes line text, CLAUDE.md and docs that say the solo has a twin.
+- Check: no solo section has a `twin`. The old-writer hash is taken without the `twin` field (the only thing that changes).
+
+### B. The rule
+- A silence is the time from the end of one note (its length counts, a held note is sound) to the start of the next. Maximum: 4 steps (one beat), from the solo's first note to the last. The carried last note rings on as now.
+- The solo's first note comes within a beat of its start (the lead-in).
+- Breath still exists: a short rest of 1-4 steps stays after phrases; the long rests become held notes or links.
+
+### C. Prevention in the plan (small)
+- The breath after a phrase is capped at 4 steps (the 6 and 10 draws become 4 or a longer hold). The phrase takes the room: a longer hold or path. Keeps the calm solos calm through holds, not holes.
+
+### D. The new step: fill the gaps (`FEATURES.fill`, after connect, before polish)
+1. **Find**: every silence over 4 steps. Mark a **stray** note: a note or a group of up to 3 notes inside one beat, with a silence over a beat on each side. A gap's two ends are the last note before (A) and the first note after (B).
+2. **Cover** (need = gap - 4 steps at least; aim to leave a real breath of 1-4 steps). In order of cost, a weighted pick by what fits:
+   - **Hold on**: A is held longer (need up to about 3 steps).
+   - **Bend in**: A is held and bent (late bend, up to 3 semitones) onto B's pitch, or a slide for a bigger move; B is then picked again or not (no same pitch twice). The stray's lead-in: "start from the last note and bend to the stray note".
+   - **Bend out**: after a stray, the note is held and bent away (bend, fall, slide) towards the next note's pitch.
+   - **A lick**: a library lick ending on B (a lead-up) or starting on A (a lead-out); for a long gap a lead-out and a lead-up either side of a short breath. It is the normal connect with A and B as the two landings and the gap as the window, scored the same (mood fit, chord notes on beats, not the lick just played, in the key), and the waypoint cut for a long gap.
+   - **A lick at 2x**: if no lick fits the time, the same lick with every start and length halved (half steps are a `shift` of 0.5, as the triplets do). Allowed only when the lick's shortest note after halving is at least about 60 ms (7500 / bpm ms for a 16th halved): at 100 bpm any lick, at 125 bpm a 16th still works, over about 125 bpm only licks whose shortest note is an 8th or more. So the tempo gate is automatic. Not for the calm slow-hand players more than a third of the time; the shredder, blues and metal players use it most.
+   - **Last resort**: move the stray note next to its neighbour (never dropping a landing; a lone 16th may drop).
+3. **Keep**: no more than 2 of a pitch in a row, no 4 equal lengths, the climax untouched, the carried ending and echo/repeat copies untouched (a copy's gap is filled where it stands, so a `same` copy can differ a little from its source, and the exact repeats go down a bit).
+4. **Then the polish** runs as now (it can make a gap: dropping a lone 16th), then **verify**: any silence left over 4 steps gets a hold-on. The check fails the build if one remains.
+
+### E. Faster licks also in the normal connect (second, optional)
+- The same 2x helper is offered to the normal connect when no 1x lick fits a short window, so a tight spot gets a quick lick, not a plain walk. Same tempo gate. Behind its own flag.
+
+### F. Order and checks
+1. A (Twin off), its own commit.
+2. Gaps in the check script (count, strays, longest) so the numbers show before/after.
+3. C (the breath cap) with D's hold-on and bend steps, then D's licks, then D's 2x, then E.
+- `solo-plan-check` new lines: silences over a beat (must be 0), strays (must be 0), fills a solo by kind (hold, bend in, bend out, lick, 2x), 2x licks only where the tempo gate allows, longest silence; the climax, carry, off-scale lines as before.
+- Old writer note for note (hash without `twin`), `solo-tags-check`, `lead-roll-check` (both ways), `neck-check`, tsc, build.
+- Check half steps (`shift`) and the new bends show right on the Melody view, the neck view and the MIDI export (triplets already use `shift`).
+
+### G. Risks
+- Too busy: a solo with no air. Keep the 1-4 step breath, prefer holds and bends over licks, cap fills a solo.
+- Calm solos lose their long rests: holds and bends carry them instead. Tune by ear.
+- 2x licks at 32nd speed sound like flurries: only where the pace there is already up, and sparingly.
+- The hands: a bend onto a pitch more than 3 semitones away is a slide, not a bend.
+
+### Round 3: built (2026-10-23)
+A, B and D are in; C (the breath cap) was left out because the fill step already ends every silence at a beat, so the plan's rests stay as drawn; E (2x licks in the normal connect) is not built.
+- **A. Twin off the solo**: `src/track.ts` no longer adds the second lead guitar to a solo (both writers). The hook and lead lines keep it. The old-writer hash is taken without the solo's `twin` field (`8eaa9620...`, was `d9686e3b...`); nothing else changed.
+- **B/D. Fill the gaps** (`FEATURES.fill`, `fillGaps` in `soloplan.ts`, run after the polish so nothing moves the gaps afterwards):
+  - A silence is the end of one note to the start of the next; the most allowed is 4 steps (`MAX_GAP`), from the first note (the opening too) to the last. A note alone (`STRAY_GAP`): a set of 1-2 notes inside a beat with a beat of silence either side; around it the most is 2 steps.
+  - For each gap a short rest is kept (0, 2 or 4 steps, mostly 2) and the rest is covered, by weighted chance: **hold on** (the note before is held longer; if the note after is a scale step or two off, the hold is bent onto it: pushed up from below, or picked bent and let down, landing as the next note is picked: `bendAt`, `lateBend`, `unbend`); **hold then a path**; or **a path** from the last note to the next one: a library lick that ends on it, else a scale walk, with a waypoint for a long way (`pathInto`, the connect step's own `lickPath` and `walkPath`). A path into the climax stays under it.
+  - **Licks at 2x** (`FEATURES.fast`): a path's lick is now and then played at double speed (every gap halved; a half step is a note a 32nd late, `shift`, as the triplets). A rhythm may only be halved if no two notes land in one step and its shortest gap stays at least `FAST_MIN_MS` (70 ms): at 100 bpm most licks, at 175 only licks that were 8ths or slower. Chance `FAST_P` 0.3 by player (`FAST_LEAN`: the shredder most, the sung player least), less in the calm, only for a gap of 10 steps or less.
+- **Numbers (90 planned solos)**: silences over a beat 230 to 0 (78 solos to none); notes alone 32 to 0; longest silence 4 steps; 2.9 gaps filled a solo, 0.38 quick licks, 0.33 bend links; time silent 19% to 12%; notes a bar 5.2. The check (`solo-plan-check`) fails on any silence over a beat, a note alone, a Twin on a planned solo, or a quick note faster than the tempo allows. Also: the off-scale check no longer skips every note with a timed bend, only the carried last note.
+- A repeat shape's copies are filled where they stand, so a `same` copy can differ a little from its source (exact repeats 10% to 8%).
+Not listened to yet. Tune by ear: `MAX_GAP`, the rest kept (`leave` weights), the hold / path weights, `FAST_P`.

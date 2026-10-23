@@ -77,7 +77,7 @@ export interface GenOptions {
   leadRoom?: boolean;
   /** Songs without a solo: now and then no lead guitar at all (pop most), else a short lead break after a chorus (docs/LEAD-BREAKS.md). Off: as before. */
   leadBreaks?: boolean;
-  /** A second lead guitar on the hook and the solo's peak: a harmony, an octave or a double (hard rock and metal most; docs/LEAD-TWIN.md). Off: as before. */
+  /** A second lead guitar on the hook and lead lines (not the solo): a harmony, an octave or a double (hard rock and metal most; docs/LEAD-TWIN.md). Off: as before. */
   leadTwin?: boolean;
   /** Real licks: solos and verse fills also play licks written from real lead guitar parts (shared rhythms, real note-to-note odds; docs/LEAD-LICKS.md). Off: as before. */
   leadLicks?: boolean;

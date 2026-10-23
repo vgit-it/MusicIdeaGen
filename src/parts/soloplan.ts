@@ -45,7 +45,7 @@ const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
 /** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
-export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true, hook: true, repeat: true };
+export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true, score: true, polish: true, hook: true, repeat: true, fill: true, fast: true };
 /** How much a genre and a player play a lick again (an echo). */
 const ECHO_GENRE: Record<Genre, number> = { rock: 1.1, hardrock: 1.2, metal: 1.2, grunge: 1.1, altmetal: 1.1, pop: 0.8, funk: 1 };
 const ECHO_LICK: Record<LickKind, number> = { blues: 1.3, simple: 1.2, sung: 1, muted: 1, run: 0.8 };
@@ -62,6 +62,14 @@ const REP_FOUR: [string, RepKind[], number][] = [
   ["A A A' B", ['src', 'same', 'changed', 'free'], 40],
 ];
 type RepKind = 'src' | 'same' | 'changed' | 'free';
+/** Fill the gaps (round 3): the longest silence inside the solo, in steps (one beat). */
+const MAX_GAP = 4;
+/** Around a stray note (a short note alone) the silence either side is at most this. */
+const STRAY_GAP = 2;
+/** A lick played at 2x: the chance, by player, and the shortest note it may have, in ms. */
+const FAST_P = 0.3;
+const FAST_LEAN: Record<LickKind, number> = { run: 1.4, blues: 1.1, simple: 0.8, muted: 0.8, sung: 0.4 };
+const FAST_MIN_MS = 70;
 /** How much a player sings one long note (a held phrase). */
 const HOLD_LEAN: Record<LickKind, number> = { sung: 1.4, blues: 1.2, simple: 1, muted: 0.8, run: 0.6 };
 
@@ -384,7 +392,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   const runny = FEATURES.moves && rng.chance(Math.min(0.9, RUNS[genre] * RUN_LEAN[lick] * (0.7 + 0.6 * intensity)));
   const triplets = FEATURES.moves && rng.chance(0.1 * TRIP_LEAN[lick]);
   const maxBuilds = bars.length >= 16 ? 2 : 1;
-  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0, rep: 0 };
+  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0, motif: 0, hook: 0, rep: 0, fill: 0, fast: 0, link: 0, stray: 0 };
   const bendInto = (m: number) => (inScale(m - 2) ? 2 : inScale(m - 1) ? 1 : 0);
   /** A note `k` notes along the key's scale. */
   const stepScale = (m: number, k: number) => {
@@ -589,7 +597,6 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   };
 
   // ---- connecting two landings
-  const stepsOfRhythm = (r: Rhythm, L: number) => r.ons.map((x) => L - (r.ons[r.ons.length - 1] - x));
   const shapeWeight = (s: LibShape, g: number, adapt: boolean) =>
     Math.sqrt(s.songs) * (1 + (gi >= 0 ? (3 * s.genres[gi]) / Math.max(1, s.genres.reduce((a, b) => a + b, 0)) : 0)) * moodFit(s, mood, tensionAt(g)) * (adapt ? 0.35 : 1);
 
@@ -655,8 +662,17 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   const played: Played[] = [];
   let motif: Played | null = null;
   const motifLean = FEATURES.score ? 0.5 + 0.4 * rng.next() : 0;
+  /**
+   * A rhythm that can be played at 2x (docs/SOLO-PLAN.md, round 3): halved, no two notes land in one step (one note a step is all
+   * the line holds) and the shortest gap is still at least FAST_MIN_MS, so a high tempo keeps the quick licks out.
+   */
+  const stepMs = 15000 / song.bpm;
+  const fastOk = (r: Rhythm) => {
+    const last = r.ons[r.ons.length - 1], d = r.ons.map((x) => last - x);
+    return r.ons.every((x, i) => !i || ((x - r.ons[i - 1]) / 2) * stepMs >= FAST_MIN_MS && Math.ceil(d[i] / 2) !== Math.ceil(d[i - 1] / 2));
+  };
   /** A library lick that ends on the landing, in a real rhythm that fits the time: its notes before the landing, or null. */
-  const lickPath = (f: number, S: number, tp: number, L: number, lastMove: number): { evs: Ev[]; start: number } | null => {
+  const lickPath = (f: number, S: number, tp: number, L: number, lastMove: number, fast = false): { evs: Ev[]; start: number } | null => {
     const P = L - S;
     const endDeg = mod(tp - key, 12), pools = ENDS[boxMinor ? 'm' : 'M'];
     const cands: { s: LibShape; delta: number; w: number }[] = [];
@@ -664,18 +680,22 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     if (!cands.length) return null;
     const win = windowAt(L), Pr = prof(S), pb = pbAt(L);
     const gap0 = (st: number) => st - S;
-    const tries: { v: { ms: number[]; steps: number[]; lens: number[]; s: LibShape; r: Rhythm; sig: string }; cost: number }[] = [];
+    const tries: { v: { ms: number[]; steps: number[]; lens: number[]; shifts: number[]; s: LibShape; r: Rhythm; sig: string }; cost: number }[] = [];
+    const sp = fast ? 2 : 1;
     for (let k = 0; k < 24; k++) {
       // (a try that comes back to the motif: its rhythm, with a shape of that many notes, or its shape)
-      const back = FEATURES.score && motif !== null && k < 14 && rng.chance(motifLean);
+      const back = !fast && FEATURES.score && motif !== null && k < 14 && rng.chance(motifLean);
       let pickC = cands;
       if (back) { const fc = cands.filter((c) => c.s.n === motif!.r.ons.length); if (fc.length) pickC = fc; }
       const { s, delta } = rng.weighted(pickC.map((c) => [c, c.w] as [typeof c, number]));
-      const rs = (RH_BY_N.get(s.n) ?? []).filter((x) => x.r.ons[s.n - 1] <= P);
+      const rs = (RH_BY_N.get(s.n) ?? []).filter((x) => x.r.ons[s.n - 1] / sp <= P && (!fast || fastOk(x.r)));
       if (!rs.length) continue;
       const rpick = back && motif!.r.ons.length === s.n && motif!.r.ons[s.n - 1] <= P ? rs.find((x) => x.r === motif!.r) : undefined;
       const { r, t: rt } = rpick ?? rng.weighted(rs.map((x) => [x, Math.sqrt(x.r.songs) * Math.exp(-(((x.t.perBeat - pb) / (0.4 * pb)) ** 2)) + 1e-3] as [typeof x, number]));
-      const steps = stepsOfRhythm(r, L), lens = steps.map((g, i) => (i + 1 < steps.length ? steps[i + 1] - g : 4));
+      // (at 2x every gap is halved: a half step is a note a 32nd late, `shift`, as the triplets)
+      const fsteps = r.ons.map((x) => L - (r.ons[r.ons.length - 1] - x) / sp), steps = fsteps.map((x) => Math.floor(x + 1e-9));
+      const shifts = fsteps.map((x, i) => Math.round(1e6 * (x - steps[i])) / 1e6);
+      const lens = steps.map((g, i) => (i + 1 < steps.length ? steps[i + 1] - g : 4));
       if (steps[0] < S) continue;
       const rel = shapeRel(s), last = rel[rel.length - 1];
       // (the notes end on the landing; a shape that ends a step or two off has its last note moved onto it)
@@ -684,7 +704,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       if (ms.some((m) => m < win[0] - 3 || m > win[1] + (peakTop === Infinity ? 3 : 0))) continue;
       if (delta !== 0 && (ms[ms.length - 1] === ms[ms.length - 2] || Math.abs(ms[ms.length - 1] - ms[ms.length - 2]) > 5)) continue;
       if (!fits(ms.slice(0, -1), steps.slice(0, -1), lens.slice(0, -1))) continue;
-      let cost = intervalCost(Pr, f, ms[0], lastMove, false) + 0.5 * -Math.log(moodFit(s, mood, tensionAt(L))) + 0.5 * ((rt.perBeat - pb) / pb) ** 2 + 0.15 * (steps[0] - S);
+      let cost = intervalCost(Pr, f, ms[0], lastMove, false) + 0.5 * -Math.log(moodFit(s, mood, tensionAt(L))) + 0.5 * ((rt.perBeat * sp - pb) / pb) ** 2 + 0.15 * (steps[0] - S);
       // (chord notes where they are heard: the beats and the chord changes)
       ms.slice(0, -1).forEach((m, i) => { if (steps[i] % 4 === 0 || changes.has(steps[i])) cost -= fit.isTone(m, steps[i]) ? 0.8 : -0.8; });
       if (delta !== 0) cost += 0.8;
@@ -704,21 +724,21 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
           if (s === motif.s && sig !== motif.sig) cost -= 0.6;
         }
       }
-      tries.push({ v: { ms, steps, lens, s, r, sig }, cost });
+      tries.push({ v: { ms, steps, lens, shifts, s, r, sig }, cost });
     }
     const pick = pickCost(rng, tries);
     if (!pick) return null;
     if (FEATURES.score) {
       const now: Played = { s: pick.s, r: pick.r, sig: pick.sig };
       if (motif && (now.r === motif.r || now.s === motif.s)) used.motif++;
-      if (!motif && pick.ms.length >= 4) motif = now;
+      if (!motif && pick.ms.length >= 4 && !fast) motif = now;
       played.push(now);
     }
     const out: Ev[] = [];
     // a gap before the lick: walked, if it is long enough to say something, else a rest
     const gap = pick.steps[0] - S;
     if (gap >= 3) out.push(...walkPath(f, S, pick.ms[0], pick.steps[0], lastMove));
-    pick.ms.slice(0, -1).forEach((m, i) => out.push({ step: pick.steps[i], midi: m, len: pick.lens[i], vel: vel0 + 0.05 * E(pick.steps[i]) + (i === 0 ? 0.03 : 0) + (rng.next() - 0.5) * 0.06 }));
+    pick.ms.slice(0, -1).forEach((m, i) => out.push({ step: pick.steps[i], midi: m, len: pick.lens[i], vel: vel0 + 0.05 * E(pick.steps[i]) + (i === 0 ? 0.03 : 0) + (rng.next() - 0.5) * 0.06, ...(pick.shifts[i] ? { shift: pick.shifts[i] } : {}) }));
     return { evs: out, start: pick.steps[0] };
   };
 
@@ -751,6 +771,120 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       evs.push(...path);
     }
     land(tp, L, hold, role);
+  };
+
+
+  // ---- fill the gaps (docs/SOLO-PLAN.md, round 3): no silence over a beat, no note alone
+  let fastNow = false;
+  /** The notes from `f` to the note `tp` at `L`, from `S`, not that note: a library lick (at 2x if `fast`) or a walk; a long way is cut at a waypoint. */
+  const pathInto = (f: number, S: number, tp: number, L: number, fast: boolean): Ev[] => {
+    const P = L - S;
+    if (P < 2) return [];
+    if (P > 14) {
+      const wl = clamp(S + 4 * Math.round((P * (0.4 + 0.2 * rng.next())) / 4), S + 4, L - 8);
+      const dw = rng.pick([2, 2, 4]), win = windowAt(wl), ideal = f + (tp - f) * ((wl - S) / P);
+      const items: { v: number; cost: number }[] = [];
+      for (let m = win[0]; m <= win[1]; m++) if (fit.isTone(m, wl) && !fit.clash(m, wl)) items.push({ v: m, cost: (m === f || m === tp ? 1.5 : 0) + 0.3 * Math.abs(m - ideal) + rng.next() });
+      const w = pickCost(rng, items);
+      if (w !== null) return [...pathInto(f, S, w, wl, fast), { step: wl, midi: w, len: dw, vel: vAt(wl) }, ...pathInto(w, wl + dw, tp, L, fast)];
+    }
+    let lp = null as ReturnType<typeof lickPath>;
+    if (P >= 3 && fast) { lp = lickPath(f, S, tp, L, 0, true); if (lp) fastNow = true; }
+    if (!lp && P >= 3) lp = lickPath(f, S, tp, L, 0, false);
+    return lp ? lp.evs : walkPath(f, S, tp, L, 0);
+  };
+  /** A note with nothing added to it: free to be held on or bent. */
+  const bare = (e: Ev) => !e.bend && !e.slide && !e.dyad && !e.trill && !e.tremolo && !e.rake && !e.unbend && !e.lateBend && !e.peak && !e.shift && e.bendAt === undefined;
+  /** Notes alone: a set of 1-2 notes in a beat with a beat of silence either side (the first set may open the solo, the last one rings on). */
+  const strayNotes = (): Set<Ev> => {
+    const sets: Ev[][] = [];
+    for (const e of evs) {
+      const last = sets[sets.length - 1], le = last?.[last.length - 1];
+      if (le && e.step - (le.step + le.len) <= 1) last.push(e); else sets.push([e]);
+    }
+    const out = new Set<Ev>();
+    sets.forEach((st, k) => {
+      const a = st[0], z = st[st.length - 1], zEnd = z.step + z.len;
+      const before = k ? a.step - (sets[k - 1][sets[k - 1].length - 1].step + sets[k - 1][sets[k - 1].length - 1].len) : a.step;
+      if (k + 1 < sets.length && st.length <= 2 && zEnd - a.step <= 4 && before >= MAX_GAP && sets[k + 1][0].step - zEnd >= MAX_GAP && !st.some((e) => e.peak)) { st.forEach((e) => out.add(e)); used.stray++; }
+    });
+    return out;
+  };
+  const fillGaps = () => {
+    evs.sort((a, b) => a.step - b.step);
+    for (let i = 0; i + 1 < evs.length; i++) if (evs[i].step + evs[i].len > evs[i + 1].step) evs[i].len = Math.max(1, evs[i + 1].step - evs[i].step);
+    const strays = strayNotes();
+    const add: Ev[] = [];
+    /** A is held on for `cover` steps, and bent to B's note when that is a step or two off. */
+    const holdOn = (A: Ev, B: Ev, cover: number, bendOk: boolean): boolean => {
+      const low = A.midi - (A.unbend ?? 0), e2 = A.step + A.len + cover;
+      if (A.len + cover > 24 || e2 > B.step) return false;
+      for (let g = A.step + A.len + 1; g < e2; g++) if (changes.has(g) && !fit.isTone(low, g) && !fit.isTone(A.midi, g)) return false;
+      if (!fits([low], [A.step], [A.len + cover])) return false;
+      const d = B.midi - A.midi;
+      const bends = bendOk && bare(A) && A.len + cover >= 5 && d !== 0 && Math.abs(d) <= 3 && inScale(B.midi) && inScale(A.midi);
+      A.len += cover;
+      if (bends) {
+        // (the bend lands as B is picked: a push up from below, or picked bent and let down)
+        A.bendAt = Math.max(1, A.len - 2);
+        if (d > 0) { A.midi = B.midi; A.lateBend = d; } else A.unbend = -d;
+        A.bend = 0;
+        used.link++;
+      }
+      return true;
+    };
+    for (let i = -1; i + 1 < evs.length; i++) {
+      const A = i >= 0 ? evs[i] : null, B = evs[i + 1];
+      const aEnd = A ? A.step + A.len : 0, g = B.step - aEnd;
+      const lim = (A && strays.has(A)) || strays.has(B) ? STRAY_GAP : MAX_GAP;
+      if (g <= lim) continue;
+      used.fill++;
+      const leave = A ? Math.min(lim, rng.weighted<number>([[0, 25], [2, 50], [4, 25]])) : 0;
+      const P = g - leave;
+      const f0 = A ? A.midi - (A.unbend ?? 0) : stepScale(B.midi, rng.pick([-3, -2, 2]));
+      const calm = calmAt(aEnd);
+      const pFast = FEATURES.fast ? clamp(FAST_P * FAST_LEAN[lick] * (1 - calm), 0, 0.6) : 0;
+      let done = false;
+      const kinds: [string, number][] = [];
+      if (A) kinds.push(['hold', P <= 2 ? 10 : P <= 6 ? 3 : P <= 10 ? 1.2 : 0]);
+      if (A && P >= 10) kinds.push(['combo', 2]);
+      if (P >= 3) kinds.push(['path', 4 + (strays.has(A!) || strays.has(B) ? 2 : 0)]);
+      const order: string[] = [];
+      const pool = kinds.filter(([, w]) => w > 0);
+      while (pool.length) { const k = rng.weighted(pool.map(([n, w]) => [n, w] as [string, number])); order.push(k); pool.splice(pool.findIndex(([n]) => n === k), 1); }
+      order.push('path', 'hold');
+      for (const kind of order) {
+        if (done) break;
+        if (kind === 'hold' && A) {
+          done = holdOn(A, B, P, true);
+        } else if (kind === 'combo' && A) {
+          const h = 2 * rng.int(2, 3);
+          if (!holdOn(A, B, h, false)) continue;
+          const S0 = A.step + A.len;
+          const tryPath = pathInto(A.midi - (A.unbend ?? 0), S0, B.midi, B.step, false);
+          add.push(...tryPath.map((e) => ({ ...e, keep: true } as Ev)));
+          done = true;
+        } else if (kind === 'path' || kind === 'hold') {
+          if (P < 2) continue;
+          const wantFast = P <= 10 && rng.chance(pFast);
+          for (let tries = 0; tries < 4 && !done; tries++) {
+            inClimax = !!B.peak && FEATURES.peak;
+            fastNow = false;
+            const es = pathInto(f0, aEnd + leave, B.midi, B.step, wantFast || (tries >= 2 && pFast > 0 && rng.chance(0.5)));
+            inClimax = false;
+            if (!es.length) continue;
+            if (B.peak && es.some((e) => e.midi >= B.midi)) continue;
+            if (es[0].midi === f0 && es[0].step - aEnd <= 1) continue;
+            add.push(...es.map((e) => ({ ...e, keep: true } as Ev)));
+            if (fastNow) used.fast++;
+            done = true;
+          }
+        }
+      }
+    }
+    evs.push(...add);
+    evs.sort((a, b) => a.step - b.step);
+    for (let i = 0; i + 1 < evs.length; i++) if (evs[i].step + evs[i].len > evs[i + 1].step) evs[i].len = Math.max(1, evs[i + 1].step - evs[i].step);
   };
 
   // ---- the solo: phrase by phrase
@@ -967,6 +1101,9 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
       }
     }
   }
+
+  // ---- fill the gaps, after the polish (nothing then changes the gaps)
+  if (FEATURES.fill) fillGaps();
 
   const hits = playSolo(rng, evs, { lick, key, minor, isTone: fit.isTone, inScale, total, t });
   const r2 = (v: number) => Math.round(v * 100) / 100;

@@ -1126,7 +1126,7 @@ const NO_LEAD: Record<Genre, number> = { pop: 0.65, funk: 0.6, altmetal: 0.5, ro
 const BREAK: Record<Genre, number> = { pop: 0.45, funk: 0.7, rock: 0.5, grunge: 0.5, altmetal: 0.5, hardrock: 0.5, metal: 0.5 };
 
 /**
- * Twin (docs/LEAD-TWIN.md): the chance a song has a second lead guitar on the hook and the solo's peak (real
+ * Twin (docs/LEAD-TWIN.md): the chance a song has a second lead guitar on the hook and lead lines, not the solo (real
  * hard rock and metal songs with a lead: 55% have a second lead line, 70% of those in the same bars), and
  * what it plays: a harmony a scale 3rd up, an octave below, or the same notes (a double).
  */
@@ -1686,10 +1686,10 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
     } else if (s.g2 === 'keep' && !idea.guitar2.length) g2 = 'Guitar 2: sits out';
     // Breaks: no lead guitar in this song (its solo, if it has one, and swells stay)
     if (noLead && s.g2 !== 'solo' && s.g2 !== 'swell' && idea.guitar2.length) { idea.guitar2 = []; g2 = 'Guitar 2: sits out (no lead guitar in this song)'; }
-    // Twin: a second lead guitar on the hook, a lead line and the solo's second half
-    if (twinKind && idea.guitar2.length && (s.g2 === 'hook' || s.g2 === 'lead' || s.g2 === 'solo')) {
-      addTwin(idea, twinKind, s.g2 === 'solo' ? Math.floor(idea.song.total / 2) : 0);
-      notes.push(`A second lead guitar ${twinKind === 'harmony' ? 'harmonises a 3rd up' : twinKind === 'octave' ? 'plays it in octaves' : 'doubles it'}${s.g2 === 'solo' ? ' in the second half of the solo' : ''}`);
+    // Twin: a second lead guitar on the hook and a lead line (never the solo: one line, docs/SOLO-PLAN.md round 3)
+    if (twinKind && idea.guitar2.length && (s.g2 === 'hook' || s.g2 === 'lead')) {
+      addTwin(idea, twinKind, 0);
+      notes.push(`A second lead guitar ${twinKind === 'harmony' ? 'harmonises a 3rd up' : twinKind === 'octave' ? 'plays it in octaves' : 'doubles it'}`);
     }
     if (s.kind === 'interlude' && leadBreak) notes.push('A lead break: eight bars of lead guitar over the chorus chords, no singing');
     else if (s.kind === 'interlude') notes.push(riff ? 'The hook riff comes back with the full band' : 'The hook comes back over the chorus chords');
