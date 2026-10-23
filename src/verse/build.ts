@@ -3,7 +3,7 @@
 
 import { SCALES, type Chord, type Mode } from '../theory';
 import { planForm, leafSeeds, RULES, type Leaf, type Rule, type Variation } from './form';
-import { EMO_PULL, pullTo, toneBias, withColour, withEndDegrees, withSuspensions, withSurprise, type EmoBuild, type EmoCtx } from './emotion';
+import { EMO_PULL, intervalsFor, pullTo, toneBias, withColour, withEndDegrees, withSuspensions, withSurprise, type EmoBuild, type EmoCtx } from './emotion';
 import type { Genre } from '../genres';
 import { BarGrid, gridOf } from './grid';
 import { isCalm, shortRange, shortTarget, withLonger } from './longer';
@@ -152,7 +152,9 @@ export function buildVerse(inp: BuildInput): Built {
       const held = withOpeners(withHolds(plain, holds), phrases, chordAt, G, sd.phrases, accOf('phrases'), d);
       // (mood notes: where the climb and the dwell don't pull, the phrase's contour and the tension lean the register, gently)
       const emoPull = X && !climbTo ? pullTo(X, phrases, sd.phrases) : undefined;
-      const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, G, sd.holds, accOf('holds'), d, held.opened), range, climbTo ?? emoPull, { tones, chordAt, bar: G, chance: d.octave, up: d.octaveUp, seed: `${sd.tones}|oct` }, emoPull ? EMO_PULL : undefined), key, mode, G, sd.neighbours, d), phrases, key, mode, G, sd.walk, d);
+      // (rule 46, intervals by mood: where a core note is sung, and which way a neighbour goes, follow the mood's liking of the interval)
+      const iv = X && intervalsFor(X, phrases, `${sd.tones}|iv`);
+      const walked = walkToNext(addNeighbours(voiceLead(withStretch(held.notes, tones, chordAt, G, sd.holds, accOf('holds'), d, held.opened), range, climbTo ?? emoPull, { tones, chordAt, bar: G, chance: d.octave, up: d.octaveUp, seed: `${sd.tones}|oct` }, emoPull ? EMO_PULL : undefined, iv), key, mode, G, sd.neighbours, d, iv), phrases, key, mode, G, sd.walk, d);
       const pushed = pushNotes(limitSame(smallBreaks(foldIntoRange(walked, range), phrases, G, sd.small, accOf('small'), d)), phrases, G, sd.small, accOf('small'), d);
       const ended = phraseEndings(pushed, phrases, G, sd.endings, d, { key, mode, chordAt, range });
       // (mood notes: each phrase end gets a degree by its job: home, open, hanging)

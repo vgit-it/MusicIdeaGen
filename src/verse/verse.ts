@@ -6,6 +6,7 @@ import { Rng } from '../rng';
 import { QUALITIES, SCALES, degreeChord, type Chord, type Mode } from '../theory';
 import { END_STYLES, VERSE, cumulative, energyEdge, type Dials, type EndStyle } from './profile';
 import { gridOf, type BarArg } from './grid';
+import { STICK, TEMP, intervalCost, type IntervalCtx } from './intervals';
 
 export const BARS = 8;
 export const STEPS_PER_BAR = 8; // 8th notes, 4/4
@@ -482,12 +483,31 @@ export function voiceLead(
   oct?: { tones: ChordNote[]; chordAt: Chord[]; bar: BarArg; chance: number; up: number; seed: string },
   /** How hard a target pulls against the smoothest step (the climb and the dwell pull hard; the mood notes' contour leans). */
   pull = { leap: 0.3, w: 2 },
+  /** Rule 46, intervals by mood: where a core note is sung is chosen by the mood's liking of the interval from the note before, instead of rule 25's flat chance. */
+  iv?: IntervalCtx,
 ): BandNote[] {
   let prev = Math.round((r.lo + r.hi) / 2);
   let lock: number | undefined;
+  let lastMove = 0;
   const G = oct && gridOf(oct.bar);
+  // (a core note: the first of a bar, or where the chord note or the chord changes part way; and the last of a phrase)
+  const isCore = (i: number): boolean => {
+    const at = (s: number) => Math.max(0, Math.min(oct!.chordAt.length - 1, Math.floor(s + 1e-6)));
+    const n = notes[i], a = at(n.step), b = i ? at(notes[i - 1].step) : -1;
+    return i === 0 || G!.index(a) !== G!.index(b) || oct!.tones[a] !== oct!.tones[b] || oct!.chordAt[a].root !== oct!.chordAt[b].root || oct!.chordAt[a].q !== oct!.chordAt[b].q;
+  };
+  const cores = iv && oct ? notes.map((_, i) => isCore(i)) : [];
+  const lastCore = (i: number): boolean => {
+    const ph = iv!.phrases.find((p) => notes[i].step >= p.step - 1e-6 && notes[i].step < p.step + p.len - 1e-6);
+    if (!ph) return false;
+    for (let j = i + 1; j < notes.length && notes[j].step < ph.step + ph.len - 1e-6; j++) if (cores[j]) return false;
+    return true;
+  };
+  // (a core note sung on another chord note than the one drawn takes the rest of its notes on that chord note along)
+  let swap: { from: number; to: number } | undefined;
   return notes.map((n, i) => {
-    const pc = ((n.midi % 12) + 12) % 12;
+    let pc = ((n.midi % 12) + 12) % 12;
+    if (iv && swap && !cores[i] && pc === swap.from) pc = swap.to;
     let best = Math.round((prev - pc) / 12) * 12 + pc, score = Infinity;
     const tg = target?.(n.step);
     for (let m = pc + 12 * Math.ceil((r.xlo - pc) / 12); m <= r.xhi; m += 12) {
@@ -495,7 +515,32 @@ export function voiceLead(
       const sc = (tg !== undefined ? pull.leap : 1) * Math.abs(m - prev) + (m < r.lo || m > r.hi ? 4 : 0) + (tg !== undefined ? pull.w * Math.abs(m - tg) : 0);
       if (sc < score) { best = m; score = sc; }
     }
-    if (oct && oct.chance > 0) {
+    if (iv && oct) {
+      if (cores[i]) {
+        swap = undefined;
+        // (the chord notes in the key, each in every octave: each costs the smooth step, as before, and the mood's liking of the interval;
+        // the one drawn earlier keeps a lead, so the mood notes and the bass that chose it still count; one is drawn by its odds)
+        if (i > 0) {
+          const P = iv.at(n.step), s = P.strength, end = lastCore(i);
+          const c = oct.chordAt[Math.max(0, Math.min(oct.chordAt.length - 1, Math.floor(n.step + 1e-6)))];
+          const tonePcs = [0, third(c), fifth(c)].map((x) => (((iv.key + c.root + x) % 12) + 12) % 12).filter((x) => iv.scale.has(x));
+          const pcs = tonePcs.includes(pc) ? [...new Set(tonePcs)] : [pc];
+          const cands: { m: number; c: number; pc: number }[] = [];
+          for (const q of pcs) {
+            for (let m = q + 12 * Math.ceil((r.xlo - q) / 12); m <= r.xhi; m += 12) {
+              const smooth = (tg !== undefined ? pull.leap : 1) * Math.abs(m - prev);
+              const held = (m < r.lo || m > r.hi ? 4 : 0) + (tg !== undefined ? pull.w * Math.abs(m - tg) : 0);
+              cands.push({ m, pc: q, c: (1 - s) * smooth + held + s * intervalCost(P, prev, m, lastMove, end) + (q === pc ? 0 : STICK) });
+            }
+          }
+          const lo = Math.min(...cands.map((x) => x.c));
+          const pick = cands[cumulative(cands.map((x) => Math.exp(-(x.c - lo) / TEMP)), roll(iv.seed, 'ivpick', n.step))];
+          best = pick.m;
+          if (pick.pc !== pc) { swap = { from: pc, to: pick.pc }; pc = pick.pc; }
+        }
+        lock = best;
+      } else if (lock !== undefined && lock % 12 === pc) best = lock;
+    } else if (oct && oct.chance > 0) {
       const at = (s: number) => Math.max(0, Math.min(oct.chordAt.length - 1, Math.floor(s + 1e-6)));
       const a = at(n.step), b = i ? at(notes[i - 1].step) : -1;
       const core = i === 0 || G!.index(a) !== G!.index(b) || oct.tones[a] !== oct.tones[b] || oct.chordAt[a].root !== oct.chordAt[b].root || oct.chordAt[a].q !== oct.chordAt[b].q;
@@ -511,6 +556,7 @@ export function voiceLead(
         }
       } else if (lock !== undefined && lock % 12 === pc) best = lock;
     }
+    lastMove = best - prev;
     prev = best;
     return { ...n, midi: best };
   });
@@ -531,17 +577,30 @@ export function foldIntoRange(notes: BandNote[], r: Range = DEFAULT_RANGE): Band
  * same bar now and then (3 in 10) goes one scale step up or down from it, and the next note is back on the core.
  * Only 8ths and 16ths; the first note of a bar stays on the core.
  */
-export function addNeighbours(notes: BandNote[], key: number, mode: Mode, barArg: BarArg, seed: string, d: Dials = VERSE): BandNote[] {
+export function addNeighbours(notes: BandNote[], key: number, mode: Mode, barArg: BarArg, seed: string, d: Dials = VERSE, iv?: IntervalCtx): BandNote[] {
   const G = gridOf(barArg);
   const scale = d.pent ?? new Set(SCALES[mode].map((i) => (key + i) % 12));
   const out: BandNote[] = [];
   for (const n of notes) {
     const prev = out[out.length - 1];
     const sameBar = prev && G.index(prev.step) === G.index(n.step);
-    if (sameBar && !prev.nb && n.len <= 2 && roll(seed, 'nb', n.step) < d.neighbour) {
-      const dir = roll(seed, 'nbd', n.step) < 0.5 ? 1 : -1;
+    // (rule 46: a mood that moves a lot has more of them, one that insists fewer; and each goes the way the mood likes the step)
+    const P = iv?.at(n.step);
+    const afterLeap = P && out.length >= 2 && Math.abs(prev.midi - out[out.length - 2].midi) >= 5;
+    if (sameBar && !prev.nb && n.len <= 2 && roll(seed, 'nb', n.step) < (P ? Math.min(0.9, d.neighbour * P.nb * (afterLeap ? 1 + P.fill : 1)) : d.neighbour)) {
       // (a step of the scale: in the pentatonic, 2 or 3 semitones)
-      const k = (d.pent ? [1, 2, 3] : [1, 2]).find((x) => scale.has((((n.midi + dir * x) % 12) + 12) % 12));
+      const stepOf = (dir: number) => (d.pent ? [1, 2, 3] : [1, 2]).find((x) => scale.has((((n.midi + dir * x) % 12) + 12) % 12));
+      let pUp = 0.5;
+      if (P) {
+        const ku = stepOf(1), kd = stepOf(-1);
+        // (and after a leap into this note, a step back the other way, by the mood's chance of filling the gap)
+        const leap = out.length >= 2 ? prev.midi - out[out.length - 2].midi : 0;
+        const back = Math.abs(leap) >= 5 ? 1 + 3 * P.fill : 1;
+        const wu = ku ? P.w[ku] * P.up * (leap < 0 ? back : 1) : 0, wd = kd ? P.w[kd] * (1 - P.up) * (leap > 0 ? back : 1) : 0;
+        pUp = wu + wd > 0 ? wu / (wu + wd) : 0.5;
+      }
+      const dir = roll(seed, 'nbd', n.step) < pUp ? 1 : -1;
+      const k = stepOf(dir);
       if (k) { out.push({ ...n, midi: n.midi + dir * k, nb: true }); continue; }
     }
     out.push(n);
