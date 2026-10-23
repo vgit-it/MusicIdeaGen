@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lick lab</title>
+  <style>
+    :root { --bg: #f6f5f2; --card: #fff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e0da; --accent: #e8623a; --chip: #f0eee9; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #141416; --card: #1e1e21; --ink: #f2f2f3; --muted: #9a9aa0; --line: #2e2e33; --accent: #f07a52; --chip: #29292d; } }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+    main { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .lead { color: var(--muted); margin: 0 0 18px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+    select, button, input { font: inherit; color: var(--ink); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+    input[type=number] { width: 80px; }
+    input[type=range] { padding: 0; width: 120px; }
+    button { cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    button:disabled { opacity: .5; cursor: default; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .list { display: grid; gap: 6px; max-height: 420px; overflow: auto; }
+    .list h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 10px 0 2px; }
+    .list button { text-align: left; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+    .list button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .list small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .02em; }
+    #roll { width: 100%; height: 220px; display: block; border-radius: 8px; background: var(--chip); }
+    .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+    .chk { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+    .chk input { width: auto; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Lick lab</h1>
+    <p class="lead">Pick a key and a jam, tap a lick, hear it over the band. Dev page: run <code>npm run dev</code>.</p>
+
+    <section class="card">
+      <h2>Jam</h2>
+      <div class="row">
+        <label class="f">Key <select id="key"></select></label>
+        <label class="f">Mode <select id="mode"></select></label>
+        <label class="f">Chords <select id="prog"></select></label>
+        <label class="f">Feel <select id="genre"><option value="rock">Rock</option><option value="pop">Pop</option><option value="funk">Funk</option></select></label>
+        <label class="f">Tempo <input id="bpm" type="number" min="60" max="180" value="100" /></label>
+        <label class="f">Lick plays <select id="slot"><option value="1">1 bar a chord</option><option value="2">2 bars a chord</option></select></label>
+        <button id="reroll">New band take</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Sound</h2>
+      <div class="row">
+        <label class="f">Lead guitar <select id="lead"><option value="electric-clean">Clean</option><option value="electric-crunch" selected>Crunch</option><option value="electric-dist">Distortion</option></select></label>
+        <label class="f">Backing guitar <select id="back"><option value="electric-clean">Clean guitar</option><option value="piano">Piano</option></select></label>
+        <label class="f">Lead level <input id="vLead" type="range" min="0" max="100" value="85" /></label>
+        <label class="f">Band level <input id="vBand" type="range" min="0" max="100" value="65" /></label>
+        <button id="real">Prepare real sound</button>
+      </div>
+      <p class="hint" id="realHint"></p>
+    </section>
+
+    <section class="card">
+      <h2>Licks</h2>
+      <div class="tabs">
+        <button data-tab="lib" class="on">Named licks</button>
+        <button data-tab="shape">Real shapes</button>
+        <button data-tab="rhythm">Real rhythms</button>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <label class="f" id="whoF">Player <select id="who"></select></label>
+        <label class="f" id="rhyF" hidden>Rhythm <select id="rhy"></select></label>
+        <label class="chk"><input id="fitOnly" type="checkbox" checked /> Only licks that suit the mode</label>
+      </div>
+      <div class="list" id="list"></div>
+    </section>
+
+    <section class="card">
+      <h2>Playing</h2>
+      <div class="row">
+        <button id="play" class="primary" disabled>Play</button>
+        <button id="take">New take</button>
+        <span id="status" class="hint" style="margin:0"></span>
+      </div>
+      <canvas id="roll"></canvas>
+      <p class="hint" id="info"></p>
+    </section>
+  </main>
+  <script type="module" src="/src/lab/lickLab.ts"></script>
+</body>
+</html>

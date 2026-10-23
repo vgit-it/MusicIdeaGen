@@ -33,7 +33,7 @@ export function randomSeeds(): Seeds {
 /** Genres whose parts mix well with a strummed genre (Random only). */
 const BORROW: Partial<Record<Genre, Genre[]>> = { rock: ['rock', 'pop'], pop: ['pop', 'rock', 'funk'], funk: ['funk', 'pop'] };
 
-function planSong(rng: Rng, opts: GenOptions): Song {
+export function planSong(rng: Rng, opts: GenOptions): Song {
   const w = opts.weirdness;
   const genreSel = opts.genre;
   const genre = genreSel === 'random' ? rng.pick(GENRE_LIST) : genreSel;
@@ -59,7 +59,10 @@ function planSong(rng: Rng, opts: GenOptions): Song {
     const [a, b] = rng.weighted(G.riff.arrangements.map(([x, y, wt]) => [[x, y] as const, wt] as const));
     sections = [a, a, a, a, b, b, b, b];
   }
-  const mode = w > 0.6 && rng.chance(0.5) ? rng.pick(['phrygian', 'lydian'] as const) : rng.pick(G.modes);
+  const rolledMode = w > 0.6 && rng.chance(0.5) ? rng.pick(['phrygian', 'lydian'] as const) : rng.pick(G.modes);
+  // (rolled anyway, so a chosen key or mode doesn't change any other decision; the lick lab uses them)
+  const mode = opts.mode ?? rolledMode;
+  if (opts.key !== undefined) key = opts.key;
   let bpm = rng.int(...G.bpm);
   if (w > 0.8 && rng.chance(0.4)) bpm += rng.pick([-25, 25]);
   // rolled anyway, so a fixed tempo doesn't change any other decision
