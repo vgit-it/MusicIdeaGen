@@ -13,8 +13,11 @@
 import type { GuitarHit, Idea, SectionKind } from '../idea';
 import { Rng } from '../rng';
 import { groupStarts } from '../rhythm';
-import { fillSteps } from './drummer';
+import { type Feel, fillSteps } from './drummer';
 import { naturalStrokes } from '../parts/strum';
+
+/** ms against the grid for a planned solo, by the drummer's feel (the snare's are -5, 0, 12). */
+const LEAD_MS: Record<Feel, number> = { ahead: -4, on: 0, behind: 8 };
 
 type PhraseEnd = 'breath' | 'scratch' | 'push' | 'none';
 
@@ -28,7 +31,7 @@ const END_DESC: Record<Exclude<PhraseEnd, 'none'>, string> = {
 const slidable = (h: GuitarHit) => h.notes.length === 1 && !h.mute && !h.letRing && !h.swell && !h.slide && h.len >= 2;
 
 /** The guitarists play every section of a track (in place). `seed`: who the band is. */
-export function playGuitars(sections: Idea[], seed: string) {
+export function playGuitars(sections: Idea[], seed: string, drummer: Feel = 'on') {
   const rng = new Rng(`${seed}-guitarists`);
   const end = rng.weighted<PhraseEnd>([['breath', 2], ['scratch', 2], ['push', 1], ['none', 1]]);
   const late = rng.chance(0.5) ? 10 : 0;
@@ -57,7 +60,8 @@ export function playGuitars(sections: Idea[], seed: string) {
     else idea.strumGain = gain;
     if (idea.rhythmPick) idea.rhythmPick = idea.rhythmPick.map((h) => ({ ...h, vel: Math.min(1, h.vel * gain) }));
     idea.guitar2 = idea.guitar2.map((h) => ({ ...h, vel: Math.min(1, h.vel * gain) }));
-    idea.g2Feel = late;
+    // (a planned solo sits with the drummer: ahead of the beat with a pushing one, behind with a laid-back one; round 4)
+    idea.g2Feel = idea.soloCurve?.landings ? LEAD_MS[drummer] : late;
 
     // Guitar 2 slides into a note that starts a phrase (after a rest of a beat or more)
     if (slides) {

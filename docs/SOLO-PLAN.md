@@ -243,3 +243,18 @@ A, B and D are in; C (the breath cap) was left out because the fill step already
 - **Numbers (90 planned solos)**: silences over a beat 230 to 0 (78 solos to none); notes alone 32 to 0; longest silence 4 steps; 2.9 gaps filled a solo, 0.38 quick licks, 0.33 bend links; time silent 19% to 12%; notes a bar 5.2. The check (`solo-plan-check`) fails on any silence over a beat, a note alone, a Twin on a planned solo, or a quick note faster than the tempo allows. Also: the off-scale check no longer skips every note with a timed bend, only the carried last note.
 - A repeat shape's copies are filled where they stand, so a `same` copy can differ a little from its source (exact repeats 10% to 8%).
 Not listened to yet. Tune by ear: `MAX_GAP`, the rest kept (`leave` weights), the hold / path weights, `FAST_P`.
+
+## Round 4: sit with the drums (2026-10-23)
+
+Paul: the guitar and drums don't sync well in the solo, though the notes are on time. Measured on 44 planned solos: only half the notes
+land with a kick or snare, a third land one 16th away from one, planned holds started on a beat 57% of the time (the old writer 70%),
+a held bend sounded its right pitch late, and the lead's feel (0 or 10 ms behind) ignored the drummer's.
+
+Built (`FEATURES.lock`, `lockToGroove` in `src/parts/soloplan.ts`, the drums passed in `PlanOpts.drums`):
+- **Lock to the groove**: a long note or landing off the beat and off every kick and snare moves a 16th (an 8th, 6 times in 10) onto the nearest beat or hit. Same chord, still fits the key. Holds on a beat: 57% -> 77%; on a kick or snare: 75% -> 85%; long notes off both: 26.6% -> 11.9%.
+- **Lead follows the drummer** (`LEAD_MS` in `src/players/guitarists.ts`): a planned solo plays -4 / 0 / +8 ms for a drummer who is ahead / on / behind (was 0 or 10 ms at random).
+- **Held bends start sooner**: a landing held then bent pushes after 1 step (on a beat) or 2, so the right pitch is there with the drums (median 514 ms -> 208 ms). The solo's last note keeps the bar-line bend of the carry.
+- Fixes found on the way: a lick that started late or stopped early could leave a silence over a beat (now rejected, and a held note or an early next note is the last resort); a cell played again takes its place's job (call or answer) in the neighbours' counts.
+- **Repeat shapes 1.5x** (`REP_P` 0.28 -> 0.42): more stretches played as patterns (A A', A A A A', ...).
+
+Not built: quick notes and 2x licks following the lilt (their half steps use plain positions).
