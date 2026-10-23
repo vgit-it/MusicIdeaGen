@@ -29,6 +29,8 @@ const corr = (a: number[], b: number[]) => {
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 const A: Record<'old' | 'plan', Agg> = { old: zero(), plan: zero() };
+/** The moves used (step 4: runs, triplets, bend moves, build-ups, enclosures), counted from the writer's note. */
+const mv: Record<string, number> = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0 };
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], s = `sp-${i}-${genre}`;
   const idea = generate({ genre, meter: '4/4', weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
@@ -90,6 +92,7 @@ for (let i = 0; i < N; i++) {
       }
       if (which !== 'plan') continue;
       // ---- the plan's own checks
+      for (const m of JSON.stringify(sec.notes ?? sec).matchAll(/, (\d+) (run|trip|bend|build|enclose)\b/g)) mv[m[2]] += Number(m[1]);
       const L = c?.landings as { step: number; midi: number; len: number; role: string }[] | undefined;
       if (!L?.length) { fail(`plan ${s}: no landings recorded`); continue; }
       const all = sec.guitar2.filter((h: any) => !h.mute && h.notes.length);
@@ -167,6 +170,9 @@ console.log(`last note carried into the next section ${pct(p.carryOk, p.carried)
 console.log(`an answer lands lower than the landing before it ${pct(p.fall, p.falls)}`);
 console.log(`planned: ${p.landings} landings (${p.waypoints} waypoints), calls off the root ${pct(p.callUp, p.calls)}, answers on the root ${pct(p.answerRoot, p.answers)}, climax highest for its place ${pct(p.climaxHigh, p.climaxes)} (${p.climaxes} of ${p.solos} solos have one)`);
 if (p.solos < 20) fail('too few solos');
+console.log(`moves (a solo): ${Object.entries(mv).map(([k, n]) => `${k} ${(n / Math.max(1, p.solos)).toFixed(2)}`).join(', ')}`);
+for (const k of ['run', 'bend', 'build', 'enclose']) if (p.solos >= 60 && !mv[k]) fail(`no ${k} move in ${p.solos} planned solos`);
+if (p.notes / p.bars < 4.2) fail(`planned solos play ${(p.notes / p.bars).toFixed(1)} notes a bar, under 4.2`);
 // round 2, step 5: the carried ending
 if (p.carried && (p.carryOk < p.carried || p.carryTone < p.carried)) fail('every solo followed by a section should carry its last note into it, ending on a note of its first chord');
 if (p.noLong) fail(`${p.noLong} solos with no note of 2+ beats`);

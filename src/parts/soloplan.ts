@@ -7,7 +7,9 @@
 // 2. Connect: the path from one landing to the next, in the time there is. A library lick that ends on the landing (src/realism/
 //    solo-licks.json, a shape ending on that note, in a real rhythm that fits the time and the pace, scored by the mood's liking of
 //    its intervals), or a stepwise walk through the scale; a long path is cut at a waypoint on a beat, a weaker landing.
-// Not yet (steps 3-5): bend moves, build-ups, triplets, quick runs, the hook quoted, the motif coming back, the polish rules.
+// 3. Moves (step 4): the other writer's moves as connectors: a quick turning run, 8th triplets, a bend move (bent and let down,
+//    the same bend picked again, two-string bends climbing) that ends on the landing, a build-up at the climax, an enclosure.
+// Not yet (steps 3 and 5): full scoring, the hook quoted, the motif coming back, the polish rules.
 // Played by the same hands as the other writers (playSolo).
 
 import type { Genre } from '../genres';
@@ -22,7 +24,7 @@ import { type Guitar2Part, MINORISH } from './guitar2';
 import { lickFit } from './licks';
 import { RHYTHMS, type Rhythm } from './reallicks';
 import { type Ev, playSolo } from './solo';
-import { BUSY, DENSITY, ENERGY_WORDS, HELD, type Held, energyAt, pickEnergy } from './solo2';
+import { BEND_MOVES, BEND_RATE, BUSY, type BuildCell, CELLS, DENSITY, ENERGY_WORDS, HELD, type Held, RUNS, RUN_LEAN, TRIP_CELLS, TRIP_LEAN, energyAt, pickEnergy } from './solo2';
 import { LIB_GENRES, LIB_SHAPES, type LibShape, type RhythmTags, moodFit, rhythmTags, shapeRel } from './solotags';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -39,7 +41,7 @@ const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */
 const PICK_T = 1.5;
 /** Each round-2 change can be switched off, to hear and measure it against the one before (docs/SOLO-PLAN.md, "Round 2"). */
-export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true };
+export const FEATURES = { intoKey: true, peak: true, holds: true, echo: true, carry: true, moves: true };
 /** How much a genre and a player play a lick again (an echo). */
 const ECHO_GENRE: Record<Genre, number> = { rock: 1.1, hardrock: 1.2, metal: 1.2, grunge: 1.1, altmetal: 1.1, pop: 0.8, funk: 1 };
 const ECHO_LICK: Record<LickKind, number> = { blues: 1.3, simple: 1.2, sung: 1, muted: 1, run: 0.8 };
@@ -262,7 +264,21 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   let crest = Math.floor(total * 0.4), best = -Infinity;
   for (let g = Math.floor(total * 0.15); g < total - 12; g += 2) { const e = E(g) + 0.01 * rng.next(); if (e > best) { best = e; crest = g; } }
   const eligible = phrases.map((p, i) => ({ p, i })).filter(({ p }) => p.role !== 'end' && p.echoOf === undefined && p.len >= (FEATURES.peak ? 16 : 12));
-  const climaxAt = eligible.length ? eligible.reduce((a, b) => (Math.abs((b.p.S + b.p.end) / 2 - crest) < Math.abs((a.p.S + a.p.end) / 2 - crest) ? b : a)).i : -1;
+  let climaxAt = eligible.length ? eligible.reduce((a, b) => (Math.abs((b.p.S + b.p.end) / 2 - crest) < Math.abs((a.p.S + a.p.end) / 2 - crest) ? b : a)).i : -1;
+  // a build-up into the climax (step 4) needs room: a climax phrase too short for it takes the phrase before it (a plain middle one)
+  let wantBuild = false;
+  if (FEATURES.moves && climaxAt > 0 && rng.chance(0.85)) {
+    wantBuild = true;
+    for (let k = 0; k < 2 && climaxAt > 0; k++) {
+      const c = phrases[climaxAt], qi = climaxAt - 1, q = phrases[qi];
+      if (c.len >= 28 || q.role !== 'mid' || q.held || q.echoOf !== undefined || q.end !== c.w0 || phrases.some((x) => x.echoOf === qi)) break;
+      c.w0 = q.w0; c.S = q.S; c.len = c.end - c.w0;
+      phrases.splice(qi, 1);
+      for (const x of phrases) if (x.echoOf !== undefined && x.echoOf > qi) x.echoOf--;
+      climaxAt--;
+    }
+    if (phrases[climaxAt].len < 28) wantBuild = false;
+  }
   if (climaxAt >= 0) {
     phrases[climaxAt].role = 'climax';
     // (the peak is said once)
@@ -296,6 +312,217 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     // (nothing fits under the riff: the nearest chord note, clashing or not)
     for (let d = 0; d < 12; d++) for (const x of [c + d, c - d]) if (fit.isTone(x, L)) return x;
     return c;
+  };
+
+
+  // ---- moves as connectors (docs/SOLO-PLAN.md, step 4): the other writer's moves, each ending on the landing
+  const box = boxMinor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9];
+  const runPcs: readonly number[] = lick === 'run' ? scale : box;
+  const runny = FEATURES.moves && rng.chance(Math.min(0.9, RUNS[genre] * RUN_LEAN[lick] * (0.7 + 0.6 * intensity)));
+  const triplets = FEATURES.moves && rng.chance(0.1 * TRIP_LEAN[lick]);
+  const maxBuilds = bars.length >= 16 ? 2 : 1;
+  const used = { run: 0, trip: 0, bend: 0, build: 0, enclose: 0 };
+  const bendInto = (m: number) => (inScale(m - 2) ? 2 : inScale(m - 1) ? 1 : 0);
+  /** A note `k` notes along the key's scale. */
+  const stepScale = (m: number, k: number) => {
+    const rel = mod(m - key, 12), oct = m - rel;
+    let i = scale.indexOf(rel);
+    if (i < 0) i = scale.reduce((bi, x, j) => (Math.abs(x - rel) < Math.abs(scale[bi] - rel) ? j : bi), 0);
+    const j = i + k;
+    return oct + 12 * Math.floor(j / scale.length) + scale[mod(j, scale.length)];
+  };
+  const beatOf4 = (g: number) => {
+    const b = bars.find((x) => g >= x.start && g < x.start + x.len);
+    if (!b) return false;
+    let p = b.start;
+    for (const n of b.groups) { if (p === g) return n === 4; p += n; }
+    return false;
+  };
+  const vAt = (g: number, extra = 0) => vel0 + 0.05 * E(g) + extra + (rng.next() - 0.5) * 0.04;
+  /** The highest note a move may use at `g`: the window's, and under the landing when it is the climax. */
+  const capAt = (g: number, tp: number) => (inClimax ? tp - 1 : windowAt(g)[1]);
+  /** The notes of the set `pcs` in the window at `g`, under the cap. */
+  const poolOf = (pcs: readonly number[], g: number, cap: number) => {
+    const out: number[] = [];
+    for (let m = windowAt(g)[0] - 2; m <= cap; m++) if (pcs.includes(mod(m - key, 12))) out.push(m);
+    return out;
+  };
+  const nearestIx = (pool: number[], m: number) => pool.reduce((bi, x, i) => (Math.abs(x - m) < Math.abs(pool[bi] - m) ? i : bi), 0);
+  /** The run-up to a move that starts at `to`: walked if there is room to say something, else a rest. */
+  const leadIn = (f: number, S: number, to: number, first: number, lastMove: number): Ev[] => (to - S >= 3 ? walkPath(f, S, first, to, lastMove) : []);
+  const noAdjacentRepeats = (ms: number[]) => ms.every((m, i) => !i || m !== ms[i - 1]);
+
+  /** A quick run that turns: a cell moved down (or up) the box a note at a time, ending a step from the landing. */
+  const runMove = (f: number, S: number, tp: number, L: number, lastMove: number): Ev[] | null => {
+    const P = L - S;
+    if (P < 6) return null;
+    for (let tries = 0; tries < 6; tries++) {
+      const pool = poolOf(runPcs, L, capAt(L, tp));
+      if (pool.length < 6) return null;
+      const cell = rng.pick(CELLS), down = rng.chance(0.6), move = rng.chance(0.75) ? 1 : 2;
+      const n = rng.pick([6, 8, 12, 16].filter((x) => x <= P));
+      const slow = rng.chance(0.25) && n + cell.length <= P ? cell.length : 0;
+      const raw = Array.from({ length: n }, (_, k) => cell[k % cell.length] + (down ? -1 : 1) * Math.floor(k / cell.length) * move);
+      const iT = nearestIx(pool, tp), shift = iT + (down ? 1 : -1) - raw[n - 1];
+      const idx = raw.map((x) => x + shift);
+      if (idx.some((x) => x < 0 || x >= pool.length)) continue;
+      const ms = idx.map((x) => pool[x]);
+      if (!noAdjacentRepeats(ms) || ms[n - 1] === tp) continue;
+      const start = L - n - slow, steps: number[] = [], lens: number[] = [];
+      for (let k = 0, g = start; k < n; k++) { steps.push(g); lens.push(k < slow ? 2 : 1); g += lens[k]; }
+      if (!fits(ms, steps, lens)) continue;
+      return [...leadIn(f, S, start, ms[0], lastMove), ...ms.map((m, k) => ({ step: steps[k], midi: m, len: lens[k], vel: vAt(steps[k], k ? 0 : 0.03) }))];
+    }
+    return null;
+  };
+
+  /** 8th triplets (one beat or two, or three quarter triplets) turning or falling onto the landing, which sits on a beat. */
+  const tripletMove = (f: number, S: number, tp: number, L: number, lastMove: number): Ev[] | null => {
+    if (L % 4 !== 0 || L - S < 4) return null;
+    const quarter = rng.chance(0.2), beats = quarter ? 2 : rng.chance(0.4) ? 1 : 2;
+    const from = L - 4 * beats;
+    if (from < S || !beatOf4(from) || (beats === 2 && !beatOf4(from + 4))) return null;
+    const n = quarter ? 3 : 3 * beats;
+    const pos = Array.from({ length: n }, (_, i) => from + (quarter ? (8 * i) / 3 : (4 * i) / 3));
+    const steps = [...pos.map((x) => Math.floor(x + 1e-9)), L];
+    const shifts = pos.map((x) => Math.round(1e6 * (x - Math.floor(x + 1e-9))) / 1e6);
+    const lens = steps.slice(0, -1).map((g, i) => Math.max(1, steps[i + 1] - g));
+    for (let tries = 0; tries < 8; tries++) {
+      const pool = poolOf(box, L, capAt(L, tp));
+      if (pool.length < 5) return null;
+      const cell = rng.weighted(TRIP_CELLS), down = cell[1] > 0 && cell[2] > 0 ? false : rng.chance(0.7);
+      const raw = Array.from({ length: n }, (_, i) => cell[i % 3] + (down ? -1 : 1) * Math.floor(i / 3));
+      const iT = nearestIx(pool, tp), shift = iT + (down ? 1 : -1) - raw[n - 1];
+      const idx = raw.map((x) => x + shift);
+      if (idx.some((x) => x < 0 || x >= pool.length)) continue;
+      const ms = idx.map((x) => pool[x]);
+      if (!noAdjacentRepeats(ms) || ms[n - 1] === tp || !fits(ms, steps.slice(0, -1), lens)) continue;
+      return [...leadIn(f, S, from, ms[0], lastMove), ...ms.map((m, k) => ({ step: steps[k], midi: m, len: lens[k], vel: vAt(steps[k], k ? 0 : 0.03), ...(shifts[k] ? { shift: shifts[k] } : {}) }))];
+    }
+    return null;
+  };
+
+  /** An enclosure: the scale notes above and below the landing, then the landing. */
+  const encloseMove = (f: number, S: number, tp: number, L: number, lastMove: number): Ev[] | null => {
+    if (L - S < 4) return null;
+    const hi = stepScale(tp, 1), lo = stepScale(tp, -1), cap = capAt(L, tp), win = windowAt(L);
+    const ms = rng.chance(0.5) ? [hi, lo] : [lo, hi];
+    const steps = [L - 4, L - 2], lens = [2, 2];
+    if (ms.some((m) => m > cap || m < win[0] - 3) || !fits(ms, steps, lens)) return null;
+    return [...leadIn(f, S, L - 4, ms[0], lastMove), ...ms.map((m, k) => ({ step: steps[k], midi: m, len: 2, vel: vAt(steps[k], k ? 0 : 0.03) }))];
+  };
+
+  /** A build-up: a short cell hammered 4-12 times, now and then a note higher every few times, up to the landing (the climax). */
+  const buildMove = (f: number, S: number, tp: number, L: number, lastMove: number): Ev[] | null => {
+    const P = L - S;
+    const span = en.paceC * E(L) >= 0 ? 4 : 8;
+    const reps = Math.min(Math.floor(P / span), rng.int(4, lick === 'run' || lick === 'blues' ? 12 : 8));
+    if (reps < 4) return null;
+    const kind: BuildCell = lick === 'run' && rng.chance(0.5) ? 'pedal' : rng.weighted<BuildCell>([['brp', lick === 'run' ? 1 : 3], ['shape', 3]]);
+    const climb = rng.chance(0.5) ? rng.pick([2, 3, 4]) : 0;
+    const nClimb = climb ? Math.floor((reps - 1) / climb) : 0;
+    const sh = LIB_SHAPES.filter((x) => x.n === 4 && x.minor === boxMinor && Math.abs(x.steps.reduce((a, b2) => a + b2, 0)) <= 4);
+    const cellShape = sh.length ? rng.weighted(sh.map((x) => [x, Math.sqrt(x.songs)] as [LibShape, number])) : null;
+    const k = span / 4, start = L - reps * span, cap = capAt(L, tp), win = windowAt(L);
+    // (the cell's top stays under the cap: the anchors start lower if need be)
+    const rise = kind === 'shape' && cellShape ? Math.max(0, ...shapeRel({ ...cellShape, deg: 0 })) : kind === 'pedal' ? 0 : 2;
+    let lower = 0;
+    while (lower < 4 && stepScale(tp, -1 - lower) + rise > cap) lower++;
+    const anchor0 = stepScale(tp, -1 - lower - nClimb);
+    const out: Ev[] = [];
+    let anchor = anchor0;
+    for (let r = 0; r < reps; r++) {
+      const base = climb && r && r % climb === 0 ? stepScale(anchor, 1) : anchor;
+      const g = start + r * span, v = vAt(g, 0.06 * (r / reps));
+      let rep: Ev[] = [];
+      if (kind === 'brp') {
+        const b = bendInto(base);
+        if (!b) return null;
+        rep = [{ step: g, midi: base, len: 2 * k, vel: v, bend: b, unbend: b }, { step: g + 2 * k, midi: stepScale(base - b, -1), len: 2 * k, vel: v - 0.05, bend: 0, art: 'legato' }];
+      } else if (kind === 'pedal') {
+        rep = [base, stepScale(base, -1), base, stepScale(base, -2)].map((m, i) => ({ step: g + i * k, midi: m, len: k, vel: v - (i % 2 ? 0.05 : 0), bend: 0 }));
+      } else if (cellShape) {
+        let m = base;
+        rep = [m, ...cellShape.steps.map((d) => (m += d))].map((x, i) => ({ step: g + i * k, midi: x, len: k, vel: v - (i ? 0.04 : 0), bend: 0 }));
+      }
+      if (!rep.length || rep.some((e) => e.midi > cap || e.midi - (e.unbend ?? 0) < win[0] - 3) || !fits(rep.map((e) => e.midi - (e.unbend ?? 0)), rep.map((e) => e.step), rep.map((e) => Math.min(2, e.len)))) return null;
+      out.push(...rep);
+      anchor = base;
+    }
+    return [...leadIn(f, S, start, out[0].midi, lastMove), ...out];
+  };
+
+  /**
+   * A bend move that ends on the landing (the landing is its last note): bent, let down and pulled off to the landing; the same
+   * bend picked 3-5 times, then held; bent, let down and bent again; or two-string bends climbing to the landing.
+   */
+  const bendMoveTo = (f: number, S: number, tp: number, L: number, hold: number, lastMove: number): { pre: Ev[]; landing: Ev } | null => {
+    const P = L - S, move = rng.weighted(BEND_MOVES[lick]), v = vAt(L, 0.04);
+    const b = bendInto(tp), cap = capAt(L, tp);
+    if (move === 'brp') {
+      if (P < 4) return null;
+      for (const m of [1, 2, 3, 4, 5].map((d) => tp + d)) {
+        const bm = bendInto(m);
+        if (!bm || m > cap || stepScale(m - bm, -1) !== tp || !fits([m - bm], [L - 3], [2])) continue;
+        return { pre: [...leadIn(f, S, L - 3, m, lastMove), { step: L - 3, midi: m, len: 3, vel: v, bend: bm, unbend: bm }], landing: { step: L, midi: tp, len: hold, vel: v - 0.04, bend: 0, art: 'legato' } };
+      }
+      return null;
+    }
+    if (move === 'repeat') {
+      const k = Math.min(rng.int(3, 5), Math.floor(P / 2));
+      if (!b || k < 3) return null;
+      const steps = Array.from({ length: k }, (_, i) => L - 2 * (k - i));
+      if (!fits(Array(k).fill(tp), steps, Array(k).fill(2))) return null;
+      return { pre: [...leadIn(f, S, steps[0], tp, lastMove), ...steps.map((g, i) => ({ step: g, midi: tp, len: 2, vel: v + (i ? -0.03 : 0.03), bend: b }))], landing: { step: L, midi: tp, len: hold, vel: v, bend: b } };
+    }
+    if (move === 'brb') {
+      if (!b || P < 4 || !fits([tp - b], [L - 4], [2])) return null;
+      return { pre: [...leadIn(f, S, L - 4, tp, lastMove), { step: L - 4, midi: tp, len: 4, vel: v + 0.03, bend: b, unbend: b }], landing: { step: L, midi: tp, len: hold, vel: v, bend: b } };
+    }
+    // two-string bends climbing: the top note held, a note a 3rd or 4th under it bent up to it, a scale note higher each time
+    const n = Math.min(rng.int(3, 6), Math.floor(P / 2) + 1);
+    if (n < 3) return null;
+    const evs2: Ev[] = [];
+    for (let i = 0; i < n; i++) {
+      const top = stepScale(tp, -(n - 1 - i)), g = L - 2 * (n - 1 - i);
+      const gap = [3, 4, 5].find((x) => inScale(top - x) && inScale(top - x - 2) && !fit.clash(top - x, g)) ?? 0;
+      if (!gap || !inScale(top - 2) || top > cap || fit.clash(top, g)) return null;
+      evs2.push({ step: g, midi: top, len: 2, vel: v, bend: 2, dyad: gap });
+    }
+    const last = evs2.pop()!;
+    return { pre: [...leadIn(f, S, evs2[0].step, evs2[0].midi, lastMove), ...evs2], landing: { ...last, len: hold } };
+  };
+
+  /** A move for the path from `f` to the landing, if one is wanted and fits: true once it and the landing are written. */
+  const tryMove = (f: number, S: number, tp: number, L: number, hold: number, role: LandingRole, lastMove: number): boolean => {
+    if (!FEATURES.moves || role === 'waypoint' || role === 'end') return false;
+    const P = L - S, calm = calmAt(L);
+    const mark = evs.length;
+    const back = () => { evs.length = mark; };
+    if (role === 'climax' ? rng.chance(0.85) : role === 'mid' && E(L) > 0.7 && rng.chance(0.1)) {
+      if (used.build < maxBuilds && P >= 16) {
+        const path = buildMove(f, S, tp, L, lastMove);
+        if (path) { evs.push(...path); used.build++; land(tp, L, hold, role); return true; }
+      }
+    }
+    if (role !== 'climax' && rng.chance(Math.min(0.6, BEND_RATE[lick] * (1 + calm) * 1.3))) {
+      const bm = bendMoveTo(f, S, tp, L, hold, lastMove);
+      if (bm) { evs.push(...bm.pre, bm.landing); landings.push({ step: L, midi: tp, len: hold, role }); used.bend++; return true; }
+    }
+    if (triplets && rng.chance(0.35)) {
+      const path = tripletMove(f, S, tp, L, lastMove);
+      if (path) { evs.push(...path); used.trip++; land(tp, L, hold, role); return true; }
+    }
+    if (runny && rng.chance(clamp(0.6 * (1 + 0.8 * en.paceC * E(L)), 0.1, 0.9))) {
+      const path = runMove(f, S, tp, L, lastMove);
+      if (path) { evs.push(...path); used.run++; land(tp, L, hold, role); return true; }
+    }
+    if (role !== 'climax' && rng.chance(0.1)) {
+      const path = encloseMove(f, S, tp, L, lastMove);
+      if (path) { evs.push(...path); used.enclose++; land(tp, L, hold, role); return true; }
+    }
+    back();
+    return false;
   };
 
   // ---- connecting two landings
@@ -404,6 +631,7 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   /** The path from the note `f` to the landing `tp` at `L`, from `S`; then the landing itself. A long path is cut at a waypoint. */
   const connect = (f: number, S: number, tp: number, L: number, hold: number, role: LandingRole, lastMove: number): void => {
     const P = L - S;
+    if (tryMove(f, S, tp, L, hold, role, lastMove)) return;
     if (P > 14) {
       // a waypoint on a beat near the middle: a weaker landing, a chord note between the two
       const wl = clamp(S + 4 * Math.round((P * (0.4 + 0.2 * rng.next())) / 4), S + 4, L - 8);
@@ -456,7 +684,11 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
     if (p.held) { breath = Math.min(breath, 4); hold = pe - p.S - breath; }
     // (into the climax: the phrase before it ends low and breathes, so the peak is a rise; the climax keeps room for a path to it)
     if (FEATURES.peak && phrases[pi + 1]?.role === 'climax') breath = Math.max(breath, 4);
-    if (FEATURES.peak && p.role === 'climax') hold = Math.min(hold, Math.max(2, 2 * Math.floor((p.len - 8) / 2)));
+    if (FEATURES.peak && p.role === 'climax') {
+      hold = Math.min(hold, Math.max(2, 2 * Math.floor((p.len - 8) / 2)));
+      // (a build-up keeps its room: a short hold and breath)
+      if (wantBuild) { hold = Math.min(hold, Math.max(8, 2 * Math.floor((p.len - 18) / 2))); breath = Math.min(breath, 4); }
+    }
     let L = pe - breath - hold;
     // (no room for a path: a held note, the hold taking what there is)
     if (L - S < 2) { L = S; hold = Math.max(2, Math.min(FEATURES.holds ? 18 : 14, pe - S - breath)); }
@@ -479,14 +711,6 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   /** What a phrase wrote, for an echo to play again. */
   interface Rec { w0: number; evs: Ev[]; lands: Landing[]; m: number; L: number; hold: number }
   const recs: (Rec | undefined)[] = [];
-  /** A note `k` notes along the key's scale. */
-  const stepScale = (m: number, k: number) => {
-    const rel = mod(m - key, 12), oct = m - rel;
-    let i = scale.indexOf(rel);
-    if (i < 0) i = scale.reduce((bi, x, j) => (Math.abs(x - rel) < Math.abs(scale[bi] - rel) ? j : bi), 0);
-    const j = i + k;
-    return oct + 12 * Math.floor(j / scale.length) + scale[mod(j, scale.length)];
-  };
   /** The phrase it echoes, played again `dt` steps on: as it was, with another ending, or moved along the scale (chord notes kept on chord notes); false if none fits. */
   const tryEcho = (p: Phrase, pi: number): boolean => {
     const r = recs[p.echoOf!];
@@ -604,6 +828,6 @@ export function generateSoloPlan(rng: Rng, song: Song, chords: ChordPart, riff: 
   void barStarts;
   return {
     hits, curve,
-    notes: [`Guitar 2: a solo (planned): ${ENERGY_WORDS[en.shape](en)}, ${landings.filter((l) => l.role !== 'waypoint').length} landings${peak ? `, the peak in bar ${Math.floor(peak.step / 16) + 1}` : ''}, ${mood} intervals`],
+    notes: [`Guitar 2: a solo (planned): ${ENERGY_WORDS[en.shape](en)}, ${landings.filter((l) => l.role !== 'waypoint').length} landings${peak ? `, the peak in bar ${Math.floor(peak.step / 16) + 1}` : ''}, ${mood} intervals${Object.entries(used).filter(([, n]) => n).map(([k, n]) => `, ${n} ${k}`).join('')}`],
   };
 }

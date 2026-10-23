@@ -78,10 +78,10 @@ export const ENERGY_WORDS: Record<EnergyShape, (e: Energy) => string> = {
 export const DENSITY: Record<Genre, number> = { rock: 5.4, hardrock: 7.1, metal: 8, grunge: 6.1, pop: 6.5, funk: 4.6, altmetal: 6 };
 export const BUSY: Record<LickKind, number> = { sung: 0.8, blues: 0.9, run: 1.2, simple: 0.8, muted: 0.9 };
 /** Real solos with quick runs, by genre (the shredder more, the raw and melodic players less). */
-const RUNS: Record<Genre, number> = { rock: 0.31, hardrock: 0.56, metal: 0.57, grunge: 0.32, pop: 0.37, funk: 0.33, altmetal: 0.4 };
-const RUN_LEAN: Record<LickKind, number> = { sung: 0.6, blues: 0.8, run: 1.5, simple: 0.4, muted: 0.5 };
+export const RUNS: Record<Genre, number> = { rock: 0.31, hardrock: 0.56, metal: 0.57, grunge: 0.32, pop: 0.37, funk: 0.33, altmetal: 0.4 };
+export const RUN_LEAN: Record<LickKind, number> = { sung: 0.6, blues: 0.8, run: 1.5, simple: 0.4, muted: 0.5 };
 /** Turning cells for quick runs (steps through the box), and how a cell moves on (down or up a note each time). */
-const CELLS = [[0, -1, -2, -1], [0, -1, -2], [0, 1, 2, 1], [0, 1, 2], [0, -1, 1, 0], [0, 2, 1, -1], [0, -2, -1, -3], [0, 1, -1, 0],
+export const CELLS = [[0, -1, -2, -1], [0, -1, -2], [0, 1, 2, 1], [0, 1, 2], [0, -1, 1, 0], [0, 2, 1, -1], [0, -2, -1, -3], [0, 1, -1, 0],
   [0, -1, -2, 0], [0, 2, 1], [0, -1, 0, -2], [0, 1, 0, 2], [0, -2, -1], [0, -1, -3, -2], [0, 1, 3, 2]];
 
 type Variation = 'same' | 'ending' | 'answer' | 'octave';
@@ -91,8 +91,8 @@ type Variation = 'same' | 'ending' | 'answer' | 'octave';
  * bent, let down and pulled off to the note below (the most common of all), the same bend picked again and again,
  * bent, let down and bent again, and two-string bends climbing the neck (the lower string bent, the upper held).
  */
-type BendMove = 'brp' | 'repeat' | 'brb' | 'oblique';
-const BEND_MOVES: Record<LickKind, [BendMove, number][]> = {
+export type BendMove = 'brp' | 'repeat' | 'brb' | 'oblique';
+export const BEND_MOVES: Record<LickKind, [BendMove, number][]> = {
   sung: [['brp', 3], ['brb', 2], ['repeat', 1], ['oblique', 1]],
   blues: [['brp', 3], ['repeat', 2], ['brb', 2], ['oblique', 1]],
   simple: [['brp', 2], ['repeat', 2], ['oblique', 2]],
@@ -100,9 +100,9 @@ const BEND_MOVES: Record<LickKind, [BendMove, number][]> = {
   muted: [['brp', 1], ['repeat', 1]],
 };
 /** How often a slot gets a bend move, by player (melodic and blues players bend most: classic slow solos bend 15-25 notes in 100). */
-const BEND_RATE: Record<LickKind, number> = { sung: 0.22, blues: 0.28, simple: 0.2, run: 0.07, muted: 0.06 };
+export const BEND_RATE: Record<LickKind, number> = { sung: 0.22, blues: 0.28, simple: 0.2, run: 0.07, muted: 0.06 };
 /** The build-up's cell (repeated 4-12 times at a crest): bent, let down and pulled off; a box shape; a pedal note between moving ones (the shredder). */
-type BuildCell = 'brp' | 'shape' | 'pedal';
+export type BuildCell = 'brp' | 'shape' | 'pedal';
 
 /** The calm's held notes, by player: bent and held, held then bent, bent and let down, pre-bent and let down, bent and picked again, a unison bend, plain. */
 export type Held = 'bendHold' | 'holdBend' | 'bendRelease' | 'preRelease' | 'repick' | 'unison' | 'plain';
@@ -124,9 +124,9 @@ const COLOUR: Record<'m' | 'M', [number, number, boolean][]> = {
   M: [[5, 39], [11, 18], [10, 17], [3, 11]].map(([d, w]) => [d, w, d === 10 || d === 3]) as [number, number, boolean][],
 };
 /** Triplet figures (three notes a beat, through the box): falling and turning most, as in real solos. */
-const TRIP_CELLS: [number[], number][] = [[[0, -1, -2], 5], [[0, 1, 2], 1], [[0, 1, 0], 1], [[0, -1, 0], 1], [[0, 2, 1], 1], [[0, -2, -1], 1], [[0, 1, -1], 1], [[0, -1, 1], 1]];
+export const TRIP_CELLS: [number[], number][] = [[[0, -1, -2], 5], [[0, 1, 2], 1], [[0, 1, 0], 1], [[0, -1, 0], 1], [[0, 2, 1], 1], [[0, -2, -1], 1], [[0, 1, -1], 1], [[0, -1, 1], 1]];
 /** Solos with 8th-note triplets in them (real: 18%, hard rock and metal 20%), by player. */
-const TRIP_LEAN: Record<LickKind, number> = { sung: 0.9, blues: 1.3, run: 1.3, simple: 0.7, muted: 0.8 };
+export const TRIP_LEAN: Record<LickKind, number> = { sung: 0.9, blues: 1.3, run: 1.3, simple: 0.7, muted: 0.8 };
 
 export function generateSolo2(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, hook: GuitarHit[] | null, intensity = 0.7): Guitar2Part {
   const { key, mode, bars, total } = song;
