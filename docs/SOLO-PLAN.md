@@ -80,3 +80,47 @@ Known, to look at next:
 - **Repeated notes may be too few** (real solos repeat a note about a quarter of the time; 6% here). Tune by ear.
 - The bar-mean height follows the energy as before; what is new is the structure on top of it (call up, answer down, a climax that is the peak).
 - Not listened to yet.
+
+## Round 2: feedback after listening (2026-10-23), plan
+Paul: connections and phrasing decent; the peak is not always clear; very few long holds; the cut-off endings are a problem (let the last note carry into the next section for a bar, bending to the nearest chord note); few repeating licks (hitting targets causes it: hold the same target across bars, on the same chord or note, and use those as chances to repeat licks); move off-key notes in licks up or down a note into the key. All inside the planned writer (`soloplan.ts`) unless said; the old writer stays note for note (hash check).
+
+Measured first (91 planned solos, `npm run solo-plan-check` plus the new numbers below):
+| | now | goal |
+|---|---|---|
+| climax is the solo's top note (within a semitone) | 16% (the top note is 5.5 semitones higher on average) | 85%+ |
+| climax above the next-highest landing | -0.6 semitones | 3+ |
+| notes of 2+ beats a solo / of 3+ beats | 4.0 / 0.3 (old writer 4.7 / 0.7) | 5+ / 0.8+ |
+| notes off the key's scale | 5.9% (13% of them held a beat+) | under 1.5%, none held or on a beat |
+| final landing lost to a transition | 16% of solos | 0 (it carries on) |
+| consecutive landings on the same chord / same note name | 44% / 30% | the chances for repeats |
+| bars whose rhythm comes back | 1% | about 15-25% (exact copies under 10%) |
+
+**1. A clearer peak.** Cause: the climax is only a landing; the licks between landings, and other landings, go higher than it.
+- Choose the climax first. The solo gets a ceiling: the climax is the top, every other landing and path note stays 2+ semitones under it (the window's top is lowered for all other phrases). This works even when the height doesn't follow the energy.
+- Build into it: the phrase before ends lower with a longer breath; its path rises (shapes with a net rise, a busier pace); then a long held, bent, loud note; after it, the answer comes down.
+- Check: climax is the top note 85%+, 3+ semitones over the next landing.
+
+**2. More long holds.** Cause: a hold is capped at 0.6 of a short phrase and 6-10 steps, the climax 8-12.
+- Held phrases (a single long bent note, as the other writer's calm phrases): chance from the calm, more for answers; holds up to 16 steps, the climax 12-20 (the engine caps a note at 4 seconds).
+- Check: notes of 2+ beats at least the other writer's 4.7 a solo, of 3+ beats 0.8+, no solo without one.
+
+**3. Repeating licks (echoes).** Cause: every phrase is written fresh to hit its own target. 44% of consecutive landings are on the same chord, so there are plenty of chances.
+- When the next landing is on the same chord as the last (or the same note), a chance (about 35%, more for rock, hard rock, metal and blues players; less in the calm) that the phrase is an echo: the last phrase's window (length, hold, breath) placed a bar or two on, its notes copied (the lick as it was, the landing held on the same note).
+- The echo is changed most of the time, as in the vocal's repeat shapes: same (15), a new ending (the landing another chord note of that chord, the last path note moved with it) (45), moved along the scale with the chord notes kept on chord notes (30), octave (10). A third time is always changed (A A A'). At most 3 in a group.
+- Landing the same note stops being penalised when it is a planned echo (it is a pedal target across the bars).
+- Check: bars whose rhythm comes back 15-25%, exact copies under 10% of bars (Paul found 25% exact too many before), echoes always fit (`fits`).
+
+**4. Off-key notes into the key.** Cause: the library shapes carry notes outside the scale (5.9% of notes).
+- After a lick is placed, a note off the mode's scale moves a scale step up or down (the way the line is going; never onto the note before or after it). Chord notes (a borrowed chord's) stay. Quick passing notes between two in-key notes stay for the blues and shredder players, 1 time in 3.
+- Check: off-scale notes under 1.5%, none held a beat+ or on a beat.
+
+**5. The ending carries on into the next section.** Cause: transitions (band stop, band hits, snare build) cut the last beats or last bar of the section after the solo is written.
+- The writer ends its playing at the start of the last bar; its final landing is the last note and rings.
+- After the transitions, a pass in `src/track.ts` (planned solos followed by another section only) takes the last note, lets it ring through the rest of the section and the next section's first bar (the engine already lets notes ring past a section end, as the band's ring-out does), and bends it to the nearest chord note of the next section's first chord (a bend up, or a pre-bend let down; up to 3 semitones; none if it already fits). The next section's key counts (key changes).
+- One small additive engine change so the bend lands on the bar line, not 0.6-0.9 seconds after the pick: an optional `bendAt` on the hit, used by the late bend and the let-down bend (unset: exactly as now).
+- A solo that ends the song (the last section) holds its final landing; the ending is the band's.
+- Check: every planned solo that is followed by a section has a carried last note, its length reaches into the next section, its end pitch is a chord note of the next chord, and the other transitions are intact.
+
+**Order, smallest risk first**: off-key notes, the peak, long holds, echoes, then the ending (the only one that touches `track.ts` and the engine). Each is one commit with its own check lines and a constant that switches it off, so each can be heard against the one before.
+
+**Not to break**: the switch off gives the old writer note for note (hash over 679 sections); `solo-tags-check`, `lead-roll-check` (both ways), `neck-check`, `tsc` and the build after each step; the MIDI export and the hands read the carried note (a note longer than its section is already done by the band's ring-out).
