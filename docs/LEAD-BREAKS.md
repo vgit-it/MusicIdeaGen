@@ -18,7 +18,7 @@ Real songs: under half have a lead guitar line at all (pop 29%, funk 36%), and p
 ## Twin (item 6, `src/track.ts`, `src/audio/engine.ts`)
 Real hard rock and metal songs with a lead: 55% have a second lead line, 70% of them in the same bars as the first (a harmony, a double, an octave). The app had one lead.
 - **Which songs:** hard rock and metal 55%, rock 30%, grunge 20%, alt metal 15%, pop and funk 10%.
-- **What it plays:** on the hook, a lead line over the riff, and the second half of a solo: a harmony a scale 3rd up (metal and hard rock most; a held note that would rub against the chord stays a double), an octave below (or above, for low notes), or the same notes (a double).
+- **What it plays:** on the hook and a lead line over the riff (not the solo since 2026-10-23, docs/SOLO-PLAN.md round 3): a harmony a scale 3rd up (metal and hard rock most; a held note that would rub against the chord stays a double), an octave below (or above, for low notes), or the same notes (a double).
 - **How it sounds:** a second guitar of the same sound, its own take, left of centre (Guitar 2 is a little right), a hair later and a little softer; on Guitar 2's mixer channel (its volume, mute and solo). With Prepare real sound it goes through the real amp too. MIDI export: its own track, "Guitar 2 twin".
 
 | songs with 2+ lead lines | Off | On | Real songs |
@@ -31,5 +31,5 @@ Real hard rock and metal songs with a lead: 55% have a second lead line, 70% of 
 - Played muted in the browser (metal, all switches on): both guitars sound (meters: the twin at -0.3 pan, Guitar 2 at +0.15), no errors; Prepare real sound and its playback work with the twin.
 
 ## Next
-- Paul listens: Breaks in pop and funk tracks, Twin in hard rock and metal (the solo's second half).
+- Paul listens: Breaks in pop and funk tracks, Twin in hard rock and metal (the hook).
 - The study's list is done. Left from it: real leads are still busier (5.4 notes a bar vs 4.1), choppier (short notes), with more triplets and bends; the lead sits half an octave high.
