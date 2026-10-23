@@ -13,7 +13,7 @@ export type Variation = 'little' | 'some' | 'lots';
 
 /** The chance, at "Some", that an answering leaf draws its own version of a rule. The phrasing mostly stays; the ending usually changes. */
 const VARY: Record<Rule, number> = { phrases: 0.2, runs: 0.35, tones: 0.3, holds: 0.35, small: 0.3, neighbours: 0.3, walk: 0.25, endings: 0.75, thirds: 0.35, bends: 0.5 };
-const LEVEL: Record<Variation, number> = { little: 0.25, some: 0.65, lots: 1.3 };
+const LEVEL: Record<Variation, number> = { little: 0.1, some: 0.25, lots: 0.6 };
 
 export interface Leaf {
   id: number;
