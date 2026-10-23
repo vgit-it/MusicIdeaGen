@@ -1,6 +1,6 @@
 # Lick lab
 
-Dev page (`lick-lab.html`, `src/lab/lickLab.ts`; `npm run dev`, then `/lick-lab.html`). Pick a key and a jam, tap a lick, hear it over the band.
+Page (`lick-lab.html`, `src/lab/lickLab.ts`; `npm run dev`, then `/lick-lab.html`; built and deployed with the app, not linked from it). Pick a key and a jam, tap a lick, hear it over the band.
 
 ## What it does
 - **Jam:** a real 8-bar idea from the generator (`buildIdea`) with the key, mode and chords set (`GenOptions.key`, `.mode`, `.chords`; `planSong` is exported for it). One chord, or the verse lab's progressions for the mode. Rock, pop or funk feel; tempo; "New band take" for other drums, strumming and bass. Guitar 2 is replaced by the lick.
