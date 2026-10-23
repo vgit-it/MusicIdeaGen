@@ -38,6 +38,9 @@ export interface GenOptions {
   weirdness: number; // 0..1
   /** Fixed tempo; leave out for the genre's own range. */
   bpm?: number;
+  /** Fixed key (0-11) and mode; leave out for the song's own (the lick lab sets them). */
+  key?: number;
+  mode?: Mode;
   /** Chords you set (strummed genres); the generator writes the rest around them. */
   chords?: ChordSheet;
   /** Semitones higher the vocal tunes are written (the Chester voice: a tenor; in key, the tune itself rewritten). */
