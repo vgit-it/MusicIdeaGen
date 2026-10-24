@@ -33,7 +33,11 @@ const ECHO_RHYTHM = 0.55;
 /** How much the mood's liking of an interval counts against the height and the rest (chord notes are few, so the moods need a push to be heard). */
 const MOOD_K = 1.6;
 /** How hard a note is pulled toward the height the energy and the phrase want (per semitone). */
-const HEIGHT_K = 0.55;
+const HEIGHT_K = 1.4;
+/** How much of the phrase's own contour is left on top of the energy's height (Paul: the energy's shape should be plain to hear, even with big jumps). */
+const ENERGY_FOLLOW = 0.4;
+/** How much louder the strong parts are played than the calm (the energy -1 to 1 times this). */
+const VEL_SWING = 0.14;
 
 type Contour = 'rise' | 'fall' | 'arch' | 'dip' | 'level';
 /** A phrase's contour, in sizes of the mood's usual step, from its start (0) to its end (1). */
@@ -84,12 +88,13 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
   // (Paul: the notes follow the energy across the neck, low energy bottom left (low strings, low frets), high energy top right: the
   // height always goes with the energy, and over most of the neck)
   en.pitchC = 1;
+  en.paceC = 1;
   en.pitch = 7 + 3 * intensity;
   const E = (g: number) => energyAt(en, clamp(g / total, 0, 1));
   // (the register is the same whatever the key: the calm parts low on the neck, the peak high up)
   const base = 66 + Math.round(3 * intensity);
   const centerAt = (g: number) => base + Math.round(en.pitchC * en.pitch * E(g));
-  const rawWindow = (g: number): [number, number] => [Math.max(50, centerAt(g) - 8), Math.min(83, centerAt(g) + 9)];
+  const rawWindow = (g: number): [number, number] => [Math.max(50, centerAt(g) - 6), Math.min(83, centerAt(g) + 6)];
   const paceAt = (g: number) => 1 + en.paceC * en.pace * E(g);
   const calmAt = (g: number) => Math.max(0, -en.paceC * E(g));
   const busy = (DENSITY[genre] * BUSY[lick]) / 5.4;
@@ -232,10 +237,10 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
     const finalOfPhrase = j === ph.notes.length - 1;
     if (n.midi) { before = prev; lastMove = prev === null ? 0 : n.midi - prev; prev = n.midi; continue; }
     let [lo, hi] = rawWindow(g);
-    if (peak !== null) hi = Math.min(hi, ph === climax ? peak - 1 : peak - 3);
-    lo = Math.min(lo, hi - 12);
+    if (peak !== null) hi = Math.min(hi, ph === climax ? peak - 1 : peak - 2);
+    lo = Math.min(lo, hi - 9);
     const f = heightOf(ph, n);
-    const target = ph === climax && peak !== null ? c + (peak - c) * f ** 0.8 : c + P.size * CONTOUR[ph.contour](f);
+    const target = ph === climax && peak !== null ? c + (peak - c) * f ** 0.8 : c + ENERGY_FOLLOW * P.size * CONTOUR[ph.contour](f);
     const src = ph.echoOf !== undefined && !finalOfPhrase ? phrases[ph.echoOf].notes[j]?.midi : undefined;
     const root = chordPc(key, fit.chordAt(g));
     const build = (strict: boolean, again: boolean) => {
@@ -247,8 +252,7 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
         let cost = HEIGHT_K * Math.abs(m - target) + (prev !== null ? MOOD_K * intervalCost(P, prev, m, lastMove, finalOfPhrase) : 0);
         // (the same note again is dull, unless the mood likes repeats: angry, tense)
         if (m === prev) cost += 5 / Math.max(0.6, P.w[0]);
-        cost += Math.max(0, m - (c + P.size + 2));
-        if (peak !== null && ph !== climax) cost += Math.max(0, m - (peak - 3));
+        if (peak !== null && ph !== climax) cost += Math.max(0, m - (peak - 2));
         if (src !== undefined) cost += 0.45 * Math.abs(m - src);
         const isRoot = mod(m, 12) === root;
         if (ph.role === 'end' && finalOfPhrase) cost += isRoot ? -6 : 3;
@@ -267,10 +271,10 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
       for (let d = 0; d < 12; d++) { const x = [c + d, c - d].find((y) => isCore(y, g)); if (x !== undefined) { m = x; break; } }
     }
     n.midi = m;
-    n.vel = Math.min(1, vel0 + 0.05 * E(g) + (n.len > beatOf(g) ? 0.03 : 0) + (rng.next() - 0.5) * 0.04 + (ph === climax && finalOfPhrase ? 0.12 : 0));
+    n.vel = Math.min(1, vel0 + VEL_SWING * E(g) + (n.len > beatOf(g) ? 0.03 : 0) + (rng.next() - 0.5) * 0.04 + (ph === climax && finalOfPhrase ? 0.12 : 0));
     before = prev; lastMove = prev === null ? 0 : m - prev; prev = m;
   }
-  for (const { ph, n } of flat) if (!n.vel) n.vel = Math.min(1, vel0 + 0.05 * E(n.step) + (ph === climax ? 0.12 : 0));
+  for (const { ph, n } of flat) if (!n.vel) n.vel = Math.min(1, vel0 + VEL_SWING * E(n.step) + (ph === climax ? 0.12 : 0));
 
   const pos = rng.int(5, 12);
   // ---- the gap map (step 0b): where something could go, and which of them are used
