@@ -130,10 +130,9 @@ const wide = avg(['triumphant', 'angry'].map((m) => row[m].step)), small = avg([
 if (!(wide > small + 0.2)) fail(`moods: wide ${wide.toFixed(2)} not above small ${small.toFixed(2)}`);
 const leapHi = avg(['triumphant', 'angry'].map((m) => row[m].leaps)), leapLo = avg(['melancholic', 'dark'].map((m) => row[m].leaps));
 if (!(leapHi > leapLo + 0.1)) fail(`moods: leaps ${leapHi.toFixed(2)} not above ${leapLo.toFixed(2)}`);
-const upHi = avg(['happy', 'triumphant'].map((m) => row[m].up)), upLo = avg(['melancholic', 'dark'].map((m) => row[m].up));
-if (!(upHi > upLo + 0.05)) fail(`moods: rising ${upHi.toFixed(2)} not above falling ${upLo.toFixed(2)}`);
+// (the direction is the energy's now: the mood shows in the size of the moves and the leaps)
 if (T.sixteenths) fail('notes under an 8th');
-if (!(avg(NECK.pitch) > 0.6)) fail(`the pitch follows the energy only ${avg(NECK.pitch).toFixed(2)}`);
-if (!(avg(NECK.fret) > 0.4)) fail(`the frets follow the energy only ${avg(NECK.fret).toFixed(2)}`);
+if (!(avg(NECK.pitch) > 0.75)) fail(`the pitch follows the energy only ${avg(NECK.pitch).toFixed(2)}`);
+if (!(avg(NECK.fret) > 0.6)) fail(`the frets follow the energy only ${avg(NECK.fret).toFixed(2)}`);
 console.log(bad ? `${bad} FAIL` : '0 FAIL');
 if (bad) process.exitCode = 1;

@@ -92,3 +92,10 @@ Paul: by the energy, the notes go from the bottom left of the neck (low strings,
 - **Fingering** (`src/players/hands.ts`, `want`): a melody sets `soloCurve.neck`; the hands then put each note near a fret and a string that rise with the energy there (frets 1 to 16, strings from just under the D to the high E), the low E string costing extra. Other solos are fingered as before.
 - Numbers (140 songs, 89 solos): pitch against the energy 0.73, fret 0.74, string 0.41 (correlations per solo, was 0.69 / 0.42 / 0.52 with the old frets); lowest note on average G#3 (56), highest G5 (79). The strings follow less than the frets: a note's pitch fixes its string once the fret is set, and the pitch wanders a little around the height wanted.
 - The neck view shows it: a rising solo climbs the frets and strings from the D and G strings to the B and high E.
+
+## Step 0e: the energy shape made plain (2026-10-24)
+Paul: the energy shape's effect should be more apparent, even with big jumps between notes.
+- **Height**: a note is pulled to the height the energy wants much harder (`HEIGHT_K` 0.55 to 1.4 a semitone), the window around it is narrower (6 semitones either side, was 8 and 9), the phrase's own contour counts for 0.4 of what it did (`ENERGY_FOLLOW`), the old cap that kept notes under the mood's usual size is gone, and the other crests may reach 2 under the peak (was 3). A saw's sudden drop is now a real drop of an octave or more.
+- **Pace**: the pace always goes with the energy too (`paceC` 1): busier at the strong parts, sparser in the calm.
+- **Loudness**: the strong parts are played louder, the calm softer (`VEL_SWING` 0.14, was 0.05).
+- Numbers (140 songs, 89 solos): pitch against the energy 0.73 to 0.80 (0.85 to 0.95 in the full solos, lower in short breaks and outro solos), string 0.41 to 0.52, fret 0.75; lowest note on average Bb3, highest G5. The mood now shows in the size of the moves and the leaps (angry 51% leaps, melancholic 37%); the share going up is the energy's, so the check for it is gone.
