@@ -3,10 +3,12 @@
 //  1. Pass-through: Solo writer "player" with only the plain rule plays every note as Melody + joins does, note for note.
 //  2. The checker accepts the melody + joins of real songs (nothing lost, nothing out of the key, no silence over a beat, a speed that can
 //     be played, a fingering for every note) and refuses each kind of damage done to it on purpose.
-//  3. The three spike rules (a triplet pulse, a gallop, a stutter), forced on every note they fit in real songs: every result passes the
+//  3. Every rule (the three spike rules and the long-note rules of step 3), forced on every note they fit in real songs: every result passes the
 //     checker as read again from the hits alone, the hands find a place for every note, the timing is real (between the 16ths), and the
 //     same seed gives the same performance.
-//  4. Fuzz: random melodies in every meter and tempo from 60 to 200 bpm, the spike rules forced: every result valid.
+//  4. Fuzz: random melodies in every meter and tempo from 60 to 200 bpm, every rule forced: every result valid.
+//  5. The player as it plays (Melody + player): real solos performed by chance and taste: valid, fingerable, deterministic, and how much it
+//     does (the share of long notes rewritten, the mix of rules, the five lead players apart).
 //   npm run solo-player-check        (N=140 songs, F=300 fuzz melodies)
 import { MAIN_GUITARS, generate } from '../src/generator';
 import type { GuitarHit, Song } from '../src/idea';
@@ -18,10 +20,13 @@ import { SCALES } from '../src/theory';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 import { type PEvent, type BaseNote, TOL, readBase, sounding } from '../src/parts/soloevents';
 import { performSolo, type PlayerCtx } from '../src/parts/soloplayer';
-import { LIVE_RULES, PLAIN } from '../src/parts/solorules';
-import { SPIKE_RULES } from '../src/parts/solorules-spike';
+import { PLAIN } from '../src/parts/solorules';
+import { LIVE_RULES, NO_RULES } from '../src/parts/solorules-live';
 import { type VCtx, type Violation, describe, unplayable, verify } from '../src/parts/soloverify';
 
+const ALL_RULES = LIVE_RULES.filter((r) => r.name !== 'plain');
+/** Rules that change how the one note is played and add no notes. */
+const SHAPE_ONLY = new Set(['scoop-in', 'bend-in', 'late-bend', 'wide-vibrato', 'trill']);
 const N = Number(process.env.N ?? 140);
 const F = Number(process.env.F ?? 300);
 const GENRES = ['rock', 'pop', 'funk', 'hardrock', 'metal', 'grunge', 'altmetal'];
@@ -45,6 +50,7 @@ function reread(hits: GuitarHit[], notes: BaseNote[]): PEvent[] {
   });
 }
 
+const NAT = { notes: 0, long: 0, changed: 0, byRule: {} as Record<string, number>, byLead: {} as Record<string, { long: number; changed: number }>, perBar: 0, bars: 0, maxBar: 0, differ: 0, same: 0 };
 const T = { solos: 0, notes: 0, baseViolations: 0, baseUnplayable: 0, passed: 0, mutations: 0 };
 const R: Record<string, { tried: number; used: number; sub: number; max: number }> = {};
 const note = (r: string) => (R[r] ??= { tried: 0, used: 0, sub: 0, max: 0 });
@@ -177,7 +183,7 @@ for (let i = 0; i < N; i++) {
     if (!negDone && notes.length >= 12 && notes.some((n) => n.anchor === 'main' && n.i > 0 && n.i < notes.length - 1) && notes.some((n) => n.anchor === 'pitch')) { negDone = true; negatives(events, notes, vctx, s); }
     // 3. the spike rules, forced
     const ctx: PlayerCtx = { seed: s, song: sec.song, chords: sec.chords, lead, hands: vctx.hands, mood, tension: [], energy: sec.section.energy, kind: sec.section.kind };
-    for (const rule of SPIKE_RULES) {
+    for (const rule of ALL_RULES) {
       const out = performSolo({ hits: sec.guitar2.map((h: GuitarHit) => ({ ...h })), notes: [], curve: sec.soloCurve }, ctx, [PLAIN, rule], { force: rule.name });
       const st = note(rule.name);
       const used = (out.curve?.moves ?? []).filter((m) => m.rule === rule.name).length;
@@ -191,15 +197,45 @@ for (let i = 0; i < N; i++) {
       if (uu.length) fail(`${s} section ${si} ${rule.name}: ${uu.length} notes have no place on the neck`);
       if (used) {
         T.passed++;
-        if (!out.curve?.fine) fail(`${s} ${rule.name}: notes between the 16ths but the solo is not marked fine`);
+        if (out.hits.some((h) => h.shift || h.exact) && !out.curve?.fine) fail(`${s} ${rule.name}: notes between the 16ths but the solo is not marked fine`);
         for (const h of out.hits) {
           if (!Number.isInteger(h.step)) fail(`${s} ${rule.name}: a hit at step ${h.step}`);
           if (h.shift !== undefined && !(h.shift > 0 && h.shift < 1)) fail(`${s} ${rule.name}: a shift of ${h.shift}`);
         }
         st.sub += out.hits.filter((h) => h.shift).length;
         // the notes of a note's replacement all inside its time
-        if (out.hits.length <= sec.guitar2.length) fail(`${s} ${rule.name}: no notes added`);
+        if (!SHAPE_ONLY.has(rule.name) && out.hits.length <= sec.guitar2.length) fail(`${s} ${rule.name}: no notes added`);
       }
+    }
+    // 5. the player as it plays
+    {
+      const nctx: PlayerCtx = { ...ctx, band: s, tension: sec.tension ?? [] };
+      const fresh = () => ({ hits: sec.guitar2.map((h: GuitarHit) => ({ ...h })), notes: [] as string[], curve: sec.soloCurve });
+      const out = performSolo(fresh(), nctx, LIVE_RULES);
+      const again = performSolo(fresh(), nctx, LIVE_RULES);
+      if (JSON.stringify(out.hits) !== JSON.stringify(again.hits)) fail(`${s} section ${si}: the same seed gave another performance (the player)`);
+      const ev = reread(out.hits, notes);
+      const vv = notCarried(verify(ev, notes, vctx), notes);
+      if (vv.length) fail(`${s} section ${si} (the player): ${describe(vv)}`);
+      const uu = unplayable(ev, vctx);
+      if (uu.length) fail(`${s} section ${si} (the player): ${uu.length} notes have no place on the neck`);
+      const mv = (out.curve?.moves ?? []) as { rule: string; step: number }[];
+      const long = notes.filter((n) => n.len >= 5 && !n.frozen).length;
+      const changed = mv.filter((m) => m.rule !== 'plain');
+      NAT.notes += notes.length; NAT.long += long; NAT.changed += changed.length;
+      const L = (NAT.byLead[lead.kind] ??= { long: 0, changed: 0 });
+      L.long += long; L.changed += changed.length;
+      for (const m of changed) NAT.byRule[m.rule] = (NAT.byRule[m.rule] ?? 0) + 1;
+      const perBar = new Map<number, number>();
+      for (const m of changed) { const b = sec.song.bars.findIndex((x: any) => m.step >= x.start && m.step < x.start + x.len); perBar.set(b, (perBar.get(b) ?? 0) + 1); }
+      NAT.bars += sec.song.bars.length; NAT.perBar += changed.length; NAT.maxBar = Math.max(NAT.maxBar, ...perBar.values(), 0);
+      // two heavy ones side by side, which the budget forbids
+      for (let k = 1; k < mv.length; k++) {
+        const heavy = (r: string) => LIVE_RULES.find((x) => x.name === r)?.profile?.heavy;
+        if (heavy(mv[k].rule) && heavy(mv[k - 1].rule)) fail(`${s} section ${si}: two heavy rewrites side by side (${mv[k - 1].rule}, ${mv[k].rule})`);
+      }
+      // the frozen last note is never touched
+      if (mv.length && mv[notes.length - 1]?.rule !== 'plain') fail(`${s} section ${si}: the last note was rewritten`);
     }
   });
 }
@@ -238,7 +274,7 @@ for (let f = 0; f < F; f++) {
   const v0 = verify(events, notes, vctx);
   if (v0.some((x) => x.code !== 'silence' && x.code !== 'speed' && x.code !== 'range')) { fz.bad++; fail(`fuzz ${f} (${meter} ${bpm} bpm): the random melody itself breaks ${describe(v0)}`); continue; }
   fz.melodies++; fz.notes += notes.length;
-  for (const rule of SPIKE_RULES) {
+  for (const rule of ALL_RULES) {
     const out = performSolo(base, ctx, [PLAIN, rule], { force: rule.name });
     fz.rewritten += out.hits.length - hits.length > 0 ? 1 : 0;
     // judged against the checker, but only for what it says that the random melody did not already
@@ -250,8 +286,10 @@ for (let f = 0; f < F; f++) {
 }
 
 console.log(`${T.solos} solos and breaks, ${T.notes} notes: the melody passes the checker (${T.baseViolations} violations, ${T.baseUnplayable} notes with no place on the neck); ${T.mutations} kinds of damage refused`);
-console.log(`spike rules forced on real solos: ${Object.entries(R).map(([k, v]) => `${k} used ${v.used} times in ${v.tried} solos (most ${v.max} a solo, ${v.sub} hits between the 16ths)`).join('; ')}`);
+console.log(`every rule forced on real solos: ${Object.entries(R).map(([k, v]) => `${k} used ${v.used} times in ${v.tried} solos (most ${v.max} a solo, ${v.sub} hits between the 16ths)`).join('; ')}`);
+console.log(`the player: ${NAT.changed} of ${NAT.long} long notes rewritten (${((100 * NAT.changed) / Math.max(1, NAT.long)).toFixed(0)}%), ${(NAT.perBar / Math.max(1, NAT.bars)).toFixed(2)} a bar, most ${NAT.maxBar} in one bar`);
+console.log(`  by rule: ${Object.entries(NAT.byRule).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}`);
+console.log(`  by lead player: ${Object.entries(NAT.byLead).map(([k, v]) => `${k} ${((100 * v.changed) / Math.max(1, v.long)).toFixed(0)}% of ${v.long}`).join(', ')}`);
 console.log(`fuzz: ${fz.melodies} random melodies, ${fz.notes} notes, ${fz.rewritten} performances changed, ${fz.bad} bad`);
 console.log(bad ? `${bad} FAIL` : '0 FAIL');
 if (bad) process.exitCode = 1;
-void LIVE_RULES;
