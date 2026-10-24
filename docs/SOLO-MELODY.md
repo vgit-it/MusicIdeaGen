@@ -29,7 +29,7 @@ Paul (2026-10-24): the solos don't sound melodic. Add a first step that writes a
 - Stage 2: the melody's long notes and phrase ends become the planner's landings; its short notes the skeleton. Licks, runs and bends only decorate between them, and the drums' lock applies.
 - Passing notes between core notes (steps), the hook quoted, notes played again as a motif (not only the rhythm), a motif A A' by pitch.
 
-## Step 0b: the gap map (plan, 2026-10-24; not built)
+## Step 0b: the gap map (built 2026-10-24: `src/parts/solomelody-gaps.ts`, `npm run solo-gaps-check`)
 Paul: the solo never has more than a beat of silence; the fills can come later; first, find the gaps properly.
 
 **What it is**: a list of every place in the melody where something could go (a joint, a fill, a lick), found from the melody alone, with no chance in the finding. A second pass picks, by chance, which of them will be used, so many stay bare. Nothing is filled in this step.
@@ -63,3 +63,12 @@ Each gap: kind, where it starts (step) and how many steps it has, the note befor
 
 ### 6. After it
 - The fill step: joints, fills and licks for the picked gaps, from the planner's connectors (walks, licks, moves, bends), ending a step from the next melody note.
+
+### What was built (differences and numbers)
+- `findGaps` and `pickGaps` in `src/parts/solomelody-gaps.ts`; the map is stored in `idea.soloCurve.gaps` (type `SoloGap` in `src/idea.ts`). A key change moves the gaps' notes with the section (`transpose`, which now moves the landings too).
+- Entries in Track options → Solo writer: **Melody only** (the map is made, nothing sounds for it) and **Melody + gap marks (scratches)**: a muted scratch at the start of each used gap, so the places can be heard. The notes are the same note for note (checked).
+- The melody roll marks the gaps in a lead section: rest grey, tail teal, joint orange; used ones filled with a label (R, T or J and the steps), bare ones dashed; a Gaps line in the stats.
+- Used share: `FILL_P` 0.6 gives 30% of the gaps on average (140 songs, 94 solos): 16 gaps and 4.8 used a solo, from none (a bare solo) to 22. Rests 29% used, tails 33%, joints 28%. Calls 15%, answers 45%, climax 23%, the end 38%. Triumphant 44%, angry 35%, melancholic 28%, dreamy 20%.
+- The one-beat rule holds: the longest silence is a beat; every note with 4+ steps of room to spare has its gap; no gap on the climax note or the first note.
+- Two used in a row 23% of the chances (a repeated answer copies its call's picks, which are not spaced).
+- Limits: the scratch marks are untested by ear (a dead note may cut the note it sits on, which is also what a cut would do). The neck view does not show the gaps.
