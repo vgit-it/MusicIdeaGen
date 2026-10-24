@@ -4,7 +4,7 @@ Paul (2026-10-24): take everything built up to Melody + joins and treat it as if
 
 Version 2 (same day) after Paul's answers: the **core is substitution**. The player replaces a note, or a stretch of notes, with a different way of playing it, **without losing the note itself** (one long note becomes a triplet pulse on that same note and then a hold). It must be very robust, have the **personality of the player**, find **several ways** for each spot, and decide the options by **recognising the arrangement** of the input, with mood, energy and drums counted in.
 
-Status: scope only. Nothing built. (The skill lab is parked: not needed. Reuse the five lead players as personas. No must-have skills added.)
+Status: step 1 (the foundation) built 2026-10-24, see section 12; no rule changes a note yet. (The skill lab is parked: not needed. Reuse the five lead players as personas. No must-have skills added.)
 
 ## 1. The idea in one picture
 
@@ -185,3 +185,36 @@ Almost all are played by the engine today (`GuitarHit`: `bend`, `art`, `slide`, 
 ## 11. Open
 - How wild may a rewrite be on short notes? (Proposal: short notes only get pickups, graces and two-note splits; the big rewrites are on long notes and rests.)
 - Should rewrites be allowed to shift a note's onset by up to a 16th for feel (push or drag)? (Proposal: yes, only for loose players, never on a beat that a drum hit lands on.)
+
+## 12. Step 1 built: the foundation (2026-10-24)
+
+What it is: the frame every later rule sits in. **Nothing changes in the sound yet**: the Solo writer entry `player` (code only, not in the menu) plays Melody + joins note for note, through the frame.
+
+### Files
+- `src/parts/soloevents.ts`: the performance as events (`PEvent`: a time in 16ths with fractions, a length, the hit with its techniques, the melody note it belongs to). Events sit on a grid of 1/12 of a 16th: thirds (triplets), halves (32nds) and quarters land exactly. `readBase` reads the melody into notes with their **anchor** (`all` for the climax, the end of a phrase and the last note; `main` for a note of a beat or more; `pitch` for the rest). `eventsToHits` writes events back as hits (the step, the part of a step it is late by, the length); an untouched hit comes back as the same hit.
+- `src/parts/soloverify.ts`: the checker, independent of the rules. Per melody note: still there, the pitch heard most, nothing sounding outside its own time, and by anchor its start and its landing. Over the line: nothing added outside a gap, every note in the key or a note of the chord under it, in the guitar's range, no overlaps, no silence over a beat (also before the first note), a speed the hand can play (60 ms between picks, 40 ms for a hammer-on, pull-off or slide; tremolo and trills exempt), techniques that can be played together, a bend that has time to land (the engine drops one silently, leaving the lower pitch), and **a fingering from the hands' own placement** (`unplayable`).
+- `src/parts/solorules.ts`: the rule interface (`weight`, `realise`, what it `keeps`), `covers` (a rule is only offered notes whose anchor it keeps), the plain rule, `LIVE_RULES` (only the plain rule so far).
+- `src/parts/soloplayer.ts`: `performSolo`: reads the melody, offers each note to every rule that fits, tries them in a chance order (the plain rule takes its place in the draw by weight), keeps one only if the checker finds nothing new, tries the next if it does, and in the end plays the note as it was; then the hands have the last word (a note with no place on the neck goes back). Writes the report (`idea.soloCurve.moves`: a note, the rule played, the rules offered).
+- `src/parts/solorules-spike.ts`: three rules written only to prove the frame (a triplet pulse, a gallop, a stutter, each then holding the note). Used by the check only.
+- `scripts/solo-player-check.ts` (`npm run solo-player-check`): described below.
+
+### Small changes elsewhere (all off unless asked for)
+- `GuitarHit.exact`: played as written, not held on through a short rest into the next note (engine `held`, hands). A pulse on one note needs it.
+- `SoloCurve.fine`: the hands read each hit at its real time (step + shift) and length, not at its step (`playGuitar2`, now exported; `leadHands` pulled out of `playHands`). Without it nothing changes (the old writer's hash is the same).
+- The engine already played a hit late by a part of a step (`shift`), any number of hits in one step and fractional lengths; nothing was needed there.
+- `track.ts`: the `player` entry writes the melody with the joins, then `performSolo`. The last note is **frozen** (played as written): `carrySolo` carries it into the next section and bends it to the next chord, and knows one hit only. Later: the carry learns about events.
+
+### Found on the way
+- A melody note may be outside the key: the chord under it can be (a chord from outside the key). The key check allows the key and the notes of the chord.
+- A real bug of the joins (step 0c): a late bend in a note too short to land it was started at 1 step anyway (`Math.max(1, at)`), so the engine dropped the bend and the note stayed at the lower pitch (2 of 742 notes). Now no bend is used there (another join is).
+- The carried last note ends in the next section, and its pitch is the bent pitch, which may be outside this key: the check leaves that one note alone.
+
+### Numbers (140 songs, 100 solos and breaks, 2,684 notes)
+- Pass-through: identical to Melody + joins, note for note.
+- The melody passes the checker: 0 violations, 0 notes without a place on the neck.
+- 12 kinds of damage are each refused (a note lost, out of the key, out of range, a silence over a beat, an overlap, notes too quick to pick, a bend with no time to land, a trill with tremolo, a note added outside every gap, the last note cut short, a long note starting late, the last note on another pitch).
+- Spike rules forced on every note they fit: used 942 (triplet pulse, 2,138 hits between the 16ths), 968 (gallop) and 968 (stutter) times; every result passes the checker as read again from the hits alone, every note has a place on the neck, the same seed gives the same performance.
+- Fuzz: 300 random melodies in 4/4, 3/4, 6/8, 7/8, 5/4 and 12/8 at 60 to 200 bpm, 897 performances: 0 bad.
+
+### Next (step 2)
+- The recogniser and **Melody + read** (the tags on the roll). The roll, the neck view and the band view will read a hit at `step + shift` (they read the step only now); `hitTime` is in `src/idea.ts`.

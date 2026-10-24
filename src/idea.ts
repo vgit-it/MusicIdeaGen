@@ -188,7 +188,22 @@ export interface SoloCurve {
   neck?: boolean;
   /** The melody step (docs/SOLO-MELODY.md, step 0b): the places in the melody where a joint, a fill or a lick could go. */
   gaps?: SoloGap[];
+  /** The hands read each hit at its real time (step + shift) and length, not at its step: notes can sit between the 16ths (docs/SOLO-PLAYER.md). */
+  fine?: boolean;
+  /** The solo player's report (docs/SOLO-PLAYER.md): what it did with each note of the melody. */
+  moves?: SoloMove[];
 }
+
+/** One thing the solo player did (or left alone) with a note of the melody. */
+export interface SoloMove {
+  /** The melody note it was about (its step and pitch). */
+  step: number; midi: number;
+  /** The rule played, and the ones that could have been. */
+  rule: string; options: string[];
+}
+
+/** When a hit sounds, in 16ths: its step and the part of a step it is late by. */
+export const hitTime = (h: { step: number; shift?: number }) => h.step + (h.shift ?? 0);
 
 /**
  * A place in a solo's melody where something could go (docs/SOLO-MELODY.md): a rest (a real silence, with the end of the long note
@@ -290,6 +305,8 @@ export interface GuitarHit {
   rake?: number;
   /** Sounds this much of a step after its step (a triplet: 1/3, 2/3); Guitar 2 only. */
   shift?: number;
+  /** Played as written: not held on through a short rest into the next note (a pulse or a gallop on one note, docs/SOLO-PLAYER.md). */
+  exact?: boolean;
   /** A second lead guitar plays this with it (Twin, docs/LEAD-TWIN.md): a harmony, an octave or the same notes, panned the other way. */
   twin?: number[];
   /** Fade the note in (volume swell). */

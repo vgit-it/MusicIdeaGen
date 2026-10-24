@@ -49,6 +49,7 @@
     "solo-tags-check": "rolldown scripts/solo-tags-check.ts --platform node --format esm -o node_modules/.cache/solo-tags-check.mjs && node node_modules/.cache/solo-tags-check.mjs",
     "solo-plan-check": "rolldown scripts/solo-plan-check.ts --platform node --format esm -o node_modules/.cache/solo-plan-check.mjs && node node_modules/.cache/solo-plan-check.mjs",
     "solo-gaps-check": "rolldown scripts/solo-gaps-check.ts --platform node --format esm -o node_modules/.cache/solo-gaps-check.mjs && node node_modules/.cache/solo-gaps-check.mjs",
+    "solo-player-check": "rolldown scripts/solo-player-check.ts --platform node --format esm -o node_modules/.cache/solo-player-check.mjs && node node_modules/.cache/solo-player-check.mjs",
     "solo-melody-check": "rolldown scripts/solo-melody-check.ts --platform node --format esm -o node_modules/.cache/solo-melody-check.mjs && node node_modules/.cache/solo-melody-check.mjs",
     "lead-roll-check": "rolldown scripts/lead-roll-check.ts --platform node --format esm -o node_modules/.cache/lead-roll-check.mjs && node node_modules/.cache/lead-roll-check.mjs",
     "neck-check": "rolldown scripts/neck-check.ts --platform node --format esm -o node_modules/.cache/neck-check.mjs && node node_modules/.cache/neck-check.mjs",

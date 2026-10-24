@@ -1131,7 +1131,7 @@ export class Engine {
  * sequencer). Longer rests stay rests; palm mutes and dead notes stay short.
  */
 function held(h: GuitarHit, next: number): GuitarHit {
-  return !h.mute && next > h.len && next - h.len <= 2 ? { ...h, len: next } : h;
+  return !h.mute && !h.exact && next > h.len && next - h.len <= 2 ? { ...h, len: next } : h;
 }
 
 /** Open strings of a standard-tuned guitar (strummed parts are in standard tuning). */
