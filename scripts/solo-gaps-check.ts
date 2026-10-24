@@ -3,6 +3,7 @@
 // nothing else changed by the gap marks; then the numbers: kinds and sizes, the share used by mood, role and kind.
 //   npm run solo-gaps-check        (N=140 songs)
 import { MAIN_GUITARS, generate } from '../src/generator';
+import { SCALES } from '../src/theory';
 import { buildTrack, defaultTrackOptions } from '../src/track';
 
 const N = Number(process.env.N ?? 140);
@@ -13,6 +14,7 @@ let bad = 0;
 const fail = (m: string) => { if (bad++ < 25) console.log('FAIL ' + m); };
 const pct = (a: number, b: number) => (b ? Math.round((100 * a) / b) + '%' : '-');
 
+const J = { joints: 0, bend: 0, release: 0, passing: 0, neighbour: 0, unjoined: 0, bad: 0, upJoints: 0, upBend: 0 };
 const T = { solos: 0, gaps: 0, picked: 0, pairs: 0, pickedPairs: 0, tail4: 0, tail4Gap: 0, rests: 0, silenceMax: 0, withCut: 0 };
 const KIND: Record<string, { n: number; used: number }> = { rest: { n: 0, used: 0 }, tail: { n: 0, used: 0 }, joint: { n: 0, used: 0 } };
 const ROLE: Record<string, { n: number; used: number }> = {};
@@ -24,7 +26,7 @@ for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], meter = METERS[i % METERS.length], mood = MOODS[i % MOODS.length], s = `sg-${i}-${genre}`;
   const idea = generate({ genre, meter, weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
   const run = (soloPlan: string) => buildTrack(idea, { ...defaultTrackOptions(idea), soloPlan, mood } as never).sections as any[];
-  const plain = run('melody'), marked = run('marks');
+  const plain = run('melody'), marked = run('marks'), joined = run('joins');
   plain.forEach((sec, si) => {
     if (!sec.section?.solo) return;
     const gaps = sec.soloCurve?.gaps as any[] | undefined;
@@ -92,6 +94,44 @@ for (let i = 0; i < N; i++) {
     if (mh.length !== hits.length || mh.some((h: any, q: number) => h.step !== hits[q].step || h.notes[0] !== hits[q].notes[0] || h.len !== hits[q].len)) fail(`${s}: the marks changed the melody`);
     const scratches = m.guitar2.filter((h: any) => h.mute === 'dead').length;
     if (scratches !== used) fail(`${s}: ${scratches} scratches for ${used} used gaps`);
+
+    // the joins: every picked joint is joined if it can be; the bend or the notes in between are as the map says
+    const jn = joined[si], jg = jn.soloCurve.gaps as any[];
+    const jh = jn.guitar2.filter((h: any) => !h.mute && h.notes.length).sort((x: any, y: any) => x.step - y.step);
+    const jat = new Map<number, any[]>(); for (const h of jn.guitar2) if (!h.mute) (jat.get(h.step) ?? jat.set(h.step, []).get(h.step)!).push(h);
+    const scale = SCALES[sec.song.mode] as readonly number[];
+    const inScale = (mm: number) => scale.includes((((mm - sec.song.key) % 12) + 12) % 12);
+    jg.forEach((g: any, k: number) => {
+      if (g.picked !== gaps[k].picked || g.kind !== gaps[k].kind) fail(`${s}: the joins changed the gap map`);
+      if (g.kind !== 'joint' || !g.picked) { if (g.fill) fail(`${s}: a fill on a ${g.kind}${g.picked ? '' : ' that is bare'}`); return; }
+      J.joints++;
+      if (g.interval > 0) J.upJoints++;
+      if (!g.fill) { J.unjoined++; return; }
+      J[g.fill.how as 'bend']++;
+      const a = jat.get(g.from.step)?.[0], tag = `${s} join at ${g.step}`;
+      if (!a) { fail(`${tag}: the note is gone`); return; }
+      if (g.fill.how === 'bend') {
+        if (a.lateBend !== g.fill.semis || a.notes[0] !== g.from.midi + g.fill.semis || a.len !== g.from.len || !(g.fill.semis <= g.interval) || !inScale(a.notes[0])) fail(`${tag}: a bend of ${g.fill.semis} on ${a.notes[0]} (was ${g.from.midi}, next ${g.to.midi})`);
+        if (g.fill.semis === g.interval) J.upBend++;
+      } else if (g.fill.how === 'release') {
+        if (a.unbend !== g.fill.semis || a.notes[0] !== g.from.midi || a.len !== g.from.len || !(g.fill.semis <= -g.interval) || !inScale(a.notes[0] - g.fill.semis)) fail(`${tag}: a let-down of ${g.fill.semis} on ${a.notes[0]} (next ${g.to.midi})`);
+      } else {
+        if (a.len !== g.from.len - 2 || a.lateBend || a.unbend) fail(`${tag}: the note is ${a.len} long, was ${g.from.len}`);
+        const ns: number[] = g.fill.notes, per = 2 / ns.length;
+        ns.forEach((mm, q) => {
+          const h = jat.get(g.step + q * per)?.[0];
+          if (!h || h.notes[0] !== mm || h.len !== per) fail(`${tag}: the note in between ${mm} is not at ${g.step + q * per}`);
+          if (!inScale(mm)) fail(`${tag}: ${mm} is not in the key`);
+          if (g.interval !== 0 && !(mm > Math.min(g.from.midi, g.to.midi) && mm < Math.max(g.from.midi, g.to.midi))) fail(`${tag}: ${mm} is not between ${g.from.midi} and ${g.to.midi}`);
+        });
+        if (a.step + a.len !== g.step) fail(`${tag}: the note ends at ${a.step + a.len}, the join starts ${g.step}`);
+      }
+    });
+    // (no silence over a beat in what is played: the joins leave no new gap)
+    for (let q = 0; q + 1 < jh.length; q++) {
+      const gp = jh[q + 1].step - (jh[q].step + jh[q].len);
+      if (gp > Math.min(...bars.find((b: any) => jh[q].step >= b.start && jh[q].step < b.start + b.len)?.groups ?? [4])) fail(`${s}: a silence of ${gp} at ${jh[q].step + jh[q].len} with the joins`);
+    }
   });
 }
 
@@ -100,5 +140,7 @@ console.log(`kinds: ${Object.entries(KIND).map(([k, v]) => `${k} ${v.n} (${pct(v
 console.log(`roles used: ${Object.entries(ROLE).map(([k, v]) => `${k} ${pct(v.used, v.n)} of ${v.n}`).join(', ')}`);
 console.log(`moods used: ${Object.entries(MOOD).map(([k, v]) => `${k} ${pct(v.used, v.n)}`).join(', ')}`);
 console.log(`longest silence ${T.silenceMax} steps; gaps with a cut ${T.withCut}; two used in a row ${pct(T.pickedPairs, T.pairs)} of the chances; notes with 4+ steps of room that have a gap ${T.tail4Gap}/${T.tail4}`);
+console.log(`joins: ${J.joints} picked joints, ${J.bend} bends (${J.upBend} to the exact note), ${J.release} let down, ${J.passing} with notes in between, ${J.neighbour} neighbour notes, ${J.unjoined} that could not be joined`);
+console.log(`rests: ${T.rests} in ${T.solos} solos (${(T.rests / Math.max(1, T.solos)).toFixed(2)} a solo)`);
 console.log(bad ? `${bad} FAIL` : '0 FAIL');
 if (bad) process.exitCode = 1;

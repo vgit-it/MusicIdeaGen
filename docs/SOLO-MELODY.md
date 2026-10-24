@@ -72,3 +72,16 @@ Each gap: kind, where it starts (step) and how many steps it has, the note befor
 - The one-beat rule holds: the longest silence is a beat; every note with 4+ steps of room to spare has its gap; no gap on the climax note or the first note.
 - Two used in a row 23% of the chances (a repeated answer copies its call's picks, which are not spaced).
 - Limits: the scratch marks are untested by ear (a dead note may cut the note it sits on, which is also what a cut would do). The neck view does not show the gaps.
+
+## Step 0c: rests very rare, and the joints joined (2026-10-24)
+Paul: rests should be very rare; for now join the parts identified as joints with a bend if it can be played, else with notes in between.
+- **Rests**: between phrases 95% none, 3% an 8th, 2% a beat (was 30 / 40 / 30 before the mood's breath); before the first note 90% none. Rest gaps fell from 4.3 a solo to 0.5. Phrases now touch, so a phrase end is a tail or a joint.
+- **Joins** (Track options → Solo writer → **Melody + joins (bends, notes between)**; `joinOf` in `src/parts/solomelody.ts`). Only the picked joints (about 30% of them; the rest stay as they were), and only the joints. A bend wins when it can be played:
+  - **Up** (the next note is higher): the note is bent up into the next note's pitch when that is a whole tone or a minor 3rd (`bend`, picked low and pushed up late: `lateBend`), else a whole tone or semitone toward it, as long as the note it ends on is in the key. The bend starts as late as it can and still be up by the note's end (`bendAt`). The note keeps its length.
+  - **Down**: a pre-bend let down toward the next note (`unbend`), a whole tone or a semitone, ending in the key.
+  - **Same note again**: a neighbour note (a step above or below, in the key) of an 8th, between the two.
+  - **Notes in between**: only when no bend can be played (a note too short or too quick for the tempo, or the bent note out of the key): one or two scale notes between the two, nearest the next note, an 8th or two 16ths in the last 2 steps of the note (which is cut by 2).
+  - Joints that cannot be joined keep a scratch (as the picked rests and tails do).
+- The roll labels each joined joint: bend, let down, between or neighbour. The gap marks entry is as before (a scratch on every picked gap).
+- Numbers (94 solos, 211 picked joints): 90 bends (24 right up to the next note), 74 let down, 25 neighbour notes, 11 notes in between, 11 not joined. No silence over a beat. Checked: the notes and pitches as the map says, every joint on the key.
+- Not done: tails and rests are not filled (scratches only); the same joint kind is not varied by player.
