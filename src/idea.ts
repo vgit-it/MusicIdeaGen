@@ -231,6 +231,9 @@ export interface SoloMove {
   step: number; midi: number;
   /** The rule played, and the ones that could have been. */
   rule: string; options: string[];
+  /** How well each rule that could be played fit (best first), and why it was left plain when it was. */
+  scores?: [string, number][];
+  note?: string;
 }
 
 /** When a hit sounds, in 16ths: its step and the part of a step it is late by. */

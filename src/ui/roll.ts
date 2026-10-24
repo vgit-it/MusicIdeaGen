@@ -6,7 +6,7 @@
 // playhead (a moving element) and the lit note change, so it costs the phone almost nothing.
 
 import * as Tone from 'tone';
-import type { Idea, NoteRead, ReadTag, SoloRead } from '../idea';
+import type { Idea, NoteRead, ReadTag, SoloMove, SoloRead } from '../idea';
 import { NOTE_NAMES, QUALITIES, SCALES, chordName } from '../theory';
 import { voiceOf } from '../verse/sing';
 import type { Rule } from '../verse/form';
@@ -47,7 +47,9 @@ const READ_COL: Record<ReadTag['family'], string> = { shape: '#8fb4ff', place: '
 const READ_FAMILY: Record<ReadTag['family'], string> = { shape: 'The note and how it moves', place: 'Its place in the phrase and bar', energy: 'Energy and tension', drums: 'The drums', groove: 'The groove', chord: 'The chord' };
 const READ_PRI = ['held-peak', 'climax-note', 'call-hanging', 'answer-landing', 'final-landing', 'under-fill', 'into-crash', 'long-over-chord-change', 'long-before-rest', 'long-with-room', 'leap-up', 'leap-down', 'before-leap',
   'into-snare', 'on-crash', 'on-kick', 'on-snare', 'crest', 'trough', 'static-repeat', 'pre-climax', 'post-climax', 'rising-energy', 'falling-energy', 'closing', 'phrase-start', 'long-note', 'short-note'];
-const READ_H = 34;
+const READ_H = 46;
+/** The solo player's choices (docs/SOLO-PLAYER.md, step 3): the colour of a note played another way. */
+const PLAYED_COL = '#ff7ab6';
 const FILL_WORD = { bend: 'bend', release: 'let down', passing: 'between', neighbour: 'neighbour' } as const;
 const DIFF_COL: Record<Exclude<Diff, 'same'>, string> = { pitch: '#ff9d3c', rhythm: '#c07bff', new: '#4ad6ff' };
 const DIFF_LABEL: Record<Exclude<Diff, 'same'>, string> = { pitch: 'Other pitch', rhythm: 'Other length', new: 'New note' };
@@ -98,7 +100,7 @@ export function buildRoll(root: HTMLElement) {
   /** The reading of a lead section, and the note picked on it (a tap on the picture). */
   let rdLay: { rd: SoloRead; stepPx: number } | null = null;
   let sel = -1, selFor: Idea | null = null;
-  const detailOf = (rd: SoloRead, k: number) => {
+  const detailOf = (rd: SoloRead, k: number, mv?: SoloMove) => {
     const n: NoteRead = rd.notes[k];
     const ph = rd.phrases.find((p) => k >= p.from && k <= p.to);
     const cells = rd.cells.filter((c) => k >= c.from && k <= c.to).map((c) => c.id);
@@ -107,6 +109,7 @@ export function buildRoll(root: HTMLElement) {
     return `Note ${k + 1} · ${noteName(n.midi)} · ${n.facts.beats} beats\n` +
       (Object.keys(READ_FAMILY) as ReadTag['family'][]).map((f) => { const t = n.tags.filter((x) => x.family === f); return t.length ? `${READ_FAMILY[f]}: ${t.map((x) => `${x.id} ${x.w}`).join(', ')}` : ''; }).filter(Boolean).join('\n') +
       (cells.length ? `\nIn a cell: ${cells.join(', ')}` : '') + (ph ? `\nPhrase ${rd.phrases.indexOf(ph) + 1} (${ph.role || 'tail'}, bars ${ph.bars[0] + 1}-${ph.bars[1] + 1}): ${ph.tags.map((t) => t.id).join(', ') || '-'}` : '') +
+      (mv ? `\nPlayed: ${mv.rule === 'plain' ? `as written${mv.note ? ` (${mv.note})` : ''}` : mv.rule}${mv.scores?.length ? ` · the player's scores: ${mv.scores.map(([a, b]) => `${a} ${b}`).join(', ')}` : ''}` : '') +
       (jn ? `\nThe space to the next note: ${jn}` : '') + `\nThe feel the moment wants: ${Object.entries(n.feel).map(([a, b]) => `${a} ${b}`).join(' · ')}\n${facts}`;
   };
   inner.addEventListener('click', (e) => {
@@ -202,7 +205,7 @@ export function buildRoll(root: HTMLElement) {
     if (showForm) gx.fillText('Form', 4, yForm + 12);
     if (showPh) gx.fillText('Phrases', 4, yPh + PHRASE_H / 2);
     if (showSh) gx.fillText('Shapes', 4, ySh + SHAPE_H / 2);
-    if (rd) { gx.fillText('Phrases', 4, yRd + 6); gx.fillText('Read', 4, yRd + 23); }
+    if (rd) { gx.fillText('Phrases', 4, yRd + 6); gx.fillText('Read', 4, yRd + 23); if (idea!.soloCurve?.moves?.some((m) => m.rule !== 'plain')) gx.fillText('Played', 4, yRd + 40); }
     for (let m = lo; m <= hi; m++) {
       const k = inKey(m), tonic = mod(m - key, 12) === 0;
       gx.fillStyle = k ? (tonic ? '#ff7a45' : '#e8eaf0') : '#4b5263';
@@ -392,6 +395,12 @@ export function buildRoll(root: HTMLElement) {
           else x.fillRect(x0, y - 2, Math.max(3, w), 4);
           x.globalAlpha = 1;
         });
+        const mv = idea!.soloCurve?.moves?.[k];
+        if (mv && mv.rule !== 'plain') {
+          x.fillStyle = 'rgba(255,122,182,.28)'; x.fillRect(x0, yRd + 35, w + 1, 10);
+          x.fillStyle = PLAYED_COL;
+          if (w >= 30) { x.save(); x.beginPath(); x.rect(x0, yRd + 34, w + 1, 12); x.clip(); x.fillText(mv.rule, x0 + 2, yRd + 40.5); x.restore(); }
+        }
         if (k === sel) { x.strokeStyle = '#fff'; x.lineWidth = 1.5; x.strokeRect(x0 - 0.5, yRd + 1, w + 1.5, H - yRd - 3); }
       });
     }
@@ -478,12 +487,19 @@ export function buildRoll(root: HTMLElement) {
       extra.push(`Gaps: ${gaps.length} (${n('rest')} rests, ${n('tail')} tails, ${n('joint')} joints) · ${u.length} used (${gaps.filter((g) => g.fill).length} joined), ${gaps.length - u.length} bare · most steps of room ${Math.max(...gaps.map((g) => g.len))}`);
     }
     if (rd) extra.push(`Read: ${rd.solo.line} · ${rd.cells.length} cells · tap a note for its reading`);
+    const mvs = lv ? idea!.soloCurve?.moves : undefined;
+    if (mvs?.some((m) => m.rule !== 'plain')) {
+      const by = new Map<string, number>();
+      for (const m of mvs) if (m.rule !== 'plain') by.set(m.rule, (by.get(m.rule) ?? 0) + 1);
+      extra.push(`Player: ${[...by.values()].reduce((a, b) => a + b, 0)} of ${mvs.length} notes played another way (${[...by].map(([k, n]) => `${k} ${n}`).join(', ')})`);
+    }
     legend.innerHTML = legendBase + (gaps.length ? (['rest', 'tail', 'joint'] as const).map((k) => `<span><i class="out" style="border-color:${GAP_COL[k]}"></i>${k[0].toUpperCase() + k.slice(1)} gap</span>`).join('') + '<span>R, T, J + steps: used · dashed: bare</span>' : '') + (lv ? '<span>h hammer-on · p pull-off · s slide · tr trill · tm tremolo</span>' : '') + (showCmp
       ? (Object.keys(DIFF_COL) as (keyof typeof DIFF_COL)[]).map((d) => `<span><i class="out" style="border-color:${DIFF_COL[d]}"></i>${DIFF_LABEL[d]}</span>`).join('') +
         `<span><i class="out" style="border-color:rgba(255,255,255,.5);border-style:dashed"></i>Source note</span><span><i class="out" style="border-color:#ff5b6e;border-style:dashed"></i>Dropped</span>`
       : '');
+    if (rd && mvs?.some((m) => m.rule !== 'plain')) legend.innerHTML += `<span><i style="background:${PLAYED_COL}"></i>Played another way</span>`;
     if (rd) legend.innerHTML += (Object.keys(READ_COL) as ReadTag['family'][]).map((f) => `<span><i style="background:${READ_COL[f]}"></i>${READ_FAMILY[f]}</span>`).join('');
-    detailEl.textContent = rd && sel >= 0 && rd.notes[sel] ? detailOf(rd, sel) : '';
+    detailEl.textContent = rd && sel >= 0 && rd.notes[sel] ? detailOf(rd, sel, idea!.soloCurve?.moves?.[sel]) : '';
     detailEl.hidden = !detailEl.textContent;
     stats.textContent = [`${notes.length} notes · ${c.chord} chord tones (${pct}%) · ${c.key} in key · ${c.out} out of key · ` +
       `${stp} steps · ${rep} repeats · ${skip} thirds · ${leap} leaps${leap ? ` (biggest ${big > 0 ? '+' : ''}${big})` : ''} · ` +

@@ -193,9 +193,9 @@ What it is: the frame every later rule sits in. **Nothing changes in the sound y
 ### Files
 - `src/parts/soloevents.ts`: the performance as events (`PEvent`: a time in 16ths with fractions, a length, the hit with its techniques, the melody note it belongs to). Events sit on a grid of 1/12 of a 16th: thirds (triplets), halves (32nds) and quarters land exactly. `readBase` reads the melody into notes with their **anchor** (`all` for the climax, the end of a phrase and the last note; `main` for a note of a beat or more; `pitch` for the rest). `eventsToHits` writes events back as hits (the step, the part of a step it is late by, the length); an untouched hit comes back as the same hit.
 - `src/parts/soloverify.ts`: the checker, independent of the rules. Per melody note: still there, the pitch heard most, nothing sounding outside its own time, and by anchor its start and its landing. Over the line: nothing added outside a gap, every note in the key or a note of the chord under it, in the guitar's range, no overlaps, no silence over a beat (also before the first note), a speed the hand can play (60 ms between picks, 40 ms for a hammer-on, pull-off or slide; tremolo and trills exempt), techniques that can be played together, a bend that has time to land (the engine drops one silently, leaving the lower pitch), and **a fingering from the hands' own placement** (`unplayable`).
-- `src/parts/solorules.ts`: the rule interface (`weight`, `realise`, what it `keeps`), `covers` (a rule is only offered notes whose anchor it keeps), the plain rule, `LIVE_RULES` (only the plain rule so far).
+- `src/parts/solorules.ts`: the rule interface (`weight`, `realise`, what it `keeps`), `covers` (a rule is only offered notes whose anchor it keeps), the plain rule (step 3 adds the profile and `fitOf`; the rules are in `solorules-long.ts` and listed in `solorules-live.ts`).
 - `src/parts/soloplayer.ts`: `performSolo`: reads the melody, offers each note to every rule that fits, tries them in a chance order (the plain rule takes its place in the draw by weight), keeps one only if the checker finds nothing new, tries the next if it does, and in the end plays the note as it was; then the hands have the last word (a note with no place on the neck goes back). Writes the report (`idea.soloCurve.moves`: a note, the rule played, the rules offered).
-- `src/parts/solorules-spike.ts`: three rules written only to prove the frame (a triplet pulse, a gallop, a stutter, each then holding the note). Used by the check only.
+- (`src/parts/solorules-spike.ts`: three rules written only to prove the frame; replaced by the real rules of step 3 and removed.)
 - `scripts/solo-player-check.ts` (`npm run solo-player-check`): described below.
 
 ### Small changes elsewhere (all off unless asked for)
@@ -251,3 +251,46 @@ Per **note**: tags with a strength from 0 to 1 (only 0.35 and over are kept), th
 
 ### Not yet
 - The feel does not include the player's own lean (the style sheet comes with the rules). Drums are read for the section's kit lanes only (kick, snare, hats, ride, crash, toms, fills), not the drummer's feel after the band plays.
+
+## 14. Step 3 built: the long-note rewrites (2026-10-24)
+
+Track options -> Solo writer -> **Melody + player (long notes played like a guitarist)**. Melody + read stays as it was (nothing changed). The roll shows what was played: a pink **Played** row under the reading (the rule's name on each note played another way); tap a note for the rule and the scores of the other ways it could have gone. The legend and the stats line count them.
+
+### The rules (`src/parts/solorules-long.ts`): 14 ways to play a long note
+Each one keeps the note: it starts on the note's pitch at its time, the pitch stays the one heard most, and (marked *all*) it ends on it at the note's end. Each fills the note's time exactly.
+| Kind | Rule | What is played | Keeps |
+|---|---|---|---|
+| Re-pick | triplet-pulse | the note struck in triplets (3 or 6), louder each time, then held | all |
+| | eighth-pulse | struck in eighths (2 to 4), then held | all |
+| | stutter-hold | two to four 16ths, then held | all |
+| | gallop | 8th + 16th + 16th, once or twice, then held | all |
+| | ghost-pulse | note, muted scratch, note, scratch (once or twice), then held | main |
+| | tremolo-hold | tremolo picked for a beat or two, then held | all |
+| Shape | scoop-in | slid into from below (1 to 5 semitones), with a wider vibrato on a long one | all |
+| | bend-in | bent up into the note (half or whole step, from a note of the key) | all |
+| | late-bend | held, then pushed up to the note (from a note of the key) | all |
+| | wide-vibrato | the same note with a wide vibrato (20 to 34 cents) | all |
+| Move | shimmer | note, hammer-on to the next scale note, pull-off back (once or twice), held | all |
+| | trill | the whole note trilled, or a beat or two of it, then held | all |
+| | tail-run | held, then two or three quick scale notes off the end (up on a call that hangs, down otherwise) | main |
+| | turn-return | held, then a turn (up, the note, down) and back on the note | all |
+
+All timing is in the song's own beat (triplets are a third of its beat group) and checked against the tempo (no pick quicker than 60 ms).
+
+### How it chooses (`soloplayer.ts`, `solorules.ts`, `soloperson.ts`)
+1. **Offered**: a rule only where it can be played (a long enough, plainly picked note; never the last note, never a note that must keep its landing for a rule that gives it up).
+2. **Fit** (`fitOf`): the rule's own **profile** against what the reader saw. Likes: read tags that suit it (a shuffle for triplets, a sixteenth groove under a fill for the stutter, a held peak under a crash for the tremolo, a long note before a rest for the tail run...). Vetoes: tags where it never goes (no pulse, gallop or stutter on the final landing). Feel: how close its own five numbers are to the feel the moment wants (**mood + energy + tension + drums + the player's own lean**).
+3. **The player**: a taste for every rule by lead player (melodic: scoops, wide vibrato, late bends; bluesy: bends and vibrato; shredder: shimmer, trill, tremolo, runs; raw: gallop, stutter, ghosts; funky: ghosts and stutters), each with a twist per band and **one allergy** (a move this person never plays); **two or three pet moves per solo** that come back (drawn by taste, weighted 2.5 times); a **density** (how likely a long note is decorated) with restraint, lifted by the energy and by notes that want an ending.
+4. **The budget**: two heavy rewrites never side by side, at most one or two a bar (by energy), the same rule not again and again, a note after a rewritten note less likely.
+5. **A repeated phrase** is played as its source was (85%): the same move or the same restraint.
+6. **Several ways**: the draw is by weight; a try that fails the checker (or the hands) gives way to the next, and in the end the note is played as it was. The report keeps the scores of the five best.
+
+### Numbers (60 songs, 40 solos and breaks, 1,053 notes)
+- Every rule forced on every note it fits: valid as read again from the hits alone, fingerable, the same seed the same performance; fuzz 100 random melodies in 6 meters at 60-200 bpm: 0 bad.
+- As it plays: 39% of long notes rewritten, 0.38 a bar, never more than 2 in a bar; the mix of rules follows the player and the moment (angry: stutter, tremolo and gallop; dreamy: late bend, wide vibrato, scoop).
+- `npm run solo-rules-check`: 40,684 rewrites over a grid of lengths, pitches, tempos, meters and modes (the note's time filled exactly, its pitch, the key), what each rule is offered, what the reading steers (angry against dreamy, shuffle against straight, a fill, the final landing), and the five players.
+
+### Not yet
+- Not listened to. The weights (restraint 0.55, the likes and feels) are first guesses; Paul's ears tune them (step 7).
+- Short notes, joints and rests (step 4); story arc, echoes and turnarounds (step 5); sweeps, tapping, harmonics, whammy (step 6).
+- The player's feel and the drums reach the choice only through the reading and the profile; a flourish does not yet end on a snare or a crash on purpose.
