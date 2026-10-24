@@ -12,14 +12,14 @@
 // It's all kept on the notes (Touch, ChangeTouch), so a tab view can show it later.
 
 import type { Genre } from '../genres';
-import type { GuitarHit, Idea, Move, SectionKind, Touch } from '../idea';
+import { type GuitarHit, type Idea, type Move, type SectionKind, type Touch, hitTime } from '../idea';
 import { Rng } from '../rng';
 import { groupStarts } from '../rhythm';
 import { SCALES } from '../theory';
 import { TUNINGS } from '../theory/fretboard';
-import { pickLead } from './lead';
+import { type LeadPlayer, pickLead } from './lead';
 
-interface Hands {
+export interface Hands {
   /** Words for the band notes. */
   desc: string;
   /** Chance of a hammer-on / pull-off between neighbouring frets on a string. */
@@ -121,12 +121,17 @@ interface LineNote {
 
 interface Spot { string: number; fret: number }
 
+/** Guitar 2's hands: the lead player's habits, drawn with the band's seed. */
+export function leadHands(seed: string, lead: LeadPlayer): Hands {
+  return HANDS[new Rng(`${seed}-g2-hands`).weighted(lead.hands)];
+}
+
 /** The hands of the bassist and Guitar 2 play every section of a track (in place). */
 export function playHands(sections: Idea[], seed: string) {
   const song = sections[0].song;
   // Guitar 2's hands go with the kind of lead player they are (lead.ts)
   const lead = pickLead(seed, song.partGenres.strum);
-  const g2 = HANDS[new Rng(`${seed}-g2-hands`).weighted(lead.hands)];
+  const g2 = leadHands(seed, lead);
   const bass = HANDS[new Rng(`${seed}-bass-hands`).weighted(BASS_HANDS[song.partGenres.bass])];
   const tuning = song.tuning ?? TUNINGS.standard;
   const guitarOpen = tuning.strings;
@@ -145,19 +150,22 @@ export function playHands(sections: Idea[], seed: string) {
   });
 }
 
-function playGuitar2(idea: Idea, hands: Hands, open: number[], seed: string) {
-  const hits = [...idea.guitar2].sort((a, b) => a.step - b.step);
+export function playGuitar2(idea: Idea, hands: Hands, open: number[], seed: string) {
+  // (a solo that asks for it is read at the real time of each hit: notes can sit between the 16ths)
+  const at = (h: GuitarHit) => (idea.soloCurve?.fine ? hitTime(h) : h.step);
+  const hits = [...idea.guitar2].sort((a, b) => at(a) - at(b));
   if (!hits.length) return;
   const energy = idea.soloCurve?.neck ? idea.soloCurve.energy : undefined;
   const line: LineNote[] = hits.map((h, i) => {
     const next = hits[i + 1];
-    const gap = next ? next.step - h.step : 99;
+    const t0 = at(h);
+    const gap = next ? at(next) - t0 : 99;
     const octave = h.notes.length === 2 && h.notes[1] - h.notes[0] === 12;
-    // as the engine plays it: held through a short rest into the next note
-    const len = !h.mute && gap > h.len && gap - h.len <= 2 ? gap : h.len;
+    // as the engine plays it: held through a short rest into the next note (unless it is played as written)
+    const len = !h.mute && !h.exact && gap > h.len && gap - h.len <= 2 ? gap : h.len;
     return {
-      step: h.step, notes: octave ? h.notes : [h.notes[0]], offs: octave ? [0, 2] : [0], len,
-      joined: !!next && len >= gap && next.step > h.step,
+      step: t0, notes: octave ? h.notes : [h.notes[0]], offs: octave ? [0, 2] : [0], len,
+      joined: !!next && len >= gap - 1e-6 && at(next) > t0,
       skip: !(h.notes.length === 1 || octave) || !!h.mute || !!h.letRing || !!h.swell,
       art: h.art,
       // (a melody that follows its energy goes up the neck with it: low frets when calm, high ones at the peak)

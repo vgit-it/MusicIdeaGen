@@ -188,7 +188,53 @@ export interface SoloCurve {
   neck?: boolean;
   /** The melody step (docs/SOLO-MELODY.md, step 0b): the places in the melody where a joint, a fill or a lick could go. */
   gaps?: SoloGap[];
+  /** The hands read each hit at its real time (step + shift) and length, not at its step: notes can sit between the 16ths (docs/SOLO-PLAYER.md). */
+  fine?: boolean;
+  /** The solo player's report (docs/SOLO-PLAYER.md): what it did with each note of the melody. */
+  moves?: SoloMove[];
+  /** How the solo player read the melody (docs/SOLO-PLAYER.md, step 2): the situation of every note, joint, cell and phrase. */
+  read?: SoloRead;
 }
+
+/** A situation the reader found in a span, and how strongly (0 to 1). */
+export interface ReadTag {
+  id: string;
+  w: number;
+  family: 'shape' | 'place' | 'energy' | 'drums' | 'groove' | 'chord';
+}
+
+/** What the moment wants the playing to be like (-1 to 1 each): calm to frantic, smooth to edgy, plain to ornate, light to big, tight to floating. */
+export interface Feel { agitation: number; roughness: number; ornament: number; weight: number; looseness: number }
+
+export interface NoteRead {
+  /** The melody note (its place among the sounding notes, its step, pitch and length). */
+  i: number; step: number; midi: number; len: number;
+  tags: ReadTag[];
+  feel: Feel;
+  /** The numbers behind the tags (for the detail and the checks). */
+  facts: Record<string, number | string>;
+}
+/** A stretch of 2 to 5 notes with a shape of its own (a stair, an arch, a rhythm), by note index. */
+export interface CellRead { from: number; to: number; id: string; w: number }
+export interface PhraseRead { from: number; to: number; role: string; bars: [number, number]; tags: ReadTag[]; copyOf?: number }
+/** The space between two neighbouring notes. */
+export interface JointRead { a: number; b: number; tags: ReadTag[] }
+export interface SoloRead {
+  notes: NoteRead[]; cells: CellRead[]; phrases: PhraseRead[]; joints: JointRead[];
+  /** The solo as a whole: a line of words and its tags. */
+  solo: { line: string; tags: string[] };
+}
+
+/** One thing the solo player did (or left alone) with a note of the melody. */
+export interface SoloMove {
+  /** The melody note it was about (its step and pitch). */
+  step: number; midi: number;
+  /** The rule played, and the ones that could have been. */
+  rule: string; options: string[];
+}
+
+/** When a hit sounds, in 16ths: its step and the part of a step it is late by. */
+export const hitTime = (h: { step: number; shift?: number }) => h.step + (h.shift ?? 0);
 
 /**
  * A place in a solo's melody where something could go (docs/SOLO-MELODY.md): a rest (a real silence, with the end of the long note
@@ -290,6 +336,8 @@ export interface GuitarHit {
   rake?: number;
   /** Sounds this much of a step after its step (a triplet: 1/3, 2/3); Guitar 2 only. */
   shift?: number;
+  /** Played as written: not held on through a short rest into the next note (a pulse or a gallop on one note, docs/SOLO-PLAYER.md). */
+  exact?: boolean;
   /** A second lead guitar plays this with it (Twin, docs/LEAD-TWIN.md): a harmony, an octave or the same notes, panned the other way. */
   twin?: number[];
   /** Fade the note in (volume swell). */

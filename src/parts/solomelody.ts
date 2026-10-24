@@ -288,7 +288,7 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
   /** How many steps into a note of `len` steps a bend of `rise` seconds can start and still be up by its end (null: too quick to play). */
   const bendAtFor = (len: number, rise: number): number | null => {
     const at = len * 0.97 - (rise + 0.07) / stepSec;
-    return at >= 0.5 ? Math.max(1, at) : null;
+    return at >= 1 ? at : null;
   };
   const joinOf = (g: SoloGap): { fill: NonNullable<SoloGap['fill']>; bendAt?: number } | null => {
     const p = g.from!.midi, q = g.to!.midi, d = q - p, len = g.from!.len;
