@@ -38,8 +38,8 @@ export type LandingRole = 'mid' | 'call' | 'answer' | 'climax' | 'end' | 'waypoi
 export interface Landing { step: number; midi: number; len: number; role: LandingRole }
 
 /** How much a mood breathes (rests and long holds), and a genre. */
-const BREATH_MOOD: Record<Mood, number> = { melancholic: 1.4, nostalgic: 1.2, dreamy: 1.3, dark: 1.1, tense: 0.8, angry: 0.6, happy: 0.8, triumphant: 0.7 };
-const BREATH_GENRE: Record<Genre, number> = { funk: 1.3, pop: 1.1, rock: 1, grunge: 1.1, altmetal: 0.9, hardrock: 0.8, metal: 0.7 };
+export const BREATH_MOOD: Record<Mood, number> = { melancholic: 1.4, nostalgic: 1.2, dreamy: 1.3, dark: 1.1, tense: 0.8, angry: 0.6, happy: 0.8, triumphant: 0.7 };
+export const BREATH_GENRE: Record<Genre, number> = { funk: 1.3, pop: 1.1, rock: 1, grunge: 1.1, altmetal: 0.9, hardrock: 0.8, metal: 0.7 };
 /** The path's notes a beat against the real notes a bar: the rests and holds are planned apart, so the paths are busier than the average. */
 const PATH_BOOST = 2.1;
 /** How sharply a pick follows its costs (the vocal's interval picks use TEMP = 2). */

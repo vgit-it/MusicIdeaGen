@@ -18,6 +18,7 @@ import { type DrumBar, addFill } from './parts/drums';
 import { type G2Options, type Guitar2Style, chordTones, generateGuitar2, generateHook, leadFret, pickStyle } from './parts/guitar2';
 import { TUNINGS } from './theory/fretboard';
 import { generateSolo2 } from './parts/solo2';
+import { generateSoloMelody } from './parts/solomelody';
 import { generateSoloPlan } from './parts/soloplan';
 import { singLead } from './parts/leadvocal';
 import { emoOn, setsOf } from './verse/emotion';
@@ -59,7 +60,7 @@ export interface TrackOptions {
   /** Played by the band: each player plays the written parts their own way (missing in older links: on). */
   band?: 'on' | 'off';
   /** The planned solo writer (docs/SOLO-PLAN.md): the solo's landings first, then the paths between them (missing in older links: off). */
-  soloPlan?: 'on' | 'off';
+  soloPlan?: 'on' | 'off' | 'melody';
   /** When the rhythm guitar plays (src/players/presence.ts): it sits out intros, verses and bridges, comes in late, drops out, as in real songs (missing in older links: off). */
   guitarPlan?: 'on' | 'off';
   /** The song's mood, which shapes its tension and release (missing in older links: Auto). */
@@ -1653,7 +1654,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       const tt = arc.sections[si].tension;
       const intensity = si === arc.climax ? 1 : Math.max(0, Math.min(1, (tt.reduce((a, b) => a + b, 0) / tt.length - MP.base) / Math.max(0.1, MP.peak - MP.base)));
       const soloHook = s.kind === 'solo' && soloOverChorus && hook.length ? hook : null;
-      const sol = opts.soloPlan === 'on'
+      const sol = opts.soloPlan === 'melody'
+        ? generateSoloMelody(new Rng(`${soloSeed}-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, soloHook, intensity, { mood: arc.mood, tension: tt, drums: idea.drums })
+        : opts.soloPlan === 'on'
         ? generateSoloPlan(new Rng(`${soloSeed}-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, soloHook, intensity, { mood: arc.mood, tension: tt, drums: idea.drums })
         : generateSolo2(new Rng(`${soloSeed}-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, soloHook, intensity);
       idea.guitar2 = sol.hits;
@@ -1664,7 +1667,9 @@ export function buildTrack(src: Idea, opts: TrackOptions = defaultTrackOptions(s
       else notes.push('Guitar 2 solos over the outro');
     } else if (s.g2 === 'break') {
       // Breaks: a short melodic solo, quoting the hook, lower and sparer than a full one; the band as it is
-      const sol = opts.soloPlan === 'on'
+      const sol = opts.soloPlan === 'melody'
+        ? generateSoloMelody(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3, { mood: arc.mood, tension: arc.sections[si].tension, drums: idea.drums })
+        : opts.soloPlan === 'on'
         ? generateSoloPlan(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3, { mood: arc.mood, tension: arc.sections[si].tension, drums: idea.drums })
         : generateSolo2(new Rng(`${soloSeed}-break-${si}`), idea.song, idea.chords, idea.guitar ?? null, lead.lick, hook.length ? hook : null, 0.3);
       idea.guitar2 = sol.hits;

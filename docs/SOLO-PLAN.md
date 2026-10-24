@@ -258,3 +258,8 @@ Built (`FEATURES.lock`, `lockToGroove` in `src/parts/soloplan.ts`, the drums pas
 - **Repeat shapes 1.5x** (`REP_P` 0.28 -> 0.42): more stretches played as patterns (A A', A A A A', ...).
 
 Not built: quick notes and 2x licks following the lilt (their half steps use plain positions).
+
+## Step 0: the melody first (2026-10-24, stage 1 built)
+- Paul: the solos are not melodic. A first step writes a plain melody from the chords' core notes by the vocal's interval theory, long and short notes, at most a beat of silence; it can be heard alone: Track options → Solo writer → Melody only.
+- Plan, rules and numbers: `docs/SOLO-MELODY.md` (`src/parts/solomelody.ts`, `npm run solo-melody-check`).
+- Stage 2 (after listening): the melody becomes the planner's landings.
