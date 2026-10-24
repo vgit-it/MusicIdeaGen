@@ -1,202 +1,187 @@
-# Solo player: the melody handed to a guitarist (scope)
+# Solo player: the melody handed to a guitarist (scope, version 2)
 
-Paul (2026-10-24): take everything built up to Melody + joins and treat it as if it were handed to a guitarist: work out how to play it well, and add flourishes like a pro. Build it from a set of **single skills** (a rake, a sweep up, a hammer-on, a pull-off...), not whole sequences, and **arrange** them in meaningful ways to make the flourishes.
+Paul (2026-10-24): take everything built up to Melody + joins and treat it as if it were handed to a guitarist: work out how to play it well and add flourishes like a pro. Built from single **skills**, arranged in meaningful ways.
 
-Status: scope only. Nothing built.
+Version 2 (same day) after Paul's answers: the **core is substitution**. The player replaces a note, or a stretch of notes, with a different way of playing it, **without losing the note itself** (one long note becomes a triplet pulse on that same note and then a hold). It must be very robust, have the **personality of the player**, find **several ways** for each spot, and decide the options by **recognising the arrangement** of the input, with mood, energy and drums counted in.
+
+Status: scope only. Nothing built. (The skill lab is parked: not needed. Reuse the five lead players as personas. No must-have skills added.)
 
 ## 1. The idea in one picture
 
 ```
- melody + gap map + joins        (what we have: the "score")
-            |
-   [ player: reads the score like a guitarist ]
-            |
-   per spot: pick skills from a catalogue (atoms)
-   arrange them into gestures (a few atoms in order)
-            |
-   check: can the hands play it? (fingering, speed)
-            |
- the same melody, performed: techniques on its notes + flourishes in its gaps
+ base score (melody + gap map + joins)  +  context (chords, drums, energy, mood, tempo, meter, neck position)
+        |
+  1 READ      split into spans; recognise each span's situation (tags + numbers)
+        |
+  2 INTEND    the player decides the solo's story: where it is quiet, where it builds, what is featured
+        |
+  3 PROPOSE   every rewrite rule that fits a span offers itself (with its settings), "keep it plain" always among them
+        |
+  4 CHOOSE    score by fit + the player's taste + chance; resolve clashes; keep the budget
+        |
+  5 REALISE   turn the choice into timed notes and techniques; VERIFY (anchors, key, time, hands); fall back if it fails
+        |
+ the performed solo + a report (what was recognised, what was chosen, what was left out)
 ```
 
-Three layers, each small:
-1. **Skills** (atoms): one technique, with its rules for when it can be used.
-2. **Gestures** (arrangements): a few skills in an order, filling a job (arrive, decorate, leave, join, build).
-3. **The player** (director): reads the score, picks gestures by chance, mood, energy and who the player is, within a budget.
+## 2. The core: rewrite rules (substitution)
 
-## 2. The contract (what the player may and may not do)
+A **rewrite rule** says: *for a span that looks like this, you may play it like that.* It is the unit that replaces "skill" and "gesture" of version 1: a skill is a rule on one note; a gesture is a rule on a larger span, built from smaller rules.
 
-- **Skeleton kept**: every melody note keeps its start, its pitch (the pitch it lands on) and the chord-note rule. The melody step stays the melody.
-- The player may: change **how** a note is reached, held and left; and add notes **only** inside the gaps the gap map found (tails, rests, joints) or just before a note (a pickup, up to 2 steps).
-- Never more than a beat of silence, never a note out of the key (except a marked passing blue/chromatic note on a weak spot, as the library licks do).
-- Everything must be **playable**: the hands (`src/players/hands.ts`) say yes or no; a "no" falls back to the plain note. The player never forces a fingering.
-- Same seed, same performance (seeded; no hidden state).
-
-## 3. Layer 1: the skills
-
-Each skill is data: a name, what it needs, what it does, and how it feels. Grouped by **where on a note it happens**.
-
-### A. Arrive (how a note starts)
-| Skill | What | Needs | Engine today |
-|---|---|---|---|
-| pick | plain pick | - | yes |
-| hammer-on | land by hammering from below | same string, up to 2 frets (up to 4 for a stretch), lower start note | yes (`art: legato`) |
-| pull-off | land by pulling off from above | same string, down to 2 frets | yes |
-| slide-in | slide up/down into it | any, 1 to 5 semitones | yes (`slide`) |
-| scoop | slide in from under, short (a half to whole step) | long enough note | yes (`slide` 1-2) |
-| bend-in | bend up into it | string/fret that allows k semitones | yes (`bend`) |
-| pre-bend | already bent, picked, then released | string allows | yes (`unbend` w/o bend) |
-| grace note | very short note 1-2 semitones away, hammered into the main one | 1 step of room before | build from hammer-on |
-| rake-in | drag across muted strings into the note | note on a higher string | yes (`rake`) |
-| ghost-in | muted scratch one step before | 1 step of room | yes (`dead`) |
-
-### B. Hold (what happens while it rings)
-| Skill | What | Needs | Engine today |
-|---|---|---|---|
-| plain hold | nothing | - | yes |
-| vibrato (narrow / wide / late) | wrist shake, fading in | 4+ steps | yes (`vib` depth) |
-| late bend | hold, then push up | note 6+ steps | yes (`lateBend`) |
-| bend-release | bent up, let down | 4+ steps | yes (`bend` + `unbend`) |
-| swell | fade the note in | 4+ steps | yes (`swell`) |
-| trill | hammer on/off 1-2 semitones above, fast | 4+ steps | yes (`trill`) |
-| tremolo | pick again and again | 2+ steps | yes (`tremolo`) |
-| unison bend / double-stop | second note under it | 2 strings fit | yes (`dyad`/`twin`) |
-| pinch harmonic | squeal on the pick | strong notes | **needs a sound** |
-| natural harmonic | chime on the 5th/7th/12th fret | those frets | **needs a sound** |
-
-### C. Leave (how a note ends)
-| Skill | What | Needs | Engine today |
-|---|---|---|---|
-| let ring / cut | full length / clipped short | - | yes |
-| fall-off | slide down off the end | 4+ steps | yes |
-| slide-out | slide away and up | 4+ steps | yes |
-| release | bend let down at the end | - | yes |
-| palm-mute tail | note choked | - | yes (`mute`) |
-| whammy dive | pitch dips at the end | - | **needs a sound** |
-
-### D. Move (single moves between two notes, one or two steps long)
-| Skill | What | Engine today |
+### 2.1 Spans (what gets rewritten), at four scales
+| Scale | Span | Examples of what is seen |
 |---|---|---|
-| passing note | a note of the key between two far-apart notes | yes |
-| neighbour | note above/below, back | yes |
-| chromatic approach | half step below/above into the target | yes |
-| enclosure | above then below (or reverse) the target | yes |
-| turn / mordent | 3-4 quick notes around a note | yes |
-| bend-and-slide | bend in then slide | yes |
-| double-stop slide | two strings sliding together | yes |
+| Note | one note with its room (tail up to the next note) | long note, short note, repeated pitch, the climax, the first, the last |
+| Joint | two notes and the space between | leap up, leap down, step, same note, a picked gap |
+| Cell | 2 to 5 notes in a row | a stair up, a stair down, an arch, long-short-short, a run of 8ths |
+| Phrase | a call, an answer, the end, a repeated phrase | a call that hangs, an answer that lands, the phrase before the climax |
+Rewrites are tried **top-down** (phrase, then cell, then note) so a big gesture is not broken by small ones. Spans nest; a chosen rewrite **claims** its time, and smaller rewrites inside it are only allowed if the rule says so.
 
-### E. Runs (3 to 8 quick notes; the "flourish bodies")
-| Skill | What | Needs | Engine today |
+### 2.2 The identity contract: "without losing the note"
+Every note in the base has an **identity**. A rewrite must say which parts of it it keeps, and the checker enforces it. The parts:
+- **Pitch**: the note's pitch is heard (the most, or the longest, or on the strongest beat) in the span.
+- **Onset**: the span starts on that pitch at the note's start step (or the rewrite says it borrows a few steps from before: a pickup into it).
+- **Landing**: the span ends on that pitch (so the next note is reached from it).
+- **Length**: the span's total time is the note's time (or the rewrite says how much it borrows from the tail / the rest / the previous note).
+Each note carries an **anchor level** by role: the climax and the home note keep all four; a plain long note keeps pitch and onset; a short passing note keeps pitch only. A rewrite may only be offered where the anchors it keeps cover the note's level.
+
+### 2.3 A rewrite rule, as data
+- **name**, **scale**, **kind** (re-articulate, decorate, approach, elaborate, connect, fill, shape).
+- **matches**: situation tags it suits, with weights, and **vetoes** (where it must never go).
+- **keeps**: which identity parts it keeps (above).
+- **layers**: what it changes, so rules can combine: *rhythm* (re-divides the time), *pitch* (adds notes), *articulation* (picked, legato, slide, bend, vibrato, rake, mute...), *dynamics* (loudness shape).
+- **needs**: room (steps), tempo (milliseconds per note), interval, string and fret limits (asked of the hands).
+- **feel**: a few numbers (section 3.3) so mood, energy and the player can be matched without a table for every pair.
+- **settings**: what it can vary (how many repeats, which division, which approach, which side).
+- **realise(span, settings, rng) -> events**: pure and seeded.
+
+### 2.4 Examples: what one long note can become (several ways, same note)
+Base: a long note, one bar, high, mid-solo, energy rising; hats in 8ths, snare on 2 and 4.
+
+| Way | What is played | Keeps | Suits |
 |---|---|---|---|
-| legato run | hammer/pull chain on 1-2 strings | scale box | yes |
-| picked run | alternate-picked scale run | speed ok at bpm | yes |
-| pull-off flurry | falling chain from a high note | - | yes |
-| pentatonic burst | 3 or 4 notes of the box in 16ths or triplets | - | yes (`shift` for triplets) |
-| sweep | arpeggio across adjacent strings, one note per string | string set free | hands need a "one note per string" rule |
-| string skip | jumps over a string | - | hands rule |
-| tapping | a right-hand tap from far above, then pull-offs | high position | hands rule + position |
-| tremolo run | tremolo, then slide | - | yes |
-| rake run | muted rake then a run | - | yes |
-| wide leap | octave/10th jump with a slide | - | yes |
+| Stay plain | the note, vibrato | all | any; the default; always offered |
+| Triplet pulse | the same note picked in triplets for a beat or two, crescendo, then held with vibrato | pitch, onset, landing, length | a shuffle or triplet groove, a building energy |
+| Stutter then hold | the note 2 or 3 times on the 16ths, then held | all | high energy, a drum fill nearby |
+| Gallop | 8th + 16th + 16th, repeated, then a hold | all | angry, driving, metal / hard rock |
+| Tremolo | picked as fast as the hand goes for a beat, then eased out | all | tense, big climax |
+| Neighbour shimmer | the note, a half or whole step above, the note... (pull-off / hammer-on) then held | all | happy, bright, a shred player |
+| Pedal cell | the note, a run up and back down, the note again to hold | pitch, onset, landing | a long note over a chord change, a lot of room |
+| Scoop and swell | slide in from below, swell, wide vibrato | pitch, landing | sad, dreamy, a melodic player |
+| Bend and hold | pre-bend or late bend to the note, vibrato | pitch, landing | blues, a bluesy player |
+| Ghosted pulse | the note with muted scratches between | pitch, onset | funk, a tight pocket |
+| Echo-fall | held, then falling run at the end | pitch, onset | a call's end, a phrase before a rest |
+Short note: 8th into two 16ths (note + neighbour), triplet fragment, grace in. Joint: connector run, bend, slide, octave jump, arpeggio over a leap (a sweep later). Rest zone: ghosts, a quick lick, a pickup into the next note, a stab with a drum hit. Phrase end: turnaround, falling run, tremolo + dive. The full vocabulary is in section 6.
 
-### F. Rhythm colours (not pitch)
-| Skill | What | Engine today |
-|---|---|---|
-| ghost notes | muted scratches on the off-16ths | yes |
-| triplet push | a group in triplets | yes |
-| dead stop | short silence made by muting | yes |
-| pickup | 1 or 2 quick notes before a strong beat | yes |
+## 3. Reading the arrangement (the recogniser)
 
-Today's engine plays everything in A to F except pinch harmonics, natural harmonics and the whammy (marked above). Sweeps and tapping need a small rule in the hands, not a new sound.
+The rewrite choice is only as good as the **reading** of the input. The recogniser is its own module, with its own check, and its output is **shown** on the melody roll before any rewriting exists (the way to check it by eye and ear).
 
-### What a skill is as data (`src/parts/soloskills.ts`)
-- `needs`: time room (steps before / on / after), interval range, direction, note length, chord/key rule, string and fret limits.
-- `speed`: the quickest it can be played, in milliseconds per note (so it is checked against the tempo; no 8-note run at 60 steps a second).
-- `makes`: what it changes on the note(s): `GuitarHit` fields (`bend`, `art`, `slide`, `vib`, `lateBend`, `unbend`, `trill`, `tremolo`, `rake`, `mute`, `shift`, `swell`) and any notes it adds.
-- `feel`: how much attack, tension and flourish it carries (a number each), plus `mood` and `genre` leanings, and which players like it.
-- `cost`: how busy it is (the density budget).
+### 3.1 What it measures per span
+- **The notes**: length (steps and milliseconds at the tempo), interval in and out (size, direction), chord note or not, same pitch as the last, the climax or not, first or last.
+- **Place**: phrase role (call, answer, climax, end), position in the phrase, in a repeat or the source of one, on a beat / off the beat / on the downbeat, bars from the end of the section.
+- **The room**: the gap map (kind, size, picked or bare), silence before and after.
+- **Neighbourhood**: how dense the notes are around (a run of shorts, long-short patterns), a stair, an arch, a leap and step back.
+- **The chords**: a chord change inside the note, the next chord's notes.
+- **Energy**: value, slope (rising, falling), crest, trough, how it compares with the solo's average. **Mood and tension** (the tension curve at that bar, the mood's profile).
+- **Drums** (`idea.drums`: kick, snare, hats, ride, crash, toms, fills): the hits inside the span and just after it, the groove's feel (straight 8ths, 16ths, shuffle or triplet, half-time), where the snare backbeat is, a fill or crash coming, how busy the drums are (busy drums leave less room; open drums leave more), whether the span's end lands on a hit.
+- **The hands**: where on the neck the player is now (the energy diagonal), which strings and frets are near.
+- **The player**: what was just played, the recent budget used, the moves it has already used (for echoes and signatures).
 
-## 4. Layer 2: gestures (the arrangements)
+### 3.2 Archetypes (named situations)
+Predicates over the numbers, each with a strength from 0 to 1; a span can have several. Examples:
+`held-peak`, `long-before-rest`, `long-over-chord-change`, `long-with-room`, `static-repeat`, `leap-up`, `leap-down`, `stair-up`, `stair-down`, `arch`, `call-hanging`, `answer-landing`, `phrase-end`, `phrase-start`, `pre-climax`, `post-climax`, `lone-short`, `dense-cluster`, `into-snare`, `into-crash`, `drum-fill-window`, `locked-to-kick`, `open-drums`, `busy-drums`, `triplet-groove`, `shuffle-groove`, `half-time`, `rising-energy`, `falling-energy`, `crest`, `trough`, `bar-before-section-end`, `repeat-source`, `repeat-copy`.
 
-A gesture is a **recipe made of slots**. Each slot takes one skill from a short list. A gesture has one job.
+### 3.3 Feel axes (how mood, energy, drums and the player meet the rules)
+Instead of a table for every pair, five numbers describe a rewrite, a mood, a player and the moment alike:
+- **Agitation**: calm to frantic.
+- **Roughness**: smooth to edgy (rakes, dead notes, tremolo).
+- **Ornament**: plain to ornate (more notes and decoration).
+- **Weight**: light to big.
+- **Looseness**: locked to the grid to floating (rubato, scoops, late bends).
+The moment's **wanted feel** = mood + energy + section + drums (open drums lift Ornament and Looseness, busy tight drums lower them and raise Lock) + the player's own lean. A rule's **fit** is how close its feel is to the wanted feel. A new rule needs only its feel numbers, not a hand-made table. (Mood leanings: sad / dreamy: calm, smooth, loose; angry: frantic, rough, heavy; happy: light, ornate; tense: agitated, rough, tight; triumphant: heavy, ornate.)
 
-| Gesture | Job | Slots (in time order) | Where it goes |
-|---|---|---|---|
-| **Arrival** | land a note with character | [A: bend-in / slide-in / scoop / grace / hammer / rake-in] then [B: vibrato (late) / late bend] | start of a long note |
-| **Sustain** | make a held note alive | [B: vibrato / swell / late bend / trill] then [C: fall-off / release / slide-out] | long note body and tail |
-| **Joint** | connect two notes (the picked joints) | [D: passing / neighbour / chromatic / grace] or [bend-in] or [slide] | joints |
-| **Lick-in** | decorate a picked tail or rest | [pickup] + [E: run (short)] + [land: arrival] | tails of 6+ steps |
-| **Fill** | a bigger flourish in a picked rest | [F: ghost] + [E: run] + [B: tremolo/trill on the last note] | rests |
-| **Climb** | run up to the climax | [E: legato or sweep up] + [A: bend-in or slide-in to the peak] + [B: wide vibrato] | the beat(s) before the climax |
-| **Turnaround** | end a phrase / tie it back | [D: enclosure or turn] + [C: fall-off] | last note of a call |
-| **Closing** | end the solo | [E: falling run or pull-off flurry] + [C: fall-off / let ring] | the last bars |
-| **Build** | rising busyness across several phrases | skills move from B (vibrato) to D (moves) to E (runs) as energy rises | phrases on a rising energy |
-| **Echo** | answer plays the call's gesture again, changed | copy the call's gesture; swap one slot | answer phrases |
+## 4. The player's personality
 
-Rules on arranging (what makes it musical, not random):
-- **Strong notes get little, weak places get more**: the climax note and the home note are clean (arrival + vibrato). Flourishes sit in the weak places (tails, joints, rests).
-- **One idea per phrase**: a phrase picks one "gesture of the phrase" and may use it twice; not four different things.
-- **Echo/callback**: an answer repeats its call's gestures, 85% of the time with one change (as the gap map and the vocal's repeat shapes do). Across the solo a few "signature" moves return.
-- **Density follows the energy**: busy where the energy is high, bare where it is low. A hard budget: at most N skill uses a bar (N by energy and player).
-- **Graded loudness and attack**: harder picking on arrivals of strong notes (the velocity already follows energy).
-- **No two heavy gestures in a row**; a heavy one (run, sweep, tapping) needs a quiet note or rest before and after.
-- **Stay in position**: a gesture starts where the hand already is (the neck diagonal) and ends where the next melody note is. The hands check the path.
-- **Beat discipline**: a run lands on a beat or a chord note; it never ends on a weak off-note.
+A **style sheet** (from the five lead players, with a small random twist per song so no two are identical):
+- **Vocabulary**: a taste weight per rewrite (likes, neutral, rare, never). Melodic: scoops, swells, slow vibrato, late bends. Bluesy: bends, wide vibrato, double-stops, pentatonic bursts. Shredder: runs, tremolo, trills, legato, later sweeps and tapping. Raw: rakes, slides, ghosts, pulses, dead stops. Funky: ghosts, 16th cells, pickups, dead stops, double-stop slides.
+- **Signatures**: 2 or 3 pet rewrites drawn per solo that come back (a callback is how a player sounds like a person).
+- **Allergies**: 1 or 2 rewrites this player never plays.
+- **Density**: how many rewrites per bar; **restraint**: how often "stay plain" is chosen on purpose.
+- **Risk**: how often a wild, ambitious option is taken; a shredder takes more.
+- **Rhythmic language**: straight, swung, triplet-leaning, gallops, 16ths.
+- **Pitch language**: pentatonic and blue notes, diatonic, chromatic approaches.
+- **Attitude to the drums**: locks to the kick, floats above, or answers the gaps.
+- **Story arc** per solo (drawn): statement, development, climax, resolution; each stage allows a different part of the vocabulary and density, so the solo *builds* rather than being even.
+- **Consistency**: a rewrite chosen in a call is repeated in its answer 85% of the time with one setting changed (the gap map and the vocal's repeat shapes do the same); signatures return.
 
-## 5. Layer 3: the player (who decides)
+## 5. Choosing: several ways, one performance
 
-For each **spot** in the score (note start, note body, note end, gap) the player knows:
-- the note: length, pitch, interval in and out, chord note or not, role (call / answer / climax / end), where it falls in the energy curve;
-- the gap map: kind, size, picked or bare, what would fit;
-- the song: mood (tension curve), genre, tempo, meter;
-- the **lead player** (`pickLead`: melodic, bluesy, shredder, raw, funky), whose habits weight the skills.
+- For every span, collect **all** rewrites that match and pass the cheap checks. Each gets a score:
+  `fit(tags) x feel fit x taste x energy / budget x novelty (not the last used, not overused) x drum fit x chance`
+- "Stay plain" always has a base weight (a pro is mostly restraint).
+- Pick by weighted chance (not the best one: the variety is the point). Settings are drawn too (how many repeats, which division, which side).
+- **Several ways**: the report keeps the runners-up for each span, so a later "play this note another way" is possible without writing anything new.
+- **Drum fit** in particular: re-articulations take the groove's own division (8ths hats: 8ths; 16ths: 16ths; shuffle: triplets), a flourish ends on a snare or crash where it can, simple holds under a drum fill, a stab with a kick in a tight pocket.
+- **Budget and pacing**: a limit of rewrites a bar by energy and the player; no two heavy rewrites in a row; heavy ones need a plain note or a rest on each side; the climax and the home note get a prepared arrival, not a flurry.
+- **Clash resolution**: higher scales claim first; a claim blocks overlapping ones unless the rule allows nesting; the layers (rhythm, pitch, articulation, dynamics) let compatible rules combine on one span (a triplet pulse with a crescendo with vibrato on the end).
 
-Weights, by chance (the same way the gap map picks):
-- **Player persona** (the main lever):
-  | Player | likes | rarely |
-  |---|---|---|
-  | melodic | slow vibrato, late bends, scoops, swells, slides, harmonics | runs, tapping |
-  | bluesy | bends (full, release, unison), vibrato wide, double-stops, bend-and-slide, pentatonic bursts | sweeps, tapping |
-  | shredder | legato and picked runs, sweeps, tapping, trills, tremolo, pull-off flurries | long vibrato holds |
-  | raw | rakes, slides, ghost notes, tremolo, dead stops, pinch harmonics | runs, passing notes |
-  | funky | ghost notes, dead stops, pickups, double-stop slides, short 16th licks | long bends |
-- **Mood** (from the tension curve): sad / dreamy lean slow vibrato, long slides, swells; angry rakes, tremolo, dead notes, pinch; happy hammer-ons, slides, trills, bright runs; tense quarter-tone bends, tremolo, enclosures; triumphant wide vibrato, big bends, runs up.
-- **Genre**: metal runs/tremolo/pinch; blues-rock bends; funk ghosts; pop restraint (few, clean).
-- **Energy**: low = restraint (one skill a phrase), high = gesture chains.
-- **Role**: calls restrained; answers fuller; climax: arrival + wide vibrato, a climb before it; end: fall-off / release.
-- A **solo "style"** drawn once (like the gap appetite): restrained, singing, fiery, wild. Decides the budget.
+## 6. The vocabulary (the single skills the rules are built from)
 
-Then **play it** (the hands pass): each chosen gesture is turned into `GuitarHit` fields and notes, offered to `playGuitar2`. If the fingering fails, the next candidate, then the plain note.
+Each is a building block the rules use; a rule is a short arrangement of these.
 
-## 6. How it sits in the code
+- **Arrive**: pick, hammer-on, pull-off, slide-in, scoop, bend-in, pre-bend, grace note, rake-in, ghost-in.
+- **Hold**: vibrato (narrow, wide, late), late bend, bend-release, swell, trill, tremolo, unison bend, double-stop, (pinch / natural harmonic later).
+- **Leave**: let ring, cut, fall-off, slide-out, release, palm-mute tail, (whammy dive later).
+- **Move** (one or two notes between others): passing note, neighbour, chromatic approach, enclosure, turn, mordent, bend-and-slide, double-stop slide.
+- **Re-divide** (the new part, the time inside a note): same-note repeats in 8ths, triplets, 16ths, 32nds, gallop (8th + 2 x 16th), reverse gallop, stutter (a few repeats then a hold), pulse with crescendo, ghosted repeats.
+- **Runs**: legato run, picked run, pull-off flurry, pentatonic burst, tremolo run, rake run, wide leap, (sweep, string skip, tapping later).
+- **Rhythm colours**: ghost notes, triplet push, dead stop, pickup.
+Almost all are played by the engine today (`GuitarHit`: `bend`, `art`, `slide`, `vib`, `lateBend`, `unbend`, `trill`, `tremolo`, `rake`, `mute`, `shift`, `swell`, `dyad`). Not yet: pinch and natural harmonics, whammy (new sounds); sweep and tapping (a hands rule).
 
-- `src/parts/soloskills.ts`: the catalogue (data: needs, makes, feel, speed).
-- `src/parts/solofigures.ts`: the gestures (recipes of slots).
-- `src/parts/soloplayer.ts`: `performSolo(rng, song, melodyPart, gaps, joins, persona, o)`; returns the performed `Guitar2Part` and a list of what it used (`idea.soloCurve.moves`, for the roll view and the checks).
-- Hooked into `track.ts` as a new Solo writer entry: **Melody + player** (after joins). The earlier modes stay for comparison.
-- Roll view: each skill used is a small label on its note or gap (V vibrato, B bend, S slide, H hammer, R rake, run...) so Paul can see what was chosen.
-- A **skill lab** (a page like the lick lab): pick a key, a chord and a skill, hear the skill alone over the band. This lets Paul judge each atom by ear before the arranging.
-- `npm run solo-player-check`: skeleton unchanged (start steps, pitches, melody notes), every added note in the key and in a gap, no silence over a beat, speed ok at bpm, fingerings found, density within the budget, techniques per player / mood / genre as targeted, echoes copy their call.
-- The old-writer hash and the earlier modes (`on`, `off`, `melody`, `marks`, `joins`) stay identical.
+## 7. Robustness (how it stays safe)
 
-## 7. Build order (each step heard before the next)
+1. **Contract, then checker**: every rewrite declares what it keeps; an independent checker (not the rewrite's own code) verifies: anchors kept, total time, in key (except marked passing notes), no overlaps, no silence over a beat, speed possible at the tempo, a fingering found by the hands, techniques allowed together.
+2. **Transactions**: a rewrite is tried on a copy and kept only if it passes; a failure goes to the next candidate, then to the plain note. The performed solo is never worse than the base.
+3. **Fuzz check** (`npm run solo-player-check`): every rule against thousands of random spans (lengths, pitches, chords, tempos 60-200, meters 4/4, 3/4, 6/8, 7/8, 5/4, mixed, odd drums): any rule that says "I apply" must produce a valid result.
+4. **Determinism**: same seed, same performance; every rule seeded from the span, not shared state.
+5. **Old modes untouched**: the old-writer hash and the five earlier Solo writer modes stay identical; the player is its own entry (**Melody + player**).
+6. **Meters and tempo**: all timing in the song's own beat groups and milliseconds at the tempo; triplets in 6/8 and 12/8 are the natural division there.
+7. **Reading checks**: the recogniser has its own check (archetypes against hand-made spans with known answers; no span with no tags; strengths in range).
+8. **A report** (`idea.soloCurve.moves`): for every span, the tags, the options, the pick and why; shown on the roll; used by the check.
 
-1. **Skill lab + catalogue** (atoms only): every skill in A to D that the engine already plays, each tappable alone. Paul checks each by ear and says which are bad. No arranging yet.
-2. **Note-level player** (A, B, C on the melody's own notes, no new notes): arrival / sustain / leave by player, mood, energy, role. Heard as Melody + player (notes only).
-3. **Gap fills** (D, E, F in the picked tails, rests and joints, the fills left from step 0b): moves and runs by persona. Gestures: Joint, Lick-in, Fill.
-4. **Phrase gestures**: Climb, Turnaround, Closing, Build, Echo, signatures and the budget.
-5. **New sounds / hands rules**: sweep, tapping, pinch harmonics, whammy, natural harmonics (each only when it sounds right).
-6. **Tune by ear**: Paul's notes; weights per player.
+### Known technical points to check first (a small spike, before the rules)
+- Timing finer than a 16th: the engine has `shift` (a third of a step for triplets) and `tremolo`; repeated same-note events, 32nds and note lengths in fractions of a step need a check; if they do not fit, a small extension to the hit's timing is needed (a list of sub-events inside one hit).
+- The hands: a rewrite sends several notes on one string / across strings; the hands' fingering must accept or refuse each chain.
+- The engine's late bend rule (a late bend fails if it has no time to arrive) applies to any rewrite that bends.
 
-Estimates: 1 and 2 are small (the engine already plays them). 3 and 4 are the real work. 5 is optional and independent.
+## 8. Where it sits in the code
 
-## 8. Decisions I am making unless Paul says otherwise
-- The player works **on top of** Melody + joins; it does not replace the library licks (they can be reused as ready-made runs later).
-- Reuse the **five lead players** that already exist (melodic, bluesy, shredder, raw, funky) as personas.
-- Sweeps, tapping, pinch harmonics, whammy are **later** (step 5): the first versions use only what the engine already plays.
-- The skill lab comes **first**, so the atoms are heard before the arranging is built.
+- `src/parts/soloread.ts`: the recogniser (spans, numbers, archetypes, the feel axes).
+- `src/parts/soloplayer.ts`: the director (intention, proposal, choice, budget, clash, verification, report).
+- `src/parts/solorules.ts` (and `solorules-*.ts` by family): the rewrite rules and the vocabulary they use.
+- `src/parts/soloperson.ts`: the style sheet from the lead player.
+- Hooked into `track.ts` after the joins step: Track options -> Solo writer -> **Melody + player**; also **Melody + read** (the tags drawn on the roll, nothing changed).
+- Roll view: tags under each note; chosen rewrites as labels on notes and gaps; the runners-up in a hover text.
+- Docs and checks: `npm run solo-read-check`, `npm run solo-player-check`.
 
-## 9. Open questions for Paul
-1. Skill lab first (hear each atom), or straight to the player on the melody? (Recommended: lab first.)
-2. Must-haves in the first version? Anything missing from the lists above you would want (e.g. whammy, feedback, harmonics)?
-3. Reuse the five lead players as the personas?
+## 9. Build order (each step heard or seen)
+
+1. **Foundation spike**: the finer timing (sub-events), the checker (anchors and playability), the rule interface, "plain pass-through"; the fuzz harness. Nothing changes in the sound.
+2. **The recogniser** + **Melody + read**: spans and archetypes shown on the roll. Paul checks the reading by eye ("is this really a held peak? a leap up? into the snare?") before any rewriting.
+3. **Note rewrites for long notes** (re-divide, shapes, bends, scoops, trills) with the player's taste, the feel axes, the drum fit and the budget. Heard.
+4. **Joints, rests and short notes** (connectors, pickups, ghosts, grace), which finish the fills left from step 0b.
+5. **Phrase level**: intention (story arc, featured spans), signatures, echoes, turnarounds, climbs, closings.
+6. **Extras**: sweeps, tapping, harmonics, whammy (each only when it sounds right).
+7. **Tune by ear** with Paul's notes.
+
+## 10. Decisions taken (change on request)
+- The base is Melody + joins; the picked joins stay as the fallback and one of the candidates for a joint.
+- The five lead players are the personas, each with a small twist per song.
+- First version uses only what the engine already plays; new sounds later.
+- The recogniser is shown before the rewriting is heard.
+- "Stay plain" is always an option and often chosen.
+
+## 11. Open
+- How wild may a rewrite be on short notes? (Proposal: short notes only get pickups, graces and two-note splits; the big rewrites are on long notes and rests.)
+- Should rewrites be allowed to shift a note's onset by up to a 16th for feel (push or drag)? (Proposal: yes, only for loose players, never on a beat that a drum hit lands on.)
