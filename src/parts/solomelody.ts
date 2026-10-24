@@ -32,6 +32,8 @@ const PICK_T = 1.5;
 const ECHO_RHYTHM = 0.55;
 /** How much the mood's liking of an interval counts against the height and the rest (chord notes are few, so the moods need a push to be heard). */
 const MOOD_K = 1.6;
+/** How hard a note is pulled toward the height the energy and the phrase want (per semitone). */
+const HEIGHT_K = 0.55;
 
 type Contour = 'rise' | 'fall' | 'arch' | 'dip' | 'level';
 /** A phrase's contour, in sizes of the mood's usual step, from its start (0) to its end (1). */
@@ -79,11 +81,15 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
   // the energy, the height and the pace it asks for (as the planner)
   const en = pickEnergy(rng, genre, bars.length);
   if (en.shape === 'wave' || en.shape === 'saw' || en.shape === 'steps') en.waves = Math.round(2 * en.waves * Math.max(1, bars.length / 8) ** 0.6) / 2;
+  // (Paul: the notes follow the energy across the neck, low energy bottom left (low strings, low frets), high energy top right: the
+  // height always goes with the energy, and over most of the neck)
+  en.pitchC = 1;
+  en.pitch = 7 + 3 * intensity;
   const E = (g: number) => energyAt(en, clamp(g / total, 0, 1));
-  const R0 = 57 + mod(key - 57, 12);
-  const base = R0 + 3 + Math.round(3 * intensity);
+  // (the register is the same whatever the key: the calm parts low on the neck, the peak high up)
+  const base = 66 + Math.round(3 * intensity);
   const centerAt = (g: number) => base + Math.round(en.pitchC * en.pitch * E(g));
-  const rawWindow = (g: number): [number, number] => [Math.max(50, centerAt(g) - 8), Math.min(84, centerAt(g) + 9)];
+  const rawWindow = (g: number): [number, number] => [Math.max(50, centerAt(g) - 8), Math.min(83, centerAt(g) + 9)];
   const paceAt = (g: number) => 1 + en.paceC * en.pace * E(g);
   const calmAt = (g: number) => Math.max(0, -en.paceC * E(g));
   const busy = (DENSITY[genre] * BUSY[lick]) / 5.4;
@@ -238,17 +244,17 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
         if (!tones(m, n) || (strict && fit.clash(m, g))) continue;
         // (the same note again only in a mood that likes it, or when nothing else fits)
         if (prev !== null && m === prev && (before === prev || !(again || P.w[0] >= 1.4))) continue;
-        let cost = 0.22 * Math.abs(m - target) + (prev !== null ? MOOD_K * intervalCost(P, prev, m, lastMove, finalOfPhrase) : 0);
+        let cost = HEIGHT_K * Math.abs(m - target) + (prev !== null ? MOOD_K * intervalCost(P, prev, m, lastMove, finalOfPhrase) : 0);
         // (the same note again is dull, unless the mood likes repeats: angry, tense)
         if (m === prev) cost += 5 / Math.max(0.6, P.w[0]);
         cost += Math.max(0, m - (c + P.size + 2));
         if (peak !== null && ph !== climax) cost += Math.max(0, m - (peak - 3));
         if (src !== undefined) cost += 0.45 * Math.abs(m - src);
         const isRoot = mod(m, 12) === root;
-        if (ph.role === 'end' && finalOfPhrase) cost += isRoot ? -4 : 2;
+        if (ph.role === 'end' && finalOfPhrase) cost += isRoot ? -6 : 3;
         else if (finalOfPhrase) {
-          if (ph.role === 'call') cost += isRoot ? 4 : 0;
-          else if (ph.role === 'answer') cost += isRoot ? -3 : 1.5;
+          if (ph.role === 'call') cost += isRoot ? 6 : 0;
+          else if (ph.role === 'answer') cost += isRoot ? -4.5 : 2;
         }
         items.push({ v: m, cost });
       }
@@ -349,7 +355,7 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
     energy: Array.from({ length: total }, (_, g) => r2(E(g))),
     centre: Array.from({ length: total }, (_, g) => centerAt(g)),
     pace: Array.from({ length: total }, (_, g) => r2(paceAt(g))),
-    landings, gaps,
+    landings, gaps, neck: true,
   };
   const nLong = all.filter((n) => n.len > beatOf(n.step)).length;
   const peakAt = climax ? Math.floor(climax.notes[climax.notes.length - 1].step / 16) + 1 : 0;

@@ -115,6 +115,8 @@ interface LineNote {
   skip: boolean;
   /** How the part asks for it to be reached (a solo): picked, legato or slid. */
   art?: 'pick' | 'legato' | 'slide';
+  /** Where on the neck the part would have it (a solo's melody follows its energy up the neck): a fret and a string. */
+  want?: { fret: number; string: number };
 }
 
 interface Spot { string: number; fret: number }
@@ -146,6 +148,7 @@ export function playHands(sections: Idea[], seed: string) {
 function playGuitar2(idea: Idea, hands: Hands, open: number[], seed: string) {
   const hits = [...idea.guitar2].sort((a, b) => a.step - b.step);
   if (!hits.length) return;
+  const energy = idea.soloCurve?.neck ? idea.soloCurve.energy : undefined;
   const line: LineNote[] = hits.map((h, i) => {
     const next = hits[i + 1];
     const gap = next ? next.step - h.step : 99;
@@ -157,9 +160,11 @@ function playGuitar2(idea: Idea, hands: Hands, open: number[], seed: string) {
       joined: !!next && len >= gap && next.step > h.step,
       skip: !(h.notes.length === 1 || octave) || !!h.mute || !!h.letRing || !!h.swell,
       art: h.art,
+      // (a melody that follows its energy goes up the neck with it: low frets when calm, high ones at the peak)
+      want: energy ? ((e01) => ({ fret: 1 + 15 * e01, string: 1.5 + 3.5 * e01 }))((energy[Math.min(energy.length - 1, h.step)] + 1) / 2) : undefined,
     };
   });
-  const spots = finger(line, open, 19, hands, (s) => (s.fret === 0 ? 1 : 0.04 * Math.abs(s.fret - 8)));
+  const spots = finger(line, open, 19, hands, (s, n) => (n.want ? (s.fret === 0 ? 1 : 0) + 0.15 * Math.abs(s.fret - n.want.fret) + 0.45 * Math.abs(s.string - n.want.string) + (s.string === 0 ? 1.5 : 0) : s.fret === 0 ? 1 : 0.04 * Math.abs(s.fret - 8)));
   const touches = moves(idea, line, spots, hands, seed, 'guitar');
   hits.forEach((h, i) => {
     const t = touches[i];
@@ -291,7 +296,7 @@ const beatSteps = (idea: Idea) => {
  * costs (a little within a four-fret position, more for a shift), changing strings costs a little,
  * and the player has their own taste (`prefer`, and HANDS' shift / sameString).
  */
-function finger(line: LineNote[], open: number[], maxFret: number, hands: Hands, prefer: (s: Spot) => number): (Spot | null)[] {
+function finger(line: LineNote[], open: number[], maxFret: number, hands: Hands, prefer: (s: Spot, n: LineNote) => number): (Spot | null)[] {
   const cands = line.map((n) => {
     const out: Spot[] = [];
     if (n.skip) return out;
@@ -325,7 +330,7 @@ function finger(line: LineNote[], open: number[], maxFret: number, hands: Hands,
     const cost: number[][] = [], back: number[][] = [];
     for (let k = i; k <= j; k++) {
       const c = cands[k];
-      if (k === i) { cost.push(c.map(prefer)); back.push(c.map(() => -1)); continue; }
+      if (k === i) { cost.push(c.map((sp) => prefer(sp, line[k]))); back.push(c.map(() => -1)); continue; }
       const pc = cands[k - 1], prev = cost[cost.length - 1];
       const rest = !line[k - 1].joined;
       const row: number[] = [], br: number[] = [];
@@ -335,7 +340,7 @@ function finger(line: LineNote[], open: number[], maxFret: number, hands: Hands,
           const v = prev[ai] + trans(a, b, rest, line[k].art);
           if (v < best) { best = v; bi = ai; }
         });
-        row.push(best + prefer(b));
+        row.push(best + prefer(b, line[k]));
         br.push(bi);
       }
       cost.push(row);

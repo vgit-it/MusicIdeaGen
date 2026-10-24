@@ -184,6 +184,8 @@ export interface SoloCurve {
   pace: number[];
   /** The planned writer (docs/SOLO-PLAN.md): the notes it planned to land on, with their roles. */
   landings?: { step: number; midi: number; len: number; role: string }[];
+  /** The melody follows its energy across the neck: the hands put low energy on low frets and strings, the peak high up (docs/SOLO-MELODY.md). */
+  neck?: boolean;
   /** The melody step (docs/SOLO-MELODY.md, step 0b): the places in the melody where a joint, a fill or a lick could go. */
   gaps?: SoloGap[];
 }

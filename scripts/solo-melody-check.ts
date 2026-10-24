@@ -24,6 +24,15 @@ const isCore = (key: number, mode: string, chord: any, m: number) => {
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 const T = { solos: 0, notes: 0, longN: 0, shortN: 0, maxGap: 0, overBeat: 0, tooShort: 0, tooLong: 0, notTone: 0, overlap: 0, peakOk: 0, peaks: 0, endRoot: 0, ends: 0, callOff: 0, calls: 0, cutEnd: 0, ansRoot: 0, answers: 0, echoes: 0, phrases: 0, sixteenths: 0, sameRun3: 0 };
+/** Pearson correlation. */
+const corr = (a: number[], b: number[]) => {
+  const n = a.length; if (n < 4) return NaN;
+  const ma = avg(a), mb = avg(b);
+  let c = 0, va = 0, vb = 0; for (let i = 0; i < n; i++) { c += (a[i] - ma) * (b[i] - mb); va += (a[i] - ma) ** 2; vb += (b[i] - mb) ** 2; }
+  return va && vb ? c / Math.sqrt(va * vb) : NaN;
+};
+/** The notes follow the energy across the neck: the pitch, the fret and the string against the energy, per solo. */
+const NECK = { pitch: [] as number[], fret: [] as number[], string: [] as number[], low: [] as number[], high: [] as number[] };
 const M: Record<string, { moves: number[]; up: number; rough: number; same: number; leaps: number }> = {};
 for (const m of MOODS) M[m] = { moves: [], up: 0, rough: 0, same: 0, leaps: 0 };
 
@@ -66,6 +75,16 @@ for (let i = 0; i < N; i++) {
         if (d === 0) { m.same++; run++; if (run === 3) T.sameRun3++; } else { run = 1; m.moves.push(a); if (d > 0) m.up++; if ([1, 6, 11].includes(a % 12)) m.rough++; if (a >= 5) m.leaps++; }
       }
     });
+    {
+      const en: number[] = sec.soloCurve.energy, e = hits.map((h: any) => en[Math.min(total - 1, h.step)]);
+      const c1 = corr(e, hits.map((h: any) => h.notes[0] - (h.lateBend ?? 0) * 0));
+      const c2 = corr(e, hits.map((h: any) => h.touch?.fret ?? NaN)), c3 = corr(e, hits.map((h: any) => h.touch?.string ?? NaN));
+      if (!Number.isNaN(c1)) NECK.pitch.push(c1);
+      if (!Number.isNaN(c2)) NECK.fret.push(c2);
+      if (!Number.isNaN(c3)) NECK.string.push(c3);
+      const ps = hits.map((h: any) => h.notes[0]);
+      NECK.low.push(Math.min(...ps)); NECK.high.push(Math.max(...ps));
+    }
     if (hits[0].step > beat(0)) fail(`${s}: first note at ${hits[0].step}`);
     // the last bar: one held note on a chord note of the home chord, from the last bar's start
     const fin = hits[hits.length - 1];
@@ -98,6 +117,7 @@ const pct = (a: number, b: number) => (b ? Math.round((100 * a) / b) + '%' : '-'
 console.log(`${T.solos} solos, ${T.notes} notes (${pct(T.longN, T.notes)} long), ${(T.notes / Math.max(1, T.solos)).toFixed(1)} notes a solo`);
 console.log(`silences: longest ${T.maxGap} steps, over a beat ${T.overBeat}; notes under an 8th ${T.sixteenths}; over a bar ${T.tooLong}; overlaps ${T.overlap}; not a chord note ${T.notTone}; 3 of one pitch in a row ${T.sameRun3}`);
 console.log(`peak is the top note ${pct(T.peakOk, T.peaks)}; the last note on the root ${pct(T.endRoot, T.ends)}; calls off the root ${pct(T.callOff, T.calls)}; answers on the root ${pct(T.ansRoot, T.answers)}; the last bar cut ${T.cutEnd}; ${T.echoes} answers on the call's rhythm of ${T.phrases} phrases`);
+console.log(`neck: the notes against the energy: pitch ${avg(NECK.pitch).toFixed(2)}, fret ${avg(NECK.fret).toFixed(2)}, string ${avg(NECK.string).toFixed(2)} (correlations, per solo); lowest note ${avg(NECK.low).toFixed(0)}, highest ${avg(NECK.high).toFixed(0)} on average (span ${(avg(NECK.high) - avg(NECK.low)).toFixed(0)} semitones)`);
 console.log('mood            moves  step  up   rough  leaps  repeats');
 const row: Record<string, { step: number; up: number; leaps: number; same: number }> = {};
 for (const mo of MOODS) {
@@ -113,5 +133,7 @@ if (!(leapHi > leapLo + 0.1)) fail(`moods: leaps ${leapHi.toFixed(2)} not above 
 const upHi = avg(['happy', 'triumphant'].map((m) => row[m].up)), upLo = avg(['melancholic', 'dark'].map((m) => row[m].up));
 if (!(upHi > upLo + 0.05)) fail(`moods: rising ${upHi.toFixed(2)} not above falling ${upLo.toFixed(2)}`);
 if (T.sixteenths) fail('notes under an 8th');
+if (!(avg(NECK.pitch) > 0.6)) fail(`the pitch follows the energy only ${avg(NECK.pitch).toFixed(2)}`);
+if (!(avg(NECK.fret) > 0.4)) fail(`the frets follow the energy only ${avg(NECK.fret).toFixed(2)}`);
 console.log(bad ? `${bad} FAIL` : '0 FAIL');
 if (bad) process.exitCode = 1;

@@ -85,3 +85,10 @@ Paul: rests should be very rare; for now join the parts identified as joints wit
 - The roll labels each joined joint: bend, let down, between or neighbour. The gap marks entry is as before (a scratch on every picked gap).
 - Numbers (94 solos, 211 picked joints): 90 bends (24 right up to the next note), 74 let down, 25 neighbour notes, 11 notes in between, 11 not joined. No silence over a beat. Checked: the notes and pitches as the map says, every joint on the key.
 - Not done: tails and rests are not filled (scratches only); the same joint kind is not varied by player.
+
+## Step 0d: the notes follow the energy across the neck (2026-10-24)
+Paul: by the energy, the notes go from the bottom left of the neck (low strings, low frets) to the top right (high strings, high frets).
+- **Pitch**: in the melody the height always goes with the energy (`pitchC` 1, was 1, 0 or -1 by chance) and sweeps further: 7 to 10 semitones either side of the middle (more for a stronger solo), from the same register whatever the key (the middle is E4 and up with the intensity, was the key's tonic): the calm parts about G3 to D4, the peak up to B5. A note is pulled harder to the height wanted (`HEIGHT_K`), the root rules are stronger to match.
+- **Fingering** (`src/players/hands.ts`, `want`): a melody sets `soloCurve.neck`; the hands then put each note near a fret and a string that rise with the energy there (frets 1 to 16, strings from just under the D to the high E), the low E string costing extra. Other solos are fingered as before.
+- Numbers (140 songs, 89 solos): pitch against the energy 0.73, fret 0.74, string 0.41 (correlations per solo, was 0.69 / 0.42 / 0.52 with the old frets); lowest note on average G#3 (56), highest G5 (79). The strings follow less than the frets: a note's pitch fixes its string once the fret is set, and the pitch wanders a little around the height wanted.
+- The neck view shows it: a rising solo climbs the frets and strings from the D and G strings to the B and high E.
