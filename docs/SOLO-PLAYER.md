@@ -4,7 +4,7 @@ Paul (2026-10-24): take everything built up to Melody + joins and treat it as if
 
 Version 2 (same day) after Paul's answers: the **core is substitution**. The player replaces a note, or a stretch of notes, with a different way of playing it, **without losing the note itself** (one long note becomes a triplet pulse on that same note and then a hold). It must be very robust, have the **personality of the player**, find **several ways** for each spot, and decide the options by **recognising the arrangement** of the input, with mood, energy and drums counted in.
 
-Status: step 1 (the foundation) built 2026-10-24, see section 12; no rule changes a note yet. (The skill lab is parked: not needed. Reuse the five lead players as personas. No must-have skills added.)
+Status: step 1 (the foundation, section 12) and step 2 (the reader, section 13) built 2026-10-24; no rule changes a note yet. (The skill lab is parked: not needed. Reuse the five lead players as personas. No must-have skills added.)
 
 ## 1. The idea in one picture
 
@@ -216,5 +216,38 @@ What it is: the frame every later rule sits in. **Nothing changes in the sound y
 - Spike rules forced on every note they fit: used 942 (triplet pulse, 2,138 hits between the 16ths), 968 (gallop) and 968 (stutter) times; every result passes the checker as read again from the hits alone, every note has a place on the neck, the same seed gives the same performance.
 - Fuzz: 300 random melodies in 4/4, 3/4, 6/8, 7/8, 5/4 and 12/8 at 60 to 200 bpm, 897 performances: 0 bad.
 
-### Next (step 2)
-- The recogniser and **Melody + read** (the tags on the roll). The roll, the neck view and the band view will read a hit at `step + shift` (they read the step only now); `hitTime` is in `src/idea.ts`.
+### Next
+- Step 2 (below). The neck view and the band view will read a hit at `step + shift` (the roll already does); `hitTime` is in `src/idea.ts`.
+
+## 13. Step 2 built: the reader and Melody + read (2026-10-24)
+
+Track options -> Solo writer -> **Melody + read (nothing changed; the reading on the roll)**. It sounds exactly as Melody + joins. Open a solo or lead break: the Melody view shows what the reader saw.
+
+### What it reads (`src/parts/soloread.ts`, stored as `idea.soloCurve.read`)
+Per **note**: tags with a strength from 0 to 1 (only 0.35 and over are kept), the **feel** the moment wants, and the numbers behind the tags. Per **joint** (the space between two notes), **cell** (2 to 5 notes) and **phrase**: tags too. Pure: the same melody, the same song, the same reading.
+
+| Family (colour on the roll) | Tags |
+|---|---|
+| The note and how it moves (blue) | long-note, short-note, beat-note, held-bar, peak-note, held-peak, climax-note, long-before-rest, long-with-room, long-over-chord-change, high-register, low-register, static-repeat, leap-up, leap-down, skip-up, skip-down, step-up, step-down, before-leap |
+| Its place (purple) | first-note, last-note, phrase-start, phrase-end, call-hanging, answer-landing, final-landing, pre-climax, post-climax, closing (the last two bars), on-downbeat, on-beat, off-beat |
+| The chord (teal) | root-note, third-note, fifth-note, seventh-note, colour-note, common-tone-next (a note held over a chord change that the next chord has too) |
+| Energy and tension (green) | rising-energy, falling-energy, crest, trough, high-energy, low-energy, high-tension, low-tension |
+| The drums (orange) | on-kick, on-snare, on-crash, into-snare, into-kick, into-crash (the note ends on it or the next note starts on it), under-fill, busy-drums, open-drums (the bar against the section's average) |
+| The groove (yellow) | shuffle (the song swings), half-time, sixteenths, eighths, quarters (read per bar from the hats and ride) |
+
+- **Cells**: stair-up, stair-down, arch, valley, static-run, zigzag, leap-and-return, dense-cluster (3+ short notes), long-short-short, short-short-long, lilt, even-pulse.
+- **Phrases** (from the melody's own landings): opening, call, answer, climax, final, pre-climax, repeat-copy (the rhythm of an earlier phrase again), repeat-source, rising, falling, busy, sparse, wide.
+- **Joints**: step / skip / leap up or down or a repeat, touching or a rest between, and the gap map's kind, whether it was picked and how it was joined.
+- **Feel** (five numbers from -1 to 1: agitation, roughness, ornament, weight, looseness): the mood's own start (angry: frantic, rough, heavy; dreamy: calm, smooth, loose...), moved by the energy, the tension, how busy the drums are and whether the note sits on a kick or a snare. The rules of step 3 are matched to this.
+- **The solo**: one line (mood, bars, tempo, the energy shape, groove, drums, notes, phrases).
+
+### On the roll
+- A **Phrases** row (each phrase and its role) and a **Read** row: the two most telling tags on each note (a word where the note is wide enough, a coloured bar where it is not). Tap a note for all of its tags by family, its cells, its phrase, the space after it, its feel and its numbers; tap it again to close. The legend names the colours.
+
+### The check (`npm run solo-read-check`)
+- Spans with a known answer (36): a held top note, a leap, a stair, an arch, a valley, repeats, cells, the bar, first and last, the closing bars, a long note over a chord change with a common tone, chord function, a long note with room, a long note before a rest, on the kick, into the snare, a crash, a note under a fill, each groove, busy against open drums, rising, falling and crest energy, phrase roles, a repeated phrase, the feel by mood, and purity.
+- Real solos (140 songs, 105 solos and breaks, 2,660 notes): every note has 3 or more tags, sorted, in range; exactly one place in the bar and one chord function; the phrases follow on and cover the notes; cells and joints point at real notes; the joined joints agree with the gap map; one climax note a solo and a peak in every solo; the tags that must fire do; angry reads more agitated than dreamy.
+- Found on the way: a note a join bends into sounds another pitch than the one the melody landed on, so phrases and gaps are matched by step, not by pitch.
+
+### Not yet
+- The feel does not include the player's own lean (the style sheet comes with the rules). Drums are read for the section's kit lanes only (kick, snare, hats, ride, crash, toms, fills), not the drummer's feel after the band plays.

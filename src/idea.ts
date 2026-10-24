@@ -192,6 +192,37 @@ export interface SoloCurve {
   fine?: boolean;
   /** The solo player's report (docs/SOLO-PLAYER.md): what it did with each note of the melody. */
   moves?: SoloMove[];
+  /** How the solo player read the melody (docs/SOLO-PLAYER.md, step 2): the situation of every note, joint, cell and phrase. */
+  read?: SoloRead;
+}
+
+/** A situation the reader found in a span, and how strongly (0 to 1). */
+export interface ReadTag {
+  id: string;
+  w: number;
+  family: 'shape' | 'place' | 'energy' | 'drums' | 'groove' | 'chord';
+}
+
+/** What the moment wants the playing to be like (-1 to 1 each): calm to frantic, smooth to edgy, plain to ornate, light to big, tight to floating. */
+export interface Feel { agitation: number; roughness: number; ornament: number; weight: number; looseness: number }
+
+export interface NoteRead {
+  /** The melody note (its place among the sounding notes, its step, pitch and length). */
+  i: number; step: number; midi: number; len: number;
+  tags: ReadTag[];
+  feel: Feel;
+  /** The numbers behind the tags (for the detail and the checks). */
+  facts: Record<string, number | string>;
+}
+/** A stretch of 2 to 5 notes with a shape of its own (a stair, an arch, a rhythm), by note index. */
+export interface CellRead { from: number; to: number; id: string; w: number }
+export interface PhraseRead { from: number; to: number; role: string; bars: [number, number]; tags: ReadTag[]; copyOf?: number }
+/** The space between two neighbouring notes. */
+export interface JointRead { a: number; b: number; tags: ReadTag[] }
+export interface SoloRead {
+  notes: NoteRead[]; cells: CellRead[]; phrases: PhraseRead[]; joints: JointRead[];
+  /** The solo as a whole: a line of words and its tags. */
+  solo: { line: string; tags: string[] };
 }
 
 /** One thing the solo player did (or left alone) with a note of the melody. */

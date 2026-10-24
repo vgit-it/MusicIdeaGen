@@ -2,6 +2,7 @@
 // A rule only proposes; the checker (soloverify.ts) decides. Step 1 has the interface, the plain rule (play the note as it is) and
 // the registry; the first real rules are in solorules-spike.ts (heard nowhere yet) and move here when they are tuned.
 
+import type { NoteRead } from '../idea';
 import type { Rng } from '../rng';
 import { ANCHOR_RANK, type Anchor, type BaseNote, type PEvent } from './soloevents';
 import type { PlayerCtx } from './soloplayer';
@@ -11,6 +12,8 @@ export interface Span {
   /** The note (and the event it is in the performance now). */
   note: BaseNote;
   event: PEvent;
+  /** What the reader saw (soloread.ts): the situation of the note. */
+  read: NoteRead;
   prev: BaseNote | null;
   next: BaseNote | null;
   /** Steps of silence before and after it (0: the notes touch). */

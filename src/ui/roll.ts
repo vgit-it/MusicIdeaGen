@@ -6,7 +6,7 @@
 // playhead (a moving element) and the lit note change, so it costs the phone almost nothing.
 
 import * as Tone from 'tone';
-import type { Idea } from '../idea';
+import type { Idea, NoteRead, ReadTag, SoloRead } from '../idea';
 import { NOTE_NAMES, QUALITIES, SCALES, chordName } from '../theory';
 import { voiceOf } from '../verse/sing';
 import type { Rule } from '../verse/form';
@@ -42,6 +42,12 @@ const RULE_NAME: Record<Rule, string> = {
 };
 /** The colours of the gaps (rest, tail, joint) in a solo's melody. */
 const GAP_COL = { rest: '#9aa3b8', tail: '#4ad6c8', joint: '#ffa94d' } as const;
+/** The solo player's reading (docs/SOLO-PLAYER.md, step 2): the colour of each family of tags, and the tags worth a word on the picture, first. */
+const READ_COL: Record<ReadTag['family'], string> = { shape: '#8fb4ff', place: '#c07bff', energy: '#9bd65a', drums: '#ffa94d', groove: '#e0d35b', chord: '#4ad6c8' };
+const READ_FAMILY: Record<ReadTag['family'], string> = { shape: 'The note and how it moves', place: 'Its place in the phrase and bar', energy: 'Energy and tension', drums: 'The drums', groove: 'The groove', chord: 'The chord' };
+const READ_PRI = ['held-peak', 'climax-note', 'call-hanging', 'answer-landing', 'final-landing', 'under-fill', 'into-crash', 'long-over-chord-change', 'long-before-rest', 'long-with-room', 'leap-up', 'leap-down', 'before-leap',
+  'into-snare', 'on-crash', 'on-kick', 'on-snare', 'crest', 'trough', 'static-repeat', 'pre-climax', 'post-climax', 'rising-energy', 'falling-energy', 'closing', 'phrase-start', 'long-note', 'short-note'];
+const READ_H = 34;
 const FILL_WORD = { bend: 'bend', release: 'let down', passing: 'between', neighbour: 'neighbour' } as const;
 const DIFF_COL: Record<Exclude<Diff, 'same'>, string> = { pitch: '#ff9d3c', rhythm: '#c07bff', new: '#4ad6ff' };
 const DIFF_LABEL: Record<Exclude<Diff, 'same'>, string> = { pitch: 'Other pitch', rhythm: 'Other length', new: 'New note' };
@@ -62,11 +68,12 @@ export function buildRoll(root: HTMLElement) {
       </div></div>
     </div>
     <div class="rollstats hint"></div>
+    <div class="rolldetail hint"></div>
     <label class="rollsync hint">Sync <input type="range" class="rollnudge" min="-200" max="400" step="10" value="0" aria-label="Nudge the needle later or earlier"> <span class="rollms">0 ms</span></label>
     <div class="rollempty hint" hidden>No vocal or lead guitar in this section.</div>`;
   const q = <T extends HTMLElement>(c: string) => root.querySelector<T>('.' + c)!;
   const legend = q('rolllegend'), layersEl = q('rolllayers'), wrap = q('rollwrap'), stats = q('rollstats'), empty = q('rollempty');
-  const who = q('rollwho');
+  const who = q('rollwho'), detailEl = q('rolldetail');
   const gut = q<HTMLCanvasElement>('rollgut'), scroll = q('rollscroll'), inner = q('rollinner');
   const base = q<HTMLCanvasElement>('rollbase'), lit = q<HTMLCanvasElement>('rolllit'), ph = q('rollph');
 
@@ -88,6 +95,29 @@ export function buildRoll(root: HTMLElement) {
   /** The picture's layout, for the lit note and the playhead. */
   let lay: { stepPx: number; rects: { n: N; x: number; y: number; w: number; h: number }[]; total: number; height: number } | null = null;
   let litIdx = -1;
+  /** The reading of a lead section, and the note picked on it (a tap on the picture). */
+  let rdLay: { rd: SoloRead; stepPx: number } | null = null;
+  let sel = -1, selFor: Idea | null = null;
+  const detailOf = (rd: SoloRead, k: number) => {
+    const n: NoteRead = rd.notes[k];
+    const ph = rd.phrases.find((p) => k >= p.from && k <= p.to);
+    const cells = rd.cells.filter((c) => k >= c.from && k <= c.to).map((c) => c.id);
+    const jn = rd.joints[k]?.tags.map((t) => t.id).join(', ');
+    const facts = Object.entries(n.facts).map(([a, b]) => `${a} ${b}`).join(' · ');
+    return `Note ${k + 1} · ${noteName(n.midi)} · ${n.facts.beats} beats\n` +
+      (Object.keys(READ_FAMILY) as ReadTag['family'][]).map((f) => { const t = n.tags.filter((x) => x.family === f); return t.length ? `${READ_FAMILY[f]}: ${t.map((x) => `${x.id} ${x.w}`).join(', ')}` : ''; }).filter(Boolean).join('\n') +
+      (cells.length ? `\nIn a cell: ${cells.join(', ')}` : '') + (ph ? `\nPhrase ${rd.phrases.indexOf(ph) + 1} (${ph.role || 'tail'}, bars ${ph.bars[0] + 1}-${ph.bars[1] + 1}): ${ph.tags.map((t) => t.id).join(', ') || '-'}` : '') +
+      (jn ? `\nThe space to the next note: ${jn}` : '') + `\nThe feel the moment wants: ${Object.entries(n.feel).map(([a, b]) => `${a} ${b}`).join(' · ')}\n${facts}`;
+  };
+  inner.addEventListener('click', (e) => {
+    if (!rdLay || !cur) return;
+    const r = inner.getBoundingClientRect();
+    const g = (e.clientX - r.left) / rdLay.stepPx;
+    let best = -1, bd = 1e9;
+    rdLay.rd.notes.forEach((n, k) => { const d = g >= n.step && g < n.step + n.len ? 0 : Math.min(Math.abs(g - n.step), Math.abs(g - n.step - n.len)); if (d < bd) { bd = d; best = k; } });
+    sel = best === sel ? -1 : best;
+    show(cur);
+  });
   let rec: { idea: Idea; g: number; time: number; six: number } | null = null;
   let raf = 0;
   /** Nudge (ms) for phones that report their output delay wrongly, kept between visits. */
@@ -112,6 +142,7 @@ export function buildRoll(root: HTMLElement) {
   function show(idea: Idea | null) {
     cur = idea;
     litIdx = -1;
+    if (idea !== selFor) { sel = -1; selFor = idea; }
     // (no sung notes but lead guitar ones: the lead guitar's line instead, nothing of the vocal writer's to show)
     const lv = idea && leadOnly(idea) ? leadView(idea) : null;
     const lines: N[][] = !idea ? [] : lv ? lv.lines : idea.sung ? idea.sung.map((l) => l.notes) : groupLines(idea);
@@ -128,10 +159,13 @@ export function buildRoll(root: HTMLElement) {
     // (how it was built: only where the writer's own record of it exists)
     const built = lv ? undefined : voiceOf(idea)?.built;
     layersEl.hidden = !built;
+    const rd = lv ? idea!.soloCurve?.read : undefined;
+    rdLay = null;
     const lay_ = (id: LayerId) => !!built && on.has(id);
     const showForm = lay_('form'), showPh = lay_('phrases'), showSh = lay_('shapes'), showCmp = lay_('compare') && built!.leaves.some((l) => l.source !== null);
     const yForm = 0, yPh = showForm ? FORM_H : 0, ySh = yPh + (showPh ? PHRASE_H : 0);
-    const T0 = ySh + (showSh ? SHAPE_H : 0);
+    const yRd = ySh + (showSh ? SHAPE_H : 0);
+    const T0 = yRd + (rd ? READ_H : 0);
     const top = T0 + TOP;
     const spans: LeafSpan[] = built ? leafSpans(built.leaves, (b) => song.bars[b].start, song.bars.length, total) : [];
     const spanOf = (id: number | null) => spans.find((x) => x.leaf.id === id);
@@ -168,6 +202,7 @@ export function buildRoll(root: HTMLElement) {
     if (showForm) gx.fillText('Form', 4, yForm + 12);
     if (showPh) gx.fillText('Phrases', 4, yPh + PHRASE_H / 2);
     if (showSh) gx.fillText('Shapes', 4, ySh + SHAPE_H / 2);
+    if (rd) { gx.fillText('Phrases', 4, yRd + 6); gx.fillText('Read', 4, yRd + 23); }
     for (let m = lo; m <= hi; m++) {
       const k = inKey(m), tonic = mod(m - key, 12) === 0;
       gx.fillStyle = k ? (tonic ? '#ff7a45' : '#e8eaf0') : '#4b5263';
@@ -335,6 +370,31 @@ export function buildRoll(root: HTMLElement) {
         x.globalAlpha = 1;
       }
     }
+    // the solo player's reading: the phrases on the top row, then the two tags worth most on each note (tap a note for all of them)
+    if (rd) {
+      rdLay = { rd, stepPx };
+      x.font = '600 9px system-ui, sans-serif'; x.textBaseline = 'middle'; x.textAlign = 'left';
+      const L = (n: { step: number; len: number }) => ({ x0: X(n.step), w: Math.max(3, X(n.len) - 1.5) });
+      for (const p of rd.phrases) {
+        const a = rd.notes[p.from], z = rd.notes[p.to];
+        const x0 = X(a.step), x1 = X(z.step + z.len) - 1;
+        x.fillStyle = 'rgba(192,123,255,.22)'; x.fillRect(x0, yRd + 1, x1 - x0, 10);
+        x.fillStyle = '#c9a8ff';
+        x.save(); x.beginPath(); x.rect(x0, yRd, x1 - x0, 12); x.clip(); x.fillText(p.role || 'phrase', x0 + 3, yRd + 6.5); x.restore();
+      }
+      rd.notes.forEach((n, k) => {
+        const { x0, w } = L(n);
+        const pick = [...n.tags].sort((p, q) => { const a = READ_PRI.indexOf(p.id), b = READ_PRI.indexOf(q.id); return (a < 0 ? 99 : a) - (b < 0 ? 99 : b) || q.w - p.w; }).slice(0, 2);
+        pick.forEach((t, r) => {
+          const y = yRd + 13 + r * 10;
+          x.fillStyle = READ_COL[t.family]; x.globalAlpha = 0.9;
+          if (w >= 34) { x.save(); x.beginPath(); x.rect(x0, y - 5, w + 1, 10); x.clip(); x.fillText(t.id, x0 + 1, y); x.restore(); }
+          else x.fillRect(x0, y - 2, Math.max(3, w), 4);
+          x.globalAlpha = 1;
+        });
+        if (k === sel) { x.strokeStyle = '#fff'; x.lineWidth = 1.5; x.strokeRect(x0 - 0.5, yRd + 1, w + 1.5, H - yRd - 3); }
+      });
+    }
     // the pitch curve: scoops up into a note, bends from the last note, falls off the end
     x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 1.5; x.lineJoin = 'round';
     for (const L of lines) {
@@ -417,10 +477,14 @@ export function buildRoll(root: HTMLElement) {
       const n = (k: string) => gaps.filter((g) => g.kind === k).length, u = gaps.filter((g) => g.picked);
       extra.push(`Gaps: ${gaps.length} (${n('rest')} rests, ${n('tail')} tails, ${n('joint')} joints) · ${u.length} used (${gaps.filter((g) => g.fill).length} joined), ${gaps.length - u.length} bare · most steps of room ${Math.max(...gaps.map((g) => g.len))}`);
     }
+    if (rd) extra.push(`Read: ${rd.solo.line} · ${rd.cells.length} cells · tap a note for its reading`);
     legend.innerHTML = legendBase + (gaps.length ? (['rest', 'tail', 'joint'] as const).map((k) => `<span><i class="out" style="border-color:${GAP_COL[k]}"></i>${k[0].toUpperCase() + k.slice(1)} gap</span>`).join('') + '<span>R, T, J + steps: used · dashed: bare</span>' : '') + (lv ? '<span>h hammer-on · p pull-off · s slide · tr trill · tm tremolo</span>' : '') + (showCmp
       ? (Object.keys(DIFF_COL) as (keyof typeof DIFF_COL)[]).map((d) => `<span><i class="out" style="border-color:${DIFF_COL[d]}"></i>${DIFF_LABEL[d]}</span>`).join('') +
         `<span><i class="out" style="border-color:rgba(255,255,255,.5);border-style:dashed"></i>Source note</span><span><i class="out" style="border-color:#ff5b6e;border-style:dashed"></i>Dropped</span>`
       : '');
+    if (rd) legend.innerHTML += (Object.keys(READ_COL) as ReadTag['family'][]).map((f) => `<span><i style="background:${READ_COL[f]}"></i>${READ_FAMILY[f]}</span>`).join('');
+    detailEl.textContent = rd && sel >= 0 && rd.notes[sel] ? detailOf(rd, sel) : '';
+    detailEl.hidden = !detailEl.textContent;
     stats.textContent = [`${notes.length} notes · ${c.chord} chord tones (${pct}%) · ${c.key} in key · ${c.out} out of key · ` +
       `${stp} steps · ${rep} repeats · ${skip} thirds · ${leap} leaps${leap ? ` (biggest ${big > 0 ? '+' : ''}${big})` : ''} · ` +
       `${noteName(Math.min(...notes.map((n) => n.midi)))}–${noteName(Math.max(...notes.map((n) => n.midi)))}`, ...extra].join('\n');

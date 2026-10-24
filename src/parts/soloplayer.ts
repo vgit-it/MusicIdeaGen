@@ -10,6 +10,7 @@ import { Rng } from '../rng';
 import type { Mood } from '../tension';
 import type { Guitar2Part } from './guitar2';
 import { type PEvent, eventsToHits, readBase } from './soloevents';
+import { readSolo } from './soloread';
 import { LIVE_RULES, type Rule, type Span, covers } from './solorules';
 import { type VCtx, type Violation, unplayable, verify } from './soloverify';
 
@@ -41,6 +42,9 @@ export function performSolo(base: Guitar2Part, c: PlayerCtx, rules: Rule[] = LIV
   const plainOf = (i: number): PEvent[] => [ev0[notes[i].ev]];
   const vctx: VCtx = { song: c.song, chords: c.chords, gaps: base.curve?.gaps ?? [], hands: c.hands, energy: c.energy, kind: c.kind, curve: base.curve };
 
+  // the melody read: the situation of every note, joint, cell and phrase
+  const read = readSolo(notes, { song: c.song, chords: c.chords, drums: c.drums, mood: c.mood, tension: c.tension, curve: base.curve });
+
   // the pieces: each melody note as the events that play it now; the muted scratches and other hits that are no note of the melody stay
   const groups: PEvent[][] = notes.map((_, i) => plainOf(i));
   const noteEvents = new Set(notes.map((n) => n.ev));
@@ -54,7 +58,7 @@ export function performSolo(base: Guitar2Part, c: PlayerCtx, rules: Rule[] = LIV
   const moves: SoloMove[] = notes.map((n) => ({ step: Math.floor(n.t), midi: n.midi, rule: 'plain', options: ['plain'] }));
   notes.forEach((note, i) => {
     const span: Span = {
-      note, event: ev0[note.ev], prev: notes[i - 1] ?? null, next: notes[i + 1] ?? null,
+      note, event: ev0[note.ev], read: read.notes[i], prev: notes[i - 1] ?? null, next: notes[i + 1] ?? null,
       before: i ? Math.max(0, note.t - (notes[i - 1].t + notes[i - 1].len)) : note.t,
       after: notes[i + 1] ? Math.max(0, notes[i + 1].t - (note.t + note.len)) : 0,
       ctx: c,
@@ -104,6 +108,6 @@ export function performSolo(base: Guitar2Part, c: PlayerCtx, rules: Rule[] = LIV
     notes: [...base.notes, changed.length
       ? `Solo player: ${changed.length} of ${notes.length} notes played another way (${[...used].map(([k, n]) => `${k} ${n}`).join(', ')})`
       : `Solo player: all ${notes.length} notes played as written (no rules yet)`],
-    curve: base.curve ? { ...base.curve, moves, ...(fine ? { fine: true } : {}) } : undefined,
+    curve: base.curve ? { ...base.curve, moves, read, ...(fine ? { fine: true } : {}) } : undefined,
   };
 }
