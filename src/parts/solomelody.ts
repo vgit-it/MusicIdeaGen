@@ -10,6 +10,7 @@
 // Played plain (no bends, slides or vibrato), so the tune can be heard alone. Next step: its notes become the planner's landings.
 
 import type { ChordPart, GuitarHit, Song, SoloCurve } from '../idea';
+import { type GapNote, findGaps, pickGaps } from './solomelody-gaps';
 import type { LickKind } from '../players/lead';
 import type { Rng } from '../rng';
 import { QUALITIES, SCALES, chordPc } from '../theory';
@@ -51,7 +52,7 @@ function pickCost<T>(rng: Rng, items: { v: T; cost: number }[]): T | null {
   return rng.weighted(items.map((x) => [x.v, Math.exp(-(x.cost - lo) / PICK_T)] as [T, number]));
 }
 
-export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, _hook: GuitarHit[] | null, intensity = 0.7, o: PlanOpts = {}): Guitar2Part {
+export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, _hook: GuitarHit[] | null, intensity = 0.7, o: PlanOpts = {}, marks = false): Guitar2Part {
   const { key, bars, total } = song;
   const genre = song.partGenres.strum;
   const t = song.tuning ?? TUNINGS.standard;
@@ -266,10 +267,20 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
   }
   for (const { ph, n } of flat) if (!n.vel) n.vel = Math.min(1, vel0 + 0.05 * E(n.step) + (ph === climax ? 0.12 : 0));
 
-  // ---- played plain: a pick on every note
   const pos = rng.int(5, 12);
+  // ---- the gap map (step 0b): where something could go, and which of them are used
+  const gapNotes: GapNote[] = flat.map(({ ph, n, j }) => ({ step: n.step, len: n.len, midi: n.midi, phrase: phrases.indexOf(ph), j, role: ph.role, peak: ph === climax && j === ph.notes.length - 1 }));
+  const gaps = findGaps(gapNotes, song);
+  const appetite = pickGaps(rng, gaps, { mood, genre, lick, pace: paceAt, echoOf: (p) => phrases[p]?.echoOf });
+
+  // ---- played plain: a pick on every note
   const all = flat.map((x) => x.n).sort((a, b) => a.step - b.step);
   const hits = all.map((n) => placedHit({ step: n.step, midi: n.midi, len: n.len, vel: n.vel, bend: 0, art: 'pick' }, t, pos));
+  // (gap marks: a muted scratch where each used gap starts, so the places can be heard)
+  if (marks) {
+    for (const g of gaps) if (g.picked) hits.push(placedHit({ step: g.step, midi: (g.from ?? g.to!).midi, len: 1, vel: 0.55, bend: 0, art: 'pick', dead: true }, t, pos));
+    hits.sort((a, b) => a.step - b.step);
+  }
 
   const r2 = (v: number) => Math.round(v * 100) / 100;
   const landings = phrases.map((ph) => {
@@ -281,12 +292,12 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
     energy: Array.from({ length: total }, (_, g) => r2(E(g))),
     centre: Array.from({ length: total }, (_, g) => centerAt(g)),
     pace: Array.from({ length: total }, (_, g) => r2(paceAt(g))),
-    landings,
+    landings, gaps,
   };
   const nLong = all.filter((n) => n.len > beatOf(n.step)).length;
   const peakAt = climax ? Math.floor(climax.notes[climax.notes.length - 1].step / 16) + 1 : 0;
   return {
     hits, curve,
-    notes: [`Guitar 2: a solo (melody only): ${ENERGY_WORDS[en.shape](en)}, ${phrases.length} phrases, ${all.length} notes (${nLong} long), chord notes in ${mood} intervals${peakAt ? `, the peak in bar ${peakAt}` : ''}${phrases.some((p) => p.echoOf !== undefined) ? `, ${phrases.filter((p) => p.echoOf !== undefined).length} answers on the call's rhythm` : ''}`],
+    notes: [`Guitar 2: a solo (${marks ? 'melody and gap marks' : 'melody only'}): ${ENERGY_WORDS[en.shape](en)}, ${phrases.length} phrases, ${all.length} notes (${nLong} long), chord notes in ${mood} intervals${peakAt ? `, the peak in bar ${peakAt}` : ''}${phrases.some((p) => p.echoOf !== undefined) ? `, ${phrases.filter((p) => p.echoOf !== undefined).length} answers on the call's rhythm` : ''}; ${gaps.length} gaps (${gaps.filter((g) => g.kind === 'rest').length} rests, ${gaps.filter((g) => g.kind === 'tail').length} tails, ${gaps.filter((g) => g.kind === 'joint').length} joints), ${gaps.filter((g) => g.picked).length} used, ${appetite < 0.8 ? 'a bare' : appetite > 1.2 ? 'a chatty' : 'a middling'} solo`],
   };
 }

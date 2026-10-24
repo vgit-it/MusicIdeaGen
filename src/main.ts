@@ -580,7 +580,7 @@ for (const [k, sel] of Object.entries(optSel)) {
     // the band playing it (or not) changes how it's played, not the song: stay where you are
     if (k === 'band') return rebuildTrack({ ...track.opts, band: sel.value as 'on' | 'off' }, shown, true);
     // (the same song with its solos written another way: stay where you are)
-    if (k === 'soloPlan') return rebuildTrack({ ...track.opts, soloPlan: sel.value as 'on' | 'off' | 'melody' }, shown, true);
+    if (k === 'soloPlan') return rebuildTrack({ ...track.opts, soloPlan: sel.value as 'on' | 'off' | 'melody' | 'marks' }, shown, true);
     const opts: TrackOptions = { ...track.opts, order: undefined };
     if (k === 'mood') opts.mood = sel.value as MoodChoice;
     else if (k === 'intro') opts.intro = sel.value as IntroChoice;

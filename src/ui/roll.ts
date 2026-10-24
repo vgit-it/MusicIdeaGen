@@ -40,6 +40,8 @@ const RULE_NAME: Record<Rule, string> = {
   phrases: 'phrasing', runs: '16th runs', tones: 'chord notes', holds: 'long notes', small: 'small breaks', neighbours: 'neighbours',
   walk: 'walks', endings: 'endings', thirds: 'third-bars', bends: 'bends',
 };
+/** The colours of the gaps (rest, tail, joint) in a solo's melody. */
+const GAP_COL = { rest: '#9aa3b8', tail: '#4ad6c8', joint: '#ffa94d' } as const;
 const DIFF_COL: Record<Exclude<Diff, 'same'>, string> = { pitch: '#ff9d3c', rhythm: '#c07bff', new: '#4ad6ff' };
 const DIFF_LABEL: Record<Exclude<Diff, 'same'>, string> = { pitch: 'Other pitch', rhythm: 'Other length', new: 'New note' };
 
@@ -316,6 +318,22 @@ export function buildRoll(root: HTMLElement) {
       }
       if (r.w >= 15) { x.fillStyle = '#10131a'; x.fillText(DEG[mod(n.midi - key, 12)] + (n.mark && r.w >= 27 ? ' ' + n.mark : ''), r.x + 3, r.y + r.h / 2 + 0.5); }
     }
+    // the gaps of a solo's melody (docs/SOLO-MELODY.md, step 0b): rests grey, tails teal, joints orange; the ones used in colour, with a label
+    const gaps = lv ? idea!.soloCurve?.gaps ?? [] : [];
+    if (gaps.length) {
+      x.font = '700 9px system-ui, sans-serif'; x.textAlign = 'left'; x.textBaseline = 'bottom';
+      for (const g of gaps) {
+        const ms = [g.from?.midi, g.to?.midi].filter((m): m is number => m !== undefined);
+        const yA = Y(Math.max(...ms)), yB = Y(Math.min(...ms)) + rowH;
+        const gx0 = X(g.step), gw = Math.max(3, X(g.len) - 1), c = GAP_COL[g.kind];
+        const [y0, h] = g.kind === 'rest' || g.kind === 'joint' ? [yA, Math.max(rowH, yB - yA)] : [Y(g.from!.midi), rowH];
+        x.globalAlpha = g.picked ? 0.42 : 0.12; x.fillStyle = c; x.fillRect(gx0, y0, gw, h);
+        x.globalAlpha = g.picked ? 1 : 0.45; x.strokeStyle = c; x.lineWidth = g.picked ? 2 : 1;
+        x.setLineDash(g.picked ? [] : [3, 2]); x.strokeRect(gx0 + 0.5, y0 + 0.5, gw - 1, h - 1); x.setLineDash([]);
+        if (g.picked) { x.fillStyle = c; x.fillText(`${g.kind[0].toUpperCase()}${g.len}`, gx0 + 1, y0 - 1); }
+        x.globalAlpha = 1;
+      }
+    }
     // the pitch curve: scoops up into a note, bends from the last note, falls off the end
     x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 1.5; x.lineJoin = 'round';
     for (const L of lines) {
@@ -394,7 +412,11 @@ export function buildRoll(root: HTMLElement) {
       const t = Object.entries(lv.counts).map(([k, n]) => `${n} ${k}`);
       extra.push(`Lead guitar: ${lines.length} run${lines.length === 1 ? '' : 's'}${extras.length ? ` · ${extras.length} double-stop notes` : ''}${t.length ? ' · ' + t.join(' · ') : ''}`);
     }
-    legend.innerHTML = legendBase + (lv ? '<span>h hammer-on · p pull-off · s slide · tr trill · tm tremolo</span>' : '') + (showCmp
+    if (gaps.length) {
+      const n = (k: string) => gaps.filter((g) => g.kind === k).length, u = gaps.filter((g) => g.picked);
+      extra.push(`Gaps: ${gaps.length} (${n('rest')} rests, ${n('tail')} tails, ${n('joint')} joints) · ${u.length} used, ${gaps.length - u.length} bare · most steps of room ${Math.max(...gaps.map((g) => g.len))}`);
+    }
+    legend.innerHTML = legendBase + (gaps.length ? (['rest', 'tail', 'joint'] as const).map((k) => `<span><i class="out" style="border-color:${GAP_COL[k]}"></i>${k[0].toUpperCase() + k.slice(1)} gap</span>`).join('') + '<span>R, T, J + steps: used · dashed: bare</span>' : '') + (lv ? '<span>h hammer-on · p pull-off · s slide · tr trill · tm tremolo</span>' : '') + (showCmp
       ? (Object.keys(DIFF_COL) as (keyof typeof DIFF_COL)[]).map((d) => `<span><i class="out" style="border-color:${DIFF_COL[d]}"></i>${DIFF_LABEL[d]}</span>`).join('') +
         `<span><i class="out" style="border-color:rgba(255,255,255,.5);border-style:dashed"></i>Source note</span><span><i class="out" style="border-color:#ff5b6e;border-style:dashed"></i>Dropped</span>`
       : '');

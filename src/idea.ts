@@ -184,6 +184,37 @@ export interface SoloCurve {
   pace: number[];
   /** The planned writer (docs/SOLO-PLAN.md): the notes it planned to land on, with their roles. */
   landings?: { step: number; midi: number; len: number; role: string }[];
+  /** The melody step (docs/SOLO-MELODY.md, step 0b): the places in the melody where a joint, a fill or a lick could go. */
+  gaps?: SoloGap[];
+}
+
+/**
+ * A place in a solo's melody where something could go (docs/SOLO-MELODY.md): a rest (a real silence, with the end of the long note
+ * before it when there is one), a tail (the end of a long note) or a joint (the junction of two touching notes).
+ */
+export interface SoloGap {
+  kind: 'rest' | 'tail' | 'joint';
+  /** Where the room starts, and its steps (a rest after a long note starts in that note's end). */
+  step: number; len: number;
+  /** Steps taken from the end of the note before; if no fill lands there, nothing is cut. */
+  cut: number;
+  /** The silence left if nothing goes in (a rest: its length; a tail or a joint: 0, the note goes on sounding). */
+  silence: number;
+  /** The notes either side (the first one is missing before the first note). */
+  from: { step: number; len: number; midi: number } | null;
+  to: { step: number; midi: number } | null;
+  /** to - from, in semitones. */
+  interval: number | null;
+  /** The room starts on a beat. */
+  onBeat: boolean;
+  /** The role of the phrase of the note before (call, answer, climax, end). */
+  role: string;
+  /** The phrase of the note before it and the place of that note in it (for the repeated phrases). */
+  phrase: number; j: number;
+  /** What would fit, from its size and the interval (advice for the fill step). */
+  fits: string[];
+  /** Chosen, by chance, to be used. */
+  picked: boolean;
 }
 
 export interface Touch {
