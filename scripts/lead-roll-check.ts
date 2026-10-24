@@ -15,7 +15,7 @@ let vocalSections = 0;
 for (let i = 0; i < N; i++) {
   const genre = GENRES[i % 7], s = `lr-${i}-${genre}`;
   const idea = generate({ genre, meter: i % 9 === 8 ? '6/8' : '4/4', weirdness: 0.3, ...MAIN_GUITARS } as never, { song: s, chords: s + 'c', drums: s + 'd', strum: s + 's', bass: s + 'b', vocal: s + 'v' } as never);
-  const sections = buildTrack(idea, { ...defaultTrackOptions(idea), soloPlan: process.env.SOLO_PLAN === '1' ? 'on' : 'off' } as never).sections;
+  const sections = buildTrack(idea, { ...defaultTrackOptions(idea), soloPlan: process.env.SOLO_PLAN === 'melody' ? 'melody' : process.env.SOLO_PLAN === '1' ? 'on' : 'off' } as never).sections;
   for (const sec of sections) {
     const k = sec.section?.kind ?? 'verse', flagged = !!(sec.section?.solo || sec.section?.lead);
     const sung = !!sec.sung?.some((l) => l.notes.length);
