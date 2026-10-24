@@ -9,7 +9,7 @@
 //   home chord (carried into the next section: src/track.ts, carrySolo).
 // Played plain (no bends, slides or vibrato), so the tune can be heard alone. Next step: its notes become the planner's landings.
 
-import type { ChordPart, GuitarHit, Song, SoloCurve } from '../idea';
+import type { ChordPart, GuitarHit, Song, SoloCurve, SoloGap } from '../idea';
 import { type GapNote, findGaps, pickGaps } from './solomelody-gaps';
 import type { LickKind } from '../players/lead';
 import type { Rng } from '../rng';
@@ -19,8 +19,8 @@ import { TUNINGS } from '../theory/fretboard';
 import { intervalCost, profileFor } from '../verse/intervals';
 import { groupStarts } from '../rhythm';
 import type { Guitar2Part } from './guitar2';
-import { lickFit, placedHit } from './licks';
-import { BREATH_GENRE, BREATH_MOOD, type LandingRole, type PlanOpts } from './soloplan';
+import { type PlacedNote, lickFit, placedHit } from './licks';
+import type { LandingRole, PlanOpts } from './soloplan';
 import { BUSY, DENSITY, ENERGY_WORDS, energyAt, pickEnergy } from './solo2';
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
@@ -52,7 +52,7 @@ function pickCost<T>(rng: Rng, items: { v: T; cost: number }[]): T | null {
   return rng.weighted(items.map((x) => [x.v, Math.exp(-(x.cost - lo) / PICK_T)] as [T, number]));
 }
 
-export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, _hook: GuitarHit[] | null, intensity = 0.7, o: PlanOpts = {}, marks = false): Guitar2Part {
+export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff: GuitarHit[] | null, lick: LickKind, _hook: GuitarHit[] | null, intensity = 0.7, o: PlanOpts = {}, mode: 'plain' | 'marks' | 'joins' = 'plain'): Guitar2Part {
   const { key, bars, total } = song;
   const genre = song.partGenres.strum;
   const t = song.tuning ?? TUNINGS.standard;
@@ -179,12 +179,11 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
   phrases.forEach((p, i) => {
     const last = i === phrases.length - 1;
     const bs = beatOf(p.E - 1), prev = phrases[i - 1];
-    const K = (BREATH_MOOD[mood] * BREATH_GENRE[genre]) / paceAt(p.S);
     // (an answer of the call's length rests as the call did, so it can play the call's rhythm)
     const tryEcho = !!prev && i % 2 === 1 && prev.role !== 'end' && !last && prev.E - prev.S === p.E - p.S && rng.chance(ECHO_RHYTHM);
-    const rest = last ? 0 : tryEcho ? Math.min(prev.rest, bs) : rng.weighted<number>([[0, 30], [2, 40 * K], [bs, 30 * K]]);
+    const rest = last ? 0 : tryEcho ? Math.min(prev.rest, bs) : rng.weighted<number>([[0, 95], [2, 3], [bs, 2]]);
     p.rest = rest;
-    const delay = i === 0 ? rng.weighted<number>([[0, 65], [2, 20], [bs, 15]]) : 0;
+    const delay = i === 0 ? rng.weighted<number>([[0, 90], [2, 7], [bs, 3]]) : 0;
     const A = p.S + delay, B = (last ? lastBarStart : p.E - rest);
     const span = B - A;
     // (an answer plays the call's rhythm again, if it is as long and every note can be held over its chords)
@@ -273,14 +272,72 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
   const gaps = findGaps(gapNotes, song);
   const appetite = pickGaps(rng, gaps, { mood, genre, lick, pace: paceAt, echoOf: (p) => phrases[p]?.echoOf });
 
+  // ---- the joins (step 0c): a picked joint is joined by a bend if one can be played, else by a note or two in between
+  const stepSec = 15 / song.bpm;
+  const inScale = (m: number) => scale.includes(mod(m - key, 12));
+  /** How many steps into a note of `len` steps a bend of `rise` seconds can start and still be up by its end (null: too quick to play). */
+  const bendAtFor = (len: number, rise: number): number | null => {
+    const at = len * 0.97 - (rise + 0.07) / stepSec;
+    return at >= 0.5 ? Math.max(1, at) : null;
+  };
+  const joinOf = (g: SoloGap): { fill: NonNullable<SoloGap['fill']>; bendAt?: number } | null => {
+    const p = g.from!.midi, q = g.to!.midi, d = q - p, len = g.from!.len;
+    if (d > 0) {
+      // (a bend up into the next note, or toward it: a whole tone, a minor 3rd when that is the note)
+      for (const k of d <= 3 ? [d, 2, 1] : [2, 1]) {
+        const at = bendAtFor(len, 0.14 + k * 0.04);
+        if (k <= d && at !== null && inScale(p + k) && !fit.clash(p + k, g.step)) return { fill: { how: 'bend', semis: k }, bendAt: at };
+      }
+    } else if (d < 0) {
+      // (a pre-bend let down toward the next note)
+      for (const k of [2, 1]) {
+        const at = bendAtFor(len, 0.12);
+        if (k <= -d && at !== null && inScale(p - k) && !fit.clash(p - k, g.step)) return { fill: { how: 'release', semis: k }, bendAt: at };
+      }
+    }
+    if (d === 0) {
+      const nb = [1, 2, -1, -2].map((x) => p + x).find((m) => inScale(m) && !fit.clash(m, g.step));
+      return nb === undefined ? null : { fill: { how: 'neighbour', notes: [nb] } };
+    }
+    const between: number[] = [];
+    for (let m = Math.min(p, q) + 1; m < Math.max(p, q); m++) if (inScale(m) && !fit.clash(m, g.step)) between.push(m);
+    if (d < 0) between.reverse();
+    if (!between.length) return null;
+    // (the notes nearest the next one: a step into it)
+    const two = between.length >= 2 && Math.abs(d) >= 5 && rng.chance(0.5);
+    return { fill: { how: 'passing', notes: two ? between.slice(-2) : between.slice(-1) } };
+  };
+  const joins = new Map<number, { g: SoloGap; bendAt?: number }>();
+  if (mode === 'joins') {
+    for (const g of gaps) {
+      if (g.kind !== 'joint' || !g.picked || !g.from) continue;
+      const j = joinOf(g);
+      if (j) { g.fill = j.fill; joins.set(g.from.step, { g, bendAt: j.bendAt }); }
+    }
+  }
+
   // ---- played plain: a pick on every note
   const all = flat.map((x) => x.n).sort((a, b) => a.step - b.step);
-  const hits = all.map((n) => placedHit({ step: n.step, midi: n.midi, len: n.len, vel: n.vel, bend: 0, art: 'pick' }, t, pos));
-  // (gap marks: a muted scratch where each used gap starts, so the places can be heard)
-  if (marks) {
-    for (const g of gaps) if (g.picked) hits.push(placedHit({ step: g.step, midi: (g.from ?? g.to!).midi, len: 1, vel: 0.55, bend: 0, art: 'pick', dead: true }, t, pos));
-    hits.sort((a, b) => a.step - b.step);
+  const hits: GuitarHit[] = [];
+  for (const n of all) {
+    const e: PlacedNote = { step: n.step, midi: n.midi, len: n.len, vel: n.vel, bend: 0, art: 'pick' };
+    const j = joins.get(n.step);
+    const f = j?.g.fill;
+    if (f?.how === 'bend') Object.assign(e, { midi: n.midi + f.semis!, lateBend: f.semis, bendAt: j!.bendAt });
+    else if (f?.how === 'release') Object.assign(e, { unbend: f.semis, bendAt: j!.bendAt });
+    else if (f) {
+      // (the notes in between take the last 2 steps of the note: two 16ths, or one 8th)
+      e.len = n.len - 2;
+      const per = 2 / f.notes!.length;
+      f.notes!.forEach((m, q) => hits.push(placedHit({ step: n.step + e.len + q * per, midi: m, len: per, vel: n.vel * 0.92, bend: 0, art: 'pick' }, t, pos)));
+    }
+    hits.push(placedHit(e, t, pos));
   }
+  // (gap marks: a muted scratch where each used gap starts, so the places can be heard; the joins that are played have none)
+  if (mode !== 'plain') {
+    for (const g of gaps) if (g.picked && !g.fill) hits.push(placedHit({ step: g.step, midi: (g.from ?? g.to!).midi, len: 1, vel: 0.55, bend: 0, art: 'pick', dead: true }, t, pos));
+  }
+  hits.sort((a, b) => a.step - b.step);
 
   const r2 = (v: number) => Math.round(v * 100) / 100;
   const landings = phrases.map((ph) => {
@@ -298,6 +355,6 @@ export function generateSoloMelody(rng: Rng, song: Song, chords: ChordPart, riff
   const peakAt = climax ? Math.floor(climax.notes[climax.notes.length - 1].step / 16) + 1 : 0;
   return {
     hits, curve,
-    notes: [`Guitar 2: a solo (${marks ? 'melody and gap marks' : 'melody only'}): ${ENERGY_WORDS[en.shape](en)}, ${phrases.length} phrases, ${all.length} notes (${nLong} long), chord notes in ${mood} intervals${peakAt ? `, the peak in bar ${peakAt}` : ''}${phrases.some((p) => p.echoOf !== undefined) ? `, ${phrases.filter((p) => p.echoOf !== undefined).length} answers on the call's rhythm` : ''}; ${gaps.length} gaps (${gaps.filter((g) => g.kind === 'rest').length} rests, ${gaps.filter((g) => g.kind === 'tail').length} tails, ${gaps.filter((g) => g.kind === 'joint').length} joints), ${gaps.filter((g) => g.picked).length} used, ${appetite < 0.8 ? 'a bare' : appetite > 1.2 ? 'a chatty' : 'a middling'} solo`],
+    notes: [`Guitar 2: a solo (${mode === 'marks' ? 'melody and gap marks' : mode === 'joins' ? 'melody and joins' : 'melody only'}): ${ENERGY_WORDS[en.shape](en)}, ${phrases.length} phrases, ${all.length} notes (${nLong} long), chord notes in ${mood} intervals${peakAt ? `, the peak in bar ${peakAt}` : ''}${phrases.some((p) => p.echoOf !== undefined) ? `, ${phrases.filter((p) => p.echoOf !== undefined).length} answers on the call's rhythm` : ''}; ${gaps.length} gaps (${gaps.filter((g) => g.kind === 'rest').length} rests, ${gaps.filter((g) => g.kind === 'tail').length} tails, ${gaps.filter((g) => g.kind === 'joint').length} joints), ${gaps.filter((g) => g.picked).length} used${gaps.some((g) => g.fill) ? ` (${[...new Set(gaps.flatMap((g) => (g.fill ? [g.fill.how] : [])))].map((h) => `${gaps.filter((g) => g.fill?.how === h).length} ${h}`).join(', ')})` : ''}, ${appetite < 0.8 ? 'a bare' : appetite > 1.2 ? 'a chatty' : 'a middling'} solo`],
   };
 }

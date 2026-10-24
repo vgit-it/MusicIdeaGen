@@ -215,6 +215,8 @@ export interface SoloGap {
   fits: string[];
   /** Chosen, by chance, to be used. */
   picked: boolean;
+  /** A joint that was joined (step 0c): a bend up into the next note, a pre-bend let down toward it, or a note or two in between. */
+  fill?: { how: 'bend' | 'release' | 'passing' | 'neighbour'; /** semitones bent or let down */ semis?: number; /** the notes in between */ notes?: number[] };
 }
 
 export interface Touch {

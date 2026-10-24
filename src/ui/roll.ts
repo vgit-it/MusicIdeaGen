@@ -42,6 +42,7 @@ const RULE_NAME: Record<Rule, string> = {
 };
 /** The colours of the gaps (rest, tail, joint) in a solo's melody. */
 const GAP_COL = { rest: '#9aa3b8', tail: '#4ad6c8', joint: '#ffa94d' } as const;
+const FILL_WORD = { bend: 'bend', release: 'let down', passing: 'between', neighbour: 'neighbour' } as const;
 const DIFF_COL: Record<Exclude<Diff, 'same'>, string> = { pitch: '#ff9d3c', rhythm: '#c07bff', new: '#4ad6ff' };
 const DIFF_LABEL: Record<Exclude<Diff, 'same'>, string> = { pitch: 'Other pitch', rhythm: 'Other length', new: 'New note' };
 
@@ -330,7 +331,7 @@ export function buildRoll(root: HTMLElement) {
         x.globalAlpha = g.picked ? 0.42 : 0.12; x.fillStyle = c; x.fillRect(gx0, y0, gw, h);
         x.globalAlpha = g.picked ? 1 : 0.45; x.strokeStyle = c; x.lineWidth = g.picked ? 2 : 1;
         x.setLineDash(g.picked ? [] : [3, 2]); x.strokeRect(gx0 + 0.5, y0 + 0.5, gw - 1, h - 1); x.setLineDash([]);
-        if (g.picked) { x.fillStyle = c; x.fillText(`${g.kind[0].toUpperCase()}${g.len}`, gx0 + 1, y0 - 1); }
+        if (g.picked) { x.fillStyle = c; x.fillText(`${g.kind[0].toUpperCase()}${g.len}${g.fill ? ' ' + FILL_WORD[g.fill.how] : ''}`, gx0 + 1, y0 - 1); }
         x.globalAlpha = 1;
       }
     }
@@ -414,7 +415,7 @@ export function buildRoll(root: HTMLElement) {
     }
     if (gaps.length) {
       const n = (k: string) => gaps.filter((g) => g.kind === k).length, u = gaps.filter((g) => g.picked);
-      extra.push(`Gaps: ${gaps.length} (${n('rest')} rests, ${n('tail')} tails, ${n('joint')} joints) · ${u.length} used, ${gaps.length - u.length} bare · most steps of room ${Math.max(...gaps.map((g) => g.len))}`);
+      extra.push(`Gaps: ${gaps.length} (${n('rest')} rests, ${n('tail')} tails, ${n('joint')} joints) · ${u.length} used (${gaps.filter((g) => g.fill).length} joined), ${gaps.length - u.length} bare · most steps of room ${Math.max(...gaps.map((g) => g.len))}`);
     }
     legend.innerHTML = legendBase + (gaps.length ? (['rest', 'tail', 'joint'] as const).map((k) => `<span><i class="out" style="border-color:${GAP_COL[k]}"></i>${k[0].toUpperCase() + k.slice(1)} gap</span>`).join('') + '<span>R, T, J + steps: used · dashed: bare</span>' : '') + (lv ? '<span>h hammer-on · p pull-off · s slide · tr trill · tm tremolo</span>' : '') + (showCmp
       ? (Object.keys(DIFF_COL) as (keyof typeof DIFF_COL)[]).map((d) => `<span><i class="out" style="border-color:${DIFF_COL[d]}"></i>${DIFF_LABEL[d]}</span>`).join('') +
